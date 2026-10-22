@@ -27,15 +27,7 @@ The installer ends up in `dist\Atomax Media Office Setup 1.0.0.exe`. It isn't co
 
 The repo is `github.com/tomosmira823-wq/atomax-media`. Installed copies check that repo's releases on launch and every hour; when a newer version is published they download it in the background and show a *Restart to update* button in the top bar.
 
-To ship an update:
-
-```
-# bump the version in package.json (e.g. 1.0.1), commit, then
-git tag v1.0.1
-git push && git push --tags
-```
-
-The workflow in `.github/workflows/build.yml` builds the installer on a Windows runner and publishes the release (installer, `latest.yml`, blockmap), which is what the updater reads. Keep the version in `package.json` in step with the tag.
+To ship an update: bump `"version"` in `package.json` (e.g. 1.0.1), commit and push to `main`. The workflow in `.github/workflows/build.yml` runs whenever `package.json` changes, builds the installer on a Windows runner and publishes a GitHub release `v1.0.1` with the installer, `latest.yml` and blockmap, which is what the updater reads. You can also run it by hand from the repo's Actions tab.
 
 ## Using it
 

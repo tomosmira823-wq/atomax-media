@@ -1,7 +1,12 @@
-name: Build Windows installer
+name: Build and release Windows installer
 
+# Runs whenever package.json changes on main (i.e. a version bump), on a v* tag, or by hand from the Actions tab.
+# electron-builder creates the GitHub release named v<version> itself and uploads the installer, latest.yml and blockmap,
+# which is what installed copies read to auto-update.
 on:
   push:
+    branches: [main]
+    paths: ['package.json']
     tags: ['v*']
   workflow_dispatch:
 
@@ -17,15 +22,10 @@ jobs:
         with:
           node-version: 20
       - run: npm ci
-      # on a v* tag: build and publish the release (installer + latest.yml + blockmap) so installed copies auto-update
       - name: Build and publish release
-        if: startsWith(github.ref, 'refs/tags/v')
         run: npx electron-builder --win nsis --publish always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - name: Build only (manual run)
-        if: "!startsWith(github.ref, 'refs/tags/v')"
-        run: npm run dist
       - uses: actions/upload-artifact@v4
         with:
           name: Atomax-Media-Office-Setup

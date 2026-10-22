@@ -45,7 +45,8 @@
     "publish": {
       "provider": "github",
       "owner": "tomosmira823-wq",
-      "repo": "atomax-media"
+      "repo": "atomax-media",
+      "releaseType": "release"
     }
   }
 }
