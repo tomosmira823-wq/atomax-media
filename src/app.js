@@ -74,6 +74,8 @@ function closeModals() {
   document.querySelectorAll('#top .tabs button').forEach(x => x.classList.toggle('active', x.dataset.tab === 'office'));
 }
 document.querySelectorAll('[data-close]').forEach(b => b.addEventListener('click', closeModals));
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeModals(); });
+document.querySelectorAll('.modal').forEach(m => m.addEventListener('mousedown', (e) => { if (e.target === m) closeModals(); }));
 document.querySelectorAll('.panel .collapse').forEach(b => b.addEventListener('click', () => b.closest('.panel').classList.toggle('collapsed')));
 
 // ---------- settings ----------
