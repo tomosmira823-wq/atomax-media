@@ -37,7 +37,7 @@ To ship an update: bump `"version"` in `package.json` (e.g. 1.0.1), commit and p
 4. **Analyse image** asks Claude what it sees in your image and what edits would help.
 5. **Agents** tab: the team as cards; tap one to open its loadout — the agent on a turntable, colour swatches, gear (glasses, hard hat, headset, tie, clipboard, lanyard), role, tone, rules and example posts. *Save loadout* then *Save team*. Add more writers for YouTube, TikTok, etc. Each enabled agent gets a desk.
 6. **Posts** tab: everything the office has written, with images.
-7. **Settings** tab: keys, models, image provider, and the company profile every agent reads before writing.
+7. **Settings** tab: keys, models, image provider, connections, and the company profile every agent reads before writing. Put the website address in and press **Pull from website**: the app reads the site (home, about, services, projects, contact…), and Claude writes the profile and a knowledge digest in the company's own words — services, sectors, clients the site names, facts, voice. Every writer, reviewer and image brief gets that, so "make an image about what we do" is grounded in the real site, not a guess. Pull again whenever the site changes; everything stays editable.
 
 Default writers: Lena (LinkedIn, formal), Izzy (Instagram, casual), Frank (Facebook, community), Xander (X, off by default), Tia (TikTok, off by default).
 

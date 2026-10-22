@@ -351,12 +351,15 @@
     </div>
     <div><label>Callback URL to register in each developer app</label><input type="text" readonly value="http://127.0.0.1:52817/callback" /></div>
   </div>
-  <h3 class="section">Company profile</h3><div class="sub">Every agent reads this before writing.</div>
+  <h3 class="section">Company profile</h3><div class="sub">Every agent reads this before writing. Pull it from the website so it's in the company's own words, then tweak if you like.</div>
+  <label>Website</label>
+  <div class="row"><input type="text" id="c_website" placeholder="https://www.yourcompany.co.uk" /><button class="btn small" id="pullSite" style="white-space:nowrap">Pull from website</button></div>
+  <div class="hint" id="siteHint"></div>
   <label>Company name</label><input type="text" id="c_name" />
   <label>About</label><textarea id="c_about" style="min-height:80px"></textarea>
   <label>Audience</label><input type="text" id="c_audience" />
-  <label>Website</label><input type="text" id="c_website" />
   <label>Never do</label><input type="text" id="c_doNot" />
+  <label>What the site says (knowledge the agents use)</label><textarea id="c_knowledge" style="min-height:120px" placeholder="Filled by Pull from website. Services, sectors, clients named on the site, facts, voice. Editable."></textarea>
   <div class="row" style="margin-top:14px"><span class="hint" id="verText"></span><button class="btn small" id="checkUpdate">Check for updates</button><span class="hint" id="updText"></span></div>
   <div class="foot"><button class="btn" data-close>Cancel</button><button class="btn primary" id="saveSettings">Save settings</button></div>
 </div></div>

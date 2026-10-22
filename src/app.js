@@ -115,15 +115,28 @@ document.querySelectorAll('.conn .cdisconnect').forEach(b => b.addEventListener(
 function fillSettings() {
   fillConnections();
   for (const k of ['anthropicKey', 'openaiKey', 'higgsfieldKeyId', 'higgsfieldSecret', 'claudeModel', 'openaiImageModel', 'higgsfieldModel', 'imageProvider']) $('#s_' + k).value = settings[k] || '';
-  for (const k of ['name', 'about', 'audience', 'website', 'doNot']) $('#c_' + k).value = settings.company[k] || '';
+  for (const k of ['name', 'about', 'audience', 'website', 'doNot', 'knowledge']) $('#c_' + k).value = settings.company[k] || '';
+  $('#siteHint').textContent = settings.company.pulledAt ? 'Last pulled ' + new Date(settings.company.pulledAt).toLocaleString('en-GB') + ' from ' + (settings.company.pages || []).length + ' pages.' : '';
 }
 $('#saveSettings').addEventListener('click', async () => {
   readConnections();
   for (const k of ['anthropicKey', 'openaiKey', 'higgsfieldKeyId', 'higgsfieldSecret', 'claudeModel', 'openaiImageModel', 'higgsfieldModel', 'imageProvider']) settings[k] = $('#s_' + k).value.trim();
-  for (const k of ['name', 'about', 'audience', 'website', 'doNot']) settings.company[k] = $('#c_' + k).value.trim();
+  for (const k of ['name', 'about', 'audience', 'website', 'doNot', 'knowledge']) settings.company[k] = $('#c_' + k).value.trim();
   await api.settings.set(settings);
   settings.openaiImageQuality = $('#s_openaiImageQuality').value;
   updateKeyDots(); fillImageSelects(); closeModals();
+});
+$('#pullSite').addEventListener('click', async () => {
+  const url = $('#c_website').value.trim(); if (!url) { $('#siteHint').textContent = 'Enter the website address first.'; return; }
+  settings.anthropicKey = $('#s_anthropicKey').value.trim(); await api.settings.set(settings);
+  $('#siteHint').innerHTML = '<span class="spinner"></span> Reading the site and writing the profile…'; $('#pullSite').disabled = true;
+  try {
+    const r = await api.companyFromWebsite(url);
+    settings.company = r.company;
+    for (const k of ['name', 'about', 'audience', 'website', 'knowledge']) $('#c_' + k).value = settings.company[k] || '';
+    $('#siteHint').textContent = `Done. Read ${r.pages.length} pages: ${r.pages.slice(0, 5).join(' · ')}${r.pages.length > 5 ? ' …' : ''}`;
+  } catch (e) { $('#siteHint').textContent = e.message; }
+  $('#pullSite').disabled = false;
 });
 $('#detectModels').addEventListener('click', async () => {
   settings.openaiKey = $('#s_openaiKey').value.trim(); await api.settings.set(settings);
@@ -303,7 +316,7 @@ $('#run').addEventListener('click', async () => {
       const shape = shared ? { size: 'auto', aspect: '1:1' } : shapeFor(x.agent.platform);
       const shapeNote = shared ? '' : `\nOutput shape: ${shape.size === '1024x1024' ? 'square' : shape.size === '1024x1536' ? 'portrait' : 'landscape'}, framed for ${x.agent.platform}.`;
       // the image brief leads; the writer's image idea is the platform-specific art direction underneath it
-      const lead = imageBrief ? `THE IMAGE MUST SHOW: ${imageBrief}` : '';
+      const lead = imageBrief ? `THE IMAGE MUST SHOW: ${imageBrief}` + (settings.company?.knowledge ? `\nAbout the company (for accuracy): ${settings.company.about} ${settings.company.knowledge.slice(0, 600)}` : '') : '';
       const direction = post.imageIdea ? `Art direction for ${x.agent.platform}: ${post.imageIdea}` : '';
       if (images.length) {
         const instruction = [lead, direction, refNote ? 'Reference note from the brief: ' + refNote : ''].filter(Boolean).join('\n') || 'Tidy and brighten the photo and add a clean Atomax-UK branded banner.';

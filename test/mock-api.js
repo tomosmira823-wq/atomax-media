@@ -19,6 +19,7 @@ function claudeReply(body) {
   }
   if (/Revise the post as instructed/.test(sys)) return JSON.stringify({ hook: 'Revised hook', caption: 'Revised caption from mock.\n\n#Revised', hashtags: ['Revised'], altText: 'alt', imageIdea: 'idea', bestTime: 'Mon 9am', notes: '', overlayText: 'Revised banner' });
   if (/image editor/.test(sys)) return 'Mock image analysis: switchgear panels, three suggested edits.';
+  if (/company profile for a social media team/.test(sys)) return JSON.stringify({ name: 'Atomax-UK Ltd', about: 'Mock about from site.', services: ['Electrical design', 'Document control'], sectors: ['Utilities'], clients: [], audience: 'Engineering managers', tone: 'Plain and confident', facts: ['Based in Ellesmere Port'], knowledge: 'Mock knowledge digest from the website pages.' });
   const platform = (sys.match(/YOUR PLATFORM: (.+)/) || [])[1] || 'Platform';
   const name = (sys.match(/You are (\w+),/) || [])[1] || 'Agent';
   const hasImage = /POST IMAGE 1/.test(userText);
@@ -45,6 +46,7 @@ http.createServer(async (req, res) => {
   const json = (o, code = 200) => { res.writeHead(code, { 'content-type': 'application/json', 'access-control-allow-origin': '*' }); res.end(JSON.stringify(o)); };
   try {
     if (u === '/__calls') return json(calls);
+    if (u.startsWith('/site')) { res.writeHead(200, { 'content-type': 'text/html' }); return res.end(`<html><head><title>Atomax-UK ${u}</title></head><body><nav><a href="/site/about">About</a></nav><h1>Atomax-UK Engineering Consultants</h1><p>${'We provide electrical design, instrumentation drawings and document control for industrial clients. '.repeat(8)}</p><a href="/site/services">Services</a><a href="/site/contact">Contact</a></body></html>`); }
     if (u === '/__reset') { calls = []; return json({ ok: true }); }
     if (u.startsWith('/anthropic/v1/messages')) {
       const body = JSON.parse(raw.toString());

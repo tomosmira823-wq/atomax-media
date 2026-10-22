@@ -19,5 +19,6 @@ contextBridge.exposeInMainWorld('office', {
   openExternal: call('shell:open'),
   update: { install: call('update:install'), check: call('update:check'), onStatus: (fn) => ipcRenderer.on('update:status', (_e, s) => fn(s)) },
   version: call('app:version'),
+  companyFromWebsite: call('company:fromWebsite'),
   paths: call('paths:get')
 });

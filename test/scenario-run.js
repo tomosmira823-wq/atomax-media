@@ -131,6 +131,17 @@
     return 'loadout opened and closed with Esc';
   });
 
+  await step('Settings: pull company profile from website', async () => {
+    document.querySelector('[data-tab=settings]').click();
+    $('#c_website').value = 'http://127.0.0.1:52900/site';
+    $('#pullSite').click();
+    await until(() => /^Done\. Read/.test($('#siteHint').textContent) || /Could not|Error/.test($('#siteHint').textContent), 30000);
+    if (!/^Done/.test($('#siteHint').textContent)) throw new Error($('#siteHint').textContent);
+    if (!$('#c_knowledge').value) throw new Error('knowledge empty');
+    document.querySelector('#settingsModal .x').click();
+    return $('#siteHint').textContent + ' | about=' + $('#c_about').value;
+  });
+
   await step('Settings detect models', async () => {
     document.querySelector('[data-tab=settings]').click();
     $('#detectModels').click();

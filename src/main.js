@@ -319,8 +319,80 @@ function companyBlock(company) {
 ABOUT: ${company.about}
 AUDIENCE: ${company.audience}
 WEBSITE: ${company.website}
-RULES FOR EVERYONE: ${company.doNot}`;
+RULES FOR EVERYONE: ${company.doNot}${company.knowledge ? `
+
+WHAT THE COMPANY ACTUALLY SAYS ABOUT ITSELF (from its website; use these facts and this language, never invent beyond it):
+${company.knowledge}` : ''}`;
 }
+
+// ---------- pull the company profile from its website ----------
+function htmlToText(html) {
+  return html
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ').replace(/<style[\s\S]*?<\/style>/gi, ' ').replace(/<nav[\s\S]*?<\/nav>/gi, ' ').replace(/<footer[\s\S]*?<\/footer>/gi, ' ')
+    .replace(/<(br|p|div|li|h[1-6]|tr|section|article)[^>]*>/gi, '\n').replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&#39;|&apos;/g, "'").replace(/&quot;/g, '"').replace(/&[a-z]+;/g, ' ')
+    .replace(/[ \t]+/g, ' ').replace(/\n\s*\n+/g, '\n').trim();
+}
+async function fetchSitePages(startUrl) {
+  const base = new URL(startUrl.startsWith('http') ? startUrl : 'https://' + startUrl);
+  const seen = new Set(), pages = [];
+  const queue = [base.href];
+  const prefer = /about|service|what-we-do|project|case|sector|client|team|contact|expertise|capabilit|accredit|career|news/i;
+  while (queue.length && pages.length < 10) {
+    const url = queue.shift(); if (seen.has(url)) continue; seen.add(url);
+    let html;
+    try { const r = await fetch(url, { headers: { 'user-agent': 'Mozilla/5.0 AtomaxMediaOffice' }, redirect: 'follow' }); if (!r.ok) continue; html = await r.text(); } catch { continue; }
+    const title = (html.match(/<title[^>]*>([\s\S]*?)<\/title>/i) || [])[1]?.trim() || url;
+    const text = htmlToText(html).slice(0, 12000);
+    if (text.length > 200) pages.push({ url, title, text });
+    for (const mm of html.matchAll(/href=["']([^"'#?]+)["']/gi)) {
+      try {
+        const u = new URL(mm[1], url);
+        if (u.hostname !== base.hostname || !/^https?:/.test(u.protocol)) continue;
+        if (/\.(pdf|jpg|jpeg|png|gif|svg|zip|docx?|xlsx?|mp4)$/i.test(u.pathname)) continue;
+        const href = u.origin + u.pathname;
+        if (!seen.has(href)) (prefer.test(u.pathname) ? queue.unshift(href) : queue.push(href));
+      } catch {}
+    }
+  }
+  if (!pages.length) throw new Error(`Could not read anything from ${base.href}. Check the address, or the site may block automated requests.`);
+  return pages;
+}
+ipcMain.handle('company:fromWebsite', async (_e, url) => {
+  const s = loadSettings();
+  const pages = await fetchSitePages(url);
+  const corpus = pages.map(p => `=== ${p.title} (${p.url}) ===\n${p.text}`).join('\n\n').slice(0, 60000);
+  const system = `You build a company profile for a social media team, using ONLY what the company's own website says. Do not invent services, clients, numbers, certifications or history that are not on the pages. Prefer the company's own phrasing. Reply with JSON only, no fences:
+{
+  "name": "company name as the site writes it",
+  "about": "3 to 4 sentences, plain British English, what they do and for whom",
+  "services": ["service 1", "..."],
+  "sectors": ["sector or client type named on the site", "..."],
+  "clients": ["client names ONLY if the site names them", "..."],
+  "audience": "one sentence: who the posts should speak to",
+  "tone": "one sentence: the voice the site uses",
+  "facts": ["location, founding, accreditations, team size, anything concrete the site states", "..."],
+  "knowledge": "a 300 to 500 word digest of everything useful on the site for writing posts: services in detail, how they describe their approach, sectors, any projects, locations, people, accreditations - factual, no fluff"
+}`;
+  const text = await claudeMessage({ system, messages: [{ role: 'user', content: `WEBSITE: ${url}\n\n${corpus}` }], maxTokens: 4000 });
+  const prof = extractJson(text);
+  s.company = {
+    ...s.company,
+    name: prof.name || s.company.name,
+    about: prof.about || s.company.about,
+    audience: prof.audience || s.company.audience,
+    website: url,
+    knowledge: [prof.knowledge || '',
+      prof.services?.length ? 'Services: ' + prof.services.join('; ') : '',
+      prof.sectors?.length ? 'Sectors: ' + prof.sectors.join('; ') : '',
+      prof.clients?.length ? 'Clients named on the site: ' + prof.clients.join('; ') : '',
+      prof.facts?.length ? 'Facts: ' + prof.facts.join('; ') : '',
+      prof.tone ? 'Voice: ' + prof.tone : ''].filter(Boolean).join('\n'),
+    pulledAt: new Date().toISOString(), pages: pages.map(p => p.url)
+  };
+  saveSettings(s);
+  return { company: s.company, pages: pages.map(p => p.title) };
+});
 
 // Builds the user content: post images, then reference material (text + images), clearly labelled
 function buildContent({ images = [], refText = '', refImages = [], text }) {
