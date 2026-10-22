@@ -1,0 +1,448 @@
+// Atomax Media Office - Electron main process
+// All API keys live here (encrypted on disk) and every outside call is made from here,
+// so the 3D page never sees a key.
+
+const { app, BrowserWindow, ipcMain, dialog, safeStorage, shell, protocol, net } = require('electron');
+const { pathToFileURL } = require('url');
+const { autoUpdater } = require('electron-updater');
+const path = require('path');
+const fs = require('fs');
+
+const USER_DIR = () => app.getPath('userData');
+const SETTINGS_FILE = () => path.join(USER_DIR(), 'settings.json');
+const AGENTS_FILE = () => path.join(USER_DIR(), 'agents.json');
+const POSTS_FILE = () => path.join(USER_DIR(), 'posts.json');
+
+// ---------- defaults ----------
+const DEFAULT_SETTINGS = {
+  anthropicKey: '',
+  openaiKey: '',
+  higgsfieldKeyId: '',
+  higgsfieldSecret: '',
+  claudeModel: 'claude-sonnet-5-5',
+  openaiImageModel: 'gpt-image-1',
+  higgsfieldModel: 'higgsfield-ai/soul/standard',
+  imageProvider: 'openai',
+  company: {
+    name: 'Atomax-UK Ltd',
+    about: 'Atomax-UK Ltd is an electrical engineering company in the North West of England. We do electrical CAD, instrumentation drawings, loop diagrams, cable schedules, panel design, document control and site work for industrial clients, including National Grid and process plants.',
+    audience: 'Industrial clients, engineering managers, project managers, electrical and instrumentation engineers, recruiters and local businesses.',
+    doNot: 'Never invent client names, project values, dates or certifications. Never share anything confidential. No politics.',
+    website: 'https://www.atomax.co.uk'
+  }
+};
+
+const DEFAULT_AGENTS = [
+  {
+    id: 'linkedin', platform: 'LinkedIn', name: 'Lena', colour: '#0a66c2', enabled: true,
+    tone: 'Professional and formal. Clear, confident, no slang, no emojis unless one fits. Written for engineering managers and clients. Lead with the value or the lesson, finish with a soft call to action.',
+    rules: 'Max 1300 characters. Short paragraphs with blank lines between. 3 to 5 hashtags at the end. British spelling.'
+  },
+  {
+    id: 'instagram', platform: 'Instagram', name: 'Izzy', colour: '#e1306c', enabled: true,
+    tone: 'Friendly, upbeat and casual. Behind-the-scenes feel, like a mate showing you round the workshop. Emojis welcome but not overdone.',
+    rules: 'Strong first line that works as a hook before the "more" cut. 1 to 3 short paragraphs. 8 to 15 hashtags on their own lines at the end. British spelling.'
+  },
+  {
+    id: 'facebook', platform: 'Facebook', name: 'Frank', colour: '#1877f2', enabled: true,
+    tone: 'Warm and plain-spoken. Community feel, local business voice. A couple of emojis is fine.',
+    rules: 'Under 600 characters. Ask a question or invite a comment at the end. 1 to 3 hashtags max. British spelling.'
+  },
+  {
+    id: 'checker', role: 'reviewer', platform: 'Checker', name: 'Charlie', colour: '#f59f00', enabled: true,
+    tone: 'Picky but fair. A senior marketing lead reviewing a junior\'s work: honest about weak posts, quick to say when one is good. Thinks about whether a real person would stop scrolling for it.',
+    rules: 'Check: British spelling and grammar; the platform rules for that agent (length, hashtag count); nothing invented (client names, figures, dates, certifications); nothing confidential; tone matches the platform; the post actually answers the brief; the hook is strong; there is a clear point or call to action. Score 1-10. Below 6 is a fail.'
+  },
+  {
+    id: 'x', platform: 'X / Twitter', name: 'Xander', colour: '#111111', enabled: false,
+    tone: 'Punchy and direct. One idea per post. Dry humour is fine.',
+    rules: 'Max 280 characters including hashtags. 1 or 2 hashtags max. No thread unless the brief asks for one.'
+  },
+  {
+    id: 'tiktok', platform: 'TikTok', name: 'Tia', colour: '#00f2ea', enabled: false,
+    tone: 'Energetic, young, curious. Talks like a video voice-over script plus a short caption.',
+    rules: 'Give a 20 to 40 second voice-over script in short lines, then a caption under 150 characters with 3 to 5 hashtags.'
+  }
+];
+
+// ---------- storage helpers ----------
+function readJson(file, fallback) {
+  try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return fallback; }
+}
+function writeJson(file, data) {
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, JSON.stringify(data, null, 2), 'utf8');
+}
+
+const SECRET_FIELDS = ['anthropicKey', 'openaiKey', 'higgsfieldKeyId', 'higgsfieldSecret'];
+function encrypt(str) {
+  if (!str) return '';
+  if (safeStorage.isEncryptionAvailable()) return 'enc:' + safeStorage.encryptString(str).toString('base64');
+  return 'raw:' + str;
+}
+function decrypt(str) {
+  if (!str) return '';
+  if (str.startsWith('enc:')) {
+    try { return safeStorage.decryptString(Buffer.from(str.slice(4), 'base64')); } catch { return ''; }
+  }
+  if (str.startsWith('raw:')) return str.slice(4);
+  return str;
+}
+function loadSettings() {
+  const raw = readJson(SETTINGS_FILE(), {});
+  const s = { ...DEFAULT_SETTINGS, ...raw, company: { ...DEFAULT_SETTINGS.company, ...(raw.company || {}) } };
+  for (const f of SECRET_FIELDS) s[f] = decrypt(s[f]);
+  return s;
+}
+function saveSettings(s) {
+  const out = { ...s };
+  for (const f of SECRET_FIELDS) out[f] = encrypt(s[f] || '');
+  writeJson(SETTINGS_FILE(), out);
+}
+
+// Serve the app over app:// so fetch() works for the 3D models (Chromium blocks fetch on file://)
+protocol.registerSchemesAsPrivileged([{ scheme: 'app', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } }]);
+const APP_ROOT = path.join(__dirname, '..');
+function registerAppProtocol() {
+  protocol.handle('app', (req) => {
+    const u = new URL(req.url);
+    let rel = decodeURIComponent(u.pathname);
+    const file = path.normalize(path.join(APP_ROOT, rel));
+    if (!file.startsWith(APP_ROOT)) return new Response('forbidden', { status: 403 });
+    return net.fetch(pathToFileURL(file).toString());
+  });
+}
+
+// ---------- window ----------
+let win;
+function createWindow() {
+  win = new BrowserWindow({
+    width: 1500, height: 920, minWidth: 1100, minHeight: 700,
+    backgroundColor: '#0b0d12',
+    title: 'Atomax Media Office',
+    autoHideMenuBar: true,
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: false
+    }
+  });
+  win.loadURL('app://app/src/index.html');
+  win.webContents.setWindowOpenHandler(({ url }) => { shell.openExternal(url); return { action: 'deny' }; });
+  // dev helper: AMO_SCREENSHOT=/path/out.png takes a screenshot a few seconds after load and quits
+  if (process.env.AMO_SCREENSHOT) {
+    win.webContents.on('console-message', (_e, level, msg, line, src) => console.error('[page]', level, msg, src + ':' + line));
+    win.webContents.once('did-finish-load', () => setTimeout(async () => {
+      await win.webContents.executeJavaScript(`(async()=>{ if (${process.env.AMO_DEMO ? 'true' : 'false'}) { for (const id of window.__office.agents.keys()) window.__office.setState(id, 'working', 'writing post'); window.__office.setBoard([...window.__office.agents.values()].map(a => ({ colour: a.data.colour, text: a.data.name + ' · ' + a.data.platform, status: 'Working' }))); } for (let i=0;i<${process.env.AMO_FRAMES || 240};i++) { window.__office.step(${process.env.AMO_DT || '1/60'}); if (i%20===0) await new Promise(r=>setTimeout(r,0)); } })()`);
+      await new Promise(r => setTimeout(r, 1500));
+      const img = await win.webContents.capturePage();
+      fs.writeFileSync(process.env.AMO_SCREENSHOT, img.toPNG());
+      app.quit();
+    }, 6000));
+  }
+}
+app.whenReady().then(() => {
+  registerAppProtocol(); createWindow();
+  // auto-update from GitHub releases (packaged builds only)
+  if (app.isPackaged) {
+    autoUpdater.autoDownload = true;
+    autoUpdater.on('update-available', (i) => win?.webContents.send('update:status', { state: 'downloading', version: i.version }));
+    autoUpdater.on('download-progress', (p) => win?.webContents.send('update:status', { state: 'downloading', percent: Math.round(p.percent) }));
+    autoUpdater.on('update-downloaded', (i) => win?.webContents.send('update:status', { state: 'ready', version: i.version }));
+    autoUpdater.on('error', (e) => win?.webContents.send('update:status', { state: 'error', message: String(e?.message || e) }));
+    autoUpdater.checkForUpdates().catch(() => {});
+    setInterval(() => autoUpdater.checkForUpdates().catch(() => {}), 60 * 60 * 1000);
+  }
+});
+ipcMain.handle('update:install', () => autoUpdater.quitAndInstall());
+ipcMain.handle('update:check', async () => { if (!app.isPackaged) return 'Dev build, no updates'; const r = await autoUpdater.checkForUpdates(); return r?.updateInfo?.version ? 'Latest on GitHub: v' + r.updateInfo.version : 'No update info'; });
+ipcMain.handle('app:version', () => app.getVersion());
+app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
+
+// ---------- settings / agents / posts ----------
+ipcMain.handle('settings:get', () => loadSettings());
+ipcMain.handle('settings:set', (_e, s) => { saveSettings(s); return true; });
+ipcMain.handle('agents:get', () => readJson(AGENTS_FILE(), DEFAULT_AGENTS));
+ipcMain.handle('agents:set', (_e, a) => { writeJson(AGENTS_FILE(), a); return true; });
+ipcMain.handle('agents:reset', () => { writeJson(AGENTS_FILE(), DEFAULT_AGENTS); return DEFAULT_AGENTS; });
+ipcMain.handle('posts:get', () => readJson(POSTS_FILE(), []));
+ipcMain.handle('posts:set', (_e, p) => { writeJson(POSTS_FILE(), p); return true; });
+ipcMain.handle('paths:get', () => ({ userData: USER_DIR() }));
+ipcMain.handle('shell:open', (_e, url) => shell.openExternal(url));
+
+// ---------- files ----------
+ipcMain.handle('file:pickImages', async () => {
+  const r = await dialog.showOpenDialog(win, {
+    title: 'Add images or media',
+    properties: ['openFile', 'multiSelections'],
+    filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif'] }]
+  });
+  if (r.canceled) return [];
+  return r.filePaths.map(p => {
+    const ext = path.extname(p).slice(1).toLowerCase();
+    const mime = ext === 'jpg' ? 'image/jpeg' : `image/${ext}`;
+    return { name: path.basename(p), mime, base64: fs.readFileSync(p).toString('base64') };
+  });
+});
+
+ipcMain.handle('file:saveImage', async (_e, { base64, name }) => {
+  const r = await dialog.showSaveDialog(win, { defaultPath: name || 'atomax-image.png', filters: [{ name: 'PNG', extensions: ['png'] }] });
+  if (r.canceled) return null;
+  fs.writeFileSync(r.filePath, Buffer.from(base64, 'base64'));
+  return r.filePath;
+});
+
+ipcMain.handle('file:saveText', async (_e, { text, name }) => {
+  const r = await dialog.showSaveDialog(win, { defaultPath: name || 'post.txt', filters: [{ name: 'Text', extensions: ['txt', 'md'] }] });
+  if (r.canceled) return null;
+  fs.writeFileSync(r.filePath, text, 'utf8');
+  return r.filePath;
+});
+
+// ---------- Claude (Anthropic) ----------
+async function claudeMessage({ system, messages, maxTokens = 1500 }) {
+  const s = loadSettings();
+  if (!s.anthropicKey) throw new Error('No Claude API key. Add it in Settings.');
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'x-api-key': s.anthropicKey,
+      'anthropic-version': '2023-06-01'
+    },
+    body: JSON.stringify({ model: s.claudeModel, max_tokens: maxTokens, system, messages })
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(`Claude ${res.status}: ${data?.error?.message || JSON.stringify(data)}`);
+  return (data.content || []).filter(c => c.type === 'text').map(c => c.text).join('\n');
+}
+
+function extractJson(text) {
+  const m = text.match(/\{[\s\S]*\}/);
+  if (!m) throw new Error('Claude did not return JSON:\n' + text);
+  return JSON.parse(m[0]);
+}
+
+function companyBlock(company) {
+  return `COMPANY: ${company.name}
+ABOUT: ${company.about}
+AUDIENCE: ${company.audience}
+WEBSITE: ${company.website}
+RULES FOR EVERYONE: ${company.doNot}`;
+}
+
+// Builds the user content: post images, then reference material (text + images), clearly labelled
+function buildContent({ images = [], refText = '', refImages = [], text }) {
+  const content = [];
+  images.forEach((img, i) => {
+    content.push({ type: 'text', text: `POST IMAGE ${i + 1} (${img.name || 'image'}) — this is the image that will be posted:` });
+    content.push({ type: 'image', source: { type: 'base64', media_type: img.mime, data: img.base64 } });
+  });
+  if (refText || refImages.length) {
+    content.push({ type: 'text', text: `REFERENCE MATERIAL — examples of the style, tone and structure to match. Do NOT copy their wording or facts, and do NOT treat reference images as the post image.${refText ? '\n' + refText : ''}` });
+    refImages.forEach((img, i) => {
+      content.push({ type: 'text', text: `REFERENCE IMAGE ${i + 1} (${img.name || 'image'}):` });
+      content.push({ type: 'image', source: { type: 'base64', media_type: img.mime, data: img.base64 } });
+    });
+  }
+  content.push({ type: 'text', text });
+  return content;
+}
+function examplesBlock(agent) {
+  return agent.examples ? `\nEXAMPLES OF YOUR PAST POSTS (match this voice and structure, never reuse their content):\n${agent.examples}\n` : '';
+}
+
+// Write one post for one platform agent
+ipcMain.handle('ai:writePost', async (_e, { agent, brief, images = [], extra = '', refText = '', refImages = [] }) => {
+  const s = loadSettings();
+  const system = `You are ${agent.name}, the ${agent.platform} content writer in the ${s.company.name} media office.
+${companyBlock(s.company)}
+
+YOUR PLATFORM: ${agent.platform}
+YOUR TONE: ${agent.tone}
+YOUR FORMAT RULES: ${agent.rules}
+${examplesBlock(agent)}
+Write ONE post for ${agent.platform} from the brief and the POST IMAGES. Use what you can actually see in the post images; do not invent details. If reference material is given, match its style and structure but write fresh content about the brief.
+Reply with JSON only, no markdown fences, exactly this shape:
+{
+  "hook": "first line / headline",
+  "caption": "the full post text ready to paste, including hashtags where the format rules say",
+  "hashtags": ["tag1", "tag2"],
+  "altText": "accessible description of the image, or an idea for one if no image was given",
+  "imageIdea": "a one-paragraph image-generation prompt for an AI image model that would suit this post, in the company's style",
+  "bestTime": "best day and time to post for this platform, UK time",
+  "notes": "one short line to the human: anything to check before posting"
+}`;
+
+  const content = buildContent({ images, refText, refImages, text: `BRIEF:\n${brief}\n${extra ? '\nEXTRA INSTRUCTIONS:\n' + extra : ''}` });
+  const text = await claudeMessage({ system, messages: [{ role: 'user', content }] });
+  return extractJson(text);
+});
+
+// Revise an existing post ("make it shorter", "add a line about safety")
+ipcMain.handle('ai:revisePost', async (_e, { agent, post, instruction }) => {
+  const s = loadSettings();
+  const system = `You are ${agent.name}, the ${agent.platform} content writer in the ${s.company.name} media office.
+${companyBlock(s.company)}
+YOUR TONE: ${agent.tone}
+YOUR FORMAT RULES: ${agent.rules}
+${examplesBlock(agent)}
+Revise the post as instructed. Reply with JSON only in the same shape as the original.`;
+  const text = await claudeMessage({
+    system,
+    messages: [{ role: 'user', content: `CURRENT POST JSON:\n${JSON.stringify(post, null, 2)}\n\nINSTRUCTION: ${instruction}` }]
+  });
+  return extractJson(text);
+});
+
+// A reviewer bot assesses a writer's post
+ipcMain.handle('ai:reviewPost', async (_e, { reviewer, agent, post, brief, images = [], refText = '', refImages = [] }) => {
+  const s = loadSettings();
+  const system = `You are ${reviewer.name}, a reviewer in the ${s.company.name} media office. Your job: ${reviewer.platform}.
+${companyBlock(s.company)}
+
+HOW YOU REVIEW: ${reviewer.tone}
+WHAT YOU CHECK: ${reviewer.rules}
+${examplesBlock(reviewer)}
+You are reviewing a ${agent.platform} post written by ${agent.name}.
+${agent.name}'s TONE BRIEF: ${agent.tone}
+${agent.name}'s FORMAT RULES: ${agent.rules}
+${agent.examples ? `${agent.name}'s EXAMPLE POSTS (the voice the post should match):\n${agent.examples}\n` : ''}
+Assess whether this is a good post for ${agent.platform}. Be specific. If reference material is given, also judge whether the post matches its tone and structure without copying it. If you suggest changes, give the full corrected post text.
+Reply with JSON only, no markdown fences, exactly this shape:
+{
+  "score": 7,
+  "verdict": "pass" | "fix" | "fail",
+  "summary": "one sentence overall opinion",
+  "good": ["what works", "..."],
+  "issues": ["what is wrong or weak, with the exact words if relevant", "..."],
+  "fixedCaption": "the full improved post text ready to paste, or empty string if no changes needed"
+}`;
+  const content = buildContent({ images, refText, refImages, text: `ORIGINAL BRIEF:\n${brief}\n\nPOST TO REVIEW (${agent.platform}):\n${post.caption}\n\nALT TEXT: ${post.altText || ''}` });
+  const text = await claudeMessage({ system, messages: [{ role: 'user', content }], maxTokens: 1500 });
+  return extractJson(text);
+});
+
+// Look at an image and describe edits / write alt text (Claude can see, not paint)
+ipcMain.handle('ai:describeImage', async (_e, { images, question }) => {
+  const content = images.map(img => ({ type: 'image', source: { type: 'base64', media_type: img.mime, data: img.base64 } }));
+  content.push({ type: 'text', text: question || 'Describe this image for a social media post and suggest 3 edits that would make it stronger.' });
+  return claudeMessage({ system: 'You are an image editor in a media office. Be concrete and brief.', messages: [{ role: 'user', content }], maxTokens: 800 });
+});
+
+// ---------- image generation ----------
+async function openaiGenerate(prompt, size) {
+  const s = loadSettings();
+  if (!s.openaiKey) throw new Error('No OpenAI key. Add it in Settings or switch the image provider.');
+  const res = await fetch('https://api.openai.com/v1/images/generations', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', authorization: `Bearer ${s.openaiKey}` },
+    body: JSON.stringify({ model: s.openaiImageModel, prompt, size: size || '1024x1024', n: 1 })
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(`OpenAI ${res.status}: ${data?.error?.message || JSON.stringify(data)}`);
+  const item = data.data?.[0] || {};
+  if (item.b64_json) return item.b64_json;
+  if (item.url) return await downloadBase64(item.url);
+  throw new Error('OpenAI returned no image');
+}
+
+async function openaiEdit(prompt, image, size) {
+  const s = loadSettings();
+  if (!s.openaiKey) throw new Error('No OpenAI key. Image edits need OpenAI.');
+  const fd = new FormData();
+  fd.append('model', s.openaiImageModel);
+  fd.append('prompt', prompt);
+  fd.append('size', size || '1024x1024');
+  fd.append('image', new Blob([Buffer.from(image.base64, 'base64')], { type: image.mime }), image.name || 'image.png');
+  const res = await fetch('https://api.openai.com/v1/images/edits', {
+    method: 'POST', headers: { authorization: `Bearer ${s.openaiKey}` }, body: fd
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(`OpenAI ${res.status}: ${data?.error?.message || JSON.stringify(data)}`);
+  const item = data.data?.[0] || {};
+  if (item.b64_json) return item.b64_json;
+  if (item.url) return await downloadBase64(item.url);
+  throw new Error('OpenAI returned no image');
+}
+
+async function downloadBase64(url) {
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(`Download failed ${r.status}`);
+  return Buffer.from(await r.arrayBuffer()).toString('base64');
+}
+
+function findImageUrl(obj) {
+  // Higgsfield result shapes vary by model; dig out the first image url we can find
+  if (!obj) return null;
+  if (typeof obj === 'string' && /^https?:\/\//.test(obj) && /\.(png|jpe?g|webp)(\?|$)/i.test(obj)) return obj;
+  if (Array.isArray(obj)) { for (const x of obj) { const u = findImageUrl(x); if (u) return u; } return null; }
+  if (typeof obj === 'object') {
+    for (const k of ['url', 'image_url', 'images', 'image', 'output', 'result', 'results', 'data', 'outputs']) {
+      if (k in obj) { const u = findImageUrl(obj[k]); if (u) return u; }
+    }
+    for (const v of Object.values(obj)) { const u = findImageUrl(v); if (u) return u; }
+  }
+  return null;
+}
+
+async function higgsfieldGenerate(prompt, aspect) {
+  const s = loadSettings();
+  if (!s.higgsfieldKeyId || !s.higgsfieldSecret) throw new Error('No Higgsfield key ID / secret. Add them in Settings.');
+  const auth = `Key ${s.higgsfieldKeyId}:${s.higgsfieldSecret}`;
+  const model = (s.higgsfieldModel || 'higgsfield-ai/soul/standard').replace(/^\/+/, '');
+  const res = await fetch(`https://api.higgsfield.ai/${model}`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', accept: 'application/json', authorization: auth },
+    body: JSON.stringify({ prompt, aspect_ratio: aspect || '1:1' })
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(`Higgsfield ${res.status}: ${JSON.stringify(data)}`);
+  const statusUrl = data.status_url || `https://api.higgsfield.ai/requests/${data.request_id}/status`;
+  const started = Date.now();
+  while (Date.now() - started < 5 * 60 * 1000) {
+    await new Promise(r => setTimeout(r, 3000));
+    const sr = await fetch(statusUrl, { headers: { authorization: auth, accept: 'application/json' } });
+    const sd = await sr.json();
+    const st = (sd.status || '').toLowerCase();
+    if (st === 'completed' || st === 'succeeded' || st === 'success') {
+      const url = findImageUrl(sd);
+      if (!url) throw new Error('Higgsfield finished but no image url found: ' + JSON.stringify(sd).slice(0, 500));
+      return await downloadBase64(url);
+    }
+    if (st === 'failed' || st === 'cancelled' || st === 'error' || st === 'nsfw') throw new Error('Higgsfield job ' + st + ': ' + JSON.stringify(sd).slice(0, 500));
+  }
+  throw new Error('Higgsfield job timed out');
+}
+
+ipcMain.handle('image:generate', async (_e, { provider, prompt, size, aspect }) => {
+  const p = provider || loadSettings().imageProvider;
+  const base64 = p === 'higgsfield' ? await higgsfieldGenerate(prompt, aspect) : await openaiGenerate(prompt, size);
+  return { base64, mime: 'image/png', provider: p };
+});
+
+ipcMain.handle('image:edit', async (_e, { prompt, image, size }) => {
+  const base64 = await openaiEdit(prompt, image, size);
+  return { base64, mime: 'image/png', provider: 'openai' };
+});
+
+// quick key test
+ipcMain.handle('ai:test', async (_e, which) => {
+  const s = loadSettings();
+  if (which === 'claude') {
+    const t = await claudeMessage({ system: 'Reply with the single word OK.', messages: [{ role: 'user', content: 'ping' }], maxTokens: 10 });
+    return 'Claude replied: ' + t.trim();
+  }
+  if (which === 'openai') {
+    const r = await fetch('https://api.openai.com/v1/models', { headers: { authorization: `Bearer ${s.openaiKey}` } });
+    if (!r.ok) throw new Error('OpenAI ' + r.status);
+    return 'OpenAI key works';
+  }
+  if (which === 'higgsfield') {
+    const r = await fetch('https://api.higgsfield.ai/v1/text2image/soul-styles', { headers: { authorization: `Key ${s.higgsfieldKeyId}:${s.higgsfieldSecret}` } });
+    if (!r.ok) throw new Error('Higgsfield ' + r.status + ' ' + (await r.text()).slice(0, 200));
+    return 'Higgsfield key works';
+  }
+  throw new Error('unknown');
+});

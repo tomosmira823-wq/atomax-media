@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Atomax Media Office</title>
+<style>
+  :root {
+    --navy: #0e121d; --navy2: #141a28; --panel: rgba(18, 23, 36, 0.92); --line: #26304a;
+    --green: #40bd00; --green2: #2e8c00; --text: #e6eaf2; --muted: #8e97ab; --red: #e05252;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--navy); color: var(--text); font: 14px/1.45 "Segoe UI", system-ui, sans-serif; overflow: hidden; }
+  #scene { position: fixed; inset: 0; }
+  #labels { position: fixed; inset: 0; pointer-events: none; }
+
+  /* top bar */
+  #top { position: fixed; top: 0; left: 0; right: 0; height: 52px; display: flex; align-items: center; gap: 14px; padding: 0 16px; background: linear-gradient(var(--navy), rgba(14,18,29,0.6)); z-index: 20; }
+  #top .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; letter-spacing: .5px; }
+  #top .brand small { color: var(--muted); font-weight: 400; margin-left: 4px; }
+  #top .tabs { margin-left: 20px; display: flex; gap: 4px; }
+  #top .tabs button { background: transparent; border: 1px solid transparent; color: var(--muted); padding: 6px 12px; border-radius: 8px; cursor: pointer; }
+  #top .tabs button.active, #top .tabs button:hover { color: var(--text); border-color: var(--line); background: var(--navy2); }
+  #top .right { margin-left: auto; display: flex; gap: 8px; align-items: center; color: var(--muted); font-size: 12px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--red); display: inline-block; margin-right: 6px; }
+  .dot.ok { background: var(--green); }
+
+  /* panels */
+  .panel { position: fixed; top: 64px; bottom: 16px; width: 360px; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; backdrop-filter: blur(8px); z-index: 10; display: flex; flex-direction: column; overflow: hidden; }
+  #brief { left: 16px; width: 330px; }
+  #board { right: 16px; width: 400px; }
+  .panel h2 { margin: 0; padding: 14px 16px; font-size: 13px; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 8px; }
+  .panel .body { padding: 14px 16px; overflow: auto; flex: 1; }
+  .panel.collapsed { width: 44px; }
+  .panel.collapsed .body, .panel.collapsed h2 span { display: none; }
+  .collapse { margin-left: auto; background: none; border: none; color: var(--muted); cursor: pointer; font-size: 16px; }
+
+  textarea, input[type=text], input[type=password], select { width: 100%; background: #0b0f19; color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 9px 10px; font: inherit; }
+  textarea { min-height: 110px; resize: vertical; }
+  label { display: block; color: var(--muted); font-size: 12px; margin: 10px 0 4px; }
+  .row { display: flex; gap: 8px; align-items: center; }
+  button.btn { background: var(--navy2); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; cursor: pointer; font: inherit; }
+  button.btn:hover { border-color: var(--green2); }
+  button.btn.primary { background: var(--green); color: #061000; border-color: var(--green); font-weight: 700; }
+  button.btn.primary:hover { background: #4fd60a; }
+  button.btn.small { padding: 4px 8px; font-size: 12px; }
+  button.btn:disabled { opacity: .5; cursor: default; }
+
+  .thumbs { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .thumbs .t { position: relative; width: 64px; height: 64px; border-radius: 8px; overflow: hidden; border: 1px solid var(--line); }
+  .thumbs .t img { width: 100%; height: 100%; object-fit: cover; }
+  .thumbs .t button { position: absolute; top: 2px; right: 2px; background: rgba(0,0,0,.7); color: #fff; border: none; border-radius: 50%; width: 18px; height: 18px; cursor: pointer; font-size: 11px; }
+
+  .agentpick { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
+  .agentpick label { display: flex; align-items: center; gap: 8px; margin: 0; color: var(--text); font-size: 13px; cursor: pointer; }
+  .swatch { width: 12px; height: 12px; border-radius: 50%; display: inline-block; }
+
+  /* board cards */
+  .card { border: 1px solid var(--line); border-radius: 12px; margin-bottom: 12px; background: #0b0f19; overflow: hidden; }
+  .card .head { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--line); font-weight: 600; }
+  .card .head .status { margin-left: auto; color: var(--muted); font-weight: 400; font-size: 12px; }
+  .card .content { padding: 12px; }
+  .card pre { white-space: pre-wrap; font: inherit; margin: 0 0 10px; background: #070a11; padding: 10px; border-radius: 8px; border: 1px solid var(--line); max-height: 260px; overflow: auto; }
+  .card .meta { color: var(--muted); font-size: 12px; margin-bottom: 8px; }
+  .card .actions { display: flex; flex-wrap: wrap; gap: 6px; }
+  .card img.gen { width: 100%; border-radius: 8px; margin: 8px 0; border: 1px solid var(--line); }
+  .card .revise { display: flex; gap: 6px; margin-top: 8px; }
+  .err { color: var(--red); font-size: 12px; white-space: pre-wrap; }
+  .spinner { display: inline-block; width: 12px; height: 12px; border: 2px solid var(--muted); border-top-color: var(--green); border-radius: 50%; animation: spin .8s linear infinite; vertical-align: middle; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* modals */
+  .modal { position: fixed; inset: 0; background: rgba(5,7,12,.7); z-index: 30; display: none; align-items: center; justify-content: center; }
+  .modal.open { display: flex; }
+  .modal .box { width: 760px; max-height: 88vh; overflow: auto; background: var(--navy2); border: 1px solid var(--line); border-radius: 16px; padding: 20px 24px; }
+  .modal h3 { margin: 0 0 6px; }
+  .modal .sub { color: var(--muted); font-size: 12px; margin-bottom: 14px; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 16px; }
+  .agentrow { border: 1px solid var(--line); border-radius: 12px; padding: 12px; margin-bottom: 10px; }
+  .agentrow .top { display: flex; gap: 8px; align-items: center; }
+  .agentrow input[type=color] { width: 36px; height: 30px; border: none; background: none; cursor: pointer; }
+  .modal .foot { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
+  .ok { color: var(--green); font-size: 12px; }
+
+  /* 3D labels */
+  .lbl { background: rgba(14,18,29,.85); color: #fff; border: 1px solid var(--line); border-radius: 8px; padding: 3px 8px; font-size: 12px; white-space: nowrap; }
+  .lbl .st { color: var(--muted); }
+  .lbl.busy { border-color: var(--green); }
+
+  .review { border-top: 1px dashed var(--line); margin-top: 10px; padding-top: 8px; font-size: 13px; }
+  .review .rhead { display: flex; align-items: center; gap: 6px; }
+  .review .score { margin-left: auto; color: var(--muted); }
+  .review .rsum { margin: 4px 0; }
+  .review ul { margin: 4px 0 6px; padding-left: 18px; }
+  .review ul.good li { color: #9be37a; }
+  .review ul.bad li { color: #ffb86b; }
+  .badge { font-size: 10px; font-weight: 700; letter-spacing: .5px; padding: 2px 6px; border-radius: 6px; }
+  .badge.pass { background: #1f5a0f; color: #b9f59a; }
+  .badge.fix { background: #5a3d0f; color: #ffd59a; }
+  .badge.fail { background: #5a1414; color: #ffb3b3; }
+  #history .card pre { max-height: 180px; }
+  .hint { color: var(--muted); font-size: 12px; }
+</style>
+<script type="importmap">
+{ "imports": {
+  "three": "/src/vendor/three.module.js",
+  "three/addons/": "/src/vendor/jsm/"
+} }
+</script>
+</head>
+<body>
+<canvas id="scene"></canvas>
+<div id="labels"></div>
+
+<div id="top">
+  <div class="brand">
+    <svg width="26" height="26" viewBox="0 0 26 26" fill="none" stroke="#40bd00" stroke-width="2"><path d="M13 3l9 5-9 5-9-5z"/><path d="M4 13l9 5 9-5"/><path d="M4 18l9 5 9-5"/></svg>
+    ATOMAX <small>Media Office</small>
+  </div>
+  <div class="tabs">
+    <button class="active" data-tab="office">Office</button>
+    <button data-tab="history">Posts</button>
+    <button data-tab="agents">Agents</button>
+    <button data-tab="settings">Settings</button>
+  </div>
+  <div class="right">
+    <span id="update" class="hint"></span>
+    <span id="k-claude"><i class="dot"></i>Claude</span>
+    <span id="k-openai"><i class="dot"></i>OpenAI</span>
+    <span id="k-hf"><i class="dot"></i>Higgsfield</span>
+  </div>
+</div>
+
+<!-- Brief panel -->
+<div class="panel" id="brief">
+  <h2><span>New brief</span><button class="collapse" title="Collapse">‹</button></h2>
+  <div class="body">
+    <label>What's the post about?</label>
+    <textarea id="briefText" placeholder="e.g. We've just finished the loop drawings and cable schedules for a substation upgrade. Want a post about attention to detail in document control, with the photo attached."></textarea>
+    <label>Images / media (optional)</label>
+    <div class="row">
+      <button class="btn" id="addImages">+ Add images</button>
+      <span class="hint">Agents can see them and write to them</span>
+    </div>
+    <div class="thumbs" id="thumbs"></div>
+    <label>Reference (optional) — a post to copy the style of</label>
+    <textarea id="refText" style="min-height:70px" placeholder="Paste an example post here, or add screenshots of one below. Agents match the style, they don't reuse the content."></textarea>
+    <div class="row" style="margin-top:6px"><button class="btn small" id="addRefImages">+ Add reference screenshots</button></div>
+    <div class="thumbs" id="refThumbs"></div>
+    <label>Extra instructions (optional)</label>
+    <input type="text" id="extraText" placeholder="e.g. mention we're hiring, keep it under 100 words" />
+    <label>Who's working on it?</label>
+    <div class="agentpick" id="agentPick"></div>
+    <label>Image generation</label>
+    <select id="imageProvider">
+      <option value="openai">OpenAI (gpt-image)</option>
+      <option value="higgsfield">Higgsfield (SOUL)</option>
+    </select>
+    <div style="margin-top:14px" class="row">
+      <button class="btn primary" id="run" style="flex:1">Run the office</button>
+      <button class="btn" id="describe" title="Ask Claude what it sees and what edits would help">Analyse image</button>
+    </div>
+    <div class="err" id="briefErr" style="margin-top:8px"></div>
+  </div>
+</div>
+
+<!-- Board panel -->
+<div class="panel" id="board">
+  <h2><span>Board</span><button class="collapse" title="Collapse">›</button></h2>
+  <div class="body" id="boardBody"><p class="hint">Run a brief and each agent's post will land here. Copy, save, revise, or ask for an image.</p></div>
+</div>
+
+<!-- History modal -->
+<div class="modal" id="historyModal"><div class="box">
+  <h3>Saved posts</h3><div class="sub">Everything the office has produced, newest first.</div>
+  <div id="history"></div>
+  <div class="foot"><button class="btn" id="clearHistory">Clear all</button><button class="btn primary" data-close>Close</button></div>
+</div></div>
+
+<!-- Agents modal -->
+<div class="modal" id="agentsModal"><div class="box">
+  <h3>Agents</h3><div class="sub">Writers: one per social account, tone is the personality, rules are the hard limits. Reviewers: check every post and score it out of 10 — add as many as you like (checker, brand guardian, engagement coach). Every enabled agent gets a desk.</div>
+  <div id="agentList"></div>
+  <div class="row"><button class="btn" id="addAgent">+ Add writer</button><button class="btn" id="addReviewer">+ Add reviewer</button><button class="btn" id="resetAgents">Reset to defaults</button></div>
+  <div class="foot"><button class="btn" data-close>Cancel</button><button class="btn primary" id="saveAgents">Save agents</button></div>
+</div></div>
+
+<!-- Settings modal -->
+<div class="modal" id="settingsModal"><div class="box">
+  <h3>Settings</h3><div class="sub">Keys are stored encrypted on this PC and only ever sent to the provider they belong to.</div>
+  <div class="grid2">
+    <div>
+      <label>Claude API key (required)</label><input type="password" id="s_anthropicKey" placeholder="sk-ant-..." />
+      <label>Claude model</label>
+      <select id="s_claudeModel">
+        <option value="claude-sonnet-5-5">claude-sonnet-5-5 (default)</option>
+        <option value="claude-opus-5-5">claude-opus-5-5</option>
+        <option value="claude-haiku-5-5">claude-haiku-5-5</option>
+      </select>
+      <div class="row" style="margin-top:6px"><button class="btn small" data-test="claude">Test Claude</button><span id="t_claude" class="hint"></span></div>
+    </div>
+    <div>
+      <label>OpenAI key (optional, image generation + edits)</label><input type="password" id="s_openaiKey" placeholder="sk-..." />
+      <label>OpenAI image model</label><input type="text" id="s_openaiImageModel" />
+      <div class="row" style="margin-top:6px"><button class="btn small" data-test="openai">Test OpenAI</button><span id="t_openai" class="hint"></span></div>
+    </div>
+    <div>
+      <label>Higgsfield key ID (optional)</label><input type="password" id="s_higgsfieldKeyId" />
+      <label>Higgsfield secret</label><input type="password" id="s_higgsfieldSecret" />
+      <label>Higgsfield model endpoint</label><input type="text" id="s_higgsfieldModel" placeholder="higgsfield-ai/soul/standard" />
+      <div class="row" style="margin-top:6px"><button class="btn small" data-test="higgsfield">Test Higgsfield</button><span id="t_higgsfield" class="hint"></span></div>
+    </div>
+    <div>
+      <label>Default image provider</label>
+      <select id="s_imageProvider"><option value="openai">OpenAI</option><option value="higgsfield">Higgsfield</option></select>
+    </div>
+  </div>
+  <h3 style="margin-top:18px">Company profile</h3><div class="sub">Every agent reads this before writing.</div>
+  <label>Company name</label><input type="text" id="c_name" />
+  <label>About</label><textarea id="c_about" style="min-height:80px"></textarea>
+  <label>Audience</label><input type="text" id="c_audience" />
+  <label>Website</label><input type="text" id="c_website" />
+  <label>Never do</label><input type="text" id="c_doNot" />
+  <div class="row" style="margin-top:14px"><span class="hint" id="verText"></span><button class="btn small" id="checkUpdate">Check for updates</button><span class="hint" id="updText"></span></div>
+  <div class="foot"><button class="btn" data-close>Cancel</button><button class="btn primary" id="saveSettings">Save settings</button></div>
+</div></div>
+
+<script type="module" src="./app.js"></script>
+</body>
+</html>
