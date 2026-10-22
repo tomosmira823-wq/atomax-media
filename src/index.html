@@ -222,8 +222,9 @@
     <label>Who's working on it?</label>
     <div class="agentpick" id="agentPick"></div>
     <label>Image</label>
-    <label class="plain" style="display:flex;align-items:center;gap:8px;color:var(--text);margin:0 0 2px"><input type="checkbox" id="makeImage" checked /> Make the image in the run</label>
-    <div class="hint" style="margin:0 0 6px 22px">Each agent gets its own image in its platform's shape, from its own idea.</div>
+    <textarea id="imageBrief" style="min-height:70px" placeholder="What the picture should show, e.g. an engineer at a CAD screen with a substation drawing, Atomax branding on the wall. Leave blank and each agent decides from its post."></textarea>
+    <label class="plain" style="display:flex;align-items:center;gap:8px;color:var(--text);margin:8px 0 2px"><input type="checkbox" id="makeImage" checked /> Make the image in the run</label>
+    <div class="hint" style="margin:0 0 6px 22px">Each agent gets its own version in its platform's shape. With a photo attached, the photo is edited to match.</div>
     <label class="plain" style="display:flex;align-items:center;gap:8px;color:var(--text);margin:0 0 8px"><input type="checkbox" id="sameImage" /> Same image for every agent (one call, cheaper)</label>
     <select id="imageProvider"></select>
   </div>

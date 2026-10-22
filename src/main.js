@@ -335,7 +335,7 @@ function examplesBlock(agent) {
 }
 
 // Write one post for one platform agent
-ipcMain.handle('ai:writePost', async (_e, { agent, brief, images = [], extra = '', refText = '', refImages = [] }) => {
+ipcMain.handle('ai:writePost', async (_e, { agent, brief, images = [], extra = '', refText = '', refImages = [], imageBrief = '' }) => {
   const s = loadSettings();
   const system = `You are ${agent.name}, the ${agent.platform} content writer in the ${s.company.name} media office.
 ${companyBlock(s.company)}
@@ -345,6 +345,7 @@ YOUR TONE: ${agent.tone}
 YOUR FORMAT RULES: ${agent.rules}
 ${examplesBlock(agent)}
 Write ONE post for ${agent.platform} from the brief and the POST IMAGES. Use what you can actually see in the post images; do not invent details. If reference material is given, match its style and structure but write fresh content about the brief.
+${imageBrief ? `THE IMAGE THAT WILL BE POSTED WILL SHOW: ${imageBrief}\nWrite the caption to go with that picture, and make "imageIdea" a platform-specific art direction for exactly that scene (composition, crop, mood) - do not change what it shows.` : ''}
 Reply with JSON only, no markdown fences, exactly this shape:
 {
   "hook": "first line / headline",

@@ -258,6 +258,7 @@ $('#run').addEventListener('click', async () => {
   const brief = $('#briefText').value.trim();
   const extra = $('#extraText').value.trim();
   const refText = $('#refText').value.trim();
+  const imageBrief = $('#imageBrief').value.trim();
   const ids = [...$('#agentPick').querySelectorAll('input:checked')].map(i => i.dataset.id);
   const chosen = agents.filter(a => a.enabled && !isReviewer(a) && ids.includes(a.id));
   const reviewers = agents.filter(a => a.enabled && isReviewer(a) && ids.includes(a.id));
@@ -275,8 +276,8 @@ $('#run').addEventListener('click', async () => {
     const card = addCard(agent, 'writing…');
     const slot = { agent, card, entry: null }; runEntries.push(slot);
     try {
-      const post = await api.ai.writePost({ agent, brief: brief || '(no written brief, write from the image)', images, extra, refText, refImages });
-      const entry = { id: 'p' + Date.now() + Math.random().toString(36).slice(2, 6), agentId: agent.id, agentName: agent.name, platform: agent.platform, colour: agent.colour, brief, refText, post, created: new Date().toISOString(), image: null };
+      const post = await api.ai.writePost({ agent, brief: brief || '(no written brief, write from the image)', images, extra, refText, refImages, imageBrief });
+      const entry = { id: 'p' + Date.now() + Math.random().toString(36).slice(2, 6), agentId: agent.id, agentName: agent.name, platform: agent.platform, colour: agent.colour, brief, refText, imageBrief, post, created: new Date().toISOString(), image: null };
       posts.unshift(entry); await api.posts.set(posts); slot.entry = entry;
       fillCard(card, agent, entry);
       office.setState(agent.id, 'done', 'post ready');
@@ -299,11 +300,15 @@ $('#run').addEventListener('click', async () => {
     const makeFor = async (x) => {
       const post = x.entry.post;
       const shape = shared ? { size: 'auto', aspect: '1:1' } : shapeFor(x.agent.platform);
+      const shapeNote = shared ? '' : `\nOutput shape: ${shape.size === '1024x1024' ? 'square' : shape.size === '1024x1536' ? 'portrait' : 'landscape'}, framed for ${x.agent.platform}.`;
+      // the image brief leads; the writer's image idea is the platform-specific art direction underneath it
+      const lead = imageBrief ? `THE IMAGE MUST SHOW: ${imageBrief}` : '';
+      const direction = post.imageIdea ? `Art direction for ${x.agent.platform}: ${post.imageIdea}` : '';
       if (images.length) {
-        const instruction = [post.imageIdea, refNote ? 'Reference note from the brief: ' + refNote : ''].filter(Boolean).join('\n') || 'Tidy and brighten the photo and add a clean Atomax-UK branded banner.';
-        return api.image.edit({ prompt: instruction + (shared ? '' : `\nOutput shape: ${shape.size === '1024x1024' ? 'square' : shape.size === '1024x1536' ? 'portrait' : 'landscape'}, framed for ${x.agent.platform}.`), image: images[0], overlayText: post.overlayText || '', model, size: images.length && shared ? 'auto' : shape.size });
+        const instruction = [lead, direction, refNote ? 'Reference note from the brief: ' + refNote : ''].filter(Boolean).join('\n') || 'Tidy and brighten the photo and add a clean Atomax-UK branded banner.';
+        return api.image.edit({ prompt: instruction + shapeNote, image: images[0], overlayText: post.overlayText || '', model, size: shared ? 'auto' : shape.size });
       }
-      const prompt = (post.imageIdea || brief) + `\nStyle: clean, modern, professional engineering photography look, Atomax brand green (#40BD00) and navy (#0E121D) accents.`;
+      const prompt = [lead, direction || brief].filter(Boolean).join('\n') + `\nStyle: clean, modern, professional engineering photography look, Atomax-UK branding (green #40BD00, navy #0E121D). Any text must be spelled exactly and kept minimal.` + shapeNote;
       return api.image.generate({ provider, model, prompt, size: shape.size, aspect: shape.aspect });
     };
     if (made.length) {
@@ -442,7 +447,7 @@ function fillCard(card, agent, entry) {
     office.setState(agent.id, 'working', `making image (${model || provider})`);
     c.querySelector('.err').textContent = ''; c.querySelector('.b_img').disabled = true; c.querySelector('.b_img').innerHTML = '<span class="spinner"></span> generating';
     try {
-      const prompt = (p.imageIdea || entry.brief || p.caption) + `\nStyle: clean, modern, professional engineering photography look, Atomax brand green (#40BD00) accents, no text in the image.`;
+      const prompt = [entry.imageBrief ? 'THE IMAGE MUST SHOW: ' + entry.imageBrief : '', p.imageIdea ? 'Art direction: ' + p.imageIdea : (entry.brief || p.caption)].filter(Boolean).join('\n') + `\nStyle: clean, modern, professional engineering photography look, Atomax-UK branding (green #40BD00, navy #0E121D).`;
       const r = await api.image.generate({ provider, model, prompt, size: agent.platform === 'LinkedIn' ? '1536x1024' : '1024x1024', aspect: agent.platform === 'LinkedIn' ? '3:2' : '1:1' });
       entry.image = r.base64; await api.posts.set(posts); fillCard(card, agent, entry);
     } catch (e) { c.querySelector('.err').textContent = e.message; c.querySelector('.b_img').disabled = false; c.querySelector('.b_img').textContent = 'Generate image'; }
