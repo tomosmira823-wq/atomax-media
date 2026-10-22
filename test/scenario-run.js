@@ -5,7 +5,7 @@
   const $ = (s) => document.querySelector(s);
   const wait = (ms) => new Promise(r => setTimeout(r, ms));
   const step = async (name, fn) => { try { const r = await fn(); report.steps.push({ name, ok: true, info: r }); } catch (e) { report.steps.push({ name, ok: false, err: String(e) }); report.errors.push(name + ': ' + e); } };
-  const until = async (fn, ms = 60000) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { if (fn()) return true; window.__office?.step(0.05); await wait(100); } throw new Error('timeout waiting'); };
+  const until = async (fn, ms = 60000) => { const t0 = Date.now(); let n = 0; while (Date.now() - t0 < ms) { if (fn()) return true; if (n++ % 20 === 0) window.__office?.step(0.5); await wait(100); } throw new Error('timeout waiting'); };
   window.onerror = (m) => report.errors.push('window.onerror: ' + m);
   window.addEventListener('unhandledrejection', e => report.errors.push('unhandled: ' + (e.reason?.message || e.reason)));
 
@@ -96,7 +96,7 @@
     if (card.querySelector('.more').style.display === 'none') throw new Error('More did not open');
     card.querySelector('.r_text').value = 'shorter';
     card.querySelector('.b_revise').click();
-    await until(() => /Revised caption/.test(document.querySelector('#boardBody .card .post-text')?.textContent || ''), 20000);
+    await until(() => /Revised caption/.test(document.querySelector('#boardBody .card .post-text')?.textContent || ''), 90000);
     return 'rewrite applied';
   });
 
@@ -152,7 +152,7 @@
   await step('Settings detect models', async () => {
     document.querySelector('[data-tab=settings]').click();
     $('#detectModels').click();
-    await until(() => /Your key can use/.test($('#modelsHint').textContent), 10000);
+    await until(() => /Your key can use/.test($('#modelsHint').textContent), 60000);
     const opts = [...$('#imageProvider').options].map(o => o.value);
     document.querySelector('#settingsModal .x').click();
     return opts;

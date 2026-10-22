@@ -46,6 +46,8 @@ Default writers: Lena (LinkedIn, formal), Izzy (Instagram, casual), Frank (Faceb
 
 ## Furniture and look
 
+v1.1: the floor is laid out in pods of two facing workstations (slim white desks, dual monitors on an arm, keyboard, mouse, pedestal, desk plant, coloured mug and chair) with a pendant over each pod; spare pods are furnished and waiting for new agents, so adding a team (a CAD department, say) just fills them in. Windows look out on a soft skyline; the boardroom has a proper long table and pendant row; the open sides have a slim ceiling edge. Agents blink, walk with a distance-driven cycle (no sliding), lean into turns, and sit and type at their desks.
+
 The room uses Kenney's Furniture Kit (CC0) GLB models from `src/assets/models/` (desks, chairs, computers, bookcases, sofa, coffee table, lamp, TV, fridge, vending machine, bench, plants, radio, cake), recoloured to the Atomax navy/green palette, with environment lighting, soft shadows and glossy characters. Layout: desk pods on the main floor, a glass-walled meeting room front-right, a lounge front-left, kitchenette by the meeting room, whiteboard, logo wall and live PROJECT STATUS screen on the back wall. Idle agents roam the whole room: water cooler, whiteboard, status screen, bookshelves, bench, lounge, printer, meeting room.
 
 The page is served over an internal `app://` protocol (see `main.js`) so the model files load; keep that if you move things around. Three.js is vendored in `src/vendor/` (the packaged app does not read `node_modules` at runtime).
