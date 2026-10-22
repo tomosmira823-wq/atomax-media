@@ -116,7 +116,7 @@ export class Office {
     }
 
     // logo + tagline on the back wall
-    const logo = new THREE.Mesh(new THREE.PlaneGeometry(9, 9 * 67 / 299), new THREE.MeshBasicMaterial({ map: this.logoWhiteTex, transparent: true }));
+    const logo = new THREE.Mesh(new THREE.PlaneGeometry(9, 9 * 67 / 299), new THREE.MeshBasicMaterial({ map: this.logoWhiteTex, transparent: true, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }));
     logo.position.set(-2.5, 3.9, -D / 2 + 0.05); s.add(logo);
     s.add(box(9.6, 0.05, 0.03, mat(GREEN, { emissive: GREEN, emissiveIntensity: 0.6 }), -2.5, 2.55, -D / 2 + 0.06, false));
     const tagline = this.#textPlane('MEDIA OFFICE', 6.5, 0.7, { color: '#8e97ab', size: 64, weight: '600', spacing: 10 });
@@ -143,9 +143,10 @@ export class Office {
     s.add(box(0.14, 0.14, M.z1 - M.z0, mat(NAVY2), M.x0, gh, (M.z0 + M.z1) / 2, false));
     s.add(box(M.x1 - M.x0, 0.14, 0.14, mat(NAVY2), (M.x0 + M.x1) / 2, gh, M.z0, false));
     const frosted = new THREE.Mesh(new THREE.PlaneGeometry(M.z1 - M.z0 - 2.6, 0.5), mat(0xffffff, { transparent: true, opacity: 0.35 }));
-    frosted.rotation.y = Math.PI / 2; frosted.position.set(M.x0 - 0.05, 1.3, M.z0 + (M.z1 - M.z0 - 2.4) / 2); s.add(frosted);
+    frosted.material.polygonOffset = true; frosted.material.polygonOffsetFactor = -2; frosted.material.polygonOffsetUnits = -2; frosted.material.depthWrite = false;
+    frosted.rotation.y = Math.PI / 2; frosted.position.set(M.x0 - 0.14, 1.3, M.z0 + (M.z1 - M.z0 - 2.4) / 2); s.add(frosted);
     const mtLabel = this.#textPlane('MEETING ROOM', 3.2, 0.35, { color: '#0e121d', size: 60, weight: '700', spacing: 8 });
-    mtLabel.rotation.y = -Math.PI / 2; mtLabel.position.set(M.x0 - 0.08, 2.9, M.z0 + 2.2); s.add(mtLabel);
+    mtLabel.rotation.y = -Math.PI / 2; mtLabel.position.set(M.x0 - 0.18, 2.9, M.z0 + 2.2); s.add(mtLabel);
     const rug = new THREE.Mesh(new THREE.PlaneGeometry(M.x1 - M.x0 - 1, M.z1 - M.z0 - 1), mat(NAVY2, { roughness: 1 })); rug.rotation.x = -Math.PI / 2; rug.position.set((M.x0 + M.x1) / 2, 0.02, (M.z0 + M.z1) / 2); rug.receiveShadow = true; s.add(rug);
     const rugIn = new THREE.Mesh(new THREE.PlaneGeometry(M.x1 - M.x0 - 1.4, M.z1 - M.z0 - 1.4), mat(0x273047, { roughness: 1 })); rugIn.rotation.x = -Math.PI / 2; rugIn.position.set((M.x0 + M.x1) / 2, 0.035, (M.z0 + M.z1) / 2); s.add(rugIn);
     // glass walls as a row of small obstacles so wanderers go round them (door gap left open)
@@ -158,7 +159,7 @@ export class Office {
     // reception sign (right-hand side, angled toward the viewer)
     const sign = new THREE.Group();
     sign.add(box(0.3, 2.6, 2.6, mat(NAVY), 0, 1.3, 0));
-    const signLogo = new THREE.Mesh(new THREE.PlaneGeometry(2.3, 2.3 * 67 / 299), new THREE.MeshBasicMaterial({ map: this.logoWhiteTex, transparent: true }));
+    const signLogo = new THREE.Mesh(new THREE.PlaneGeometry(2.3, 2.3 * 67 / 299), new THREE.MeshBasicMaterial({ map: this.logoWhiteTex, transparent: true, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }));
     signLogo.rotation.y = -Math.PI / 2; signLogo.position.set(-0.18, 1.7, 0); sign.add(signLogo);
     const signText = this.#textPlane('MEDIA OFFICE', 1.8, 0.25, { color: '#40bd00', size: 60, weight: '700', spacing: 8 });
     signText.rotation.y = -Math.PI / 2; signText.position.set(-0.18, 1.25, 0); sign.add(signText);
@@ -220,7 +221,7 @@ export class Office {
     const tv = this.#put('tv', { pos: [7.5, 1.0, -D / 2 + 0.25], scale: 5.2, colours: { metal: NAVY2, metalDark: 0x05070c } });
     if (tv) {
       const bb = new THREE.Box3().setFromObject(tv); const size = bb.getSize(new THREE.Vector3()); const c = bb.getCenter(new THREE.Vector3());
-      const screen = new THREE.Mesh(new THREE.PlaneGeometry(size.x * 0.9, size.x * 0.9 * 448 / 768), new THREE.MeshBasicMaterial({ map: this.boardTex }));
+      const screen = new THREE.Mesh(new THREE.PlaneGeometry(size.x * 0.9, size.x * 0.9 * 448 / 768), new THREE.MeshBasicMaterial({ map: this.boardTex, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }));
       screen.position.set(c.x, c.y + size.y * 0.08, bb.max.z + 0.03); s.add(screen);
     }
     // kitchenette: fridge + vending machine at the back-right
@@ -279,7 +280,7 @@ export class Office {
     if (spacing) ctx.letterSpacing = spacing + 'px';
     ctx.fillText(text, c.width / 2, c.height / 2);
     const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
-    return new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ map: t, transparent: true }));
+    return new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ map: t, transparent: true, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }));
   }
 
   // ---------- desk + character ----------
@@ -298,8 +299,8 @@ export class Office {
     if (!screenMat) screenMat = new THREE.MeshStandardMaterial();
     screenMat.color.set(0x16233a); screenMat.emissive.set(0x1c3a6b); screenMat.emissiveIntensity = 0.8; screenMat.roughness = 0.25;
     const mug = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.09, 0.2, 14), mat(colour, { roughness: 0.4 })); mug.position.set(0.95, dh + 0.1, 0.15); mug.castShadow = true; g.add(mug);
-    const rug = new THREE.Mesh(new THREE.PlaneGeometry(3.8, 3.4), mat(colour, { roughness: 1 })); rug.rotation.x = -Math.PI / 2; rug.position.set(0, 0.035, -0.6); rug.receiveShadow = true; g.add(rug);
-    const rugEdge = new THREE.Mesh(new THREE.PlaneGeometry(4.0, 3.6), mat(NAVY2)); rugEdge.rotation.x = -Math.PI / 2; rugEdge.position.set(0, 0.02, -0.6); g.add(rugEdge);
+    const rug = new THREE.Mesh(new THREE.PlaneGeometry(3.8, 3.4), mat(colour, { roughness: 1, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 })); rug.rotation.x = -Math.PI / 2; rug.position.set(0, 0.035, -0.6); rug.receiveShadow = true; g.add(rug);
+    const rugEdge = new THREE.Mesh(new THREE.PlaneGeometry(4.0, 3.6), mat(NAVY2, { polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 })); rugEdge.rotation.x = -Math.PI / 2; rugEdge.position.set(0, 0.02, -0.6); g.add(rugEdge);
     g.userData.screenMat = screenMat;
     g.userData.deskHeight = dh;
     return g;
