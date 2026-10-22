@@ -155,6 +155,7 @@ function createWindow() {
     win.webContents.on('console-message', (_e, level, msg, line, src) => console.error('[page]', level, msg, src + ':' + line));
     win.webContents.once('did-finish-load', () => setTimeout(async () => {
       if (process.env.AMO_VIEW === 'loadout') await win.webContents.executeJavaScript(`(async()=>{ document.querySelector('[data-tab=agents]').click(); await new Promise(r=>setTimeout(r,200)); document.querySelector('.tcard').click(); await new Promise(r=>setTimeout(r,200)); for (let i=0;i<${process.env.AMO_FRAMES || 20};i++) { window.__preview.t += 0.1; window.__preview.step(); await new Promise(r=>setTimeout(r,0)); } })()`);
+      else if (process.env.AMO_VIEW === 'history') await win.webContents.executeJavaScript(`(async()=>{ document.querySelector('[data-tab=history]').click(); for (let i=0;i<4;i++) { window.__office.step(0.1); await new Promise(r=>setTimeout(r,0)); } })()`);
       else if (process.env.AMO_VIEW === 'settings') await win.webContents.executeJavaScript(`(async()=>{ document.querySelector('[data-tab=settings]').click(); document.querySelector('#settingsModal .box').scrollTop = 700; for (let i=0;i<4;i++) { window.__office.step(0.1); await new Promise(r=>setTimeout(r,0)); } })()`);
       else await win.webContents.executeJavaScript(`(async()=>{ if (${process.env.AMO_DEMO ? 'true' : 'false'}) { for (const id of window.__office.agents.keys()) window.__office.setState(id, 'working', 'writing post'); window.__office.setBoard([...window.__office.agents.values()].map(a => ({ colour: a.data.colour, text: a.data.name + ' · ' + a.data.platform, status: 'Working' }))); } for (let i=0;i<${process.env.AMO_FRAMES || 240};i++) { window.__office.step(${process.env.AMO_DT || '1/60'}); if (i%20===0) await new Promise(r=>setTimeout(r,0)); } })()`);
       await new Promise(r => setTimeout(r, 1500));
@@ -411,13 +412,24 @@ ipcMain.handle('ai:describeImage', async (_e, { images, question }) => {
 });
 
 // ---------- image generation ----------
-async function openaiGenerate(prompt, size) {
+// size/quality rules differ per OpenAI image model
+function openaiImageBody(model, prompt, size) {
+  const isGpt = model.startsWith('gpt-image');
+  if (isGpt) return { model, prompt, size: size || 'auto', n: 1 };
+  if (model === 'dall-e-3') {
+    const map = { '1536x1024': '1792x1024', '1024x1536': '1024x1792', auto: '1024x1024' };
+    return { model, prompt, size: map[size] || size || '1024x1024', n: 1, response_format: 'b64_json', quality: 'standard' };
+  }
+  return { model: 'dall-e-2', prompt: prompt.slice(0, 1000), size: '1024x1024', n: 1, response_format: 'b64_json' };
+}
+async function openaiGenerate(prompt, size, model) {
   const s = loadSettings();
   if (!s.openaiKey) throw new Error('No OpenAI key. Add it in Settings or switch the image provider.');
+  model = model || s.openaiImageModel || 'gpt-image-1';
   const res = await fetch('https://api.openai.com/v1/images/generations', {
     method: 'POST',
     headers: { 'content-type': 'application/json', authorization: `Bearer ${s.openaiKey}` },
-    body: JSON.stringify({ model: s.openaiImageModel, prompt, size: size || '1024x1024', n: 1 })
+    body: JSON.stringify(openaiImageBody(model, prompt, size))
   });
   const data = await res.json();
   if (!res.ok) throw new Error(`OpenAI ${res.status}: ${data?.error?.message || JSON.stringify(data)}`);
@@ -428,16 +440,27 @@ async function openaiGenerate(prompt, size) {
 }
 
 const LOGO_PATH = path.join(__dirname, 'assets', 'atomax-logo.png');
-async function openaiEdit(prompt, image, size, extraImages = []) {
+async function openaiEdit(prompt, image, size, extraImages = [], model) {
   const s = loadSettings();
   if (!s.openaiKey) throw new Error('No OpenAI key. Image edits need OpenAI.');
+  model = model || s.openaiImageModel || 'gpt-image-1';
   const fd = new FormData();
-  fd.append('model', s.openaiImageModel);
-  fd.append('prompt', prompt);
-  fd.append('size', size || 'auto');
-  fd.append('quality', 'high');
-  fd.append('image[]', new Blob([Buffer.from(image.base64, 'base64')], { type: image.mime }), image.name || 'image.png');
-  for (const x of extraImages) fd.append('image[]', new Blob([Buffer.from(x.base64, 'base64')], { type: x.mime }), x.name || 'extra.png');
+  if (model.startsWith('gpt-image')) {
+    fd.append('model', model);
+    fd.append('prompt', prompt);
+    fd.append('size', size || 'auto');
+    fd.append('quality', 'high');
+    fd.append('image[]', new Blob([Buffer.from(image.base64, 'base64')], { type: image.mime }), image.name || 'image.png');
+    for (const x of extraImages) fd.append('image[]', new Blob([Buffer.from(x.base64, 'base64')], { type: x.mime }), x.name || 'extra.png');
+  } else {
+    // DALL·E: only dall-e-2 can edit, one square PNG under 4 MB, no reference images
+    if (image.mime !== 'image/png') throw new Error('DALL·E 2 edits need a square PNG. Switch the image model to gpt-image-1 (or -mini) for photo edits with the logo.');
+    fd.append('model', 'dall-e-2');
+    fd.append('prompt', prompt.slice(0, 1000));
+    fd.append('size', '1024x1024');
+    fd.append('response_format', 'b64_json');
+    fd.append('image', new Blob([Buffer.from(image.base64, 'base64')], { type: image.mime }), image.name || 'image.png');
+  }
   const res = await fetch('https://api.openai.com/v1/images/edits', {
     method: 'POST', headers: { authorization: `Bearer ${s.openaiKey}` }, body: fd
   });
@@ -498,14 +521,23 @@ async function higgsfieldGenerate(prompt, aspect) {
   throw new Error('Higgsfield job timed out');
 }
 
-ipcMain.handle('image:generate', async (_e, { provider, prompt, size, aspect }) => {
+ipcMain.handle('image:generate', async (_e, { provider, model, prompt, size, aspect }) => {
   const p = provider || loadSettings().imageProvider;
-  const base64 = p === 'higgsfield' ? await higgsfieldGenerate(prompt, aspect) : await openaiGenerate(prompt, size);
+  const base64 = p === 'higgsfield' ? await higgsfieldGenerate(prompt, aspect) : await openaiGenerate(prompt, size, model);
   return { base64, mime: 'image/png', provider: p };
+});
+// list the image models this OpenAI key can actually use
+ipcMain.handle('openai:imageModels', async () => {
+  const s = loadSettings();
+  if (!s.openaiKey) return [];
+  const r = await fetch('https://api.openai.com/v1/models', { headers: { authorization: `Bearer ${s.openaiKey}` } });
+  const data = await r.json();
+  if (!r.ok) throw new Error(`OpenAI ${r.status}: ${data?.error?.message || ''}`);
+  return (data.data || []).map(x => x.id).filter(id => /gpt-image|dall-e/.test(id)).sort();
 });
 
 // Edit the post image. withLogo: the real Atomax-UK logo is passed as a second input image so it comes out exact.
-ipcMain.handle('image:edit', async (_e, { prompt, image, size, withLogo = true, overlayText = '' }) => {
+ipcMain.handle('image:edit', async (_e, { prompt, image, size, withLogo = true, overlayText = '', model }) => {
   const extra = [];
   let full = prompt;
   if (withLogo && fs.existsSync(LOGO_PATH)) {
@@ -513,7 +545,7 @@ ipcMain.handle('image:edit', async (_e, { prompt, image, size, withLogo = true, 
     full += `\n\nThe first image is the photo to edit: keep all of its content, framing and realism. The second image is the official Atomax-UK logo: reproduce it exactly as given (green block icon, 'ATOMAX-UK' wordmark, 'Engineering Consultants' tagline), do not redraw or restyle it. Brand colours: navy #0E121D, green #40BD00, white text.`;
   }
   if (overlayText) full += `\nAny text you add must read EXACTLY: "${overlayText}" with that exact spelling and capitalisation, crisp and legible, no other words.`;
-  const base64 = await openaiEdit(full, image, size, extra);
+  const base64 = await openaiEdit(full, image, size, extra, model);
   return { base64, mime: 'image/png', provider: 'openai' };
 });
 

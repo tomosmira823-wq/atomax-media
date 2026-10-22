@@ -15,7 +15,7 @@ async function boot() {
   office.setAgents(agents.filter(a => a.enabled));
   renderAgentPick();
   updateKeyDots();
-  $('#imageProvider').value = settings.imageProvider || 'openai';
+  $('#imageProvider').value = settings.imageProvider === 'higgsfield' ? 'higgsfield' : 'openai:' + (settings.openaiImageModel || 'gpt-image-1');
   if (!settings.anthropicKey) { fillSettings(); openModal('settingsModal'); }
 }
 boot();
@@ -30,6 +30,11 @@ api.update.onStatus(s => {
 });
 $('#checkUpdate').addEventListener('click', async () => { $('#updText').textContent = 'Checking…'; try { $('#updText').textContent = await api.update.check(); } catch (e) { $('#updText').textContent = e.message; } });
 
+function imageChoice() {
+  const v = $('#imageProvider').value || 'openai:gpt-image-1';
+  const [provider, model] = v.split(':');
+  return { provider, model: model || settings.openaiImageModel };
+}
 function updateKeyDots() {
   $('#k-claude .dot').classList.toggle('ok', !!settings.anthropicKey);
   $('#k-openai .dot').classList.toggle('ok', !!settings.openaiKey);
@@ -98,7 +103,18 @@ $('#saveSettings').addEventListener('click', async () => {
   for (const k of ['anthropicKey', 'openaiKey', 'higgsfieldKeyId', 'higgsfieldSecret', 'claudeModel', 'openaiImageModel', 'higgsfieldModel', 'imageProvider']) settings[k] = $('#s_' + k).value.trim();
   for (const k of ['name', 'about', 'audience', 'website', 'doNot']) settings.company[k] = $('#c_' + k).value.trim();
   await api.settings.set(settings);
-  updateKeyDots(); $('#imageProvider').value = settings.imageProvider; closeModals();
+  updateKeyDots(); $('#imageProvider').value = settings.imageProvider === 'higgsfield' ? 'higgsfield' : 'openai:' + (settings.openaiImageModel || 'gpt-image-1'); closeModals();
+});
+$('#detectModels').addEventListener('click', async () => {
+  settings.openaiKey = $('#s_openaiKey').value.trim(); await api.settings.set(settings);
+  $('#modelsHint').textContent = 'Checking…';
+  try {
+    const list = await api.image.openaiModels();
+    if (!list.length) { $('#modelsHint').textContent = 'No image models found on this key.'; return; }
+    const sel = $('#s_openaiImageModel'); sel.innerHTML = list.map(x => `<option value="${esc(x)}">${esc(x)}</option>`).join('');
+    sel.value = list.includes(settings.openaiImageModel) ? settings.openaiImageModel : list[0];
+    $('#modelsHint').textContent = 'Your key can use: ' + list.join(', ');
+  } catch (e) { $('#modelsHint').textContent = e.message; }
 });
 document.querySelectorAll('[data-test]').forEach(b => b.addEventListener('click', async () => {
   // save first so the test uses what's typed
@@ -257,7 +273,7 @@ $('#run').addEventListener('click', async () => {
     const made = runEntries.filter(x => x.entry);
     if (made.length) {
       const lead = made[0];
-      const provider = $('#imageProvider').value;
+      const { provider, model } = imageChoice();
       const refNote = $('#refText').value.trim();
       made.forEach(x => { x.card.querySelector('.status').innerHTML = '<span class="spinner"></span> making image'; office.setState(x.agent.id, 'working', images.length ? 'editing the photo' : 'making the image'); });
       office.setBoard(boardRows.map(r => ({ ...r, status: r.status === 'Done' ? 'Working' : r.status })));
@@ -265,10 +281,10 @@ $('#run').addEventListener('click', async () => {
         let r;
         if (images.length) {
           const instruction = [lead.entry.post.imageIdea, refNote ? 'Reference note from the brief: ' + refNote : ''].filter(Boolean).join('\n') || 'Tidy and brighten the photo and add a clean Atomax-UK branded banner.';
-          r = await api.image.edit({ prompt: instruction, image: images[0], overlayText: lead.entry.post.overlayText || '' });
+          r = await api.image.edit({ prompt: instruction, image: images[0], overlayText: lead.entry.post.overlayText || '', model });
         } else {
           const prompt = (lead.entry.post.imageIdea || brief) + `\nStyle: clean, modern, professional engineering photography look, Atomax brand green (#40BD00) and navy (#0E121D) accents.`;
-          r = await api.image.generate({ provider, prompt, size: '1024x1024', aspect: '1:1' });
+          r = await api.image.generate({ provider, model, prompt, size: '1024x1024', aspect: '1:1' });
         }
         for (const x of made) { x.entry.image = r.base64; }
         await api.posts.set(posts);
@@ -289,18 +305,18 @@ async function runReviews(card, agent, entry, reviewers, boardRows) {
   for (const rev of reviewers) {
     office.setState(rev.id, 'working', `checking ${agent.name}'s post`);
     const row = boardRows.find(r => r.text.startsWith(rev.name)); if (row) { row.status = 'Working'; office.setBoard(boardRows); }
-    const box = card.querySelector('.reviews');
-    const holder = document.createElement('div'); holder.className = 'review'; holder.innerHTML = `<div class="rhead"><i class="swatch" style="background:${rev.colour}"></i><b>${esc(rev.name)}</b> <span class="spinner"></span> reviewing…</div>`;
-    box.appendChild(holder);
+    const chipsBox = card.querySelector('.chips');
+    const holder = document.createElement('span'); holder.className = 'chip'; holder.innerHTML = `<span class="spinner"></span> ${esc(rev.name)}`;
+    if (chipsBox) chipsBox.appendChild(holder);
     try {
       const review = await api.ai.reviewPost({ reviewer: rev, agent, post: entry.post, brief: entry.brief, images, refText: entry.refText || '', refImages });
       review.reviewerId = rev.id; review.reviewerName = rev.name; review.colour = rev.colour;
       entry.reviews = entry.reviews.filter(x => x.reviewerId !== rev.id); entry.reviews.push(review);
       await api.posts.set(posts);
-      renderReview(holder, review, card, agent, entry);
+      fillCard(card, agent, entry);
       office.setState(rev.id, 'done', `${agent.name}: ${review.score}/10`);
     } catch (e) {
-      holder.innerHTML = `<div class="rhead"><b>${esc(rev.name)}</b></div><div class="err">${esc(e.message)}</div>`;
+      holder.className = 'chip fail'; holder.textContent = rev.name + ' failed'; holder.title = e.message;
       office.setState(rev.id, 'idle', 'error');
     }
     if (row) { row.status = 'Done'; office.setBoard(boardRows); }
@@ -328,7 +344,7 @@ function renderReview(holder, r, card, agent, entry) {
 function addCard(agent, status) {
   const first = $('#boardBody .hint'); if (first) first.remove();
   const card = document.createElement('div'); card.className = 'card';
-  card.innerHTML = `<div class="head"><i class="swatch" style="background:${agent.colour}"></i>${esc(agent.name)} · ${esc(agent.platform)}<span class="status"><span class="spinner"></span> ${esc(status)}</span></div><div class="content"><span class="hint">Thinking about the brief…</span></div>`;
+  card.innerHTML = `<div class="head"><i class="swatch" style="background:${agent.colour}"></i>${esc(agent.name)} · ${esc(agent.platform)}<span class="status"><span class="spinner"></span> ${esc(status)}</span></div><div class="content"><div class="post-text hint">Writing…</div></div>`;
   $('#boardBody').prepend(card);
   return card;
 }
@@ -337,25 +353,34 @@ function fillCard(card, agent, entry) {
   const p = entry.post;
   card.querySelector('.status').textContent = new Date(entry.created).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
   const c = card.querySelector('.content');
+  const reviews = entry.reviews || [];
+  const chips = reviews.map(r => { const v = (r.verdict || 'fix').toLowerCase(); return `<span class="chip ${v}" title="${esc(r.summary || '')}">${esc(r.reviewerName)} ${esc(r.score)}/10</span>`; }).join('');
   c.innerHTML = `
-    <pre class="caption">${esc(p.caption || '')}</pre>
-    <div class="meta">${p.bestTime ? '⏰ ' + esc(p.bestTime) + '<br>' : ''}${p.altText ? '🖼 Alt: ' + esc(p.altText) + '<br>' : ''}${p.overlayText ? '🏷 Banner text: ' + esc(p.overlayText) + '<br>' : ''}${p.notes ? '⚠ ' + esc(p.notes) : ''}</div>
-    <div class="imgwrap">${entry.image ? `<img class="gen" src="data:image/png;base64,${entry.image}"/>` : ''}</div>
-    <div class="actions">
-      <button class="btn small b_copy">Copy post</button>
-      <button class="btn small b_save">Save .txt</button>
-      <button class="btn small b_img">${entry.image ? 'Regenerate image' : 'Generate image'}</button>
-      <button class="btn small b_edit" ${images.length ? '' : 'disabled title="Add an image in the brief first"'} title="OpenAI edits your photo. Default: the writer's image idea + your reference note, with the real Atomax logo supplied. Type your own instruction in the box below to override.">Edit my image</button>
-      ${entry.image ? '<button class="btn small b_saveimg">Save image</button>' : ''}
-      <button class="btn small primary b_post">Post to ${esc(agent.platform)}</button>
-      <button class="btn small b_del">Delete</button>
+    ${entry.image ? `<img class="post-img" src="data:image/png;base64,${entry.image}"/>` : (images[0] ? `<img class="post-img draft" src="data:${images[0].mime};base64,${images[0].base64}" title="Your attached photo (not edited yet)"/>` : '')}
+    <div class="post-text">${esc(p.caption || '')}</div>
+    <div class="post-foot">
+      <button class="btn small primary b_post">Post</button>
+      <button class="btn small b_copy">Copy</button>
+      <span class="chips">${chips}</span>
+      <button class="btn small b_more" style="margin-left:auto">More ▾</button>
     </div>
     <div class="posted">${entry.posted ? '✅ Posted ' + new Date(entry.posted.at).toLocaleString('en-GB') + (entry.posted.url ? ' · <a href="#" class="b_open">open</a>' : '') : ''}</div>
-    <div class="reviews"></div>
-    <div class="revise"><input type="text" class="r_text" placeholder="Revise the post, or describe an image edit (e.g. shorter / brighten and tidy the background)" /><button class="btn small b_revise">Go</button></div>
+    <div class="more" style="display:none">
+      <div class="revise"><input type="text" class="r_text" placeholder="Change the post (shorter, more formal…) or describe an image edit" /><button class="btn small b_revise">Rewrite</button><button class="btn small b_edit" ${images.length ? '' : 'disabled'}>Edit image</button></div>
+      <div class="actions">
+        <button class="btn small b_img">${entry.image ? 'New image' : 'Generate image'}</button>
+        ${entry.image ? '<button class="btn small b_saveimg">Save image</button>' : ''}
+        <button class="btn small b_save">Save .txt</button>
+        <button class="btn small b_del">Delete</button>
+      </div>
+      <div class="meta">${p.overlayText ? '🏷 ' + esc(p.overlayText) + '<br>' : ''}${p.altText ? 'Alt: ' + esc(p.altText) + '<br>' : ''}${p.bestTime ? '⏰ ' + esc(p.bestTime) + '<br>' : ''}${p.notes ? '⚠ ' + esc(p.notes) : ''}</div>
+      <div class="reviews"></div>
+    </div>
     <div class="err"></div>`;
-  (entry.reviews || []).forEach(r => { const h = document.createElement('div'); h.className = 'review'; c.querySelector('.reviews').appendChild(h); renderReview(h, r, card, agent, entry); });
-  c.querySelector('.b_copy').addEventListener('click', () => { navigator.clipboard.writeText(p.caption || ''); c.querySelector('.b_copy').textContent = 'Copied ✓'; setTimeout(() => c.querySelector('.b_copy').textContent = 'Copy post', 1500); });
+  reviews.forEach(r => { const h = document.createElement('div'); h.className = 'review'; c.querySelector('.reviews').appendChild(h); renderReview(h, r, card, agent, entry); });
+  c.querySelector('.b_more').addEventListener('click', () => { const m = c.querySelector('.more'); const open = m.style.display === 'none'; m.style.display = open ? '' : 'none'; c.querySelector('.b_more').textContent = open ? 'Less ▴' : 'More ▾'; });
+  c.querySelectorAll('.chip').forEach(ch => ch.addEventListener('click', () => { c.querySelector('.more').style.display = ''; c.querySelector('.b_more').textContent = 'Less ▴'; }));
+  c.querySelector('.b_copy').addEventListener('click', () => { navigator.clipboard.writeText(p.caption || ''); c.querySelector('.b_copy').textContent = 'Copied ✓'; setTimeout(() => c.querySelector('.b_copy').textContent = 'Copy', 1500); });
   c.querySelector('.b_save').addEventListener('click', () => api.files.saveText({ text: `${agent.platform} post — ${new Date(entry.created).toLocaleString('en-GB')}\n\n${p.caption}\n\nAlt text: ${p.altText || ''}\nBest time: ${p.bestTime || ''}\nImage idea: ${p.imageIdea || ''}`, name: `${agent.platform.replace(/\W+/g, '-')}-post.txt` }));
   const postBtn = c.querySelector('.b_post');
   if (isReviewer(agent)) postBtn.remove();
@@ -369,7 +394,7 @@ function fillCard(card, agent, entry) {
       const r = await api.social.publish({ platform: agent.platform, text: p.caption || '', image: img });
       entry.posted = { at: new Date().toISOString(), url: r.url, id: r.id }; await api.posts.set(posts); fillCard(card, agent, entry);
       office.setState(agent.id, 'done', 'posted ✓');
-    } catch (e) { c.querySelector('.err').textContent = e.message; postBtn.disabled = false; postBtn.textContent = 'Post to ' + agent.platform; office.setState(agent.id, 'done', 'post failed'); }
+    } catch (e) { c.querySelector('.err').textContent = e.message; postBtn.disabled = false; postBtn.textContent = 'Post'; office.setState(agent.id, 'done', 'post failed'); }
   });
   const openLink = c.querySelector('.b_open'); if (openLink) openLink.addEventListener('click', (ev) => { ev.preventDefault(); api.openExternal(entry.posted.url); });
   c.querySelector('.b_del').addEventListener('click', async () => { posts = posts.filter(x => x.id !== entry.id); await api.posts.set(posts); card.remove(); });
@@ -384,12 +409,12 @@ function fillCard(card, agent, entry) {
     c.querySelector('.b_revise').disabled = false; office.setState(agent.id, 'done', 'post ready');
   });
   c.querySelector('.b_img').addEventListener('click', async () => {
-    const provider = $('#imageProvider').value;
-    office.setState(agent.id, 'working', `making image (${provider})`);
+    const { provider, model } = imageChoice();
+    office.setState(agent.id, 'working', `making image (${model || provider})`);
     c.querySelector('.err').textContent = ''; c.querySelector('.b_img').disabled = true; c.querySelector('.b_img').innerHTML = '<span class="spinner"></span> generating';
     try {
       const prompt = (p.imageIdea || entry.brief || p.caption) + `\nStyle: clean, modern, professional engineering photography look, Atomax brand green (#40BD00) accents, no text in the image.`;
-      const r = await api.image.generate({ provider, prompt, size: agent.platform === 'LinkedIn' ? '1536x1024' : '1024x1024', aspect: agent.platform === 'LinkedIn' ? '3:2' : '1:1' });
+      const r = await api.image.generate({ provider, model, prompt, size: agent.platform === 'LinkedIn' ? '1536x1024' : '1024x1024', aspect: agent.platform === 'LinkedIn' ? '3:2' : '1:1' });
       entry.image = r.base64; await api.posts.set(posts); fillCard(card, agent, entry);
     } catch (e) { c.querySelector('.err').textContent = e.message; c.querySelector('.b_img').disabled = false; c.querySelector('.b_img').textContent = 'Generate image'; }
     office.setState(agent.id, 'done', 'post ready');
@@ -399,15 +424,14 @@ function fillCard(card, agent, entry) {
     const typed = c.querySelector('.r_text').value.trim();
     const refNote = $('#refText').value.trim();
     const overlayText = p.overlayText || '';
-    // default: the writer's own image idea (which already follows the reference) plus the reference note
     const instruction = typed || [p.imageIdea, refNote ? 'Reference note from the brief: ' + refNote : ''].filter(Boolean).join('\n')
       || 'Brighten it, tidy the background and add a subtle Atomax green accent';
     office.setState(agent.id, 'working', 'editing image');
     c.querySelector('.err').textContent = ''; c.querySelector('.b_edit').disabled = true; c.querySelector('.b_edit').innerHTML = '<span class="spinner"></span> editing';
     try {
-      const r = await api.image.edit({ prompt: instruction, image: images[0], overlayText: typed ? '' : overlayText });
+      const r = await api.image.edit({ prompt: instruction, image: images[0], overlayText: typed ? '' : overlayText, model: imageChoice().model });
       entry.image = r.base64; await api.posts.set(posts); fillCard(card, agent, entry);
-    } catch (e) { c.querySelector('.err').textContent = e.message; c.querySelector('.b_edit').disabled = false; c.querySelector('.b_edit').textContent = 'Edit my image'; }
+    } catch (e) { c.querySelector('.err').textContent = e.message; c.querySelector('.b_edit').disabled = false; c.querySelector('.b_edit').textContent = 'Edit image'; }
     office.setState(agent.id, 'done', 'post ready');
   });
   const si = c.querySelector('.b_saveimg'); if (si) si.addEventListener('click', () => api.files.saveImage({ base64: entry.image, name: `${agent.platform.replace(/\W+/g, '-')}-image.png` }));

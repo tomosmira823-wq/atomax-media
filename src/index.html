@@ -60,7 +60,19 @@
   .card .head .status { margin-left: auto; color: var(--muted); font-weight: 400; font-size: 12px; }
   .card .content { padding: 12px; }
   .card pre { white-space: pre-wrap; font: inherit; margin: 0 0 10px; background: #070a11; padding: 10px; border-radius: 8px; border: 1px solid var(--line); max-height: 260px; overflow: auto; }
-  .card .meta { color: var(--muted); font-size: 12px; margin-bottom: 8px; }
+  .card .meta { color: var(--muted); font-size: 12px; margin: 8px 0 0; }
+  .card .content { padding: 0; }
+  .card .post-img { display: block; width: 100%; max-height: 420px; object-fit: cover; }
+  .card .post-img.draft { opacity: .9; }
+  .card .post-text { white-space: pre-wrap; padding: 12px 14px 6px; font-size: 14px; line-height: 1.5; }
+  .card .post-foot { display: flex; align-items: center; gap: 6px; padding: 6px 12px 12px; flex-wrap: wrap; }
+  .card .chips { display: flex; gap: 4px; flex-wrap: wrap; }
+  .chip { font-size: 11px; padding: 3px 8px; border-radius: 10px; background: var(--navy2); color: var(--muted); cursor: pointer; border: 1px solid var(--line); }
+  .chip.pass { color: #b9f59a; border-color: #1f5a0f; } .chip.fix { color: #ffd59a; border-color: #5a3d0f; } .chip.fail { color: #ffb3b3; border-color: #5a1414; }
+  .card .more { padding: 0 12px 12px; border-top: 1px solid var(--line); margin-top: 4px; }
+  .card .more .revise { margin: 10px 0 8px; }
+  .card .posted { padding: 0 14px; font-size: 12px; color: var(--green); }
+  .card .err { padding: 0 14px 8px; }
   .card .actions { display: flex; flex-wrap: wrap; gap: 6px; }
   .card img.gen { width: 100%; border-radius: 8px; margin: 8px 0; border: 1px solid var(--line); }
   .card .revise { display: flex; gap: 6px; margin-top: 8px; }
@@ -178,8 +190,11 @@
     <label style="display:flex;align-items:center;gap:8px;color:var(--text);font-size:13px;margin:0 0 2px"><input type="checkbox" id="makeImage" checked /> Make the image in the run</label>
     <div class="hint" style="margin:0 0 8px 22px">Edits your attached photo (banner, logo, text), or generates one if there's no photo.</div>
     <select id="imageProvider">
-      <option value="openai">OpenAI (gpt-image)</option>
-      <option value="higgsfield">Higgsfield (SOUL)</option>
+      <option value="openai:gpt-image-1">OpenAI · gpt-image-1</option>
+      <option value="openai:gpt-image-1-mini">OpenAI · gpt-image-1-mini</option>
+      <option value="openai:dall-e-3">OpenAI · DALL·E 3 (generate only, no photo edits)</option>
+      <option value="openai:dall-e-2">OpenAI · DALL·E 2</option>
+      <option value="higgsfield">Higgsfield · SOUL</option>
     </select>
     <div style="margin-top:14px" class="row">
       <button class="btn primary" id="run" style="flex:1">Run the office</button>
@@ -192,7 +207,7 @@
 <!-- Board panel -->
 <div class="panel" id="board">
   <h2><span>Board</span><button class="collapse" title="Collapse">›</button></h2>
-  <div class="body" id="boardBody"><p class="hint">Run a brief and each agent's post will land here. Copy, save, revise, or ask for an image.</p></div>
+  <div class="body" id="boardBody"><p class="hint">Posts land here.</p></div>
 </div>
 
 <!-- History modal -->
@@ -255,7 +270,9 @@
     </div>
     <div>
       <label>OpenAI key (optional, image generation + edits)</label><input type="password" id="s_openaiKey" placeholder="sk-..." />
-      <label>OpenAI image model</label><input type="text" id="s_openaiImageModel" />
+      <label>OpenAI image model (default)</label>
+      <div class="row"><select id="s_openaiImageModel" style="flex:1"><option value="gpt-image-1">gpt-image-1</option><option value="gpt-image-1-mini">gpt-image-1-mini</option><option value="dall-e-3">dall-e-3</option><option value="dall-e-2">dall-e-2</option></select><button class="btn small" id="detectModels" title="Lists the image models your key can use">Detect</button></div>
+      <div class="hint" id="modelsHint"></div>
       <div class="row" style="margin-top:6px"><button class="btn small" data-test="openai">Test OpenAI</button><span id="t_openai" class="hint"></span></div>
     </div>
     <div>
