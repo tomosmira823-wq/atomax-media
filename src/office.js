@@ -176,10 +176,10 @@ export class Office {
     this.obstacles.push({ x: 2.8, z: -D / 2 + 0.6, r: 1 });
     this.pois.push({ x: 2.8, z: -D / 2 + 2.2, face: Math.PI });
     const printer = new THREE.Group();
-    printer.add(box(2.4, 0.8, 1.2, mat(WHITE, { roughness: 0.5 }), 0, 0.4, 0));
-    printer.add(box(2.4, 0.06, 1.2, mat(GREEN), 0, 0.77, 0, false));
-    printer.add(box(1.0, 0.5, 0.8, mat(NAVY2), -0.4, 1.05, 0));
-    printer.add(box(0.6, 0.02, 0.4, mat(0xffffff), -0.4, 1.31, 0.1, false));
+    printer.add(box(2.4, 0.78, 1.2, mat(WHITE, { roughness: 0.5 }), 0, 0.39, 0));          // cabinet, top at 0.78
+    printer.add(box(2.44, 0.06, 1.24, mat(GREEN), 0, 0.81, 0, false));                      // green lid sits on top (0.78..0.84)
+    printer.add(box(1.0, 0.5, 0.8, mat(NAVY2), -0.4, 1.09, 0));                             // printer unit (0.84..1.34)
+    printer.add(box(0.6, 0.02, 0.4, mat(0xffffff), -0.4, 1.36, 0.1, false));                // paper
     printer.position.set(1.8, 0, D / 2 - 1.2); s.add(printer);
     this.obstacles.push({ x: 1.8, z: D / 2 - 1.2, r: 1.8 });
     this.pois.push({ x: 1.8, z: D / 2 - 3, face: 0 });
