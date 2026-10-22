@@ -15,7 +15,7 @@ async function boot() {
   office.setAgents(agents.filter(a => a.enabled));
   renderAgentPick();
   updateKeyDots();
-  $('#imageProvider').value = settings.imageProvider === 'higgsfield' ? 'higgsfield' : 'openai:' + (settings.openaiImageModel || 'gpt-image-1');
+  fillImageSelects();
   if (!settings.anthropicKey) { fillSettings(); openModal('settingsModal'); }
 }
 boot();
@@ -30,8 +30,25 @@ api.update.onStatus(s => {
 });
 $('#checkUpdate').addEventListener('click', async () => { $('#updText').textContent = 'Checking…'; try { $('#updText').textContent = await api.update.check(); } catch (e) { $('#updText').textContent = e.message; } });
 
+const DEFAULT_IMAGE_MODELS = ['gpt-image-2.5-sunburst', 'gpt-image-2.5-flare', 'gpt-image-2', 'gpt-image-1.5', 'gpt-image-1', 'gpt-image-1-mini', 'dall-e-3', 'dall-e-2'];
+function imageModelList() { return (settings.openaiImageModels && settings.openaiImageModels.length) ? settings.openaiImageModels : DEFAULT_IMAGE_MODELS; }
+function modelLabel(id) { return id.startsWith('dall-e') ? id.replace('dall-e', 'DALL·E ') + (id === 'dall-e-3' ? ' (generate only)' : '') : id; }
+function fillImageSelects() {
+  const list = imageModelList();
+  const cur = settings.openaiImageModel && list.includes(settings.openaiImageModel) ? settings.openaiImageModel : list[0];
+  $('#imageProvider').innerHTML = list.map(id => `<option value="openai:${esc(id)}">OpenAI · ${esc(modelLabel(id))}</option>`).join('') + '<option value="higgsfield">Higgsfield · SOUL</option>';
+  $('#imageProvider').value = settings.imageProvider === 'higgsfield' ? 'higgsfield' : 'openai:' + cur;
+  $('#s_openaiImageModel').innerHTML = list.map(id => `<option value="${esc(id)}">${esc(id)}</option>`).join('');
+  $('#s_openaiImageModel').value = cur;
+  $('#s_openaiImageQuality').value = settings.openaiImageQuality || 'high';
+}
+$('#imageProvider').addEventListener('change', async () => {
+  const { provider, model } = imageChoice();
+  settings.imageProvider = provider; if (provider === 'openai' && model) settings.openaiImageModel = model;
+  await api.settings.set(settings);
+});
 function imageChoice() {
-  const v = $('#imageProvider').value || 'openai:gpt-image-1';
+  const v = $('#imageProvider').value || 'openai:gpt-image-2';
   const [provider, model] = v.split(':');
   return { provider, model: model || settings.openaiImageModel };
 }
@@ -103,7 +120,8 @@ $('#saveSettings').addEventListener('click', async () => {
   for (const k of ['anthropicKey', 'openaiKey', 'higgsfieldKeyId', 'higgsfieldSecret', 'claudeModel', 'openaiImageModel', 'higgsfieldModel', 'imageProvider']) settings[k] = $('#s_' + k).value.trim();
   for (const k of ['name', 'about', 'audience', 'website', 'doNot']) settings.company[k] = $('#c_' + k).value.trim();
   await api.settings.set(settings);
-  updateKeyDots(); $('#imageProvider').value = settings.imageProvider === 'higgsfield' ? 'higgsfield' : 'openai:' + (settings.openaiImageModel || 'gpt-image-1'); closeModals();
+  settings.openaiImageQuality = $('#s_openaiImageQuality').value;
+  updateKeyDots(); fillImageSelects(); closeModals();
 });
 $('#detectModels').addEventListener('click', async () => {
   settings.openaiKey = $('#s_openaiKey').value.trim(); await api.settings.set(settings);
@@ -111,8 +129,9 @@ $('#detectModels').addEventListener('click', async () => {
   try {
     const list = await api.image.openaiModels();
     if (!list.length) { $('#modelsHint').textContent = 'No image models found on this key.'; return; }
-    const sel = $('#s_openaiImageModel'); sel.innerHTML = list.map(x => `<option value="${esc(x)}">${esc(x)}</option>`).join('');
-    sel.value = list.includes(settings.openaiImageModel) ? settings.openaiImageModel : list[0];
+    settings.openaiImageModels = list;
+    if (!list.includes(settings.openaiImageModel)) settings.openaiImageModel = list.find(x => x.startsWith('gpt-image')) || list[0];
+    await api.settings.set(settings); fillImageSelects();
     $('#modelsHint').textContent = 'Your key can use: ' + list.join(', ');
   } catch (e) { $('#modelsHint').textContent = e.message; }
 });

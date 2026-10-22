@@ -21,7 +21,9 @@ const DEFAULT_SETTINGS = {
   higgsfieldKeyId: '',
   higgsfieldSecret: '',
   claudeModel: 'claude-sonnet-5-5',
-  openaiImageModel: 'gpt-image-1',
+  openaiImageModel: 'gpt-image-2',
+  openaiImageModels: [],
+  openaiImageQuality: 'high',
   higgsfieldModel: 'higgsfield-ai/soul/standard',
   imageProvider: 'openai',
   social: { linkedin: {}, facebook: {}, x: {} },
@@ -415,7 +417,12 @@ ipcMain.handle('ai:describeImage', async (_e, { images, question }) => {
 // size/quality rules differ per OpenAI image model
 function openaiImageBody(model, prompt, size) {
   const isGpt = model.startsWith('gpt-image');
-  if (isGpt) return { model, prompt, size: size || 'auto', n: 1 };
+  if (isGpt) {
+    const q = loadSettings().openaiImageQuality || 'high';
+    // xhigh / max only exist on gpt-image-2.5 and later; older models top out at high
+    const quality = /gpt-image-2\.5|gpt-image-[3-9]/.test(model) ? q : (['xhigh', 'max'].includes(q) ? 'high' : q);
+    return { model, prompt, size: size || 'auto', n: 1, quality };
+  }
   if (model === 'dall-e-3') {
     const map = { '1536x1024': '1792x1024', '1024x1536': '1024x1792', auto: '1024x1024' };
     return { model, prompt, size: map[size] || size || '1024x1024', n: 1, response_format: 'b64_json', quality: 'standard' };
@@ -449,7 +456,8 @@ async function openaiEdit(prompt, image, size, extraImages = [], model) {
     fd.append('model', model);
     fd.append('prompt', prompt);
     fd.append('size', size || 'auto');
-    fd.append('quality', 'high');
+    const q = s.openaiImageQuality || 'high';
+    fd.append('quality', /gpt-image-2\.5|gpt-image-[3-9]/.test(model) ? q : (['xhigh', 'max'].includes(q) ? 'high' : q));
     fd.append('image[]', new Blob([Buffer.from(image.base64, 'base64')], { type: image.mime }), image.name || 'image.png');
     for (const x of extraImages) fd.append('image[]', new Blob([Buffer.from(x.base64, 'base64')], { type: x.mime }), x.name || 'extra.png');
   } else {

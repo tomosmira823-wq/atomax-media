@@ -189,13 +189,7 @@
     <label>Image</label>
     <label style="display:flex;align-items:center;gap:8px;color:var(--text);font-size:13px;margin:0 0 2px"><input type="checkbox" id="makeImage" checked /> Make the image in the run</label>
     <div class="hint" style="margin:0 0 8px 22px">Edits your attached photo (banner, logo, text), or generates one if there's no photo.</div>
-    <select id="imageProvider">
-      <option value="openai:gpt-image-1">OpenAI · gpt-image-1</option>
-      <option value="openai:gpt-image-1-mini">OpenAI · gpt-image-1-mini</option>
-      <option value="openai:dall-e-3">OpenAI · DALL·E 3 (generate only, no photo edits)</option>
-      <option value="openai:dall-e-2">OpenAI · DALL·E 2</option>
-      <option value="higgsfield">Higgsfield · SOUL</option>
-    </select>
+    <select id="imageProvider"></select>
     <div style="margin-top:14px" class="row">
       <button class="btn primary" id="run" style="flex:1">Run the office</button>
       <button class="btn" id="describe" title="Ask Claude what it sees and what edits would help">Analyse image</button>
@@ -271,8 +265,10 @@
     <div>
       <label>OpenAI key (optional, image generation + edits)</label><input type="password" id="s_openaiKey" placeholder="sk-..." />
       <label>OpenAI image model (default)</label>
-      <div class="row"><select id="s_openaiImageModel" style="flex:1"><option value="gpt-image-1">gpt-image-1</option><option value="gpt-image-1-mini">gpt-image-1-mini</option><option value="dall-e-3">dall-e-3</option><option value="dall-e-2">dall-e-2</option></select><button class="btn small" id="detectModels" title="Lists the image models your key can use">Detect</button></div>
+      <div class="row"><select id="s_openaiImageModel" style="flex:1"></select><button class="btn small" id="detectModels" title="Lists the image models your key can use">Detect</button></div>
       <div class="hint" id="modelsHint"></div>
+      <label>Image quality (gpt-image models)</label>
+      <select id="s_openaiImageQuality"><option value="auto">auto</option><option value="low">low (cheap, quick)</option><option value="medium">medium</option><option value="high">high</option><option value="xhigh">xhigh (gpt-image-2.5+)</option><option value="max">max (gpt-image-2.5+)</option></select>
       <div class="row" style="margin-top:6px"><button class="btn small" data-test="openai">Test OpenAI</button><span id="t_openai" class="hint"></span></div>
     </div>
     <div>
