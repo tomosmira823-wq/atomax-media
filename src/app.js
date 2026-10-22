@@ -289,32 +289,40 @@ $('#run').addEventListener('click', async () => {
       boardRows.find(r => r.text.startsWith(agent.name)).status = 'Error'; office.setBoard(boardRows);
     }
   }));
-  // make the image once for the run (edit the attached photo, or generate from the first writer's idea) and attach it to every post
+  // images: one per writer by default (each from its own idea, in its platform's shape); optionally one shared image
   if ($('#makeImage').checked) {
     const made = runEntries.filter(x => x.entry);
-    if (made.length) {
-      const lead = made[0];
-      const { provider, model } = imageChoice();
-      const refNote = $('#refText').value.trim();
-      made.forEach(x => { x.card.querySelector('.status').innerHTML = '<span class="spinner"></span> making image'; office.setState(x.agent.id, 'working', images.length ? 'editing the photo' : 'making the image'); });
-      office.setBoard(boardRows.map(r => ({ ...r, status: r.status === 'Done' ? 'Working' : r.status })));
-      try {
-        let r;
-        if (images.length) {
-          const instruction = [lead.entry.post.imageIdea, refNote ? 'Reference note from the brief: ' + refNote : ''].filter(Boolean).join('\n') || 'Tidy and brighten the photo and add a clean Atomax-UK branded banner.';
-          r = await api.image.edit({ prompt: instruction, image: images[0], overlayText: lead.entry.post.overlayText || '', model });
-        } else {
-          const prompt = (lead.entry.post.imageIdea || brief) + `\nStyle: clean, modern, professional engineering photography look, Atomax brand green (#40BD00) and navy (#0E121D) accents.`;
-          r = await api.image.generate({ provider, model, prompt, size: '1024x1024', aspect: '1:1' });
-        }
-        for (const x of made) { x.entry.image = r.base64; }
-        await api.posts.set(posts);
-        for (const x of made) fillCard(x.card, x.agent, x.entry);
-      } catch (e) {
-        for (const x of made) { x.card.querySelector('.err').textContent = 'Image: ' + e.message; x.card.querySelector('.status').textContent = 'image failed'; }
+    const shared = $('#sameImage').checked;
+    const { provider, model } = imageChoice();
+    const refNote = $('#refText').value.trim();
+    const shapeFor = (platform) => /instagram/i.test(platform) ? { size: '1024x1024', aspect: '1:1' } : /tiktok/i.test(platform) ? { size: '1024x1536', aspect: '2:3' } : { size: '1536x1024', aspect: '3:2' };
+    const makeFor = async (x) => {
+      const post = x.entry.post;
+      const shape = shared ? { size: 'auto', aspect: '1:1' } : shapeFor(x.agent.platform);
+      if (images.length) {
+        const instruction = [post.imageIdea, refNote ? 'Reference note from the brief: ' + refNote : ''].filter(Boolean).join('\n') || 'Tidy and brighten the photo and add a clean Atomax-UK branded banner.';
+        return api.image.edit({ prompt: instruction + (shared ? '' : `\nOutput shape: ${shape.size === '1024x1024' ? 'square' : shape.size === '1024x1536' ? 'portrait' : 'landscape'}, framed for ${x.agent.platform}.`), image: images[0], overlayText: post.overlayText || '', model, size: images.length && shared ? 'auto' : shape.size });
       }
+      const prompt = (post.imageIdea || brief) + `\nStyle: clean, modern, professional engineering photography look, Atomax brand green (#40BD00) and navy (#0E121D) accents.`;
+      return api.image.generate({ provider, model, prompt, size: shape.size, aspect: shape.aspect });
+    };
+    if (made.length) {
+      office.setBoard(boardRows.map(r => ({ ...r, status: r.status === 'Done' ? 'Working' : r.status })));
+      const targets = shared ? [made[0]] : made;
+      await Promise.all(targets.map(async (x) => {
+        const group = shared ? made : [x];
+        group.forEach(y => { y.card.querySelector('.status').innerHTML = '<span class="spinner"></span> making image'; office.setState(y.agent.id, 'working', images.length ? 'editing the photo' : 'making the image'); });
+        try {
+          const r = await makeFor(x);
+          for (const y of group) y.entry.image = r.base64;
+          await api.posts.set(posts);
+          for (const y of group) fillCard(y.card, y.agent, y.entry);
+        } catch (e) {
+          for (const y of group) { y.card.querySelector('.err').textContent = 'Image: ' + e.message; y.card.querySelector('.status').textContent = 'image failed'; }
+        }
+        group.forEach(y => office.setState(y.agent.id, 'done', 'post + image ready'));
+      }));
       office.setBoard(boardRows);
-      made.forEach(x => office.setState(x.agent.id, 'done', 'post + image ready'));
     }
   }
   $('#run').disabled = false;

@@ -351,7 +351,7 @@ Reply with JSON only, no markdown fences, exactly this shape:
   "caption": "the full post text ready to paste, including hashtags where the format rules say",
   "hashtags": ["tag1", "tag2"],
   "altText": "accessible description of the image, or an idea for one if no image was given",
-  "imageIdea": "a one-paragraph image-generation prompt for an AI image model that would suit this post, in the company's style",
+  "imageIdea": "a one-paragraph image prompt for an AI image model, specific to THIS platform and THIS post (composition, crop, mood, any banner or text treatment); make it different from what another platform would want, in the company's style",
   "overlayText": "short headline to print on the post image as a banner (e.g. 'Site Commissioning for Diageo Runcorn'), max 60 characters, spelled exactly as it should appear; empty string if the post doesn't need one",
   "bestTime": "best day and time to post for this platform, UK time",
   "notes": "one short line to the human: anything to check before posting"
