@@ -201,7 +201,7 @@ ipcMain.handle('file:saveText', async (_e, { text, name }) => {
 });
 
 // ---------- Claude (Anthropic) ----------
-async function claudeMessage({ system, messages, maxTokens = 1500 }) {
+async function claudeMessage({ system, messages, maxTokens = 4000 }) {
   const s = loadSettings();
   if (!s.anthropicKey) throw new Error('No Claude API key. Add it in Settings.');
   const res = await fetch('https://api.anthropic.com/v1/messages', {
@@ -219,9 +219,26 @@ async function claudeMessage({ system, messages, maxTokens = 1500 }) {
 }
 
 function extractJson(text) {
-  const m = text.match(/\{[\s\S]*\}/);
-  if (!m) throw new Error('Claude did not return JSON:\n' + text);
-  return JSON.parse(m[0]);
+  const start = text.indexOf('{');
+  if (start < 0) throw new Error('Claude did not return JSON:\n' + text);
+  const raw = text.slice(start, text.lastIndexOf('}') + 1 || undefined);
+  try { return JSON.parse(raw); } catch {}
+  // reply was cut off mid-way: keep everything up to the last complete value and close the brackets
+  const src = text.slice(start);
+  let inStr = false, esc = false, depth = 0, lastGood = -1; const stack = [];
+  for (let i = 0; i < src.length; i++) {
+    const c = src[i];
+    if (inStr) { if (esc) esc = false; else if (c === '\\') esc = true; else if (c === '"') { inStr = false; lastGood = i; } continue; }
+    if (c === '"') inStr = true;
+    else if (c === '{' || c === '[') { stack.push(c); depth++; }
+    else if (c === '}' || c === ']') { stack.pop(); depth--; lastGood = i; }
+    else if (/[0-9el]/.test(c)) lastGood = i; // numbers, true/false/null
+  }
+  let fixed = src.slice(0, lastGood + 1).replace(/,\s*$/, '');
+  // inside an object: drop a dangling `"key"` / `"key":` that never got its value
+  if (stack[stack.length - 1] === '{') fixed = fixed.replace(/(^|[{,])\s*"[^"]*"\s*(:\s*)?$/, '$1').replace(/,\s*$/, '');
+  for (let i = stack.length - 1; i >= 0; i--) fixed += stack[i] === '{' ? '}' : ']';
+  try { return JSON.parse(fixed); } catch (e) { throw new Error('Claude did not return JSON:\n' + text); }
 }
 
 function companyBlock(company) {
@@ -271,6 +288,7 @@ Reply with JSON only, no markdown fences, exactly this shape:
   "hashtags": ["tag1", "tag2"],
   "altText": "accessible description of the image, or an idea for one if no image was given",
   "imageIdea": "a one-paragraph image-generation prompt for an AI image model that would suit this post, in the company's style",
+  "overlayText": "short headline to print on the post image as a banner (e.g. 'Site Commissioning for Diageo Runcorn'), max 60 characters, spelled exactly as it should appear; empty string if the post doesn't need one",
   "bestTime": "best day and time to post for this platform, UK time",
   "notes": "one short line to the human: anything to check before posting"
 }`;
@@ -348,14 +366,17 @@ async function openaiGenerate(prompt, size) {
   throw new Error('OpenAI returned no image');
 }
 
-async function openaiEdit(prompt, image, size) {
+const LOGO_PATH = path.join(__dirname, 'assets', 'atomax-logo.png');
+async function openaiEdit(prompt, image, size, extraImages = []) {
   const s = loadSettings();
   if (!s.openaiKey) throw new Error('No OpenAI key. Image edits need OpenAI.');
   const fd = new FormData();
   fd.append('model', s.openaiImageModel);
   fd.append('prompt', prompt);
-  fd.append('size', size || '1024x1024');
-  fd.append('image', new Blob([Buffer.from(image.base64, 'base64')], { type: image.mime }), image.name || 'image.png');
+  fd.append('size', size || 'auto');
+  fd.append('quality', 'high');
+  fd.append('image[]', new Blob([Buffer.from(image.base64, 'base64')], { type: image.mime }), image.name || 'image.png');
+  for (const x of extraImages) fd.append('image[]', new Blob([Buffer.from(x.base64, 'base64')], { type: x.mime }), x.name || 'extra.png');
   const res = await fetch('https://api.openai.com/v1/images/edits', {
     method: 'POST', headers: { authorization: `Bearer ${s.openaiKey}` }, body: fd
   });
@@ -422,8 +443,16 @@ ipcMain.handle('image:generate', async (_e, { provider, prompt, size, aspect }) 
   return { base64, mime: 'image/png', provider: p };
 });
 
-ipcMain.handle('image:edit', async (_e, { prompt, image, size }) => {
-  const base64 = await openaiEdit(prompt, image, size);
+// Edit the post image. withLogo: the real Atomax-UK logo is passed as a second input image so it comes out exact.
+ipcMain.handle('image:edit', async (_e, { prompt, image, size, withLogo = true, overlayText = '' }) => {
+  const extra = [];
+  let full = prompt;
+  if (withLogo && fs.existsSync(LOGO_PATH)) {
+    extra.push({ base64: fs.readFileSync(LOGO_PATH).toString('base64'), mime: 'image/png', name: 'atomax-logo.png' });
+    full += `\n\nThe first image is the photo to edit: keep all of its content, framing and realism. The second image is the official Atomax-UK logo: reproduce it exactly as given (green block icon, 'ATOMAX-UK' wordmark, 'Engineering Consultants' tagline), do not redraw or restyle it. Brand colours: navy #0E121D, green #40BD00, white text.`;
+  }
+  if (overlayText) full += `\nAny text you add must read EXACTLY: "${overlayText}" with that exact spelling and capitalisation, crisp and legible, no other words.`;
+  const base64 = await openaiEdit(full, image, size, extra);
   return { base64, mime: 'image/png', provider: 'openai' };
 });
 

@@ -150,7 +150,8 @@
     <input type="text" id="extraText" placeholder="e.g. mention we're hiring, keep it under 100 words" />
     <label>Who's working on it?</label>
     <div class="agentpick" id="agentPick"></div>
-    <label>Image generation</label>
+    <label>Image</label>
+    <label style="display:flex;align-items:center;gap:8px;color:var(--text);font-size:13px;margin:0 0 6px"><input type="checkbox" id="makeImage" checked /> Make the image as part of the run <span class="hint">(edits your photo if one is attached, otherwise generates one)</span></label>
     <select id="imageProvider">
       <option value="openai">OpenAI (gpt-image)</option>
       <option value="higgsfield">Higgsfield (SOUL)</option>

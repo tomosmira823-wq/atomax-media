@@ -32,7 +32,7 @@ To ship an update: bump `"version"` in `package.json` (e.g. 1.0.1), commit and p
 ## Using it
 
 1. **Brief** (left panel): say what the post is about, add images, tick which agents work on it, hit *Run the office*.
-2. Agents walk to their desks and write. Each post appears on the **Board** (right panel) with Copy, Save, Generate image, Edit my image and a revise box (e.g. "shorter", "more formal", "add a line about safety").
+2. Agents walk to their desks and write. With *Make the image as part of the run* ticked, the office then edits your attached photo through OpenAI (banner, real Atomax logo supplied as a second input, exact text from the writer's suggested banner line and your reference note) or, with no photo, generates one from the writer's image idea; the result lands on every card. Each post appears on the **Board** (right panel) with Copy, Save, Generate image, Edit my image and a revise box (e.g. "shorter", "more formal", "add a line about safety").
 3. **Reference**: paste an example post (or add screenshots of one) and the agents copy its style and structure without reusing its content. Post images and reference images are labelled separately so they never get mixed up. Each agent can also keep permanent **example posts** in the Agents tab, so its voice stays consistent run to run.
 4. **Analyse image** asks Claude what it sees in your image and what edits would help.
 5. **Agents** tab: one agent per platform. Tone is the personality, Rules are the hard limits (character count, hashtags). Add more agents for YouTube, TikTok, etc. Each enabled agent gets a desk.

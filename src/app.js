@@ -175,13 +175,15 @@ $('#run').addEventListener('click', async () => {
   const boardRows = agents.filter(a => a.enabled).map(a => ({ colour: a.colour, text: `${a.name} · ${a.platform}`, status: chosen.includes(a) ? 'Working' : 'Ready' }));
   office.setBoard(boardRows);
 
+  const runEntries = [];
   await Promise.all(chosen.map(async (agent) => {
     office.setState(agent.id, 'working', `writing ${agent.platform} post`);
     const card = addCard(agent, 'writing…');
+    const slot = { agent, card, entry: null }; runEntries.push(slot);
     try {
       const post = await api.ai.writePost({ agent, brief: brief || '(no written brief, write from the image)', images, extra, refText, refImages });
       const entry = { id: 'p' + Date.now() + Math.random().toString(36).slice(2, 6), agentId: agent.id, agentName: agent.name, platform: agent.platform, colour: agent.colour, brief, refText, post, created: new Date().toISOString(), image: null };
-      posts.unshift(entry); await api.posts.set(posts);
+      posts.unshift(entry); await api.posts.set(posts); slot.entry = entry;
       fillCard(card, agent, entry);
       office.setState(agent.id, 'done', 'post ready');
       boardRows.find(r => r.text.startsWith(agent.name)).status = 'Done'; office.setBoard(boardRows);
@@ -193,6 +195,34 @@ $('#run').addEventListener('click', async () => {
       boardRows.find(r => r.text.startsWith(agent.name)).status = 'Error'; office.setBoard(boardRows);
     }
   }));
+  // make the image once for the run (edit the attached photo, or generate from the first writer's idea) and attach it to every post
+  if ($('#makeImage').checked) {
+    const made = runEntries.filter(x => x.entry);
+    if (made.length) {
+      const lead = made[0];
+      const provider = $('#imageProvider').value;
+      const refNote = $('#refText').value.trim();
+      made.forEach(x => { x.card.querySelector('.status').innerHTML = '<span class="spinner"></span> making image'; office.setState(x.agent.id, 'working', images.length ? 'editing the photo' : 'making the image'); });
+      office.setBoard(boardRows.map(r => ({ ...r, status: r.status === 'Done' ? 'Working' : r.status })));
+      try {
+        let r;
+        if (images.length) {
+          const instruction = [lead.entry.post.imageIdea, refNote ? 'Reference note from the brief: ' + refNote : ''].filter(Boolean).join('\n') || 'Tidy and brighten the photo and add a clean Atomax-UK branded banner.';
+          r = await api.image.edit({ prompt: instruction, image: images[0], overlayText: lead.entry.post.overlayText || '' });
+        } else {
+          const prompt = (lead.entry.post.imageIdea || brief) + `\nStyle: clean, modern, professional engineering photography look, Atomax brand green (#40BD00) and navy (#0E121D) accents.`;
+          r = await api.image.generate({ provider, prompt, size: '1024x1024', aspect: '1:1' });
+        }
+        for (const x of made) { x.entry.image = r.base64; }
+        await api.posts.set(posts);
+        for (const x of made) fillCard(x.card, x.agent, x.entry);
+      } catch (e) {
+        for (const x of made) { x.card.querySelector('.err').textContent = 'Image: ' + e.message; x.card.querySelector('.status').textContent = 'image failed'; }
+      }
+      office.setBoard(boardRows);
+      made.forEach(x => office.setState(x.agent.id, 'done', 'post + image ready'));
+    }
+  }
   $('#run').disabled = false;
   setTimeout(() => [...chosen, ...reviewers].forEach(a => office.setState(a.id, 'idle')), 25000);
 });
@@ -252,13 +282,13 @@ function fillCard(card, agent, entry) {
   const c = card.querySelector('.content');
   c.innerHTML = `
     <pre class="caption">${esc(p.caption || '')}</pre>
-    <div class="meta">${p.bestTime ? '⏰ ' + esc(p.bestTime) + '<br>' : ''}${p.altText ? '🖼 Alt: ' + esc(p.altText) + '<br>' : ''}${p.notes ? '⚠ ' + esc(p.notes) : ''}</div>
+    <div class="meta">${p.bestTime ? '⏰ ' + esc(p.bestTime) + '<br>' : ''}${p.altText ? '🖼 Alt: ' + esc(p.altText) + '<br>' : ''}${p.overlayText ? '🏷 Banner text: ' + esc(p.overlayText) + '<br>' : ''}${p.notes ? '⚠ ' + esc(p.notes) : ''}</div>
     <div class="imgwrap">${entry.image ? `<img class="gen" src="data:image/png;base64,${entry.image}"/>` : ''}</div>
     <div class="actions">
       <button class="btn small b_copy">Copy post</button>
       <button class="btn small b_save">Save .txt</button>
       <button class="btn small b_img">${entry.image ? 'Regenerate image' : 'Generate image'}</button>
-      <button class="btn small b_edit" ${images.length ? '' : 'disabled title="Add an image in the brief first"'}>Edit my image</button>
+      <button class="btn small b_edit" ${images.length ? '' : 'disabled title="Add an image in the brief first"'} title="OpenAI edits your photo. Default: the writer's image idea + your reference note, with the real Atomax logo supplied. Type your own instruction in the box below to override.">Edit my image</button>
       ${entry.image ? '<button class="btn small b_saveimg">Save image</button>' : ''}
       <button class="btn small b_del">Delete</button>
     </div>
@@ -292,13 +322,18 @@ function fillCard(card, agent, entry) {
   });
   c.querySelector('.b_edit').addEventListener('click', async () => {
     if (!images.length) return;
-    const instruction = c.querySelector('.r_text').value.trim() || 'Brighten it, tidy the background and add a subtle Atomax green accent';
+    const typed = c.querySelector('.r_text').value.trim();
+    const refNote = $('#refText').value.trim();
+    const overlayText = p.overlayText || '';
+    // default: the writer's own image idea (which already follows the reference) plus the reference note
+    const instruction = typed || [p.imageIdea, refNote ? 'Reference note from the brief: ' + refNote : ''].filter(Boolean).join('\n')
+      || 'Brighten it, tidy the background and add a subtle Atomax green accent';
     office.setState(agent.id, 'working', 'editing image');
-    c.querySelector('.err').textContent = '';
+    c.querySelector('.err').textContent = ''; c.querySelector('.b_edit').disabled = true; c.querySelector('.b_edit').innerHTML = '<span class="spinner"></span> editing';
     try {
-      const r = await api.image.edit({ prompt: instruction, image: images[0] });
+      const r = await api.image.edit({ prompt: instruction, image: images[0], overlayText: typed ? '' : overlayText });
       entry.image = r.base64; await api.posts.set(posts); fillCard(card, agent, entry);
-    } catch (e) { c.querySelector('.err').textContent = e.message; }
+    } catch (e) { c.querySelector('.err').textContent = e.message; c.querySelector('.b_edit').disabled = false; c.querySelector('.b_edit').textContent = 'Edit my image'; }
     office.setState(agent.id, 'done', 'post ready');
   });
   const si = c.querySelector('.b_saveimg'); if (si) si.addEventListener('click', () => api.files.saveImage({ base64: entry.image, name: `${agent.platform.replace(/\W+/g, '-')}-image.png` }));
