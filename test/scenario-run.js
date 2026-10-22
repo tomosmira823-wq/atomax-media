@@ -28,6 +28,7 @@
     $('#imageBrief').value = 'Add a navy Atomax banner at the bottom reading Site Commissioning for Diageo Runcorn.';
     $('#makeImage').checked = true; $('#sameImage').checked = V === 'shared';
     if (V === 'nophoto') $('#imageBrief').value = 'An engineer at a CAD screen with a substation drawing, Atomax branding on the wall.';
+    $('#imageProvider').value = V === 'google' ? 'google:gemini-nano-banana-2.1' : 'openai:gpt-image-2'; $('#imageProvider').dispatchEvent(new Event('change'));
     return 'ok';
   });
 
@@ -61,7 +62,10 @@
     const bigEdits = calls.filter(c => /images\/edits/.test(c.url) && c.len > 200000).length;
     if (V === 'nophoto' && (edits !== 3 || gens !== 0 || bigEdits !== 3)) throw new Error(`expected 3 logo-backed edits, got gens=${gens} edits=${edits} withLogo=${bigEdits}`);
     if (V === 'shared' && (edits !== 1)) throw new Error(`expected 1 edit for shared, got edits=${edits} gens=${gens}`);
+    const g = calls.filter(c => /google\/v1beta\/interactions/.test(c.url));
+    if (V === 'google' && (g.length !== 3 || !g.every(c => c.refs === 2))) throw new Error(`expected 3 Google calls each with photo+logo, got ${g.length} calls refs=${g.map(c => c.refs)}`);
     const withLogo = calls.filter(c => /images\/edits/.test(c.url) && c.len > 200000).length;
+    if (V === 'google') return `google calls=${g.length} refs=${g.map(c => c.refs)}`;
     if (V === '' && (edits < 3 || gens !== 0 || withLogo < 3)) throw new Error(`expected logo-backed edits, got edits=${edits} gens=${gens} withLogo=${withLogo}`);
     return `images on 3 cards; API calls gens=${gens} edits=${edits}`;
   });

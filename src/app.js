@@ -30,31 +30,37 @@ api.update.onStatus(s => {
 });
 $('#checkUpdate').addEventListener('click', async () => { $('#updText').textContent = 'Checking…'; try { $('#updText').textContent = await api.update.check(); } catch (e) { $('#updText').textContent = e.message; } });
 
+const GOOGLE_IMAGE_MODELS = ['gemini-nano-banana-2.1', 'gemini-3-pro-image', 'gemini-3.1-flash-image', 'gemini-3.1-flash-lite-image', 'gemini-2.5-flash-image'];
 const DEFAULT_IMAGE_MODELS = ['gpt-image-2.5-sunburst', 'gpt-image-2.5-flare', 'gpt-image-2', 'gpt-image-1.5', 'gpt-image-1', 'gpt-image-1-mini', 'dall-e-3', 'dall-e-2'];
 function imageModelList() { return (settings.openaiImageModels && settings.openaiImageModels.length) ? settings.openaiImageModels : DEFAULT_IMAGE_MODELS; }
 function modelLabel(id) { return id.startsWith('dall-e') ? id.replace('dall-e', 'DALL·E ') + (id === 'dall-e-3' ? ' (generate only)' : '') : id; }
 function fillImageSelects() {
   const list = imageModelList();
   const cur = settings.openaiImageModel && list.includes(settings.openaiImageModel) ? settings.openaiImageModel : list[0];
-  $('#imageProvider').innerHTML = list.map(id => `<option value="openai:${esc(id)}">OpenAI · ${esc(modelLabel(id))}</option>`).join('') + '<option value="higgsfield">Higgsfield · SOUL</option>';
-  $('#imageProvider').value = settings.imageProvider === 'higgsfield' ? 'higgsfield' : 'openai:' + cur;
+  const gcur = settings.googleImageModel && GOOGLE_IMAGE_MODELS.includes(settings.googleImageModel) ? settings.googleImageModel : GOOGLE_IMAGE_MODELS[0];
+  $('#imageProvider').innerHTML = list.map(id => `<option value="openai:${esc(id)}">OpenAI · ${esc(modelLabel(id))}</option>`).join('')
+    + GOOGLE_IMAGE_MODELS.map(id => `<option value="google:${esc(id)}">Google · ${esc(id)}</option>`).join('')
+    + '<option value="higgsfield">Higgsfield · SOUL</option>';
+  $('#imageProvider').value = settings.imageProvider === 'higgsfield' ? 'higgsfield' : settings.imageProvider === 'google' ? 'google:' + gcur : 'openai:' + cur;
+  if ($('#s_googleImageModel')) $('#s_googleImageModel').value = gcur;
   $('#s_openaiImageModel').innerHTML = list.map(id => `<option value="${esc(id)}">${esc(id)}</option>`).join('');
   $('#s_openaiImageModel').value = cur;
   $('#s_openaiImageQuality').value = settings.openaiImageQuality || 'high';
 }
 $('#imageProvider').addEventListener('change', async () => {
   const { provider, model } = imageChoice();
-  settings.imageProvider = provider; if (provider === 'openai' && model) settings.openaiImageModel = model;
+  settings.imageProvider = provider; if (provider === 'openai' && model) settings.openaiImageModel = model; if (provider === 'google' && model) settings.googleImageModel = model;
   await api.settings.set(settings);
 });
 function imageChoice() {
   const v = $('#imageProvider').value || 'openai:gpt-image-2';
   const [provider, model] = v.split(':');
-  return { provider, model: model || settings.openaiImageModel };
+  return { provider, model: model || (provider === 'google' ? settings.googleImageModel : settings.openaiImageModel) };
 }
 function updateKeyDots() {
   $('#k-claude .dot').classList.toggle('ok', !!settings.anthropicKey);
   $('#k-openai .dot').classList.toggle('ok', !!settings.openaiKey);
+  $('#k-google .dot').classList.toggle('ok', !!settings.googleKey);
   $('#k-hf .dot').classList.toggle('ok', !!(settings.higgsfieldKeyId && settings.higgsfieldSecret));
 }
 
@@ -121,13 +127,13 @@ $('#logoPick').addEventListener('click', async () => { const r = await api.logo.
 $('#logoReset').addEventListener('click', async () => { await api.logo.reset(); fillLogo(); });
 function fillSettings() {
   fillConnections(); fillLogo();
-  for (const k of ['anthropicKey', 'openaiKey', 'higgsfieldKeyId', 'higgsfieldSecret', 'claudeModel', 'openaiImageModel', 'higgsfieldModel', 'imageProvider']) $('#s_' + k).value = settings[k] || '';
+  for (const k of ['anthropicKey', 'openaiKey', 'googleKey', 'googleImageModel', 'higgsfieldKeyId', 'higgsfieldSecret', 'claudeModel', 'openaiImageModel', 'higgsfieldModel', 'imageProvider']) $('#s_' + k).value = settings[k] || '';
   for (const k of ['name', 'about', 'audience', 'website', 'doNot', 'knowledge']) $('#c_' + k).value = settings.company[k] || '';
   $('#siteHint').textContent = settings.company.pulledAt ? 'Last pulled ' + new Date(settings.company.pulledAt).toLocaleString('en-GB') + ' from ' + (settings.company.pages || []).length + ' pages.' : '';
 }
 $('#saveSettings').addEventListener('click', async () => {
   readConnections();
-  for (const k of ['anthropicKey', 'openaiKey', 'higgsfieldKeyId', 'higgsfieldSecret', 'claudeModel', 'openaiImageModel', 'higgsfieldModel', 'imageProvider']) settings[k] = $('#s_' + k).value.trim();
+  for (const k of ['anthropicKey', 'openaiKey', 'googleKey', 'googleImageModel', 'higgsfieldKeyId', 'higgsfieldSecret', 'claudeModel', 'openaiImageModel', 'higgsfieldModel', 'imageProvider']) settings[k] = $('#s_' + k).value.trim();
   for (const k of ['name', 'about', 'audience', 'website', 'doNot', 'knowledge']) settings.company[k] = $('#c_' + k).value.trim();
   await api.settings.set(settings);
   settings.openaiImageQuality = $('#s_openaiImageQuality').value;
@@ -159,7 +165,7 @@ $('#detectModels').addEventListener('click', async () => {
 });
 document.querySelectorAll('[data-test]').forEach(b => b.addEventListener('click', async () => {
   // save first so the test uses what's typed
-  for (const k of ['anthropicKey', 'openaiKey', 'higgsfieldKeyId', 'higgsfieldSecret', 'claudeModel', 'openaiImageModel', 'higgsfieldModel']) settings[k] = $('#s_' + k).value.trim();
+  for (const k of ['anthropicKey', 'openaiKey', 'googleKey', 'googleImageModel', 'higgsfieldKeyId', 'higgsfieldSecret', 'claudeModel', 'openaiImageModel', 'higgsfieldModel']) settings[k] = $('#s_' + k).value.trim();
   await api.settings.set(settings); updateKeyDots();
   const out = $('#t_' + b.dataset.test); out.textContent = 'Testing…'; out.className = 'hint';
   try { out.textContent = await api.ai.test(b.dataset.test); out.className = 'ok'; }
@@ -327,7 +333,7 @@ $('#run').addEventListener('click', async () => {
       const direction = post.imageIdea ? `Art direction for ${x.agent.platform}: ${post.imageIdea}` : '';
       if (images.length) {
         const instruction = [lead, direction, refNote ? 'Reference note from the brief: ' + refNote : ''].filter(Boolean).join('\n') || 'Tidy and brighten the photo and add a clean Atomax-UK branded banner.';
-        return api.image.edit({ prompt: instruction + shapeNote, image: images[0], overlayText: post.overlayText || '', model, size: shared ? 'auto' : shape.size });
+        return api.image.edit({ prompt: instruction + shapeNote, image: images[0], overlayText: post.overlayText || '', model, provider, aspect: shape.aspect, size: shared ? 'auto' : shape.size });
       }
       const prompt = [lead, direction || brief].filter(Boolean).join('\n') + `\nStyle: clean, modern, professional engineering photography look, Atomax-UK branding (green #40BD00, navy #0E121D). Any text must be spelled exactly and kept minimal.` + shapeNote;
       return api.image.generate({ provider, model, prompt, size: shape.size, aspect: shape.aspect });
@@ -484,7 +490,7 @@ function fillCard(card, agent, entry) {
     office.setState(agent.id, 'working', 'editing image');
     c.querySelector('.err').textContent = ''; c.querySelector('.b_edit').disabled = true; c.querySelector('.b_edit').innerHTML = '<span class="spinner"></span> editing';
     try {
-      const r = await api.image.edit({ prompt: instruction, image: images[0], overlayText: typed ? '' : overlayText, model: imageChoice().model });
+      const r = await api.image.edit({ prompt: instruction, image: images[0], overlayText: typed ? '' : overlayText, model: imageChoice().model, provider: imageChoice().provider, aspect: '1:1' });
       entry.image = r.base64; await api.posts.set(posts); fillCard(card, agent, entry);
     } catch (e) { c.querySelector('.err').textContent = e.message; c.querySelector('.b_edit').disabled = false; c.querySelector('.b_edit').textContent = 'Edit image'; }
     office.setState(agent.id, 'done', 'post ready');

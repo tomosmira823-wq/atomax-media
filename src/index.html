@@ -203,6 +203,7 @@
     <span id="update" class="hint"></span>
     <span id="k-claude"><i class="dot"></i>Claude</span>
     <span id="k-openai"><i class="dot"></i>OpenAI</span>
+    <span id="k-google"><i class="dot"></i>Google</span>
     <span id="k-hf"><i class="dot"></i>Higgsfield</span>
   </div>
 </div>
@@ -312,9 +313,15 @@
       <label>OpenAI image model (default)</label>
       <div class="row"><select id="s_openaiImageModel" style="flex:1"></select><button class="btn small" id="detectModels" title="Lists the image models your key can use">Detect</button></div>
       <div class="hint" id="modelsHint"></div>
-      <label>Image quality (gpt-image models)</label>
+      <label>Image quality (gpt-image + Google: high = 2K, xhigh/max = 4K)</label>
       <select id="s_openaiImageQuality"><option value="auto">auto</option><option value="low">low (cheap, quick)</option><option value="medium">medium</option><option value="high">high</option><option value="xhigh">xhigh (gpt-image-2.5+)</option><option value="max">max (gpt-image-2.5+)</option></select>
       <div class="row" style="margin-top:6px"><button class="btn small" data-test="openai">Test OpenAI</button><span id="t_openai" class="hint"></span></div>
+    </div>
+    <div>
+      <label>Google Gemini key (optional, Nano Banana images)</label><input type="password" id="s_googleKey" placeholder="AIza..." />
+      <label>Google image model</label>
+      <select id="s_googleImageModel"><option value="gemini-nano-banana-2.1">gemini-nano-banana-2.1 (recommended)</option><option value="gemini-3-pro-image">gemini-3-pro-image (Nano Banana Pro)</option><option value="gemini-3.1-flash-image">gemini-3.1-flash-image</option><option value="gemini-3.1-flash-lite-image">gemini-3.1-flash-lite-image (1K only)</option><option value="gemini-2.5-flash-image">gemini-2.5-flash-image (legacy)</option></select>
+      <div class="row" style="margin-top:6px"><button class="btn small" data-test="google">Test Google</button><span id="t_google" class="hint"></span></div>
     </div>
     <div>
       <label>Higgsfield key ID (optional)</label><input type="password" id="s_higgsfieldKeyId" />
@@ -324,7 +331,7 @@
     </div>
     <div>
       <label>Default image provider</label>
-      <select id="s_imageProvider"><option value="openai">OpenAI</option><option value="higgsfield">Higgsfield</option></select>
+      <select id="s_imageProvider"><option value="openai">OpenAI</option><option value="google">Google</option><option value="higgsfield">Higgsfield</option></select>
     </div>
   </div>
   <h3 class="section">Connections</h3><div class="sub">Connect the Atomax accounts so posts can go out straight from the board. Each needs a developer app (see README). Login opens in your browser; tokens are stored encrypted on this PC.</div>

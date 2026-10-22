@@ -12,6 +12,7 @@ const fs = require('fs');
 const MOCK = process.env.AMO_MOCK === '1' ? 'http://127.0.0.1:52900' : null;
 const ANTHROPIC = MOCK ? MOCK + '/anthropic' : 'https://api.anthropic.com';
 const OPENAI = MOCK ? MOCK + '/openai' : 'https://api.openai.com';
+const GOOGLE = MOCK ? MOCK + '/google' : 'https://generativelanguage.googleapis.com';
 const USER_DIR = () => process.env.AMO_USERDATA || app.getPath('userData');
 const SETTINGS_FILE = () => path.join(USER_DIR(), 'settings.json');
 const AGENTS_FILE = () => path.join(USER_DIR(), 'agents.json');
@@ -21,6 +22,8 @@ const POSTS_FILE = () => path.join(USER_DIR(), 'posts.json');
 const DEFAULT_SETTINGS = {
   anthropicKey: '',
   openaiKey: '',
+  googleKey: '',
+  googleImageModel: 'gemini-nano-banana-2.1',
   higgsfieldKeyId: '',
   higgsfieldSecret: '',
   claudeModel: 'claude-sonnet-5-5',
@@ -81,7 +84,7 @@ function writeJson(file, data) {
   fs.writeFileSync(file, JSON.stringify(data, null, 2), 'utf8');
 }
 
-const SECRET_FIELDS = ['anthropicKey', 'openaiKey', 'higgsfieldKeyId', 'higgsfieldSecret'];
+const SECRET_FIELDS = ['anthropicKey', 'openaiKey', 'googleKey', 'higgsfieldKeyId', 'higgsfieldSecret'];
 function encrypt(str) {
   if (!str) return '';
   if (safeStorage.isEncryptionAvailable()) return 'enc:' + safeStorage.encryptString(str).toString('base64');
@@ -602,6 +605,42 @@ async function downloadBase64(url) {
   return Buffer.from(await r.arrayBuffer()).toString('base64');
 }
 
+// ---------- Google (Gemini "Nano Banana") ----------
+const GOOGLE_MODELS = ['gemini-nano-banana-2.1', 'gemini-3-pro-image', 'gemini-3.1-flash-image', 'gemini-3.1-flash-lite-image', 'gemini-2.5-flash-image'];
+function googleSize(quality) { return ['xhigh', 'max'].includes(quality) ? '4K' : quality === 'high' ? '2K' : '1K'; }
+function findGoogleImage(d) {
+  if (d?.output_image?.data) return d.output_image.data;
+  for (const st of d?.steps || []) for (const c of st.content || []) if (c.type === 'image' && c.data) return c.data;
+  for (const c of d?.candidates || []) for (const p of c.content?.parts || []) if (p.inlineData?.data || p.inline_data?.data) return p.inlineData?.data || p.inline_data?.data;
+  return null;
+}
+async function googleGenerate(prompt, aspect, model, refImages = []) {
+  const s = loadSettings();
+  if (!s.googleKey) throw new Error('No Google (Gemini) API key. Add it in Settings or switch the image provider.');
+  model = model || s.googleImageModel || 'gemini-nano-banana-2.1';
+  const headers = { 'content-type': 'application/json', 'x-goog-api-key': s.googleKey };
+  const quality = s.openaiImageQuality || 'high';
+  const size = /flash-lite/.test(model) ? '1K' : googleSize(quality);
+  // current API: Interactions
+  let res = await fetch(`${GOOGLE}/v1beta/interactions`, {
+    method: 'POST', headers,
+    body: JSON.stringify({ model, input: [{ type: 'text', text: prompt }, ...refImages.map(i => ({ type: 'image', mime_type: i.mime || 'image/png', data: i.base64 }))], response_format: { type: 'image', mime_type: 'image/png', aspect_ratio: aspect || '1:1', image_size: size } })
+  });
+  let data = await res.json().catch(() => ({}));
+  if (res.status === 404 || res.status === 400 && /interactions|unknown name|response_format/i.test(JSON.stringify(data))) {
+    // older API surface: generateContent with image modality
+    res = await fetch(`${GOOGLE}/v1beta/models/${model}:generateContent`, {
+      method: 'POST', headers,
+      body: JSON.stringify({ contents: [{ parts: [{ text: prompt }, ...refImages.map(i => ({ inline_data: { mime_type: i.mime || 'image/png', data: i.base64 } }))] }], generationConfig: { responseModalities: ['IMAGE', 'TEXT'], imageConfig: { aspectRatio: aspect || '1:1' } } })
+    });
+    data = await res.json().catch(() => ({}));
+  }
+  if (!res.ok) throw new Error(`Google ${res.status}: ${data?.error?.message || JSON.stringify(data).slice(0, 300)}`);
+  const b64 = findGoogleImage(data);
+  if (!b64) throw new Error('Google returned no image: ' + JSON.stringify(data).slice(0, 300));
+  return b64;
+}
+
 function findImageUrl(obj) {
   // Higgsfield result shapes vary by model; dig out the first image url we can find
   if (!obj) return null;
@@ -647,7 +686,10 @@ async function higgsfieldGenerate(prompt, aspect) {
 
 ipcMain.handle('image:generate', async (_e, { provider, model, prompt, size, aspect, withLogo = true }) => {
   const p = provider || loadSettings().imageProvider;
-  const base64 = p === 'higgsfield' ? await higgsfieldGenerate(prompt, aspect) : await openaiGenerate(prompt, size, model, withLogo);
+  let base64;
+  if (p === 'higgsfield') base64 = await higgsfieldGenerate(prompt, aspect);
+  else if (p === 'google') { const logo = withLogo ? logoImage() : null; base64 = await googleGenerate(`${prompt}${logo ? '\n\n' + LOGO_RULES : ''}`, aspect, model, logo ? [logo] : []); }
+  else base64 = await openaiGenerate(prompt, size, model, withLogo);
   return { base64, mime: 'image/png', provider: p };
 });
 // list the image models this OpenAI key can actually use
@@ -661,7 +703,15 @@ ipcMain.handle('openai:imageModels', async () => {
 });
 
 // Edit the post image. withLogo: the real Atomax-UK logo is passed as a second input image so it comes out exact.
-ipcMain.handle('image:edit', async (_e, { prompt, image, size, withLogo = true, overlayText = '', model }) => {
+ipcMain.handle('image:edit', async (_e, { prompt, image, size, withLogo = true, overlayText = '', model, provider, aspect }) => {
+  if (provider === 'google') {
+    const logo = withLogo ? logoImage() : null;
+    let full = `Edit the FIRST attached photo as described, keeping its content, framing and realism: ${prompt}`;
+    if (logo) full += '\n\n' + LOGO_RULES;
+    if (overlayText) full += `\nAny text you add must read EXACTLY: "${overlayText}" with that exact spelling and capitalisation, crisp and legible, no other words.`;
+    const base64 = await googleGenerate(full, aspect || '1:1', model, [image, ...(logo ? [logo] : [])]);
+    return { base64, mime: 'image/png', provider: 'google' };
+  }
   const extra = [];
   let full = prompt;
   const logo = withLogo ? logoImage() : null;
@@ -685,6 +735,11 @@ ipcMain.handle('ai:test', async (_e, which) => {
     const r = await fetch(OPENAI + '/v1/models', { headers: { authorization: `Bearer ${s.openaiKey}` } });
     if (!r.ok) throw new Error('OpenAI ' + r.status);
     return 'OpenAI key works';
+  }
+  if (which === 'google') {
+    const r = await fetch(`${GOOGLE}/v1beta/models?pageSize=1`, { headers: { 'x-goog-api-key': s.googleKey } });
+    if (!r.ok) throw new Error('Google ' + r.status + ' ' + (await r.text()).slice(0, 200));
+    return 'Google key works';
   }
   if (which === 'higgsfield') {
     const r = await fetch('https://api.higgsfield.ai/v1/text2image/soul-styles', { headers: { authorization: `Key ${s.higgsfieldKeyId}:${s.higgsfieldSecret}` } });

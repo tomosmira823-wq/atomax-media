@@ -4,6 +4,7 @@ A 3D office (Three.js, Electron) where each social account has its own AI agent.
 
 - **Claude** (required) writes every post and reads the images.
 - **OpenAI** (optional) generates images and edits the ones you upload.
+- **Google Gemini** (optional) generates and edits images with the Nano Banana models (`gemini-nano-banana-2.1` recommended), with the photo and logo passed in as reference images. Key from https://aistudio.google.com/apikey.
 - **Higgsfield** (optional) generates images with SOUL.
 
 ## Run it

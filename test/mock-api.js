@@ -55,6 +55,8 @@ http.createServer(async (req, res) => {
       const cut = /YOUR PLATFORM: Facebook/.test(body.system) && !/Revise/.test(body.system) && !/reviewer/.test(body.system);
       return json({ content: [{ type: 'text', text: cut ? text.slice(0, Math.floor(text.length * 0.8)) : text }], stop_reason: cut ? 'max_tokens' : 'end_turn' });
     }
+    if (u.startsWith('/google/v1beta/interactions')) { const b = JSON.parse(raw.toString()); calls[calls.length - 1].refs = (b.input || []).filter(x => x.type === 'image').length; return json({ id: 'int_1', steps: [{ type: 'model_output', content: [{ type: 'image', mime_type: 'image/png', data: PNG }] }], output_image: { data: PNG } }); }
+    if (u.startsWith('/google/v1beta/models'))  return json({ models: [{ name: 'models/gemini-nano-banana-2.1' }] });
     if (u.startsWith('/openai/v1/models')) return json({ data: ['gpt-image-2.5-flare', 'gpt-image-2', 'gpt-image-1', 'dall-e-3', 'gpt-4o'].map(id => ({ id })) });
     if (u.startsWith('/openai/v1/images/generations') || u.startsWith('/openai/v1/images/edits')) {
       await new Promise(r => setTimeout(r, 300));
