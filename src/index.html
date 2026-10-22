@@ -97,6 +97,28 @@
   .badge.pass { background: #1f5a0f; color: #b9f59a; }
   .badge.fix { background: #5a3d0f; color: #ffd59a; }
   .badge.fail { background: #5a1414; color: #ffb3b3; }
+  .modal .box.wide { width: 980px; }
+  .team { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; margin: 14px 0; }
+  .team .tcard { border: 1px solid var(--line); border-radius: 14px; padding: 14px; background: #0b0f19; cursor: pointer; position: relative; transition: border-color .15s, transform .15s; }
+  .team .tcard:hover { border-color: var(--green); transform: translateY(-2px); }
+  .team .tcard .avatar { width: 56px; height: 56px; border-radius: 50%; margin: 0 auto 10px; position: relative; box-shadow: inset 0 -10px 18px rgba(0,0,0,.35); }
+  .team .tcard .avatar::before, .team .tcard .avatar::after { content: ''; position: absolute; top: 20px; width: 10px; height: 12px; border-radius: 50%; background: #fff; }
+  .team .tcard .avatar::before { left: 15px; } .team .tcard .avatar::after { right: 15px; }
+  .team .tcard .name { text-align: center; font-weight: 700; }
+  .team .tcard .plat { text-align: center; color: var(--muted); font-size: 12px; }
+  .team .tcard .badge { position: absolute; top: 10px; right: 10px; }
+  .team .tcard.off { opacity: .45; }
+  .badge.role { background: #1d2740; color: #9fb4e0; }
+  .badge.role.rev { background: #4a3608; color: #ffd59a; }
+  .loadout { display: grid; grid-template-columns: 340px 1fr; gap: 20px; }
+  .lo-left canvas { width: 340px; height: 380px; border-radius: 14px; background: radial-gradient(ellipse at 50% 20%, #1b2131, #0b0f19 70%); border: 1px solid var(--line); display: block; }
+  .swatches { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; }
+  .swatches .sw { width: 26px; height: 26px; border-radius: 50%; border: 2px solid transparent; cursor: pointer; }
+  .swatches .sw.on { border-color: #fff; }
+  .lo-colour input[type=color] { width: 60px; height: 26px; border: none; background: none; cursor: pointer; }
+  .gear { display: flex; flex-wrap: wrap; gap: 6px; }
+  .gear button { background: var(--navy2); color: var(--muted); border: 1px solid var(--line); border-radius: 20px; padding: 5px 11px; cursor: pointer; font: inherit; font-size: 12px; }
+  .gear button.on { color: #061000; background: var(--green); border-color: var(--green); font-weight: 700; }
   #history .card pre { max-height: 180px; }
   .hint { color: var(--muted); font-size: 12px; }
 </style>
@@ -151,7 +173,8 @@
     <label>Who's working on it?</label>
     <div class="agentpick" id="agentPick"></div>
     <label>Image</label>
-    <label style="display:flex;align-items:center;gap:8px;color:var(--text);font-size:13px;margin:0 0 6px"><input type="checkbox" id="makeImage" checked /> Make the image as part of the run <span class="hint">(edits your photo if one is attached, otherwise generates one)</span></label>
+    <label style="display:flex;align-items:center;gap:8px;color:var(--text);font-size:13px;margin:0 0 2px"><input type="checkbox" id="makeImage" checked /> Make the image in the run</label>
+    <div class="hint" style="margin:0 0 8px 22px">Edits your attached photo (banner, logo, text), or generates one if there's no photo.</div>
     <select id="imageProvider">
       <option value="openai">OpenAI (gpt-image)</option>
       <option value="higgsfield">Higgsfield (SOUL)</option>
@@ -177,12 +200,41 @@
   <div class="foot"><button class="btn" id="clearHistory">Clear all</button><button class="btn primary" data-close>Close</button></div>
 </div></div>
 
-<!-- Agents modal -->
-<div class="modal" id="agentsModal"><div class="box">
-  <h3>Agents</h3><div class="sub">Writers: one per social account, tone is the personality, rules are the hard limits. Reviewers: check every post and score it out of 10 — add as many as you like (checker, brand guardian, engagement coach). Every enabled agent gets a desk.</div>
-  <div id="agentList"></div>
-  <div class="row"><button class="btn" id="addAgent">+ Add writer</button><button class="btn" id="addReviewer">+ Add reviewer</button><button class="btn" id="resetAgents">Reset to defaults</button></div>
-  <div class="foot"><button class="btn" data-close>Cancel</button><button class="btn primary" id="saveAgents">Save agents</button></div>
+<!-- Agents modal: team grid, then a loadout screen per agent -->
+<div class="modal" id="agentsModal"><div class="box wide">
+  <div id="teamView">
+    <h3>Agents</h3><div class="sub">Tap an agent to open their loadout. Writers post to one account each; reviewers check every post and score it. Every enabled agent gets a desk.</div>
+    <div class="team" id="teamGrid"></div>
+    <div class="row"><button class="btn" id="addAgent">+ Add writer</button><button class="btn" id="addReviewer">+ Add reviewer</button><button class="btn" id="resetAgents">Reset to defaults</button></div>
+    <div class="foot"><button class="btn" data-close>Cancel</button><button class="btn primary" id="saveAgents">Save team</button></div>
+  </div>
+  <div id="loadoutView" style="display:none">
+    <div class="row" style="margin-bottom:10px"><button class="btn small" id="backToTeam">‹ Team</button><h3 style="margin:0" id="loName">Agent</h3><span class="hint" id="loRole"></span></div>
+    <div class="loadout">
+      <div class="lo-left">
+        <canvas id="loCanvas"></canvas>
+        <div class="lo-colour">
+          <label>Colour</label>
+          <div class="swatches" id="loSwatches"></div>
+          <input type="color" id="lo_colour" />
+        </div>
+        <label>Gear</label>
+        <div class="gear" id="loGear"></div>
+      </div>
+      <div class="lo-right">
+        <div class="grid2">
+          <div><label>Name</label><input type="text" id="lo_name" /></div>
+          <div><label id="lo_platformLabel">Platform</label><input type="text" id="lo_platform" /></div>
+          <div><label>Role</label><select id="lo_role"><option value="writer">Writer — posts to one account</option><option value="reviewer">Reviewer — checks every post</option></select></div>
+          <div><label>Status</label><label style="display:flex;align-items:center;gap:8px;color:var(--text);margin:8px 0"><input type="checkbox" id="lo_enabled" /> Enabled (has a desk, takes part in runs)</label></div>
+        </div>
+        <label id="lo_toneLabel">Tone / personality</label><textarea id="lo_tone" style="min-height:70px"></textarea>
+        <label id="lo_rulesLabel">Format rules</label><textarea id="lo_rules" style="min-height:60px"></textarea>
+        <label id="lo_examplesLabel">Example posts in this voice (optional)</label><textarea id="lo_examples" style="min-height:90px" placeholder="Paste 2 or 3 real posts. Saved permanently; the agent matches this voice every time."></textarea>
+      </div>
+    </div>
+    <div class="foot"><button class="btn" id="loRemove">Remove agent</button><span style="flex:1"></span><button class="btn" id="loCancel">Back without saving</button><button class="btn primary" id="loSave">Save loadout</button></div>
+  </div>
 </div></div>
 
 <!-- Settings modal -->

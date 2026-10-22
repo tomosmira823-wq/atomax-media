@@ -23,6 +23,99 @@ function box(w, h, d, m, x = 0, y = 0, z = 0, cast = true) {
 const texLoader = new THREE.TextureLoader();
 function tex(path) { const t = texLoader.load(path); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; return t; }
 
+
+// ---------- character builder (shared by the office scene and the loadout preview) ----------
+export const GEAR = ['glasses', 'hardhat', 'headset', 'tie', 'clipboard', 'lanyard'];
+export function buildCharacter(colour, role = 'writer', gear) {
+  const g = new THREE.Group();
+  const col = new THREE.Color(colour || '#40bd00');
+  const kit = Array.isArray(gear) ? gear : (role === 'reviewer' ? ['glasses', 'clipboard', 'lanyard'] : ['lanyard']);
+  const m = new THREE.MeshPhysicalMaterial({ color: col, roughness: 0.35, metalness: 0, clearcoat: 1, clearcoatRoughness: 0.15, envMapIntensity: 0.8 });
+  const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.42, 0.55, 8, 24), m); body.position.y = 0.85; body.castShadow = true; g.add(body);
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.5, 32, 24), m); head.position.y = 1.75; head.castShadow = true; g.add(head);
+  const eyeW = new THREE.MeshPhysicalMaterial({ color: 0xffffff, roughness: 0.1, clearcoat: 1 }), eyeB = mat(NAVY, { roughness: 0.2 });
+  [-0.17, 0.17].forEach(x => {
+    const e = new THREE.Mesh(new THREE.SphereGeometry(0.11, 16, 12), eyeW); e.position.set(x, 0.07, 0.44); head.add(e);
+    const p = new THREE.Mesh(new THREE.SphereGeometry(0.055, 12, 10), eyeB); p.position.set(x, 0.07, 0.53); head.add(p);
+  });
+  const arms = [], legs = [];
+  [-0.55, 0.55].forEach(x => { const a = new THREE.Mesh(new THREE.CapsuleGeometry(0.12, 0.45, 6, 14), m); a.position.set(x, 0.95, 0); a.castShadow = true; g.add(a); arms.push(a); });
+  [-0.2, 0.2].forEach(x => { const l = new THREE.Mesh(new THREE.CapsuleGeometry(0.14, 0.3, 6, 14), m); l.position.set(x, 0.3, 0); l.castShadow = true; g.add(l); legs.push(l); });
+  const dark = mat(NAVY2, { roughness: 0.3 });
+  if (kit.includes('lanyard')) {
+    g.add(box(0.16, 0.2, 0.02, mat(0xffffff), 0.08, 0.95, 0.44, false));
+    g.add(box(0.12, 0.05, 0.03, mat(GREEN), 0.08, 1.01, 0.45, false));
+  }
+  if (kit.includes('glasses')) {
+    [-0.17, 0.17].forEach(x => { const r = new THREE.Mesh(new THREE.TorusGeometry(0.15, 0.025, 8, 24), dark); r.position.set(x, 0.07, 0.5); head.add(r); });
+    head.add(box(0.1, 0.03, 0.03, dark, 0, 0.07, 0.5, false));
+  }
+  if (kit.includes('hardhat')) {
+    const hat = new THREE.Mesh(new THREE.SphereGeometry(0.54, 24, 16, 0, Math.PI * 2, 0, Math.PI / 2.6), mat(0xffffff, { roughness: 0.4 })); hat.position.y = 0.08; head.add(hat);
+    const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.62, 0.62, 0.05, 32), mat(0xffffff, { roughness: 0.4 })); brim.position.y = 0.22; head.add(brim);
+    const stripe = new THREE.Mesh(new THREE.TorusGeometry(0.545, 0.025, 8, 32), mat(GREEN)); stripe.rotation.x = Math.PI / 2; stripe.position.y = 0.26; head.add(stripe);
+  }
+  if (kit.includes('headset')) {
+    const band = new THREE.Mesh(new THREE.TorusGeometry(0.52, 0.035, 8, 32, Math.PI), dark); band.position.y = 0.05; head.add(band);
+    [-0.5, 0.5].forEach(x => { const cup = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.08, 16), dark); cup.rotation.z = Math.PI / 2; cup.position.set(x, 0.02, 0); head.add(cup); });
+    const mic = box(0.03, 0.03, 0.3, dark, 0.4, -0.15, 0.3, false); mic.rotation.y = 0.6; head.add(mic);
+    const micTip = new THREE.Mesh(new THREE.SphereGeometry(0.04, 8, 8), mat(GREEN)); micTip.position.set(0.22, -0.18, 0.45); head.add(micTip);
+  }
+  if (kit.includes('tie')) {
+    const tie = box(0.1, 0.42, 0.03, mat(GREEN, { roughness: 0.5 }), 0, 0.95, 0.44, false); g.add(tie);
+    const knot = box(0.13, 0.08, 0.04, mat(GREEN, { roughness: 0.5 }), 0, 1.2, 0.44, false); g.add(knot);
+  }
+  if (kit.includes('clipboard')) {
+    const clip = box(0.32, 0.42, 0.03, mat(WOOD), -0.62, 1.05, 0.3, false); clip.rotation.y = 0.4; g.add(clip);
+    const paper = box(0.28, 0.36, 0.01, mat(0xffffff), -0.62, 1.04, 0.33, false); paper.rotation.y = 0.4; g.add(paper);
+  }
+  g.userData = { arms, legs, body, head };
+  return g;
+}
+
+// Small turntable preview of one agent for the loadout screen
+export class AgentPreview {
+  constructor(canvas) {
+    this.canvas = canvas;
+    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    this.renderer.shadowMap.enabled = true;
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.scene = new THREE.Scene();
+    const pmrem = new THREE.PMREMGenerator(this.renderer);
+    this.scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+    this.camera = new THREE.PerspectiveCamera(32, 1, 0.1, 50);
+    this.camera.position.set(0, 2.1, 5.6); this.camera.lookAt(0, 1.15, 0);
+    this.scene.add(new THREE.HemisphereLight(0xe8eeff, 0x202633, 0.7));
+    const sun = new THREE.DirectionalLight(0xfff1dc, 2.2); sun.position.set(-3, 6, 4); sun.castShadow = true; sun.shadow.mapSize.set(1024, 1024); this.scene.add(sun);
+    const disc = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 1.5, 0.12, 48), mat(NAVY2, { roughness: 0.6 })); disc.position.y = -0.06; disc.receiveShadow = true; this.scene.add(disc);
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(1.5, 0.03, 8, 64), mat(GREEN, { emissive: GREEN, emissiveIntensity: 0.6 })); ring.rotation.x = Math.PI / 2; ring.position.y = 0.0; this.scene.add(ring);
+    this.t = 0; this.running = false;
+    this.show({ colour: '#40bd00', role: 'writer' });
+  }
+  show(agent) {
+    if (this.char) this.scene.remove(this.char);
+    this.char = buildCharacter(agent.colour, agent.role, agent.gear);
+    this.scene.add(this.char);
+  }
+  start() { if (this.running) return; this.running = true; this.clock = new THREE.Clock(); const loop = () => { if (!this.running) return; requestAnimationFrame(loop); this.step(); }; loop(); }
+  stop() { this.running = false; }
+  step() {
+    const dt = this.clock ? this.clock.getDelta() : 0.016; this.t += dt;
+    const w = this.canvas.clientWidth || 320, h = this.canvas.clientHeight || 360;
+    if (this.canvas.width !== w * this.renderer.getPixelRatio()) { this.renderer.setSize(w, h, false); this.camera.aspect = w / h; this.camera.updateProjectionMatrix(); }
+    if (this.char) {
+      const ud = this.char.userData;
+      this.char.rotation.y = Math.sin(this.t * 0.5) * 0.35;
+      ud.body.position.y = 0.85 + Math.sin(this.t * 2) * 0.02;
+      ud.arms[1].rotation.z = -2.4 + Math.sin(this.t * 6) * 0.35;   // wave
+      ud.arms[1].position.y = 1.15;
+      ud.head.rotation.z = Math.sin(this.t * 1.5) * 0.08;
+    }
+    this.renderer.render(this.scene, this.camera);
+  }
+}
+
 export class Office {
   constructor(canvas, labelsDiv) {
     this.canvas = canvas; this.labelsDiv = labelsDiv;
@@ -306,32 +399,6 @@ export class Office {
     return g;
   }
 
-  #character(colour, role = 'writer') {
-    const g = new THREE.Group();
-    const m = new THREE.MeshPhysicalMaterial({ color: colour, roughness: 0.35, metalness: 0, clearcoat: 1, clearcoatRoughness: 0.15, envMapIntensity: 0.8 });
-    const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.42, 0.55, 8, 24), m); body.position.y = 0.85; body.castShadow = true; g.add(body);
-    const head = new THREE.Mesh(new THREE.SphereGeometry(0.5, 32, 24), m); head.position.y = 1.75; head.castShadow = true; g.add(head);
-    const eyeW = new THREE.MeshPhysicalMaterial({ color: 0xffffff, roughness: 0.1, clearcoat: 1 }), eyeB = mat(NAVY, { roughness: 0.2 });
-    [-0.17, 0.17].forEach(x => {
-      const e = new THREE.Mesh(new THREE.SphereGeometry(0.11, 16, 12), eyeW); e.position.set(x, 0.07, 0.44); head.add(e);
-      const p = new THREE.Mesh(new THREE.SphereGeometry(0.055, 12, 10), eyeB); p.position.set(x, 0.07, 0.53); head.add(p);
-    });
-    g.add(box(0.16, 0.2, 0.02, mat(0xffffff), 0.08, 0.95, 0.44, false));
-    g.add(box(0.12, 0.05, 0.03, mat(GREEN), 0.08, 1.01, 0.45, false));
-    const arms = [], legs = [];
-    [-0.55, 0.55].forEach(x => { const a = new THREE.Mesh(new THREE.CapsuleGeometry(0.12, 0.45, 6, 14), m); a.position.set(x, 0.95, 0); a.castShadow = true; g.add(a); arms.push(a); });
-    [-0.2, 0.2].forEach(x => { const l = new THREE.Mesh(new THREE.CapsuleGeometry(0.14, 0.3, 6, 14), m); l.position.set(x, 0.3, 0); l.castShadow = true; g.add(l); legs.push(l); });
-    if (role === 'reviewer') {
-      const frame = mat(NAVY2, { roughness: 0.3 });
-      [-0.17, 0.17].forEach(x => { const r = new THREE.Mesh(new THREE.TorusGeometry(0.15, 0.025, 8, 24), frame); r.position.set(x, 0.07, 0.5); head.add(r); });
-      head.add(box(0.1, 0.03, 0.03, frame, 0, 0.07, 0.5, false));
-      const clip = box(0.32, 0.42, 0.03, mat(WOOD), -0.62, 1.05, 0.3, false); clip.rotation.y = 0.4; g.add(clip);
-      const paper = box(0.28, 0.36, 0.01, mat(0xffffff), -0.62, 1.04, 0.33, false); paper.rotation.y = 0.4; g.add(paper);
-    }
-    g.userData = { arms, legs, body, head };
-    return g;
-  }
-
   // ---------- public API ----------
   setAgents(list) {
     if (!this.models['desk-teacher']) { this.pendingAgents = list; return; }
@@ -345,7 +412,7 @@ export class Office {
       const chair = this.#put('chair-desk', { pos: [dx, 0, dz - 1.45], rot: 0, scale: K * 1.15, colours: { metal: NAVY2, carpetBlue: '#' + colour.getHexString() } });
       const seat = new THREE.Vector3(dx, 0, dz - 1.35);
       this.obstacles.push({ x: dx, z: dz - 0.6, r: 2.4, desk: true });
-      const group = this.#character(colour, data.role);
+      const group = buildCharacter(data.colour, data.role, data.gear);
       group.position.copy(this.#randomIdlePoint());
       this.scene.add(group);
       const el = document.createElement('div'); el.className = 'lbl';

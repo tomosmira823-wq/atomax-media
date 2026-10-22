@@ -1,4 +1,4 @@
-import { Office } from './office.js';
+import { Office, AgentPreview, GEAR } from './office.js';
 
 const $ = (s) => document.querySelector(s);
 const api = window.office;
@@ -42,11 +42,12 @@ document.querySelectorAll('#top .tabs button').forEach(b => b.addEventListener('
   b.classList.add('active');
   const t = b.dataset.tab;
   if (t === 'history') { renderHistory(); openModal('historyModal'); }
-  if (t === 'agents') { renderAgentEditor(); openModal('agentsModal'); }
+  if (t === 'agents') { renderTeam(); openModal('agentsModal'); }
   if (t === 'settings') { fillSettings(); openModal('settingsModal'); }
 }));
 function openModal(id) { $('#' + id).classList.add('open'); }
 function closeModals() {
+  if (preview) preview.stop();
   document.querySelectorAll('.modal').forEach(m => m.classList.remove('open'));
   document.querySelectorAll('#top .tabs button').forEach(x => x.classList.toggle('active', x.dataset.tab === 'office'));
 }
@@ -82,50 +83,71 @@ function renderAgentPick() {
   $('#agentPick').innerHTML = (writers.map(row).join('') || '<span class="hint">No writers enabled. Add some in the Agents tab.</span>')
     + (reviewers.length ? `<div class="hint" style="margin-top:6px">Reviewers (check every post)</div>` + reviewers.map(row).join('') : '');
 }
-function renderAgentEditor() {
-  $('#agentList').innerHTML = agents.map((a, i) => `
-    <div class="agentrow" data-i="${i}">
-      <div class="top">
-        <input type="checkbox" class="a_enabled" ${a.enabled ? 'checked' : ''} title="Enabled" />
-        <select class="a_role" style="width:110px"><option value="writer" ${isReviewer(a) ? '' : 'selected'}>Writer</option><option value="reviewer" ${isReviewer(a) ? 'selected' : ''}>Reviewer</option></select>
-        <input type="color" class="a_colour" value="${a.colour}" />
-        <input type="text" class="a_name" value="${esc(a.name)}" placeholder="Agent name" style="width:140px" />
-        <input type="text" class="a_platform" value="${esc(a.platform)}" placeholder="${isReviewer(a) ? 'Job (e.g. Checker)' : 'Platform'}" style="width:160px" />
-        <button class="btn small a_del" style="margin-left:auto">Remove</button>
-      </div>
-      <label>${isReviewer(a) ? 'How they review (attitude, what they care about)' : 'Tone / personality'}</label><textarea class="a_tone" style="min-height:60px">${esc(a.tone)}</textarea>
-      <label>${isReviewer(a) ? 'What they check' : 'Format rules'}</label><textarea class="a_rules" style="min-height:50px">${esc(a.rules)}</textarea>
-      <label>${isReviewer(a) ? 'Example reviews or notes (optional)' : 'Example posts in this voice (optional) — paste 2 or 3 real ones'}</label><textarea class="a_examples" style="min-height:50px" placeholder="Saved permanently. The agent matches this voice every time.">${esc(a.examples || '')}</textarea>
+// ---------- agents: team grid + loadout ----------
+const SWATCHES = ['#0a66c2', '#e1306c', '#1877f2', '#111111', '#00f2ea', '#f59f00', '#40bd00', '#8e44ad', '#20c997', '#ff6b35', '#ffffff', '#ff4757'];
+let preview = null, loIndex = -1, loDraft = null;
+
+function roleBadge(a) { return isReviewer(a) ? '<span class="badge role rev">REVIEWER</span>' : '<span class="badge role">WRITER</span>'; }
+
+function renderTeam() {
+  $('#teamView').style.display = ''; $('#loadoutView').style.display = 'none';
+  if (preview) preview.stop();
+  $('#teamGrid').innerHTML = agents.map((a, i) => `
+    <div class="tcard ${a.enabled ? '' : 'off'}" data-i="${i}">
+      ${roleBadge(a)}
+      <div class="avatar" style="background:${a.colour}"></div>
+      <div class="name">${esc(a.name)}</div>
+      <div class="plat">${esc(a.platform)}${a.enabled ? '' : ' · off'}</div>
     </div>`).join('');
-  $('#agentList').querySelectorAll('.a_del').forEach(b => b.addEventListener('click', () => { agents.splice(+b.closest('.agentrow').dataset.i, 1); renderAgentEditor(); }));
-  $('#agentList').querySelectorAll('.a_role').forEach(sel => sel.addEventListener('change', () => { agents = readAgentEditor(); renderAgentEditor(); }));
+  $('#teamGrid').querySelectorAll('.tcard').forEach(c => c.addEventListener('click', () => openLoadout(+c.dataset.i)));
 }
-function readAgentEditor() {
-  return [...$('#agentList').querySelectorAll('.agentrow')].map((r, i) => ({
-    id: agents[i]?.id || ('agent-' + Date.now() + i),
-    enabled: r.querySelector('.a_enabled').checked,
-    role: r.querySelector('.a_role').value,
-    colour: r.querySelector('.a_colour').value,
-    name: r.querySelector('.a_name').value.trim() || 'Agent',
-    platform: r.querySelector('.a_platform').value.trim() || 'Platform',
-    tone: r.querySelector('.a_tone').value.trim(),
-    rules: r.querySelector('.a_rules').value.trim(),
-    examples: r.querySelector('.a_examples').value.trim()
-  }));
+
+function openLoadout(i) {
+  loIndex = i; loDraft = { ...agents[i], gear: agents[i].gear ? [...agents[i].gear] : (isReviewer(agents[i]) ? ['glasses', 'clipboard', 'lanyard'] : ['lanyard']) };
+  $('#teamView').style.display = 'none'; $('#loadoutView').style.display = '';
+  if (!preview) { preview = new AgentPreview($('#loCanvas')); window.__preview = preview; }
+  fillLoadout();
+  preview.show(loDraft); preview.start();
 }
+
+function fillLoadout() {
+  const a = loDraft, rev = isReviewer(a);
+  $('#loName').textContent = a.name; $('#loRole').textContent = rev ? 'reviewer' : a.platform;
+  $('#lo_name').value = a.name; $('#lo_platform').value = a.platform; $('#lo_role').value = rev ? 'reviewer' : 'writer';
+  $('#lo_enabled').checked = !!a.enabled; $('#lo_colour').value = a.colour;
+  $('#lo_tone').value = a.tone || ''; $('#lo_rules').value = a.rules || ''; $('#lo_examples').value = a.examples || '';
+  $('#lo_platformLabel').textContent = rev ? 'Job (e.g. Checker, Brand guardian)' : 'Platform';
+  $('#lo_toneLabel').textContent = rev ? 'How they review (attitude, what they care about)' : 'Tone / personality';
+  $('#lo_rulesLabel').textContent = rev ? 'What they check' : 'Format rules';
+  $('#lo_examplesLabel').textContent = rev ? 'Example reviews or notes (optional)' : 'Example posts in this voice (optional)';
+  $('#loSwatches').innerHTML = SWATCHES.map(c => `<div class="sw ${c.toLowerCase() === a.colour.toLowerCase() ? 'on' : ''}" style="background:${c}" data-c="${c}"></div>`).join('');
+  $('#loSwatches').querySelectorAll('.sw').forEach(s => s.addEventListener('click', () => { loDraft.colour = s.dataset.c; $('#lo_colour').value = s.dataset.c; fillLoadout(); preview.show(loDraft); }));
+  const names = { glasses: 'Glasses', hardhat: 'Hard hat', headset: 'Headset', tie: 'Green tie', clipboard: 'Clipboard', lanyard: 'Lanyard' };
+  $('#loGear').innerHTML = GEAR.map(g => `<button class="${a.gear.includes(g) ? 'on' : ''}" data-g="${g}">${names[g]}</button>`).join('');
+  $('#loGear').querySelectorAll('button').forEach(b => b.addEventListener('click', () => { const g = b.dataset.g; loDraft.gear = loDraft.gear.includes(g) ? loDraft.gear.filter(x => x !== g) : [...loDraft.gear, g]; fillLoadout(); preview.show(loDraft); }));
+}
+function readLoadout() {
+  loDraft.name = $('#lo_name').value.trim() || 'Agent'; loDraft.platform = $('#lo_platform').value.trim() || 'Platform';
+  loDraft.role = $('#lo_role').value; loDraft.enabled = $('#lo_enabled').checked; loDraft.colour = $('#lo_colour').value;
+  loDraft.tone = $('#lo_tone').value.trim(); loDraft.rules = $('#lo_rules').value.trim(); loDraft.examples = $('#lo_examples').value.trim();
+}
+$('#lo_colour').addEventListener('input', () => { loDraft.colour = $('#lo_colour').value; preview.show(loDraft); });
+$('#lo_role').addEventListener('change', () => { readLoadout(); fillLoadout(); preview.show(loDraft); });
+$('#lo_name').addEventListener('input', () => { $('#loName').textContent = $('#lo_name').value; });
+$('#loSave').addEventListener('click', () => { readLoadout(); agents[loIndex] = loDraft; renderTeam(); });
+$('#loCancel').addEventListener('click', renderTeam);
+$('#backToTeam').addEventListener('click', renderTeam);
+$('#loRemove').addEventListener('click', () => { agents.splice(loIndex, 1); renderTeam(); });
 $('#addAgent').addEventListener('click', () => {
-  agents = readAgentEditor();
-  agents.push({ id: 'agent-' + Date.now(), enabled: true, role: 'writer', colour: '#8e44ad', name: 'New writer', platform: 'YouTube', tone: 'Describe the personality here.', rules: 'Formatting limits here.' });
-  renderAgentEditor();
+  agents.push({ id: 'agent-' + Date.now(), enabled: true, role: 'writer', colour: '#8e44ad', name: 'New writer', platform: 'YouTube', tone: 'Describe the personality here.', rules: 'Formatting limits here.', gear: ['lanyard'] });
+  openLoadout(agents.length - 1);
 });
 $('#addReviewer').addEventListener('click', () => {
-  agents = readAgentEditor();
-  agents.push({ id: 'agent-' + Date.now(), enabled: true, role: 'reviewer', colour: '#20c997', name: 'New reviewer', platform: 'Engagement coach', tone: 'Thinks only about whether people will stop, read and react.', rules: 'Hook strength, clarity, whether there is a reason to comment or share, whether it sounds like a human wrote it. Score 1-10.' });
-  renderAgentEditor();
+  agents.push({ id: 'agent-' + Date.now(), enabled: true, role: 'reviewer', colour: '#20c997', name: 'New reviewer', platform: 'Engagement coach', tone: 'Thinks only about whether people will stop, read and react.', rules: 'Hook strength, clarity, whether there is a reason to comment or share, whether it sounds like a human wrote it. Score 1-10.', gear: ['glasses', 'clipboard', 'lanyard'] });
+  openLoadout(agents.length - 1);
 });
-$('#resetAgents').addEventListener('click', async () => { agents = await api.agents.reset(); renderAgentEditor(); });
+$('#resetAgents').addEventListener('click', async () => { agents = await api.agents.reset(); renderTeam(); });
 $('#saveAgents').addEventListener('click', async () => {
-  agents = readAgentEditor();
   await api.agents.set(agents);
   office.setAgents(agents.filter(a => a.enabled)); renderAgentPick(); closeModals();
 });
