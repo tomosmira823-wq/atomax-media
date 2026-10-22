@@ -511,10 +511,28 @@ function openaiImageBody(model, prompt, size) {
   }
   return { model: 'dall-e-2', prompt: prompt.slice(0, 1000), size: '1024x1024', n: 1, response_format: 'b64_json' };
 }
-async function openaiGenerate(prompt, size, model) {
+async function openaiGenerate(prompt, size, model, withLogo = true) {
   const s = loadSettings();
   if (!s.openaiKey) throw new Error('No OpenAI key. Add it in Settings or switch the image provider.');
   model = model || s.openaiImageModel || 'gpt-image-1';
+  const logo = withLogo && model.startsWith('gpt-image') ? logoImage() : null;
+  if (logo) {
+    // gpt-image can compose a brand-new image from reference images: send the logo so it comes out exact
+    const fd = new FormData();
+    fd.append('model', model);
+    fd.append('prompt', `Create a brand-new image (do not simply reproduce the attached file): ${prompt}\n\n${LOGO_RULES}`);
+    fd.append('size', size === 'auto' || !size ? '1024x1024' : size);
+    const q = s.openaiImageQuality || 'high';
+    fd.append('quality', /gpt-image-2\.5|gpt-image-[3-9]/.test(model) ? q : (['xhigh', 'max'].includes(q) ? 'high' : q));
+    fd.append('image[]', new Blob([Buffer.from(logo.base64, 'base64')], { type: logo.mime }), logo.name);
+    const res = await fetch(OPENAI + '/v1/images/edits', { method: 'POST', headers: { authorization: `Bearer ${s.openaiKey}` }, body: fd });
+    const data = await res.json();
+    if (!res.ok) throw new Error(`OpenAI ${res.status}: ${data?.error?.message || JSON.stringify(data)}`);
+    const item = data.data?.[0] || {};
+    if (item.b64_json) return item.b64_json;
+    if (item.url) return await downloadBase64(item.url);
+    throw new Error('OpenAI returned no image');
+  }
   const res = await fetch(OPENAI + '/v1/images/generations', {
     method: 'POST',
     headers: { 'content-type': 'application/json', authorization: `Bearer ${s.openaiKey}` },
@@ -528,7 +546,23 @@ async function openaiGenerate(prompt, size, model) {
   throw new Error('OpenAI returned no image');
 }
 
-const LOGO_PATH = path.join(__dirname, 'assets', 'atomax-logo.png');
+// Brand logo: the user's own file (Settings → Brand logo) or the bundled Atomax-UK logo (transparent, upscaled)
+const BUNDLED_LOGO = path.join(__dirname, 'assets', 'atomax-logo-clear.png');
+const USER_LOGO = () => path.join(USER_DIR(), 'brand-logo.png');
+function logoImage() {
+  const p = fs.existsSync(USER_LOGO()) ? USER_LOGO() : BUNDLED_LOGO;
+  if (!fs.existsSync(p)) return null;
+  return { base64: fs.readFileSync(p).toString('base64'), mime: 'image/png', name: 'brand-logo.png' };
+}
+const LOGO_RULES = `The LAST attached image is the official company logo. Wherever the design calls for the logo or branding, reproduce that logo exactly as given: same mark, same wordmark, same proportions and colours. Never redraw, restyle, re-letter or approximate it. Brand colours: navy #0E121D, green #40BD00, white text.`;
+ipcMain.handle('logo:set', async () => {
+  const r = await dialog.showOpenDialog(win, { title: 'Choose the brand logo (PNG with transparent background works best)', properties: ['openFile'], filters: [{ name: 'PNG', extensions: ['png'] }] });
+  if (r.canceled) return null;
+  fs.mkdirSync(USER_DIR(), { recursive: true }); fs.copyFileSync(r.filePaths[0], USER_LOGO());
+  return { custom: true, base64: fs.readFileSync(USER_LOGO()).toString('base64') };
+});
+ipcMain.handle('logo:reset', () => { try { fs.unlinkSync(USER_LOGO()); } catch {} return { custom: false, base64: fs.readFileSync(BUNDLED_LOGO).toString('base64') }; });
+ipcMain.handle('logo:get', () => ({ custom: fs.existsSync(USER_LOGO()), base64: (logoImage() || {}).base64 }));
 async function openaiEdit(prompt, image, size, extraImages = [], model) {
   const s = loadSettings();
   if (!s.openaiKey) throw new Error('No OpenAI key. Image edits need OpenAI.');
@@ -611,9 +645,9 @@ async function higgsfieldGenerate(prompt, aspect) {
   throw new Error('Higgsfield job timed out');
 }
 
-ipcMain.handle('image:generate', async (_e, { provider, model, prompt, size, aspect }) => {
+ipcMain.handle('image:generate', async (_e, { provider, model, prompt, size, aspect, withLogo = true }) => {
   const p = provider || loadSettings().imageProvider;
-  const base64 = p === 'higgsfield' ? await higgsfieldGenerate(prompt, aspect) : await openaiGenerate(prompt, size, model);
+  const base64 = p === 'higgsfield' ? await higgsfieldGenerate(prompt, aspect) : await openaiGenerate(prompt, size, model, withLogo);
   return { base64, mime: 'image/png', provider: p };
 });
 // list the image models this OpenAI key can actually use
@@ -630,9 +664,10 @@ ipcMain.handle('openai:imageModels', async () => {
 ipcMain.handle('image:edit', async (_e, { prompt, image, size, withLogo = true, overlayText = '', model }) => {
   const extra = [];
   let full = prompt;
-  if (withLogo && fs.existsSync(LOGO_PATH)) {
-    extra.push({ base64: fs.readFileSync(LOGO_PATH).toString('base64'), mime: 'image/png', name: 'atomax-logo.png' });
-    full += `\n\nThe first image is the photo to edit: keep all of its content, framing and realism. The second image is the official Atomax-UK logo: reproduce it exactly as given (green block icon, 'ATOMAX-UK' wordmark, 'Engineering Consultants' tagline), do not redraw or restyle it. Brand colours: navy #0E121D, green #40BD00, white text.`;
+  const logo = withLogo ? logoImage() : null;
+  if (logo) {
+    extra.push(logo);
+    full += `\n\nThe FIRST attached image is the photo to edit: keep all of its content, framing and realism. ${LOGO_RULES}`;
   }
   if (overlayText) full += `\nAny text you add must read EXACTLY: "${overlayText}" with that exact spelling and capitalisation, crisp and legible, no other words.`;
   const base64 = await openaiEdit(full, image, size, extra, model);

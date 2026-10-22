@@ -112,8 +112,15 @@ document.querySelectorAll('.conn .cdisconnect').forEach(b => b.addEventListener(
   settings.social = await api.social.disconnect(b.closest('.conn').dataset.key); fillConnections();
 }));
 
+async function fillLogo() {
+  const l = await api.logo.get();
+  if (l?.base64) $('#logoPreview').src = 'data:image/png;base64,' + l.base64;
+  $('#logoHint').textContent = l?.custom ? 'Your logo file' : 'Built-in Atomax-UK logo';
+}
+$('#logoPick').addEventListener('click', async () => { const r = await api.logo.set(); if (r) fillLogo(); });
+$('#logoReset').addEventListener('click', async () => { await api.logo.reset(); fillLogo(); });
 function fillSettings() {
-  fillConnections();
+  fillConnections(); fillLogo();
   for (const k of ['anthropicKey', 'openaiKey', 'higgsfieldKeyId', 'higgsfieldSecret', 'claudeModel', 'openaiImageModel', 'higgsfieldModel', 'imageProvider']) $('#s_' + k).value = settings[k] || '';
   for (const k of ['name', 'about', 'audience', 'website', 'doNot', 'knowledge']) $('#c_' + k).value = settings.company[k] || '';
   $('#siteHint').textContent = settings.company.pulledAt ? 'Last pulled ' + new Date(settings.company.pulledAt).toLocaleString('en-GB') + ' from ' + (settings.company.pages || []).length + ' pages.' : '';

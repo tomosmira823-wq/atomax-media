@@ -63,6 +63,10 @@ src/icon.*       app icon
 
 Posts, agents and settings are saved in `%APPDATA%\Atomax Media Office\`.
 
+## Brand logo
+
+Every gpt-image call (generate or edit) gets the real logo file attached as a reference image, with instructions to reproduce it exactly, so branding isn't drawn from memory. The bundled file is the Atomax-UK logo (transparent, upscaled). Settings → Company profile → Brand logo lets you choose your own PNG (transparent background works best) or go back to the built-in one. DALL·E models can't take reference images, so with those the logo is only as good as the model's guess.
+
 ## Connecting the socials (posting from the board)
 
 Settings → Connections. Each platform needs a developer app of your own; paste its ID/secret, press *Connect*, log in in the browser, done. Register this callback URL in every app: `http://127.0.0.1:52817/callback`. Tokens are stored encrypted with the keys. Once connected, each post card gets a *Post to …* button (with the image if there is one).

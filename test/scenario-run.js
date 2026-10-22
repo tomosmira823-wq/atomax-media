@@ -57,9 +57,12 @@
     await until(() => document.querySelectorAll('#boardBody .card img.post-img:not(.draft)').length >= 3, 90000);
     const calls = await (await fetch('http://127.0.0.1:52900/__calls')).json();
     const gens = calls.filter(c => /images\/generations/.test(c.url)).length, edits = calls.filter(c => /images\/edits/.test(c.url)).length;
-    if (V === 'nophoto' && (gens !== 3 || edits !== 0)) throw new Error(`expected 3 generations, got gens=${gens} edits=${edits}`);
+    // no photo + gpt-image model: generation goes through /edits with the logo attached (one multipart with the logo per agent)
+    const bigEdits = calls.filter(c => /images\/edits/.test(c.url) && c.len > 200000).length;
+    if (V === 'nophoto' && (edits !== 3 || gens !== 0 || bigEdits !== 3)) throw new Error(`expected 3 logo-backed edits, got gens=${gens} edits=${edits} withLogo=${bigEdits}`);
     if (V === 'shared' && (edits !== 1)) throw new Error(`expected 1 edit for shared, got edits=${edits} gens=${gens}`);
-    if (V === '' && (edits !== 3 || gens !== 0)) throw new Error(`expected 3 edits, got edits=${edits} gens=${gens}`);
+    const withLogo = calls.filter(c => /images\/edits/.test(c.url) && c.len > 200000).length;
+    if (V === '' && (edits < 3 || gens !== 0 || withLogo < 3)) throw new Error(`expected logo-backed edits, got edits=${edits} gens=${gens} withLogo=${withLogo}`);
     return `images on 3 cards; API calls gens=${gens} edits=${edits}`;
   });
 
