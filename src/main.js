@@ -168,6 +168,7 @@ function createWindow() {
         const out = await win.webContents.executeJavaScript(script);
         console.error('[scenario]', JSON.stringify(out));
       }
+      else if (process.env.AMO_VIEW === 'behind') await win.webContents.executeJavaScript(`(async()=>{ window.__office.camera.position.set(-38, 14, 6); window.__office.controls.target.set(0, 1, 0); for (let i=0;i<${process.env.AMO_FRAMES || 8};i++) { window.__office.step(0.3); await new Promise(r=>setTimeout(r,0)); } })()`);
       else if (process.env.AMO_VIEW === 'collapsed') await win.webContents.executeJavaScript(`(async()=>{ document.querySelectorAll('.panel .collapse').forEach(b => b.click()); window.__office.camera.position.set(-6, 22, 40); window.__office.controls.target.set(1, 0.5, 0); for (let i=0;i<${process.env.AMO_FRAMES || 20};i++) { window.__office.step(0.3); await new Promise(r=>setTimeout(r,0)); } })()`);
       else if (process.env.AMO_VIEW === 'loadout') await win.webContents.executeJavaScript(`(async()=>{ document.querySelector('[data-tab=agents]').click(); await new Promise(r=>setTimeout(r,200)); document.querySelector('.tcard').click(); await new Promise(r=>setTimeout(r,200)); for (let i=0;i<${process.env.AMO_FRAMES || 20};i++) { window.__preview.t += 0.1; window.__preview.step(); await new Promise(r=>setTimeout(r,0)); } })()`);
       else if (process.env.AMO_VIEW === 'history') await win.webContents.executeJavaScript(`(async()=>{ document.querySelector('[data-tab=history]').click(); for (let i=0;i<4;i++) { window.__office.step(0.1); await new Promise(r=>setTimeout(r,0)); } })()`);
@@ -194,7 +195,13 @@ app.whenReady().then(() => {
   }
 });
 ipcMain.handle('update:install', () => autoUpdater.quitAndInstall());
-ipcMain.handle('update:check', async () => { if (!app.isPackaged) return 'Dev build, no updates'; const r = await autoUpdater.checkForUpdates(); return r?.updateInfo?.version ? 'Latest on GitHub: v' + r.updateInfo.version : 'No update info'; });
+ipcMain.handle('update:check', async () => {
+  if (!app.isPackaged) return 'Dev build, no updates';
+  const r = await autoUpdater.checkForUpdates();
+  const latest = r?.updateInfo?.version; if (!latest) return 'Could not reach GitHub releases';
+  const cmp = latest.localeCompare(app.getVersion(), undefined, { numeric: true });
+  return cmp > 0 ? `v${latest} available — downloading, you'll get a Restart button` : `You're on the latest (v${app.getVersion()})`;
+});
 ipcMain.handle('app:version', () => app.getVersion());
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
 

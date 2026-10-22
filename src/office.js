@@ -194,30 +194,31 @@ export class Office {
     const border = new THREE.Mesh(new THREE.PlaneGeometry(W, 1.6), mat(NAVY2, { roughness: 0.5 })); border.rotation.x = -Math.PI / 2; border.position.set(0, 0.02, -D / 2 + 0.8); border.receiveShadow = true; s.add(border);
     const stripe = new THREE.Mesh(new THREE.PlaneGeometry(W, 0.12), mat(GREEN, { emissive: GREEN, emissiveIntensity: 0.35 })); stripe.rotation.x = -Math.PI / 2; stripe.position.set(0, 0.035, -D / 2 + 1.66); s.add(stripe);
     s.add(box(W + 1, 0.6, D + 1, mat(NAVY2), 0, -0.32, 0, false));
-    s.add(box(W, 0.18, 0.08, mat(NAVY2), 0, 0.09, -D / 2 + 0.04, false));
-    s.add(box(0.08, 0.18, D, mat(NAVY2), -W / 2 + 0.04, 0.09, 0, false));
 
-    // back wall (navy) and left wall (white with windows)
-    s.add(box(W, WALL_H, 0.3, mat(NAVY, { roughness: 0.9 }), 0, WALL_H / 2, -D / 2 - 0.15));
-    s.add(box(W, 0.14, 0.05, mat(GREEN, { emissive: GREEN, emissiveIntensity: 0.5 }), 0, 5.3, -D / 2 + 0.05, false));
-    s.add(box(0.3, WALL_H, D, mat(0xeef0f3, { roughness: 0.95 }), -W / 2 - 0.15, WALL_H / 2, 0));
-    s.add(box(0.05, 0.14, D, mat(GREEN, { emissive: GREEN, emissiveIntensity: 0.5 }), -W / 2 + 0.05, 5.3, 0, false));
+
+    // Walls are grouped so they can be hidden when the camera looks from behind them (no more staring at the back of a wall).
+    this.backWall = new THREE.Group(); this.leftWall = new THREE.Group(); s.add(this.backWall); s.add(this.leftWall);
+    const B = this.backWall, L = this.leftWall;
+    B.add(box(W, WALL_H, 0.3, mat(NAVY, { roughness: 0.9 }), 0, WALL_H / 2, -D / 2 - 0.15));
+    B.add(box(W, 0.14, 0.05, mat(GREEN, { emissive: GREEN, emissiveIntensity: 0.5 }), 0, 5.3, -D / 2 + 0.05, false));
+    L.add(box(0.3, WALL_H, D, mat(0xeef0f3, { roughness: 0.95 }), -W / 2 - 0.15, WALL_H / 2, 0));
+    L.add(box(0.05, 0.14, D, mat(GREEN, { emissive: GREEN, emissiveIntensity: 0.5 }), -W / 2 + 0.05, 5.3, 0, false));
     const glass = new THREE.MeshPhysicalMaterial({ color: 0xcfe8ff, transmission: 0.75, opacity: 0.45, transparent: true, roughness: 0.03, metalness: 0, ior: 1.45, thickness: 0.05, depthWrite: false });
     for (let i = 0; i < 4; i++) {
       const z = -7.5 + i * 4.6;
-      s.add(box(0.1, 3.2, 3.0, glass, -W / 2 + 0.1, 3.2, z, false));
-      s.add(box(0.2, 3.4, 0.15, mat(NAVY2), -W / 2 + 0.1, 3.2, z - 1.55));
-      s.add(box(0.2, 3.4, 0.15, mat(NAVY2), -W / 2 + 0.1, 3.2, z + 1.55));
-      s.add(box(0.2, 0.15, 3.1, mat(NAVY2), -W / 2 + 0.1, 1.5, z));
-      s.add(box(0.2, 0.15, 3.1, mat(NAVY2), -W / 2 + 0.1, 4.9, z));
+      L.add(box(0.1, 3.2, 3.0, glass, -W / 2 + 0.1, 3.2, z, false));
+      L.add(box(0.2, 3.4, 0.15, mat(NAVY2), -W / 2 + 0.1, 3.2, z - 1.55));
+      L.add(box(0.2, 3.4, 0.15, mat(NAVY2), -W / 2 + 0.1, 3.2, z + 1.55));
+      L.add(box(0.2, 0.15, 3.1, mat(NAVY2), -W / 2 + 0.1, 1.5, z));
+      L.add(box(0.2, 0.15, 3.1, mat(NAVY2), -W / 2 + 0.1, 4.9, z));
     }
 
     // logo + tagline on the back wall
     const logo = new THREE.Mesh(new THREE.PlaneGeometry(9, 9 * LOGO_AR), new THREE.MeshBasicMaterial({ map: this.logoWhiteTex, transparent: true, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }));
-    logo.position.set(-2.5, 3.75, -D / 2 + 0.05); s.add(logo);
-    s.add(box(9.6, 0.05, 0.03, mat(GREEN, { emissive: GREEN, emissiveIntensity: 0.6 }), -2.5, 2.35, -D / 2 + 0.06, false));
+    logo.position.set(-2.5, 3.75, -D / 2 + 0.05); B.add(logo);
+    B.add(box(9.6, 0.05, 0.03, mat(GREEN, { emissive: GREEN, emissiveIntensity: 0.6 }), -2.5, 2.35, -D / 2 + 0.06, false));
     const tagline = this.#textPlane('MEDIA OFFICE', 6.5, 0.7, { color: '#8e97ab', size: 64, weight: '600', spacing: 10 });
-    tagline.position.set(-2.5, 1.9, -D / 2 + 0.05); s.add(tagline);
+    tagline.position.set(-2.5, 1.9, -D / 2 + 0.05); B.add(tagline);
 
     // status board canvas (drawn onto the TV once models load)
     this.boardCanvas = document.createElement('canvas'); this.boardCanvas.width = 768; this.boardCanvas.height = 448;
@@ -225,10 +226,10 @@ export class Office {
     this.setBoard([]);
 
     // whiteboard with sticky notes
-    s.add(box(5.5, 3.2, 0.1, mat(0xfafafa), -10, 3.0, -D / 2 + 0.12, false));
-    s.add(box(5.7, 3.4, 0.06, mat(0x6b7280), -10, 3.0, -D / 2 + 0.08, false));
-    [0xffe066, GREEN, 0x7fc8ff, 0xffb3c1, 0xffe066, 0xc5a3ff].forEach((c, i) => s.add(box(0.6, 0.6, 0.03, mat(c), -11.7 + (i % 3) * 1.2 + (i > 2 ? 0.6 : 0), 3.6 - Math.floor(i / 3) * 1.0, -D / 2 + 0.2, false)));
-    for (let i = 0; i < 4; i++) s.add(box(2.2 - i * 0.3, 0.06, 0.02, mat(0x2b2f38), -8.8, 4.1 - i * 0.35, -D / 2 + 0.19, false));
+    B.add(box(5.5, 3.2, 0.1, mat(0xfafafa), -10, 3.0, -D / 2 + 0.12, false));
+    B.add(box(5.7, 3.4, 0.06, mat(0x6b7280), -10, 3.0, -D / 2 + 0.08, false));
+    [0xffe066, GREEN, 0x7fc8ff, 0xffb3c1, 0xffe066, 0xc5a3ff].forEach((c, i) => B.add(box(0.6, 0.6, 0.03, mat(c), -11.7 + (i % 3) * 1.2 + (i > 2 ? 0.6 : 0), 3.6 - Math.floor(i / 3) * 1.0, -D / 2 + 0.2, false)));
+    for (let i = 0; i < 4; i++) B.add(box(2.2 - i * 0.3, 0.06, 0.02, mat(0x2b2f38), -8.8, 4.1 - i * 0.35, -D / 2 + 0.19, false));
     this.pois.push({ x: -10, z: -D / 2 + 2.3, face: Math.PI });
 
     // glass meeting room (front-right): two glass partitions with navy frames and a door gap
@@ -316,9 +317,9 @@ export class Office {
     const s = this.scene, W = ROOM_W, D = ROOM_D, M = MEETING;
     // status screen on the back wall: slim bezel, screen flush on its face, soft glow underneath
     const sw = 7.2, sh = sw * 448 / 768;
-    const bezel = box(sw + 0.3, sh + 0.3, 0.12, mat(0x05070c, { roughness: 0.4, metalness: 0.3 }), 7.5, 3.1, -D / 2 + 0.08, false); s.add(bezel);
+    const bezel = box(sw + 0.3, sh + 0.3, 0.12, mat(0x05070c, { roughness: 0.4, metalness: 0.3 }), 7.5, 3.1, -D / 2 + 0.08, false); this.backWall.add(bezel);
     const screen = new THREE.Mesh(new THREE.PlaneGeometry(sw, sh), new THREE.MeshBasicMaterial({ map: this.boardTex }));
-    screen.position.set(7.5, 3.1, -D / 2 + 0.145); s.add(screen);
+    screen.position.set(7.5, 3.1, -D / 2 + 0.145); this.backWall.add(screen);
     const glow = new THREE.PointLight(0x40bd00, 6, 7, 2); glow.position.set(7.5, 3.1, -D / 2 + 1.2); s.add(glow);
     // kitchenette: fridge + vending machine at the back-right
     this.#put('fridge', { pos: [W / 2 - 0.7, 0, 9.6], rot: -Math.PI / 2, scale: K, colours: { metalLight: WHITE, metal: 0xd7dbe0, metalDark: NAVY2 } });
@@ -465,6 +466,10 @@ export class Office {
   step(dt) {
     for (const a of this.agents.values()) this.#stepAgent(a, dt);
     this.controls.update();
+    // hide walls the camera is behind, so you never look at the back of one
+    const c = this.camera.position;
+    if (this.backWall) this.backWall.visible = c.z > -ROOM_D / 2 + 1;
+    if (this.leftWall) this.leftWall.visible = c.x > -ROOM_W / 2 + 1;
     this.renderer.render(this.scene, this.camera);
     this.labelRenderer.render(this.scene, this.camera);
   }
