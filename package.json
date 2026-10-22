@@ -40,7 +40,8 @@
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
-      "createDesktopShortcut": true
+      "createDesktopShortcut": true,
+      "artifactName": "AtomaxMediaOffice-Setup-${version}.${ext}"
     },
     "publish": {
       "provider": "github",

@@ -1,13 +1,12 @@
 name: Build and release Windows installer
 
-# Runs whenever package.json changes on main (i.e. a version bump), on a v* tag, or by hand from the Actions tab.
-# electron-builder creates the GitHub release named v<version> itself and uploads the installer, latest.yml and blockmap,
-# which is what installed copies read to auto-update.
+# Runs whenever package.json changes on main (a version bump), or by hand from the Actions tab.
+# Builds the installer, then publishes/updates the GitHub release v<version> with the installer,
+# latest.yml and the blockmap, which is what installed copies read to auto-update.
 on:
   push:
     branches: [main]
     paths: ['package.json']
-    tags: ['v*']
   workflow_dispatch:
 
 permissions:
@@ -22,10 +21,22 @@ jobs:
         with:
           node-version: 20
       - run: npm ci
-      - name: Build and publish release
-        run: npx electron-builder --win nsis --publish always
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Read version
+        id: ver
+        shell: bash
+        run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+      - name: Build installer
+        run: npx electron-builder --win nsis --publish never
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.ver.outputs.version }}
+          name: Atomax Media Office v${{ steps.ver.outputs.version }}
+          files: |
+            dist/*.exe
+            dist/*.blockmap
+            dist/latest.yml
+          fail_on_unmatched_files: true
       - uses: actions/upload-artifact@v4
         with:
           name: Atomax-Media-Office-Setup
