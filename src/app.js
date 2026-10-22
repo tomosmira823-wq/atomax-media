@@ -203,7 +203,7 @@ function renderTeam() {
 function openLoadout(i) {
   loIndex = i; loDraft = { ...agents[i], gear: agents[i].gear ? [...agents[i].gear] : (isReviewer(agents[i]) ? ['glasses', 'clipboard', 'lanyard'] : ['lanyard']) };
   $('#teamView').style.display = 'none'; $('#loadoutView').style.display = '';
-  if (!preview) { preview = new AgentPreview($('#loCanvas')); window.__preview = preview; }
+  if (!preview) { try { preview = new AgentPreview($('#loCanvas')); } catch (e) { console.warn('preview unavailable', e); preview = { show() {}, start() {}, stop() {}, step() {}, t: 0 }; $('#loCanvas').style.display = 'none'; } window.__preview = preview; }
   fillLoadout();
   preview.show(loDraft); preview.start();
 }

@@ -21,7 +21,8 @@ function box(w, h, d, m, x = 0, y = 0, z = 0, cast = true) {
   mesh.position.set(x, y, z); mesh.castShadow = cast; mesh.receiveShadow = true; return mesh;
 }
 const texLoader = new THREE.TextureLoader();
-function tex(path) { const t = texLoader.load(path); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; return t; }
+function tex(path) { const t = texLoader.load(path); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 16; t.minFilter = THREE.LinearMipmapLinearFilter; t.generateMipmaps = true; return t; }
+const LOGO_AR = 560 / 2163;
 
 
 // ---------- character builder (shared by the office scene and the loadout preview) ----------
@@ -77,8 +78,8 @@ export function buildCharacter(colour, role = 'writer', gear) {
 export class AgentPreview {
   constructor(canvas) {
     this.canvas = canvas;
-    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, powerPreference: 'low-power' });
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
     this.renderer.shadowMap.enabled = true;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.scene = new THREE.Scene();
@@ -135,12 +136,12 @@ export class Office {
 
   // ---------- renderer, camera, lights ----------
   #initRenderer() {
-    this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: true });
+    this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: true, powerPreference: 'high-performance' });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.renderer.shadowMap.type = THREE.VSMShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.0;
+    this.renderer.toneMappingExposure = 1.05;
     this.labelRenderer = new CSS2DRenderer({ element: this.labelsDiv });
 
     this.scene = new THREE.Scene();
@@ -148,7 +149,7 @@ export class Office {
     this.scene.fog = new THREE.Fog(NAVY, 60, 100);
     const pmrem = new THREE.PMREMGenerator(this.renderer);
     this.scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
-    this.scene.environmentIntensity = 0.55;
+    this.scene.environmentIntensity = 0.65;
 
     this.camera = new THREE.PerspectiveCamera(36, 1, 1, 160);
     this.camera.position.set(27, 24, 34);
@@ -164,9 +165,10 @@ export class Office {
     sun.position.set(-16, 24, 12); sun.castShadow = true;
     sun.shadow.mapSize.set(4096, 4096);
     const sc = sun.shadow.camera; sc.left = -26; sc.right = 26; sc.top = 26; sc.bottom = -26; sc.near = 1; sc.far = 80;
-    sun.shadow.bias = -0.0002; sun.shadow.normalBias = 0.04; sun.shadow.radius = 4;
+    sun.shadow.bias = -0.0005; sun.shadow.normalBias = 0.02; sun.shadow.radius = 6; sun.shadow.blurSamples = 16;
     this.scene.add(sun);
-    const fill = new THREE.PointLight(0xa8ffb0, 14, 40, 1.5); fill.position.set(6, 5, 4); this.scene.add(fill);
+    const fill = new THREE.PointLight(0xa8ffb0, 10, 40, 1.5); fill.position.set(6, 5, 4); this.scene.add(fill);
+    const sky = new THREE.DirectionalLight(0xcfe3ff, 0.8); sky.position.set(-20, 8, -4); this.scene.add(sky);
     this.#resize();
   }
 
@@ -182,23 +184,25 @@ export class Office {
     const s = this.scene, W = ROOM_W, D = ROOM_D;
     // floor: pale polished concrete made from a canvas (subtle tiles + noise)
     const fc = document.createElement('canvas'); fc.width = fc.height = 1024;
-    const fx = fc.getContext('2d'); fx.fillStyle = '#d6d9de'; fx.fillRect(0, 0, 1024, 1024);
+    const fx = fc.getContext('2d'); fx.fillStyle = '#dde0e5'; fx.fillRect(0, 0, 1024, 1024);
     for (let i = 0; i < 9000; i++) { fx.fillStyle = `rgba(${90 + Math.random() * 60},${95 + Math.random() * 60},${105 + Math.random() * 60},${Math.random() * 0.08})`; fx.fillRect(Math.random() * 1024, Math.random() * 1024, 2 + Math.random() * 3, 2 + Math.random() * 3); }
-    fx.strokeStyle = 'rgba(80,90,105,0.25)'; fx.lineWidth = 2;
+    fx.strokeStyle = 'rgba(80,90,105,0.18)'; fx.lineWidth = 2;
     for (let i = 0; i <= 8; i++) { fx.beginPath(); fx.moveTo(i * 128, 0); fx.lineTo(i * 128, 1024); fx.stroke(); fx.beginPath(); fx.moveTo(0, i * 128); fx.lineTo(1024, i * 128); fx.stroke(); }
     const floorTex = new THREE.CanvasTexture(fc); floorTex.colorSpace = THREE.SRGBColorSpace; floorTex.wrapS = floorTex.wrapT = THREE.RepeatWrapping; floorTex.repeat.set(W / 8, D / 8); floorTex.anisotropy = 8;
-    const floor = new THREE.Mesh(new THREE.PlaneGeometry(W, D), new THREE.MeshStandardMaterial({ map: floorTex, roughness: 0.35, metalness: 0.08 }));
+    const floor = new THREE.Mesh(new THREE.PlaneGeometry(W, D), new THREE.MeshStandardMaterial({ map: floorTex, roughness: 0.28, metalness: 0.1, envMapIntensity: 0.9 }));
     floor.rotation.x = -Math.PI / 2; floor.receiveShadow = true; s.add(floor);
     const border = new THREE.Mesh(new THREE.PlaneGeometry(W, 1.6), mat(NAVY2, { roughness: 0.5 })); border.rotation.x = -Math.PI / 2; border.position.set(0, 0.02, -D / 2 + 0.8); border.receiveShadow = true; s.add(border);
     const stripe = new THREE.Mesh(new THREE.PlaneGeometry(W, 0.12), mat(GREEN, { emissive: GREEN, emissiveIntensity: 0.35 })); stripe.rotation.x = -Math.PI / 2; stripe.position.set(0, 0.035, -D / 2 + 1.66); s.add(stripe);
     s.add(box(W + 1, 0.6, D + 1, mat(NAVY2), 0, -0.32, 0, false));
+    s.add(box(W, 0.18, 0.08, mat(NAVY2), 0, 0.09, -D / 2 + 0.04, false));
+    s.add(box(0.08, 0.18, D, mat(NAVY2), -W / 2 + 0.04, 0.09, 0, false));
 
     // back wall (navy) and left wall (white with windows)
     s.add(box(W, WALL_H, 0.3, mat(NAVY, { roughness: 0.9 }), 0, WALL_H / 2, -D / 2 - 0.15));
     s.add(box(W, 0.14, 0.05, mat(GREEN, { emissive: GREEN, emissiveIntensity: 0.5 }), 0, 5.3, -D / 2 + 0.05, false));
     s.add(box(0.3, WALL_H, D, mat(0xeef0f3, { roughness: 0.95 }), -W / 2 - 0.15, WALL_H / 2, 0));
     s.add(box(0.05, 0.14, D, mat(GREEN, { emissive: GREEN, emissiveIntensity: 0.5 }), -W / 2 + 0.05, 5.3, 0, false));
-    const glass = new THREE.MeshPhysicalMaterial({ color: 0xbfe3ff, transmission: 0.6, opacity: 0.5, transparent: true, roughness: 0.05, metalness: 0 });
+    const glass = new THREE.MeshPhysicalMaterial({ color: 0xcfe8ff, transmission: 0.75, opacity: 0.45, transparent: true, roughness: 0.03, metalness: 0, ior: 1.45, thickness: 0.05, depthWrite: false });
     for (let i = 0; i < 4; i++) {
       const z = -7.5 + i * 4.6;
       s.add(box(0.1, 3.2, 3.0, glass, -W / 2 + 0.1, 3.2, z, false));
@@ -209,11 +213,11 @@ export class Office {
     }
 
     // logo + tagline on the back wall
-    const logo = new THREE.Mesh(new THREE.PlaneGeometry(9, 9 * 67 / 299), new THREE.MeshBasicMaterial({ map: this.logoWhiteTex, transparent: true, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }));
-    logo.position.set(-2.5, 3.9, -D / 2 + 0.05); s.add(logo);
-    s.add(box(9.6, 0.05, 0.03, mat(GREEN, { emissive: GREEN, emissiveIntensity: 0.6 }), -2.5, 2.55, -D / 2 + 0.06, false));
+    const logo = new THREE.Mesh(new THREE.PlaneGeometry(9, 9 * LOGO_AR), new THREE.MeshBasicMaterial({ map: this.logoWhiteTex, transparent: true, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }));
+    logo.position.set(-2.5, 3.75, -D / 2 + 0.05); s.add(logo);
+    s.add(box(9.6, 0.05, 0.03, mat(GREEN, { emissive: GREEN, emissiveIntensity: 0.6 }), -2.5, 2.35, -D / 2 + 0.06, false));
     const tagline = this.#textPlane('MEDIA OFFICE', 6.5, 0.7, { color: '#8e97ab', size: 64, weight: '600', spacing: 10 });
-    tagline.position.set(-2.5, 2.1, -D / 2 + 0.05); s.add(tagline);
+    tagline.position.set(-2.5, 1.9, -D / 2 + 0.05); s.add(tagline);
 
     // status board canvas (drawn onto the TV once models load)
     this.boardCanvas = document.createElement('canvas'); this.boardCanvas.width = 768; this.boardCanvas.height = 448;
@@ -235,9 +239,9 @@ export class Office {
     [[M.x0, M.z0], [M.x0, M.z1 - 2.4], [M.x1, M.z0], [M.x0, M.z1]].forEach(([x, z]) => s.add(box(0.14, gh, 0.14, mat(NAVY2), x, gh / 2, z)));
     s.add(box(0.14, 0.14, M.z1 - M.z0, mat(NAVY2), M.x0, gh, (M.z0 + M.z1) / 2, false));
     s.add(box(M.x1 - M.x0, 0.14, 0.14, mat(NAVY2), (M.x0 + M.x1) / 2, gh, M.z0, false));
-    const frosted = new THREE.Mesh(new THREE.PlaneGeometry(M.z1 - M.z0 - 2.6, 0.5), mat(0xffffff, { transparent: true, opacity: 0.35 }));
-    frosted.material.polygonOffset = true; frosted.material.polygonOffsetFactor = -2; frosted.material.polygonOffsetUnits = -2; frosted.material.depthWrite = false;
-    frosted.rotation.y = Math.PI / 2; frosted.position.set(M.x0 - 0.14, 1.3, M.z0 + (M.z1 - M.z0 - 2.4) / 2); s.add(frosted);
+    // mid-height rail on the glass so it reads as a partition, not empty space
+    s.add(box(0.1, 0.06, M.z1 - M.z0 - 2.4, mat(NAVY2), M.x0, 1.1, M.z0 + (M.z1 - M.z0 - 2.4) / 2, false));
+    s.add(box(M.x1 - M.x0, 0.06, 0.1, mat(NAVY2), (M.x0 + M.x1) / 2, 1.1, M.z0, false));
     const mtLabel = this.#textPlane('MEETING ROOM', 3.2, 0.35, { color: '#0e121d', size: 60, weight: '700', spacing: 8 });
     mtLabel.rotation.y = -Math.PI / 2; mtLabel.position.set(M.x0 - 0.18, 2.9, M.z0 + 2.2); s.add(mtLabel);
     const rug = new THREE.Mesh(new THREE.PlaneGeometry(M.x1 - M.x0 - 1, M.z1 - M.z0 - 1), mat(NAVY2, { roughness: 1 })); rug.rotation.x = -Math.PI / 2; rug.position.set((M.x0 + M.x1) / 2, 0.02, (M.z0 + M.z1) / 2); rug.receiveShadow = true; s.add(rug);
@@ -252,7 +256,7 @@ export class Office {
     // reception sign (right-hand side, angled toward the viewer)
     const sign = new THREE.Group();
     sign.add(box(0.3, 2.6, 2.6, mat(NAVY), 0, 1.3, 0));
-    const signLogo = new THREE.Mesh(new THREE.PlaneGeometry(2.3, 2.3 * 67 / 299), new THREE.MeshBasicMaterial({ map: this.logoWhiteTex, transparent: true, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }));
+    const signLogo = new THREE.Mesh(new THREE.PlaneGeometry(2.3, 2.3 * LOGO_AR), new THREE.MeshBasicMaterial({ map: this.logoWhiteTex, transparent: true, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }));
     signLogo.rotation.y = -Math.PI / 2; signLogo.position.set(-0.18, 1.7, 0); sign.add(signLogo);
     const signText = this.#textPlane('MEDIA OFFICE', 1.8, 0.25, { color: '#40bd00', size: 60, weight: '700', spacing: 8 });
     signText.rotation.y = -Math.PI / 2; signText.position.set(-0.18, 1.25, 0); sign.add(signText);
@@ -310,13 +314,12 @@ export class Office {
 
   #furnish() {
     const s = this.scene, W = ROOM_W, D = ROOM_D, M = MEETING;
-    // status TV on the back wall, with the live board drawn on its screen
-    const tv = this.#put('tv', { pos: [7.5, 1.0, -D / 2 + 0.25], scale: 5.2, colours: { metal: NAVY2, metalDark: 0x05070c } });
-    if (tv) {
-      const bb = new THREE.Box3().setFromObject(tv); const size = bb.getSize(new THREE.Vector3()); const c = bb.getCenter(new THREE.Vector3());
-      const screen = new THREE.Mesh(new THREE.PlaneGeometry(size.x * 0.9, size.x * 0.9 * 448 / 768), new THREE.MeshBasicMaterial({ map: this.boardTex, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }));
-      screen.position.set(c.x, c.y + size.y * 0.08, bb.max.z + 0.03); s.add(screen);
-    }
+    // status screen on the back wall: slim bezel, screen flush on its face, soft glow underneath
+    const sw = 7.2, sh = sw * 448 / 768;
+    const bezel = box(sw + 0.3, sh + 0.3, 0.12, mat(0x05070c, { roughness: 0.4, metalness: 0.3 }), 7.5, 3.1, -D / 2 + 0.08, false); s.add(bezel);
+    const screen = new THREE.Mesh(new THREE.PlaneGeometry(sw, sh), new THREE.MeshBasicMaterial({ map: this.boardTex }));
+    screen.position.set(7.5, 3.1, -D / 2 + 0.145); s.add(screen);
+    const glow = new THREE.PointLight(0x40bd00, 6, 7, 2); glow.position.set(7.5, 3.1, -D / 2 + 1.2); s.add(glow);
     // kitchenette: fridge + vending machine at the back-right
     this.#put('fridge', { pos: [W / 2 - 0.7, 0, 9.6], rot: -Math.PI / 2, scale: K, colours: { metalLight: WHITE, metal: 0xd7dbe0, metalDark: NAVY2 } });
     this.#put('vending-machine', { pos: [W / 2 - 0.7, 0, 7.6], rot: -Math.PI / 2, scale: K });

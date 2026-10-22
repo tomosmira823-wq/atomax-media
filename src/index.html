@@ -43,8 +43,9 @@
   #board { right: 16px; width: 420px; }
   .panel h2 { margin: 0; padding: 14px 18px; font-size: 11px; text-transform: uppercase; letter-spacing: 1.4px; color: var(--muted); border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 8px; font-weight: 700; }
   .panel .body { padding: 14px 18px 18px; overflow: auto; flex: 1; }
-  .panel.collapsed { width: 46px; }
+  .panel.collapsed, #brief.collapsed, #board.collapsed { width: 44px !important; bottom: auto; height: 44px; border-radius: 12px; }
   .panel.collapsed .body, .panel.collapsed h2 span { display: none; }
+  .panel.collapsed h2 { border-bottom: none; padding: 8px 9px; }
   .collapse { margin-left: auto; background: none; border: 1px solid transparent; color: var(--muted); cursor: pointer; font-size: 15px; width: 26px; height: 26px; border-radius: 8px; display: grid; place-items: center; }
   .collapse:hover { background: var(--navy3); color: var(--text); }
 

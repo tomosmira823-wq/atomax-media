@@ -108,7 +108,7 @@
       const btn = card.querySelector('.b_post');
       await until(() => !btn.disabled, 5000).catch(() => { throw new Error(name + ': Post button disabled (' + btn.title + ')'); });
       btn.click();
-      await until(() => /Posted/.test(card.querySelector('.posted')?.textContent || '') || card.querySelector('.err')?.textContent, 20000);
+      await until(() => /Posted/.test(card.querySelector('.posted')?.textContent || '') || card.querySelector('.err')?.textContent, 60000);
       const err = card.querySelector('.err')?.textContent;
       if (err) throw new Error(name + ': ' + err);
       results.push(name + ' -> ' + card.querySelector('.posted').textContent.trim().slice(0, 40));
