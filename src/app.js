@@ -153,7 +153,7 @@ function renderAgentPick() {
   const reviewers = agents.filter(a => a.enabled && isReviewer(a));
   const row = (a) => `<label><input type="checkbox" data-id="${a.id}" checked /> <i class="swatch" style="background:${a.colour}"></i> ${esc(a.name)} · ${esc(a.platform)}</label>`;
   $('#agentPick').innerHTML = (writers.map(row).join('') || '<span class="hint">No writers enabled. Add some in the Agents tab.</span>')
-    + (reviewers.length ? `<div class="hint" style="margin-top:6px">Reviewers (check every post)</div>` + reviewers.map(row).join('') : '');
+    + (reviewers.length ? `<div class="hint">Reviewers check every post</div>` + reviewers.map(row).join('') : '');
 }
 // ---------- agents: team grid + loadout ----------
 const SWATCHES = ['#0a66c2', '#e1306c', '#1877f2', '#111111', '#00f2ea', '#f59f00', '#40bd00', '#8e44ad', '#20c997', '#ff6b35', '#ffffff', '#ff4757'];
@@ -225,6 +225,7 @@ $('#saveAgents').addEventListener('click', async () => {
 });
 
 // ---------- brief: images ----------
+window.__testAttach = (img) => { images.push(img); renderThumbs(); };
 $('#addImages').addEventListener('click', async () => {
   const picked = await api.files.pickImages();
   images.push(...picked); renderThumbs();

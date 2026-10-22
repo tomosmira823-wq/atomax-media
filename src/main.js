@@ -9,7 +9,10 @@ const social = require('./social');
 const path = require('path');
 const fs = require('fs');
 
-const USER_DIR = () => app.getPath('userData');
+const MOCK = process.env.AMO_MOCK === '1' ? 'http://127.0.0.1:52900' : null;
+const ANTHROPIC = MOCK ? MOCK + '/anthropic' : 'https://api.anthropic.com';
+const OPENAI = MOCK ? MOCK + '/openai' : 'https://api.openai.com';
+const USER_DIR = () => process.env.AMO_USERDATA || app.getPath('userData');
 const SETTINGS_FILE = () => path.join(USER_DIR(), 'settings.json');
 const AGENTS_FILE = () => path.join(USER_DIR(), 'agents.json');
 const POSTS_FILE = () => path.join(USER_DIR(), 'posts.json');
@@ -156,7 +159,13 @@ function createWindow() {
   if (process.env.AMO_SCREENSHOT) {
     win.webContents.on('console-message', (_e, level, msg, line, src) => console.error('[page]', level, msg, src + ':' + line));
     win.webContents.once('did-finish-load', () => setTimeout(async () => {
-      if (process.env.AMO_VIEW === 'loadout') await win.webContents.executeJavaScript(`(async()=>{ document.querySelector('[data-tab=agents]').click(); await new Promise(r=>setTimeout(r,200)); document.querySelector('.tcard').click(); await new Promise(r=>setTimeout(r,200)); for (let i=0;i<${process.env.AMO_FRAMES || 20};i++) { window.__preview.t += 0.1; window.__preview.step(); await new Promise(r=>setTimeout(r,0)); } })()`);
+      if (process.env.AMO_SCENARIO === 'run') {
+        const script = fs.readFileSync(path.join(__dirname, '..', 'test', 'scenario-run.js'), 'utf8');
+        await win.webContents.executeJavaScript(`window.__variant = ${JSON.stringify(process.env.AMO_VARIANT || '')}`);
+        const out = await win.webContents.executeJavaScript(script);
+        console.error('[scenario]', JSON.stringify(out));
+      }
+      else if (process.env.AMO_VIEW === 'loadout') await win.webContents.executeJavaScript(`(async()=>{ document.querySelector('[data-tab=agents]').click(); await new Promise(r=>setTimeout(r,200)); document.querySelector('.tcard').click(); await new Promise(r=>setTimeout(r,200)); for (let i=0;i<${process.env.AMO_FRAMES || 20};i++) { window.__preview.t += 0.1; window.__preview.step(); await new Promise(r=>setTimeout(r,0)); } })()`);
       else if (process.env.AMO_VIEW === 'history') await win.webContents.executeJavaScript(`(async()=>{ document.querySelector('[data-tab=history]').click(); for (let i=0;i<4;i++) { window.__office.step(0.1); await new Promise(r=>setTimeout(r,0)); } })()`);
       else if (process.env.AMO_VIEW === 'settings') await win.webContents.executeJavaScript(`(async()=>{ document.querySelector('[data-tab=settings]').click(); document.querySelector('#settingsModal .box').scrollTop = 700; for (let i=0;i<4;i++) { window.__office.step(0.1); await new Promise(r=>setTimeout(r,0)); } })()`);
       else await win.webContents.executeJavaScript(`(async()=>{ if (${process.env.AMO_DEMO ? 'true' : 'false'}) { for (const id of window.__office.agents.keys()) window.__office.setState(id, 'working', 'writing post'); window.__office.setBoard([...window.__office.agents.values()].map(a => ({ colour: a.data.colour, text: a.data.name + ' · ' + a.data.platform, status: 'Working' }))); } for (let i=0;i<${process.env.AMO_FRAMES || 240};i++) { window.__office.step(${process.env.AMO_DT || '1/60'}); if (i%20===0) await new Promise(r=>setTimeout(r,0)); } })()`);
@@ -268,7 +277,7 @@ ipcMain.handle('file:saveText', async (_e, { text, name }) => {
 async function claudeMessage({ system, messages, maxTokens = 4000 }) {
   const s = loadSettings();
   if (!s.anthropicKey) throw new Error('No Claude API key. Add it in Settings.');
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
+  const res = await fetch(ANTHROPIC + '/v1/messages', {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
@@ -434,7 +443,7 @@ async function openaiGenerate(prompt, size, model) {
   const s = loadSettings();
   if (!s.openaiKey) throw new Error('No OpenAI key. Add it in Settings or switch the image provider.');
   model = model || s.openaiImageModel || 'gpt-image-1';
-  const res = await fetch('https://api.openai.com/v1/images/generations', {
+  const res = await fetch(OPENAI + '/v1/images/generations', {
     method: 'POST',
     headers: { 'content-type': 'application/json', authorization: `Bearer ${s.openaiKey}` },
     body: JSON.stringify(openaiImageBody(model, prompt, size))
@@ -470,7 +479,7 @@ async function openaiEdit(prompt, image, size, extraImages = [], model) {
     fd.append('response_format', 'b64_json');
     fd.append('image', new Blob([Buffer.from(image.base64, 'base64')], { type: image.mime }), image.name || 'image.png');
   }
-  const res = await fetch('https://api.openai.com/v1/images/edits', {
+  const res = await fetch(OPENAI + '/v1/images/edits', {
     method: 'POST', headers: { authorization: `Bearer ${s.openaiKey}` }, body: fd
   });
   const data = await res.json();
@@ -539,7 +548,7 @@ ipcMain.handle('image:generate', async (_e, { provider, model, prompt, size, asp
 ipcMain.handle('openai:imageModels', async () => {
   const s = loadSettings();
   if (!s.openaiKey) return [];
-  const r = await fetch('https://api.openai.com/v1/models', { headers: { authorization: `Bearer ${s.openaiKey}` } });
+  const r = await fetch(OPENAI + '/v1/models', { headers: { authorization: `Bearer ${s.openaiKey}` } });
   const data = await r.json();
   if (!r.ok) throw new Error(`OpenAI ${r.status}: ${data?.error?.message || ''}`);
   return (data.data || []).map(x => x.id).filter(id => /gpt-image|dall-e/.test(id)).sort();
@@ -566,7 +575,7 @@ ipcMain.handle('ai:test', async (_e, which) => {
     return 'Claude replied: ' + t.trim();
   }
   if (which === 'openai') {
-    const r = await fetch('https://api.openai.com/v1/models', { headers: { authorization: `Bearer ${s.openaiKey}` } });
+    const r = await fetch(OPENAI + '/v1/models', { headers: { authorization: `Bearer ${s.openaiKey}` } });
     if (!r.ok) throw new Error('OpenAI ' + r.status);
     return 'OpenAI key works';
   }

@@ -31,7 +31,7 @@ To ship an update: bump `"version"` in `package.json` (e.g. 1.0.1), commit and p
 
 ## Using it
 
-1. **Brief** (left panel): say what the post is about, add images, tick which agents work on it, hit *Run the office*.
+1. **Brief** (left panel), in three parts. *Post*: what it's about, extra instructions, and optionally a post to match the style of. *Image*: add your photo and say what the picture should show or what to do to the photo (e.g. the banner text); each agent gets its own version in its platform's shape. *Team*: who's working on it. Hit *Run the office*.
 2. Agents walk to their desks and write. With *Make the image as part of the run* ticked, the office then edits your attached photo through OpenAI (banner, real Atomax logo supplied as a second input, exact text from the writer's suggested banner line and your reference note) or, with no photo, generates one from the writer's image idea; the result lands on every card. Each post appears on the **Board** (right panel) with Copy, Save, Generate image, Edit my image and a revise box (e.g. "shorter", "more formal", "add a line about safety").
 3. **Reference**: paste an example post (or add screenshots of one) and the agents copy its style and structure without reusing its content. Post images and reference images are labelled separately so they never get mixed up. Each agent can also keep permanent **example posts** in the Agents tab, so its voice stays consistent run to run.
 4. **Analyse image** asks Claude what it sees in your image and what edits would help.
@@ -74,6 +74,10 @@ Settings → Connections. Each platform needs a developer app of your own; paste
 **X** — https://developer.x.com → Project + App. User authentication settings: OAuth 2.0 on, type *Native App* (then leave the secret blank) or *Confidential client* (then paste the secret), permissions *Read and write*, callback URL as above, website URL anything. Free tier allows posting.
 
 **TikTok** isn't connected: its Content Posting API only allows public posting after an app audit, so Tia's output is copy-and-paste for now.
+
+## Testing without real keys
+
+`test/mock-api.js` stands in for the Claude, OpenAI, LinkedIn, Meta and X endpoints. Run it (`npm run test:mock`), then start the app with `AMO_MOCK=1 AMO_USERDATA=<temp folder> AMO_SCENARIO=run AMO_SCREENSHOT=out.png npm start`. The scenario in `test/scenario-run.js` drives the real UI through a full run (brief, photo, reference, writers, reviewer, images, rewrite, history, loadout, settings, posting to each social) and prints a pass/fail report. `AMO_VARIANT=nophoto` and `AMO_VARIANT=shared` cover the generate-only and shared-image modes. All `AMO_*` switches are ignored in normal use.
 
 ## Notes
 

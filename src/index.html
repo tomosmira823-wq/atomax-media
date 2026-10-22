@@ -165,6 +165,10 @@
   #history .card pre { max-height: 180px; }
   .hint { color: var(--muted); font-size: 12px; }
   .divider { height: 1px; background: var(--line); margin: 16px 0 4px; }
+  .sec { font-size: 11px; text-transform: uppercase; letter-spacing: 1.4px; color: var(--green); font-weight: 800; margin: 18px 0 2px; padding-top: 14px; border-top: 1px solid var(--line); }
+  .sec:first-child { margin-top: 0; padding-top: 0; border-top: none; }
+  .sec { font-size: 11px; text-transform: uppercase; letter-spacing: 1.4px; color: var(--green); font-weight: 800; margin: 18px 0 2px; padding-top: 14px; border-top: 1px solid var(--line); }
+  .sec:first-child { margin-top: 0; padding-top: 0; border-top: none; }
   .pfoot { padding: 12px 18px 16px; border-top: 1px solid var(--line); background: rgba(12,17,28,.6); }
   .pfoot .err:empty { display: none; } .pfoot .err { margin-bottom: 8px; }
   .panel.collapsed .pfoot { display: none; }
@@ -205,34 +209,34 @@
 <div class="panel" id="brief">
   <h2><span>New brief</span><button class="collapse" title="Collapse">‹</button></h2>
   <div class="body">
+    <div class="sec">Post</div>
     <label>What's the post about?</label>
     <textarea id="briefText" placeholder="What happened, what we did, what to say about it"></textarea>
-    <label>Images / media (optional)</label>
-    <div class="row">
-      <button class="btn" id="addImages">+ Add images</button>
-      <span class="hint">Agents see these and write to them</span>
-    </div>
-    <div class="thumbs" id="thumbs"></div>
-    <label>Reference (optional)</label>
-    <textarea id="refText" style="min-height:70px" placeholder="Paste a post to match the style of (content isn't reused)"></textarea>
-    <div class="row" style="margin-top:6px"><button class="btn small" id="addRefImages">+ Add reference screenshots</button></div>
-    <div class="thumbs" id="refThumbs"></div>
     <label>Extra instructions (optional)</label>
     <input type="text" id="extraText" placeholder="e.g. mention we're hiring" />
-    <label>Who's working on it?</label>
-    <div class="agentpick" id="agentPick"></div>
-    <label>Image</label>
-    <textarea id="imageBrief" style="min-height:70px" placeholder="What the picture should show, e.g. an engineer at a CAD screen with a substation drawing, Atomax branding on the wall. Leave blank and each agent decides from its post."></textarea>
-    <label class="plain" style="display:flex;align-items:center;gap:8px;color:var(--text);margin:8px 0 2px"><input type="checkbox" id="makeImage" checked /> Make the image in the run</label>
-    <div class="hint" style="margin:0 0 6px 22px">Each agent gets its own version in its platform's shape. With a photo attached, the photo is edited to match.</div>
+    <label>Match the style of a post (optional)</label>
+    <textarea id="refText" style="min-height:64px" placeholder="Paste a post to copy the style of (its content isn't reused)"></textarea>
+    <div class="row" style="margin-top:6px"><button class="btn small" id="addRefImages">+ Add screenshots of it</button></div>
+    <div class="thumbs" id="refThumbs"></div>
+
+    <div class="sec">Image</div>
+    <div class="row"><button class="btn" id="addImages">+ Add your photo</button><span class="hint">Optional. The agents see it and edit it.</span></div>
+    <div class="thumbs" id="thumbs"></div>
+    <label>What the picture should show / what to do to the photo</label>
+    <textarea id="imageBrief" style="min-height:70px" placeholder="e.g. add an Atomax banner at the bottom reading 'Site Commissioning for Diageo Runcorn' — or, with no photo: an engineer at a CAD screen with a substation drawing, Atomax branding on the wall"></textarea>
+    <label class="plain" style="display:flex;align-items:center;gap:8px;color:var(--text);margin:10px 0 2px"><input type="checkbox" id="makeImage" checked /> Make the image in the run</label>
+    <div class="hint" style="margin:0 0 6px 22px">Each agent gets its own version in its platform's shape.</div>
     <label class="plain" style="display:flex;align-items:center;gap:8px;color:var(--text);margin:0 0 8px"><input type="checkbox" id="sameImage" /> Same image for every agent (one call, cheaper)</label>
     <select id="imageProvider"></select>
+
+    <div class="sec">Team</div>
+    <div class="agentpick" id="agentPick"></div>
   </div>
   <div class="pfoot">
     <div class="err" id="briefErr"></div>
     <div class="row">
       <button class="btn primary" id="run" style="flex:1">Run the office</button>
-      <button class="btn" id="describe" title="Ask Claude what it sees and what edits would help">Analyse image</button>
+      <button class="btn" id="describe" title="Ask Claude what it sees in your photo and what edits would help">Analyse photo</button>
     </div>
   </div>
 </div>

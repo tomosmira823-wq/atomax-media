@@ -4,6 +4,9 @@ const http = require('http');
 const crypto = require('crypto');
 const { shell } = require('electron');
 
+const MOCK = process.env.AMO_MOCK === '1' ? 'http://127.0.0.1:52900' : null;
+const LI_API = MOCK ? MOCK + '/li' : 'https://api.linkedin.com';
+const X_API = MOCK ? MOCK + '/x' : 'https://api.x.com';
 const PORT = 52817;
 const REDIRECT = `http://127.0.0.1:${PORT}/callback`;
 
@@ -50,11 +53,11 @@ const LI = {
       method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({ grant_type: 'authorization_code', code, redirect_uri: REDIRECT, client_id: cfg.clientId, client_secret: cfg.clientSecret })
     }), 'LinkedIn token');
-    const me = await jsonOrThrow(await fetch('https://api.linkedin.com/v2/userinfo', { headers: { authorization: `Bearer ${tok.access_token}` } }), 'LinkedIn userinfo');
+    const me = await jsonOrThrow(await fetch(LI_API + '/v2/userinfo', { headers: { authorization: `Bearer ${tok.access_token}` } }), 'LinkedIn userinfo');
     const out = { ...cfg, token: tok.access_token, expires: Date.now() + (tok.expires_in || 0) * 1000, memberUrn: `urn:li:person:${me.sub}`, name: me.name, orgs: [] };
     if (cfg.wantOrg) {
       try {
-        const r = await jsonOrThrow(await fetch('https://api.linkedin.com/rest/organizationAcls?q=roleAssignee&role=ADMINISTRATOR&state=APPROVED&projection=(elements*(organization~(localizedName)))', { headers: { authorization: `Bearer ${tok.access_token}`, 'LinkedIn-Version': '202409', 'X-Restli-Protocol-Version': '2.0.0' } }), 'LinkedIn orgs');
+        const r = await jsonOrThrow(await fetch(LI_API + '/rest/organizationAcls?q=roleAssignee&role=ADMINISTRATOR&state=APPROVED&projection=(elements*(organization~(localizedName)))', { headers: { authorization: `Bearer ${tok.access_token}`, 'LinkedIn-Version': '202409', 'X-Restli-Protocol-Version': '2.0.0' } }), 'LinkedIn orgs');
         out.orgs = (r.elements || []).map(e => ({ urn: e.organization, name: e['organization~']?.localizedName || e.organization }));
       } catch (e) { out.orgNote = 'Company pages not available yet: ' + e.message; }
     }
@@ -67,7 +70,7 @@ const LI = {
     const author = cfg.target || cfg.memberUrn;
     let content;
     if (image) {
-      const init = await jsonOrThrow(await fetch('https://api.linkedin.com/rest/images?action=initializeUpload', { method: 'POST', headers: LI.headers(cfg), body: JSON.stringify({ initializeUploadRequest: { owner: author } }) }), 'LinkedIn image init');
+      const init = await jsonOrThrow(await fetch(LI_API + '/rest/images?action=initializeUpload', { method: 'POST', headers: LI.headers(cfg), body: JSON.stringify({ initializeUploadRequest: { owner: author } }) }), 'LinkedIn image init');
       const { uploadUrl, image: imageUrn } = init.value;
       const up = await fetch(uploadUrl, { method: 'PUT', headers: { authorization: `Bearer ${cfg.token}`, 'content-type': 'application/octet-stream' }, body: Buffer.from(image.base64, 'base64') });
       if (!up.ok) throw new Error('LinkedIn image upload ' + up.status);
@@ -75,7 +78,7 @@ const LI = {
     }
     const body = { author, commentary: text, visibility: 'PUBLIC', distribution: { feedDistribution: 'MAIN_FEED', targetEntities: [], thirdPartyDistributionChannels: [] }, lifecycleState: 'PUBLISHED', isReshareDisabledByAuthor: false };
     if (content) body.content = content;
-    const res = await fetch('https://api.linkedin.com/rest/posts', { method: 'POST', headers: LI.headers(cfg), body: JSON.stringify(body) });
+    const res = await fetch(LI_API + '/rest/posts', { method: 'POST', headers: LI.headers(cfg), body: JSON.stringify(body) });
     if (!res.ok) throw new Error('LinkedIn post ' + res.status + ': ' + (await res.text()).slice(0, 300));
     const id = res.headers.get('x-restli-id') || '';
     return { id, url: id ? `https://www.linkedin.com/feed/update/${id}/` : 'https://www.linkedin.com/feed/' };
@@ -83,7 +86,7 @@ const LI = {
 };
 
 // ---------- Facebook Page + Instagram (Meta Graph API) ----------
-const G = 'https://graph.facebook.com/v21.0';
+const G = MOCK ? MOCK + '/fb' : 'https://graph.facebook.com/v21.0';
 const FB = {
   async connect(cfg) {
     if (!cfg.appId || !cfg.appSecret) throw new Error('Meta app ID and secret needed (Settings → Connections).');
@@ -157,15 +160,15 @@ const X = {
     const code = await waiting;
     const headers = { 'content-type': 'application/x-www-form-urlencoded' };
     if (cfg.clientSecret) headers.authorization = 'Basic ' + Buffer.from(`${cfg.clientId}:${cfg.clientSecret}`).toString('base64');
-    const tok = await jsonOrThrow(await fetch('https://api.x.com/2/oauth2/token', { method: 'POST', headers, body: new URLSearchParams({ grant_type: 'authorization_code', code, redirect_uri: REDIRECT, client_id: cfg.clientId, code_verifier: verifier }) }), 'X token');
-    const me = await jsonOrThrow(await fetch('https://api.x.com/2/users/me', { headers: { authorization: `Bearer ${tok.access_token}` } }), 'X me');
+    const tok = await jsonOrThrow(await fetch(X_API + '/2/oauth2/token', { method: 'POST', headers, body: new URLSearchParams({ grant_type: 'authorization_code', code, redirect_uri: REDIRECT, client_id: cfg.clientId, code_verifier: verifier }) }), 'X token');
+    const me = await jsonOrThrow(await fetch(X_API + '/2/users/me', { headers: { authorization: `Bearer ${tok.access_token}` } }), 'X me');
     return { ...cfg, token: tok.access_token, refresh: tok.refresh_token, expires: Date.now() + (tok.expires_in || 7200) * 1000, name: me.data?.username };
   },
   async refreshIfNeeded(cfg, save) {
     if (!cfg.refresh || Date.now() < (cfg.expires || 0) - 60000) return cfg;
     const headers = { 'content-type': 'application/x-www-form-urlencoded' };
     if (cfg.clientSecret) headers.authorization = 'Basic ' + Buffer.from(`${cfg.clientId}:${cfg.clientSecret}`).toString('base64');
-    const tok = await jsonOrThrow(await fetch('https://api.x.com/2/oauth2/token', { method: 'POST', headers, body: new URLSearchParams({ grant_type: 'refresh_token', refresh_token: cfg.refresh, client_id: cfg.clientId }) }), 'X refresh');
+    const tok = await jsonOrThrow(await fetch(X_API + '/2/oauth2/token', { method: 'POST', headers, body: new URLSearchParams({ grant_type: 'refresh_token', refresh_token: cfg.refresh, client_id: cfg.clientId }) }), 'X refresh');
     const out = { ...cfg, token: tok.access_token, refresh: tok.refresh_token || cfg.refresh, expires: Date.now() + (tok.expires_in || 7200) * 1000 };
     await save(out); return out;
   },
@@ -176,11 +179,11 @@ const X = {
       const fd = new FormData();
       fd.append('media', new Blob([Buffer.from(image.base64, 'base64')], { type: image.mime || 'image/png' }), 'post.png');
       fd.append('media_category', 'tweet_image');
-      const up = await jsonOrThrow(await fetch('https://api.x.com/2/media/upload', { method: 'POST', headers: { authorization: `Bearer ${cfg.token}` }, body: fd }), 'X media upload');
+      const up = await jsonOrThrow(await fetch(X_API + '/2/media/upload', { method: 'POST', headers: { authorization: `Bearer ${cfg.token}` }, body: fd }), 'X media upload');
       const mediaId = up.data?.id || up.media_id_string || up.id;
       if (mediaId) body.media = { media_ids: [String(mediaId)] };
     }
-    const r = await jsonOrThrow(await fetch('https://api.x.com/2/tweets', { method: 'POST', headers: { authorization: `Bearer ${cfg.token}`, 'content-type': 'application/json' }, body: JSON.stringify(body) }), 'X post');
+    const r = await jsonOrThrow(await fetch(X_API + '/2/tweets', { method: 'POST', headers: { authorization: `Bearer ${cfg.token}`, 'content-type': 'application/json' }, body: JSON.stringify(body) }), 'X post');
     return { id: r.data?.id, url: `https://x.com/${cfg.name || 'i'}/status/${r.data?.id}` };
   }
 };
