@@ -5,6 +5,7 @@
 const { app, BrowserWindow, ipcMain, dialog, safeStorage, shell, protocol, net } = require('electron');
 const { pathToFileURL } = require('url');
 const { autoUpdater } = require('electron-updater');
+const social = require('./social');
 const path = require('path');
 const fs = require('fs');
 
@@ -23,6 +24,7 @@ const DEFAULT_SETTINGS = {
   openaiImageModel: 'gpt-image-1',
   higgsfieldModel: 'higgsfield-ai/soul/standard',
   imageProvider: 'openai',
+  social: { linkedin: {}, facebook: {}, x: {} },
   company: {
     name: 'Atomax-UK Ltd',
     about: 'Atomax-UK Ltd is an electrical engineering company in the North West of England. We do electrical CAD, instrumentation drawings, loop diagrams, cable schedules, panel design, document control and site work for industrial clients, including National Grid and process plants.',
@@ -92,12 +94,30 @@ function loadSettings() {
   const raw = readJson(SETTINGS_FILE(), {});
   const s = { ...DEFAULT_SETTINGS, ...raw, company: { ...DEFAULT_SETTINGS.company, ...(raw.company || {}) } };
   for (const f of SECRET_FIELDS) s[f] = decrypt(s[f]);
+  let soc = {}; try { soc = typeof raw.social === 'string' ? JSON.parse(decrypt(raw.social) || '{}') : (raw.social || {}); } catch { soc = {}; }
+  s.social = { linkedin: {}, facebook: {}, x: {}, ...soc };
   return s;
 }
 function saveSettings(s) {
   const out = { ...s };
   for (const f of SECRET_FIELDS) out[f] = encrypt(s[f] || '');
+  out.social = encrypt(JSON.stringify(s.social || {}));
   writeJson(SETTINGS_FILE(), out);
+}
+// renderer never sees tokens: strip them before sending settings over
+function publicSettings(s) {
+  const strip = (c = {}) => { const { token, refresh, userToken, ...rest } = c; return { ...rest, connected: !!(token || userToken), pages: (c.pages || []).map(p => ({ id: p.id, name: p.name, igName: p.igName })) }; };
+  return { ...s, social: { linkedin: strip(s.social.linkedin), facebook: strip(s.social.facebook), x: strip(s.social.x) } };
+}
+function mergeSocial(current, incoming = {}) {
+  // UI sends ids/secrets/targets; keep tokens and page tokens from what's stored
+  const out = {};
+  for (const k of ['linkedin', 'facebook', 'x']) {
+    const cur = current[k] || {}, inc = incoming[k] || {};
+    out[k] = { ...cur, ...inc, token: cur.token, refresh: cur.refresh, userToken: cur.userToken, pages: cur.pages, orgs: cur.orgs, expires: cur.expires, memberUrn: cur.memberUrn, name: cur.name };
+    if (inc.pageId) out[k].pageId = inc.pageId; if (inc.target) out[k].target = inc.target;
+  }
+  return out;
 }
 
 // Serve the app over app:// so fetch() works for the 3D models (Chromium blocks fetch on file://)
@@ -135,6 +155,7 @@ function createWindow() {
     win.webContents.on('console-message', (_e, level, msg, line, src) => console.error('[page]', level, msg, src + ':' + line));
     win.webContents.once('did-finish-load', () => setTimeout(async () => {
       if (process.env.AMO_VIEW === 'loadout') await win.webContents.executeJavaScript(`(async()=>{ document.querySelector('[data-tab=agents]').click(); await new Promise(r=>setTimeout(r,200)); document.querySelector('.tcard').click(); await new Promise(r=>setTimeout(r,200)); for (let i=0;i<${process.env.AMO_FRAMES || 20};i++) { window.__preview.t += 0.1; window.__preview.step(); await new Promise(r=>setTimeout(r,0)); } })()`);
+      else if (process.env.AMO_VIEW === 'settings') await win.webContents.executeJavaScript(`(async()=>{ document.querySelector('[data-tab=settings]').click(); document.querySelector('#settingsModal .box').scrollTop = 700; for (let i=0;i<4;i++) { window.__office.step(0.1); await new Promise(r=>setTimeout(r,0)); } })()`);
       else await win.webContents.executeJavaScript(`(async()=>{ if (${process.env.AMO_DEMO ? 'true' : 'false'}) { for (const id of window.__office.agents.keys()) window.__office.setState(id, 'working', 'writing post'); window.__office.setBoard([...window.__office.agents.values()].map(a => ({ colour: a.data.colour, text: a.data.name + ' · ' + a.data.platform, status: 'Working' }))); } for (let i=0;i<${process.env.AMO_FRAMES || 240};i++) { window.__office.step(${process.env.AMO_DT || '1/60'}); if (i%20===0) await new Promise(r=>setTimeout(r,0)); } })()`);
       await new Promise(r => setTimeout(r, 1500));
       const img = await win.webContents.capturePage();
@@ -162,8 +183,47 @@ ipcMain.handle('app:version', () => app.getVersion());
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
 
 // ---------- settings / agents / posts ----------
-ipcMain.handle('settings:get', () => loadSettings());
-ipcMain.handle('settings:set', (_e, s) => { saveSettings(s); return true; });
+ipcMain.handle('settings:get', () => publicSettings(loadSettings()));
+ipcMain.handle('settings:set', (_e, s) => { const cur = loadSettings(); saveSettings({ ...cur, ...s, social: mergeSocial(cur.social, s.social) }); return true; });
+
+// ---------- social connections ----------
+function platformKey(platform = '') {
+  const p = platform.toLowerCase();
+  if (p.includes('linkedin')) return 'linkedin';
+  if (p.includes('facebook')) return 'facebook';
+  if (p.includes('instagram')) return 'instagram';
+  if (p.includes('twitter') || p === 'x' || p.startsWith('x ') || p.includes('x /')) return 'x';
+  return null;
+}
+ipcMain.handle('social:connect', async (_e, { key, wantOrg }) => {
+  const s = loadSettings();
+  const cfg = { ...(s.social[key] || {}), wantOrg: !!wantOrg };
+  const updated = key === 'linkedin' ? await social.LI.connect(cfg) : key === 'facebook' ? await social.FB.connect(cfg) : await social.X.connect(cfg);
+  s.social[key] = updated; saveSettings(s);
+  return publicSettings(s).social;
+});
+ipcMain.handle('social:disconnect', (_e, key) => {
+  const s = loadSettings(); const { clientId, clientSecret, appId, appSecret } = s.social[key] || {};
+  s.social[key] = { clientId, clientSecret, appId, appSecret }; saveSettings(s); return publicSettings(s).social;
+});
+ipcMain.handle('social:publish', async (_e, { platform, text, image }) => {
+  const key = platformKey(platform);
+  if (!key) throw new Error(`No connector for "${platform}". Supported: LinkedIn, Facebook, Instagram, X.`);
+  const s = loadSettings();
+  const save = async (cfg) => { const t = loadSettings(); t.social.x = cfg; saveSettings(t); };
+  if (key === 'linkedin') return social.LI.publish(s.social.linkedin, { text, image });
+  if (key === 'facebook') return social.FB.publish(s.social.facebook, { text, image });
+  if (key === 'instagram') return social.FB.publishInstagram(s.social.facebook, { text, image });
+  return social.X.publish(s.social.x, { text, image }, save);
+});
+ipcMain.handle('social:canPost', (_e, platform) => {
+  const key = platformKey(platform); if (!key) return { ok: false, why: 'no connector' };
+  const s = loadSettings();
+  const c = key === 'instagram' ? s.social.facebook : s.social[key];
+  const connected = !!(c?.token || c?.userToken);
+  if (key === 'instagram' && connected) { const p = (c.pages || []).find(x => x.id === c.pageId) || c.pages?.[0]; if (!p?.igId) return { ok: false, why: 'Facebook Page has no Instagram linked' }; }
+  return { ok: connected, why: connected ? '' : 'not connected (Settings → Connections)', key };
+});
 ipcMain.handle('agents:get', () => readJson(AGENTS_FILE(), DEFAULT_AGENTS));
 ipcMain.handle('agents:set', (_e, a) => { writeJson(AGENTS_FILE(), a); return true; });
 ipcMain.handle('agents:reset', () => { writeJson(AGENTS_FILE(), DEFAULT_AGENTS); return DEFAULT_AGENTS; });

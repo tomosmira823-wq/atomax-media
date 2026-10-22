@@ -55,11 +55,46 @@ document.querySelectorAll('[data-close]').forEach(b => b.addEventListener('click
 document.querySelectorAll('.panel .collapse').forEach(b => b.addEventListener('click', () => b.closest('.panel').classList.toggle('collapsed')));
 
 // ---------- settings ----------
+function fillConnections() {
+  const so = settings.social || {};
+  const li = so.linkedin || {}, fb = so.facebook || {}, x = so.x || {};
+  $('#li_clientId').value = li.clientId || ''; $('#li_clientSecret').value = li.clientSecret || ''; $('#li_wantOrg').checked = !!li.wantOrg;
+  $('#li_target').innerHTML = `<option value="${esc(li.memberUrn || '')}">Me${li.name ? ' (' + esc(li.name) + ')' : ''}</option>` + (li.orgs || []).map(o => `<option value="${esc(o.urn)}">${esc(o.name)} (company page)</option>`).join('');
+  if (li.target) $('#li_target').value = li.target;
+  $('#fb_appId').value = fb.appId || ''; $('#fb_appSecret').value = fb.appSecret || '';
+  $('#fb_pageId').innerHTML = (fb.pages || []).map(p => `<option value="${esc(p.id)}">${esc(p.name)}${p.igName ? ' · IG @' + esc(p.igName) : ''}</option>`).join('') || '<option value="">(connect first)</option>';
+  if (fb.pageId) $('#fb_pageId').value = fb.pageId;
+  $('#fb_ig').textContent = (fb.pages || []).some(p => p.igName) ? '' : (fb.connected ? 'No Instagram Business account linked to these Pages.' : '');
+  $('#x_clientId').value = x.clientId || ''; $('#x_clientSecret').value = x.clientSecret || '';
+  const st = (key, c) => { const el = document.querySelector(`.conn[data-key="${key}"] .cstat`); el.textContent = c.connected ? '● connected' + (c.name ? ' as ' + c.name : '') : '○ not connected'; el.classList.toggle('on', !!c.connected); };
+  st('linkedin', li); st('facebook', fb); st('x', x);
+  if (li.orgNote) document.querySelector('.conn[data-key="linkedin"] .cstat').textContent += ' · ' + li.orgNote;
+}
+function readConnections() {
+  settings.social = {
+    linkedin: { ...(settings.social?.linkedin || {}), clientId: $('#li_clientId').value.trim(), clientSecret: $('#li_clientSecret').value.trim(), wantOrg: $('#li_wantOrg').checked, target: $('#li_target').value || undefined },
+    facebook: { ...(settings.social?.facebook || {}), appId: $('#fb_appId').value.trim(), appSecret: $('#fb_appSecret').value.trim(), pageId: $('#fb_pageId').value || undefined },
+    x: { ...(settings.social?.x || {}), clientId: $('#x_clientId').value.trim(), clientSecret: $('#x_clientSecret').value.trim() }
+  };
+}
+document.querySelectorAll('.conn .cconnect').forEach(b => b.addEventListener('click', async () => {
+  const key = b.closest('.conn').dataset.key; const st = b.closest('.conn').querySelector('.cstat');
+  readConnections(); await api.settings.set(settings);
+  st.textContent = 'Opening login in your browser…'; st.className = 'cstat hint';
+  try { settings.social = await api.social.connect({ key, wantOrg: $('#li_wantOrg').checked }); fillConnections(); }
+  catch (e) { st.textContent = e.message; st.className = 'cstat err'; }
+}));
+document.querySelectorAll('.conn .cdisconnect').forEach(b => b.addEventListener('click', async () => {
+  settings.social = await api.social.disconnect(b.closest('.conn').dataset.key); fillConnections();
+}));
+
 function fillSettings() {
+  fillConnections();
   for (const k of ['anthropicKey', 'openaiKey', 'higgsfieldKeyId', 'higgsfieldSecret', 'claudeModel', 'openaiImageModel', 'higgsfieldModel', 'imageProvider']) $('#s_' + k).value = settings[k] || '';
   for (const k of ['name', 'about', 'audience', 'website', 'doNot']) $('#c_' + k).value = settings.company[k] || '';
 }
 $('#saveSettings').addEventListener('click', async () => {
+  readConnections();
   for (const k of ['anthropicKey', 'openaiKey', 'higgsfieldKeyId', 'higgsfieldSecret', 'claudeModel', 'openaiImageModel', 'higgsfieldModel', 'imageProvider']) settings[k] = $('#s_' + k).value.trim();
   for (const k of ['name', 'about', 'audience', 'website', 'doNot']) settings.company[k] = $('#c_' + k).value.trim();
   await api.settings.set(settings);
@@ -312,14 +347,31 @@ function fillCard(card, agent, entry) {
       <button class="btn small b_img">${entry.image ? 'Regenerate image' : 'Generate image'}</button>
       <button class="btn small b_edit" ${images.length ? '' : 'disabled title="Add an image in the brief first"'} title="OpenAI edits your photo. Default: the writer's image idea + your reference note, with the real Atomax logo supplied. Type your own instruction in the box below to override.">Edit my image</button>
       ${entry.image ? '<button class="btn small b_saveimg">Save image</button>' : ''}
+      <button class="btn small primary b_post">Post to ${esc(agent.platform)}</button>
       <button class="btn small b_del">Delete</button>
     </div>
+    <div class="posted">${entry.posted ? '✅ Posted ' + new Date(entry.posted.at).toLocaleString('en-GB') + (entry.posted.url ? ' · <a href="#" class="b_open">open</a>' : '') : ''}</div>
     <div class="reviews"></div>
     <div class="revise"><input type="text" class="r_text" placeholder="Revise the post, or describe an image edit (e.g. shorter / brighten and tidy the background)" /><button class="btn small b_revise">Go</button></div>
     <div class="err"></div>`;
   (entry.reviews || []).forEach(r => { const h = document.createElement('div'); h.className = 'review'; c.querySelector('.reviews').appendChild(h); renderReview(h, r, card, agent, entry); });
   c.querySelector('.b_copy').addEventListener('click', () => { navigator.clipboard.writeText(p.caption || ''); c.querySelector('.b_copy').textContent = 'Copied ✓'; setTimeout(() => c.querySelector('.b_copy').textContent = 'Copy post', 1500); });
   c.querySelector('.b_save').addEventListener('click', () => api.files.saveText({ text: `${agent.platform} post — ${new Date(entry.created).toLocaleString('en-GB')}\n\n${p.caption}\n\nAlt text: ${p.altText || ''}\nBest time: ${p.bestTime || ''}\nImage idea: ${p.imageIdea || ''}`, name: `${agent.platform.replace(/\W+/g, '-')}-post.txt` }));
+  const postBtn = c.querySelector('.b_post');
+  if (isReviewer(agent)) postBtn.remove();
+  else api.social.canPost(agent.platform).then(r => { if (!r.ok) { postBtn.disabled = true; postBtn.classList.remove('primary'); postBtn.title = r.why; } });
+  if (postBtn.isConnected) postBtn.addEventListener('click', async () => {
+    const img = entry.image ? { base64: entry.image, mime: 'image/png', alt: p.altText || '' } : (images[0] ? { ...images[0], alt: p.altText || '' } : null);
+    if (!confirm(`Post this to ${agent.platform} now${img ? ' with the image' : ' (no image)'}?`)) return;
+    postBtn.disabled = true; postBtn.innerHTML = '<span class="spinner"></span> posting';
+    office.setState(agent.id, 'working', `posting to ${agent.platform}`);
+    try {
+      const r = await api.social.publish({ platform: agent.platform, text: p.caption || '', image: img });
+      entry.posted = { at: new Date().toISOString(), url: r.url, id: r.id }; await api.posts.set(posts); fillCard(card, agent, entry);
+      office.setState(agent.id, 'done', 'posted ✓');
+    } catch (e) { c.querySelector('.err').textContent = e.message; postBtn.disabled = false; postBtn.textContent = 'Post to ' + agent.platform; office.setState(agent.id, 'done', 'post failed'); }
+  });
+  const openLink = c.querySelector('.b_open'); if (openLink) openLink.addEventListener('click', (ev) => { ev.preventDefault(); api.openExternal(entry.posted.url); });
   c.querySelector('.b_del').addEventListener('click', async () => { posts = posts.filter(x => x.id !== entry.id); await api.posts.set(posts); card.remove(); });
   c.querySelector('.b_revise').addEventListener('click', async () => {
     const instruction = c.querySelector('.r_text').value.trim(); if (!instruction) return;

@@ -15,6 +15,7 @@ contextBridge.exposeInMainWorld('office', {
     test: call('ai:test')
   },
   image: { generate: call('image:generate'), edit: call('image:edit') },
+  social: { connect: call('social:connect'), disconnect: call('social:disconnect'), publish: call('social:publish'), canPost: call('social:canPost') },
   openExternal: call('shell:open'),
   update: { install: call('update:install'), check: call('update:check'), onStatus: (fn) => ipcRenderer.on('update:status', (_e, s) => fn(s)) },
   version: call('app:version'),

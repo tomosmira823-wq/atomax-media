@@ -119,6 +119,8 @@
   .gear { display: flex; flex-wrap: wrap; gap: 6px; }
   .gear button { background: var(--navy2); color: var(--muted); border: 1px solid var(--line); border-radius: 20px; padding: 5px 11px; cursor: pointer; font: inherit; font-size: 12px; }
   .gear button.on { color: #061000; background: var(--green); border-color: var(--green); font-weight: 700; }
+  .conn { border: 1px solid var(--line); border-radius: 12px; padding: 12px; margin-bottom: 10px; }
+  .cstat.on { color: var(--green); }
   #history .card pre { max-height: 180px; }
   .hint { color: var(--muted); font-size: 12px; }
 </style>
@@ -266,6 +268,32 @@
       <label>Default image provider</label>
       <select id="s_imageProvider"><option value="openai">OpenAI</option><option value="higgsfield">Higgsfield</option></select>
     </div>
+  </div>
+  <h3 style="margin-top:18px">Connections</h3><div class="sub">Connect the Atomax accounts so posts can go out straight from the board. Each needs a developer app (see README). Login opens in your browser; tokens are stored encrypted on this PC.</div>
+  <div class="grid2">
+    <div class="conn" data-key="linkedin">
+      <b>LinkedIn</b> <span class="cstat hint"></span>
+      <label>Client ID</label><input type="text" id="li_clientId" />
+      <label>Client secret</label><input type="password" id="li_clientSecret" />
+      <label style="display:flex;align-items:center;gap:8px;color:var(--text)"><input type="checkbox" id="li_wantOrg" /> Also ask for company-page posting (needs Community Management API approval)</label>
+      <label>Post as</label><select id="li_target"></select>
+      <div class="row" style="margin-top:6px"><button class="btn small cconnect">Connect</button><button class="btn small cdisconnect">Disconnect</button></div>
+    </div>
+    <div class="conn" data-key="facebook">
+      <b>Facebook Page + Instagram</b> <span class="cstat hint"></span>
+      <label>Meta app ID</label><input type="text" id="fb_appId" />
+      <label>Meta app secret</label><input type="password" id="fb_appSecret" />
+      <label>Page</label><select id="fb_pageId"></select>
+      <div class="hint" id="fb_ig"></div>
+      <div class="row" style="margin-top:6px"><button class="btn small cconnect">Connect</button><button class="btn small cdisconnect">Disconnect</button></div>
+    </div>
+    <div class="conn" data-key="x">
+      <b>X / Twitter</b> <span class="cstat hint"></span>
+      <label>Client ID (OAuth 2.0)</label><input type="text" id="x_clientId" />
+      <label>Client secret (confidential apps only, else blank)</label><input type="password" id="x_clientSecret" />
+      <div class="row" style="margin-top:6px"><button class="btn small cconnect">Connect</button><button class="btn small cdisconnect">Disconnect</button></div>
+    </div>
+    <div><label>Callback URL to register in each developer app</label><input type="text" readonly value="http://127.0.0.1:52817/callback" /></div>
   </div>
   <h3 style="margin-top:18px">Company profile</h3><div class="sub">Every agent reads this before writing.</div>
   <label>Company name</label><input type="text" id="c_name" />

@@ -63,8 +63,19 @@ src/icon.*       app icon
 
 Posts, agents and settings are saved in `%APPDATA%\Atomax Media Office\`.
 
+## Connecting the socials (posting from the board)
+
+Settings → Connections. Each platform needs a developer app of your own; paste its ID/secret, press *Connect*, log in in the browser, done. Register this callback URL in every app: `http://127.0.0.1:52817/callback`. Tokens are stored encrypted with the keys. Once connected, each post card gets a *Post to …* button (with the image if there is one).
+
+**LinkedIn** — https://www.linkedin.com/developers/apps → Create app (associate it with the Atomax company page). Products: *Sign In with LinkedIn using OpenID Connect* and *Share on LinkedIn*. Auth tab → add the callback URL; copy Client ID and Client Secret. That posts as **you**. To post as the **company page**, also request the *Community Management API* product (LinkedIn reviews it, usually a few days), then tick *Also ask for company-page posting*, reconnect, and pick the page under *Post as*.
+
+**Facebook Page + Instagram** — https://developers.facebook.com → Create app, type *Business*. Add *Facebook Login for Business*; in its settings add the callback URL to *Valid OAuth Redirect URIs*. App settings → Basic → copy App ID and App Secret. Requirements: you're an admin of the Atomax Facebook Page, and the Atomax Instagram is a Business or Creator account linked to that Page (Instagram app → Settings → Business tools → Connect to a Facebook Page). The app can stay in Development mode for your own pages. Instagram posts always need an image; the app stages it on the Page unpublished to get a URL Instagram will accept.
+
+**X** — https://developer.x.com → Project + App. User authentication settings: OAuth 2.0 on, type *Native App* (then leave the secret blank) or *Confidential client* (then paste the secret), permissions *Read and write*, callback URL as above, website URL anything. Free tier allows posting.
+
+**TikTok** isn't connected: its Content Posting API only allows public posting after an app audit, so Tia's output is copy-and-paste for now.
+
 ## Notes
 
-- Posting straight to LinkedIn/Instagram isn't wired in yet; copy the post or save it. That's the next step if you want it (needs each platform's OAuth app).
 - Image edits use OpenAI's image edit endpoint. Claude can look at images and describe edits but can't change pixels.
 - Higgsfield model endpoint can be changed in Settings (default `higgsfield-ai/soul/standard`).
