@@ -168,7 +168,35 @@ function createWindow() {
         const out = await win.webContents.executeJavaScript(script);
         console.error('[scenario]', JSON.stringify(out));
       }
-      else if (process.env.AMO_VIEW === 'closeup') await win.webContents.executeJavaScript(`(async()=>{ for (const id of window.__office.agents.keys()) window.__office.setState(id, 'working', 'writing'); window.__office.controls.target.set(-7.5, 1.1, -3.5); window.__office.controls.update(); window.__office.camera.position.set(-3.5, 4.2, 1.5); window.__office.camera.lookAt(-7.5, 1.1, -3.5); console.log('cam', JSON.stringify(window.__office.camera.position)); for (let i=0;i<${process.env.AMO_FRAMES || 30};i++) { window.__office.step(0.3); await new Promise(r=>setTimeout(r,0)); } })()`);
+      else if (process.env.AMO_VIEW === 'steptime') { const out = await win.webContents.executeJavaScript(`(async()=>{ const o = window.__office; await new Promise(r => setTimeout(r, 1500)); o.renderer.render = () => {}; const times = []; const N = ${process.env.AMO_STEPS || 40}; let worst = 0, worstAt = -1; for (let i = 0; i < N; i++) { if (i === 20 && ${process.env.AMO_SIT ? 'true' : 'false'}) for (const id of o.agents.keys()) o.setState(id, 'working', 'w'); const t0 = performance.now(); o.step(0.1); const t = performance.now() - t0; if (t > worst) { worst = t; worstAt = i; } if (i < 40) times.push(Math.round(t)); } times.push('worst', Math.round(worst), 'at', worstAt); const ag = [...o.agents.values()].map(a => ({ n: a.data.name, st: a.state, seated: !!a.seated, d: Math.hypot(a.group.position.x - a.seat.x, a.group.position.z - a.seat.z).toFixed(2), path: a.path && a.path.length, face: a.group.rotation.y.toFixed(2), want: a.faceSeat.toFixed(2) })); return { times, ag }; })()`); console.error('[steptime]', JSON.stringify(out)); }
+      else if (process.env.AMO_VIEW === 'navtest') { const out = await win.webContents.executeJavaScript(`(async()=>{
+        const o = window.__office; await new Promise(r => setTimeout(r, 1500));
+        // simulate 6 minutes of office time at 10 Hz without rendering; track every agent's progress
+        const stuckLog = {}; const trips = {};
+        const orig = o.renderer.render.bind(o.renderer); o.renderer.render = () => {}; const origL = o.labelRenderer.render.bind(o.labelRenderer); o.labelRenderer.render = () => {};
+        const ids = [...o.agents.keys()];
+        const last = {}; ids.forEach(id => { last[id] = { p: o.agents.get(id).group.position.clone(), still: 0 }; stuckLog[id] = 0; trips[id] = 0; });
+        const a0 = o.agents.get(ids[0]); const dbg = []; const stuckWhere = [];
+        for (let i = 0; i < 500; i++) {
+          if (i < 80 && i % 5 === 0) dbg.push({ i, pos: [a0.group.position.x.toFixed(2), a0.group.position.z.toFixed(2)], tgt: a0.walkTarget ? [a0.walkTarget.x.toFixed(2), a0.walkTarget.z.toFixed(2)] : null, path: a0.path ? a0.path.length : null, idx: a0.pathIdx, stuck: a0.stuck && a0.stuck.toFixed(2), walkable: o.__walk(a0.group.position.x, a0.group.position.z), wait: a0.wait && a0.wait.toFixed(1) });
+          if (i === 150) ids.forEach(id => o.setState(id, 'working', 'w'));
+          if (i === 350) ids.forEach(id => o.setState(id, 'idle'));
+          o.step(0.1);
+          for (const id of ids) { const a = o.agents.get(id); const d = a.group.position.distanceTo(last[id].p); last[id].p.copy(a.group.position);
+            const seated = a.state === 'working' && Math.hypot(a.group.position.x - a.seat.x, a.group.position.z - a.seat.z) < 0.3;
+            const atTarget = a.walkTarget && a.group.position.distanceTo(a.walkTarget) < 0.3;
+            if (a.walkTarget && !seated && !atTarget) { if (d < 0.01) { last[id].still += 0.1; if (last[id].still > 3) { stuckLog[id]++; last[id].still = 0; stuckWhere.push({ id, pos: [a.group.position.x.toFixed(1), a.group.position.z.toFixed(1)], tgt: [a.walkTarget.x.toFixed(1), a.walkTarget.z.toFixed(1)], state: a.state, i }); } } else last[id].still = 0; }
+            else last[id].still = 0;
+          }
+        }
+        const seatedAll = ids.map(id => { const a = o.agents.get(id); return a.data.name + ':' + (a.state); });
+        o.renderer.render = orig; o.labelRenderer.render = origL;
+        // facing check: seated agents should look toward their desk (dot of facing vector with desk direction > 0.9)
+        ids.forEach(id => o.setState(id, 'working', 'w')); for (let i = 0; i < 120; i++) o.step(0.1);
+        const facing = ids.map(id => { const a = o.agents.get(id); const lx = Math.sin(a.group.rotation.y), lz = Math.cos(a.group.rotation.y); let tx = a.desk.position.x - a.group.position.x, tz = a.desk.position.z - a.group.position.z; const L = Math.hypot(tx, tz) || 1; tx /= L; tz /= L; return a.data.name + ':' + (lx * tx + lz * tz).toFixed(2) + (Math.hypot(a.group.position.x - a.seat.x, a.group.position.z - a.seat.z) < 0.3 ? ' seated' : ' NOT SEATED'); });
+        return { facing, stuckEvents: stuckLog, stuckWhere: stuckWhere.slice(0, 12), navCells: o.nav ? o.nav.grid.reduce((s,v)=>s+v,0) + '/' + o.nav.grid.length : null };
+      })()`); console.error('[navtest]', JSON.stringify(out)); }
+      else if (process.env.AMO_VIEW === 'closeup') await win.webContents.executeJavaScript(`(async()=>{ for (const id of window.__office.agents.keys()) window.__office.setState(id, 'working', 'writing'); window.__office.scene.traverse(o => { if (o.isPointLight || o.isSpotLight) o.intensity *= 0.3; }); window.__office.controls.target.set(-7.5, 1.0, -3.8); window.__office.controls.update(); window.__office.camera.position.set(-7.5, 7.5, 4.5); window.__office.camera.lookAt(-7.5, 1.0, -3.8); console.log('cam', JSON.stringify(window.__office.camera.position)); for (let i=0;i<${process.env.AMO_FRAMES || 30};i++) { window.__office.step(0.3); await new Promise(r=>setTimeout(r,0)); } })()`);
       else if (process.env.AMO_VIEW === 'behind') await win.webContents.executeJavaScript(`(async()=>{ window.__office.camera.position.set(-38, 14, 6); window.__office.controls.target.set(0, 1, 0); for (let i=0;i<${process.env.AMO_FRAMES || 8};i++) { window.__office.step(0.3); await new Promise(r=>setTimeout(r,0)); } })()`);
       else if (process.env.AMO_VIEW === 'collapsed') await win.webContents.executeJavaScript(`(async()=>{ document.querySelectorAll('.panel .collapse').forEach(b => b.click()); window.__office.camera.position.set(-6, 22, 40); window.__office.controls.target.set(1, 0.5, 0); for (let i=0;i<${process.env.AMO_FRAMES || 20};i++) { window.__office.step(0.3); await new Promise(r=>setTimeout(r,0)); } })()`);
       else if (process.env.AMO_VIEW === 'loadout') await win.webContents.executeJavaScript(`(async()=>{ document.querySelector('[data-tab=agents]').click(); await new Promise(r=>setTimeout(r,200)); document.querySelector('.tcard').click(); await new Promise(r=>setTimeout(r,200)); for (let i=0;i<${process.env.AMO_FRAMES || 20};i++) { window.__preview.t += 0.1; window.__preview.step(); await new Promise(r=>setTimeout(r,0)); } })()`);

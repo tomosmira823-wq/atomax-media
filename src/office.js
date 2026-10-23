@@ -147,9 +147,9 @@ export class Office {
   // ---------- renderer, camera, lights ----------
   #initRenderer() {
     this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: true, powerPreference: 'high-performance' });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
     this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = THREE.VSMShadowMap;
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.05;
     this.labelRenderer = new CSS2DRenderer({ element: this.labelsDiv });
@@ -173,9 +173,9 @@ export class Office {
     this.scene.add(new THREE.HemisphereLight(0xe8eeff, 0x202633, 0.6));
     const sun = new THREE.DirectionalLight(0xfff1dc, 2.0);
     sun.position.set(-16, 24, 12); sun.castShadow = true;
-    sun.shadow.mapSize.set(4096, 4096);
+    sun.shadow.mapSize.set(2048, 2048);
     const sc = sun.shadow.camera; sc.left = -26; sc.right = 26; sc.top = 26; sc.bottom = -26; sc.near = 1; sc.far = 80;
-    sun.shadow.bias = -0.0005; sun.shadow.normalBias = 0.02; sun.shadow.radius = 6; sun.shadow.blurSamples = 16;
+    sun.shadow.bias = -0.0003; sun.shadow.normalBias = 0.04; sun.shadow.radius = 3;
     this.scene.add(sun);
     const fill = new THREE.PointLight(0xa8ffb0, 10, 40, 1.5); fill.position.set(6, 5, 4); this.scene.add(fill);
     const sky = new THREE.DirectionalLight(0xcfe3ff, 0.8); sky.position.set(-20, 8, -4); this.scene.add(sky);
@@ -229,8 +229,8 @@ export class Office {
     sx.fillStyle = 'rgba(120,140,170,0.35)'; for (let i = 0; i < 40; i++) { const bw = 20 + Math.random() * 50, bh = 60 + Math.random() * 180; sx.fillRect(i * 26, 512 - bh, bw, bh); }
     sx.fillStyle = 'rgba(90,110,140,0.5)'; for (let i = 0; i < 30; i++) { const bw = 25 + Math.random() * 40, bh = 30 + Math.random() * 110; sx.fillRect(10 + i * 34, 512 - bh, bw, bh); }
     const skyTex = new THREE.CanvasTexture(skyC); skyTex.colorSpace = THREE.SRGBColorSpace;
-    const sky = new THREE.Mesh(new THREE.PlaneGeometry(D + 4, WALL_H - 0.4), new THREE.MeshBasicMaterial({ map: skyTex })); sky.rotation.y = Math.PI / 2; sky.position.set(-W / 2 - 1.2, WALL_H / 2 - 0.1, 0); L.add(sky);
-    const sunLight = new THREE.SpotLight(0xfff4e0, 60, 40, Math.PI / 5, 0.6, 1.2); sunLight.position.set(-W / 2 - 4, 7, -2); sunLight.target.position.set(-2, 0, 0); s.add(sunLight); s.add(sunLight.target);
+    const sky = new THREE.Mesh(new THREE.PlaneGeometry(D - 0.6, WALL_H - 1.2), new THREE.MeshBasicMaterial({ map: skyTex, depthWrite: false })); sky.rotation.y = Math.PI / 2; sky.position.set(-W / 2 - 0.6, WALL_H / 2 - 0.5, 0); sky.renderOrder = -1; L.add(sky);
+    const sunLight = new THREE.SpotLight(0xfff4e0, 40, 40, Math.PI / 5, 0.6, 1.2); sunLight.castShadow = false; sunLight.position.set(-W / 2 - 4, 7, -2); sunLight.target.position.set(-2, 0, 0); s.add(sunLight); s.add(sunLight.target);
 
     // ceiling structure on the open sides: slim beams so the room reads as a space, not a tray
     const beamM = mat(NAVY2, { roughness: 0.5, metalness: 0.3 });
@@ -275,10 +275,8 @@ export class Office {
     const rug = new THREE.Mesh(new THREE.PlaneGeometry(M.x1 - M.x0 - 1, M.z1 - M.z0 - 1), mat(NAVY2, { roughness: 1 })); rug.rotation.x = -Math.PI / 2; rug.position.set((M.x0 + M.x1) / 2, 0.02, (M.z0 + M.z1) / 2); rug.receiveShadow = true; s.add(rug);
     const rugIn = new THREE.Mesh(new THREE.PlaneGeometry(M.x1 - M.x0 - 1.4, M.z1 - M.z0 - 1.4), mat(0x273047, { roughness: 1 })); rugIn.rotation.x = -Math.PI / 2; rugIn.position.set((M.x0 + M.x1) / 2, 0.035, (M.z0 + M.z1) / 2); s.add(rugIn);
     // glass walls as a row of small obstacles so wanderers go round them (door gap left open)
-    for (let z = M.z0; z <= M.z1 - 2.4; z += 0.8) this.obstacles.push({ x: M.x0, z, r: 0.7 });
-    for (let x = M.x0; x <= M.x1; x += 0.8) this.obstacles.push({ x, z: M.z0, r: 0.7 });
     this.meetingPoint = new THREE.Vector3((M.x0 + M.x1) / 2, 0, (M.z0 + M.z1) / 2);
-    this.obstacles.push({ x: this.meetingPoint.x, z: this.meetingPoint.z, r: 2.3 });   // the table
+    this.obstacles.push({ rect: true, x0: this.meetingPoint.x - 2.6, x1: this.meetingPoint.x + 2.6, z0: this.meetingPoint.z - 2.0, z1: this.meetingPoint.z + 2.0 });   // table + chairs
     [[M.x0 + 1.2, M.z0 + 2.2, 0], [M.x1 - 1.2, M.z1 - 1.5, Math.PI], [M.x0 + 2.8, M.z1 - 1.2, -Math.PI / 2 * 0], [M.x1 - 1.4, M.z0 + 1.5, Math.PI / 2]].forEach(([x, z, f]) => this.pois.push({ x, z, face: f, room: true }));
 
     // reception sign (right-hand side, angled toward the viewer)
@@ -385,11 +383,13 @@ export class Office {
     const plant = this.#put('flowers', { scale: 0.9 }); if (plant) { this.scene.remove(plant); plant.position.set(0, 1.05, 0); bt.add(plant); }
     [-1.3, 1.3].forEach(x => { bt.add(box(0.5, 0.012, 0.35, mat(0xffffff), x, 1.06, 0.3, false)); bt.add(box(0.5, 0.012, 0.35, mat(0xffffff), -x, 1.06, -0.3, false)); });
     [[-1.5, -1.5, 0], [0, -1.5, 0], [1.5, -1.5, 0], [-1.5, 1.5, Math.PI], [0, 1.5, Math.PI], [1.5, 1.5, Math.PI]].forEach(([x, z, r]) => { const ch = this.#officeChair(new THREE.Color(GREEN)); ch.position.set(x, 0, z); ch.rotation.y = r; bt.add(ch); });
-    [-1.4, 0, 1.4].forEach(x => { const shade = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.36, 0.3, 20, 1, true), mat(NAVY2, { side: THREE.DoubleSide })); shade.position.set(x, WALL_H - 2.0, 0); bt.add(shade); bt.add(box(0.015, 1.9, 0.015, mat(NAVY2), x, WALL_H - 0.95, 0, false)); const pl = new THREE.PointLight(0xffe2b3, 5, 6, 2); pl.position.set(x, WALL_H - 2.15, 0); bt.add(pl); });
+    [-1.4, 0, 1.4].forEach(x => { const shade = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.36, 0.3, 20, 1, true), mat(NAVY2, { side: THREE.DoubleSide })); shade.position.set(x, WALL_H - 2.0, 0); bt.add(shade); bt.add(box(0.015, 1.9, 0.015, mat(NAVY2), x, WALL_H - 0.95, 0, false)); });
+    const bpl = new THREE.PointLight(0xffe2b3, 8, 8, 2); bpl.position.set(0, WALL_H - 2.2, 0); bt.add(bpl);
     bt.position.set(mp.x, 0, mp.z); s.add(bt);
     // lounge pendant
     const lp = new THREE.PointLight(0xffe2b3, 6, 7, 2); lp.position.set(-8.8, WALL_H - 2.2, 8.4); s.add(lp);
     const lshade = new THREE.Mesh(new THREE.ConeGeometry(0.5, 0.45, 24, 1, true), mat(NAVY2, { side: THREE.DoubleSide })); lshade.position.set(-8.8, WALL_H - 2.1, 8.4); s.add(lshade); s.add(box(0.015, 2.1, 0.015, mat(NAVY2), -8.8, WALL_H - 1.05, 8.4, false));
+    this.#buildNav();
     // if agents were requested before the models arrived, place them now
     if (this.pendingAgents) { const l = this.pendingAgents; this.pendingAgents = null; this.setAgents(l); }
     this.setBoard(this.boardLines);
@@ -432,6 +432,7 @@ export class Office {
     // keyboard + mouse + mug + plant + papers
     g.add(box(0.95, 0.03, 0.3, mat(0xf0f2f5, { roughness: 0.4 }), -0.1, TH + 0.05, 0.1, false));
     for (let r = 0; r < 3; r++) for (let c = 0; c < 10; c++) g.add(box(0.07, 0.012, 0.07, mat(0xcfd3da), -0.1 - 0.4 + c * 0.09, TH + 0.062, 0.02 + r * 0.085, false));
+    g.traverse(m => { if (m.isMesh && m.geometry.type === 'BoxGeometry' && m.geometry.parameters.height < 0.1) m.castShadow = false; });
     const mouse = new THREE.Mesh(new THREE.CapsuleGeometry(0.05, 0.08, 4, 10), mat(0xf0f2f5, { roughness: 0.3 })); mouse.rotation.x = Math.PI / 2; mouse.position.set(0.55, TH + 0.07, 0.12); g.add(mouse);
     const mug = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.08, 0.18, 16), mat(colour, { roughness: 0.4 })); mug.position.set(-0.95, TH + 0.12, 0.25); mug.castShadow = true; g.add(mug);
     const handle = new THREE.Mesh(new THREE.TorusGeometry(0.06, 0.015, 8, 16), mat(colour)); handle.position.set(-0.85, TH + 0.12, 0.25); g.add(handle);
@@ -443,7 +444,7 @@ export class Office {
     const cord = box(0.015, 2.0, 0.015, frame, 0, WALL_H - 1.0, 0, false); g.add(cord);
     const shade = new THREE.Mesh(new THREE.ConeGeometry(0.45, 0.4, 24, 1, true), mat(NAVY2, { side: THREE.DoubleSide, roughness: 0.6 })); shade.position.set(0, WALL_H - 2.05, 0); g.add(shade);
     const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.07, 10, 8), new THREE.MeshBasicMaterial({ color: 0xfff1cc })); bulb.position.set(0, WALL_H - 2.15, 0); g.add(bulb);
-    if (this._podLightToggle = !this._podLightToggle) { const lamp = new THREE.PointLight(0xffe2b3, 9, 8, 2); lamp.position.set(0, WALL_H - 2.15, -1.4); g.add(lamp); }
+    const pool = new THREE.Mesh(new THREE.CircleGeometry(2.2, 24), new THREE.MeshBasicMaterial({ color: 0xffe2b3, transparent: true, opacity: 0.10, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 })); pool.rotation.x = -Math.PI / 2; pool.position.set(0, 0.05, 0); g.add(pool);
     g.userData.screenMat = screenMat;
     g.userData.deskHeight = TH;
     return g;
@@ -476,31 +477,39 @@ export class Office {
         const inner = new THREE.Mesh(new THREE.PlaneGeometry(3.9, 5.3), mat(0x273047, { roughness: 1, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 })); inner.rotation.x = -Math.PI / 2; inner.position.set(dx, 0.035, dz - 1.4); inner.receiveShadow = true; this.scene.add(inner); a_rugs.push(inner);
       }
       // user sits in front of the desk (+z side in desk space), facing the monitors
-      const dir = facing === 0 ? 1 : -1;
-      const chair = this.#officeChair(colour); chair.position.set(dx, 0, dz + dir * 1.15); chair.rotation.y = facing === 0 ? Math.PI : 0; this.scene.add(chair);
-      const seat = new THREE.Vector3(dx, 0, dz + dir * 1.05);
-      this.obstacles.push({ x: dx, z: dz + dir * 0.3, r: 2.2, desk: true });
+      desk.updateMatrixWorld(true);
+      const front = new THREE.Vector3(0, 0, 1).applyQuaternion(desk.quaternion); // desk's user side in world space
+      const chairPos = new THREE.Vector3(dx, 0, dz).addScaledVector(front, 1.15);
+      const faceSeat = Math.atan2(-front.x, -front.z); // look back toward the desk (monitors)
+      const chair = this.#officeChair(colour); chair.position.copy(chairPos); chair.rotation.y = faceSeat; this.scene.add(chair);
+      const seat = new THREE.Vector3(dx, 0, dz).addScaledVector(front, 1.05);
+      const dir = front.z >= 0 ? 1 : -1;
+      // block the desk itself (top + monitors + pedestal); the seat side stays open so the agent can reach its chair
+      this.obstacles.push({ rect: true, x0: dx - 1.45, x1: dx + 1.45, z0: dz - 0.75, z1: dz + 0.75, desk: true });
       const group = buildCharacter(data.colour, data.role, data.gear);
       group.position.copy(this.#randomIdlePoint()); group.position.x += (i - list.length / 2) * 0.01;
       this.scene.add(group);
       const el = document.createElement('div'); el.className = 'lbl';
       el.innerHTML = `<b>${data.name}</b> · ${data.platform} <span class="st"></span>`;
       const label = new CSS2DObject(el); label.position.set(0, 2.6, 0); group.add(label);
-      this.agents.set(data.id, { data, group, desk, chair, seat, faceSeat: facing === 0 ? Math.PI : 0, state: 'idle', label, el, walkTarget: null, waypoint: null, faceTo: null, wait: Math.random() * 3, t: Math.random() * 10, blink: 2 + Math.random() * 3 });
+      this.agents.set(data.id, { data, group, desk, chair, seat, faceSeat, state: 'idle', label, el, walkTarget: null, waypoint: null, faceTo: null, wait: Math.random() * 3, t: Math.random() * 10, blink: 2 + Math.random() * 3 });
     });
     // fill the remaining pod slots with unassigned workstations so the floor reads as a full office
     (this.spareDesks || []).forEach(d => this.scene.remove(d)); this.spareDesks = [];
     for (let i = list.length; i < DESK_SLOTS.length; i++) {
       const [dx, dz, facing] = DESK_SLOTS[i];
       const d = this.#desk(new THREE.Color(0x8e97ab)); d.position.set(dx, 0, dz); d.rotation.y = facing; d.userData.screenMat.emissive.set(0x0b1220); d.userData.screenMat.emissiveIntensity = 0.5; this.scene.add(d); this.spareDesks.push(d);
-      const dir = facing === 0 ? 1 : -1;
-      const ch = this.#officeChair(new THREE.Color(0x6b7280)); ch.position.set(dx, 0, dz + dir * 1.2); ch.rotation.y = facing === 0 ? Math.PI : 0; this.scene.add(ch); this.spareDesks.push(ch);
-      this.obstacles.push({ x: dx, z: dz + dir * 0.3, r: 2.2, desk: true });
+      d.updateMatrixWorld(true);
+      const front = new THREE.Vector3(0, 0, 1).applyQuaternion(d.quaternion); const dir = front.z >= 0 ? 1 : -1;
+      const ch = this.#officeChair(new THREE.Color(0x6b7280)); ch.position.set(dx, 0, dz).addScaledVector(front, 1.2); ch.rotation.y = Math.atan2(-front.x, -front.z); this.scene.add(ch); this.spareDesks.push(ch);
+      this.obstacles.push({ rect: true, x0: dx - 1.45, x1: dx + 1.45, z0: Math.min(dz, dz + dir * 1.3) - 0.75, z1: Math.max(dz, dz + dir * 1.3) + 0.75, desk: true }); // spare desk incl. empty chair
       if (facing === 0) {
         const rug = new THREE.Mesh(new THREE.PlaneGeometry(4.2, 5.6), mat(NAVY2, { roughness: 1, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 })); rug.rotation.x = -Math.PI / 2; rug.position.set(dx, 0.02, dz - 1.4); rug.receiveShadow = true; this.scene.add(rug); this.spareDesks.push(rug);
         const inner = new THREE.Mesh(new THREE.PlaneGeometry(3.9, 5.3), mat(0x273047, { roughness: 1, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 })); inner.rotation.x = -Math.PI / 2; inner.position.set(dx, 0.035, dz - 1.4); inner.receiveShadow = true; this.scene.add(inner); this.spareDesks.push(inner);
       }
     }
+    this.#buildNav();
+    for (const a of this.agents.values()) a.path = null;
     this.setBoard(this.boardLines);
   }
 
@@ -513,7 +522,7 @@ export class Office {
     if (state === 'working') { sm.color.set(0x0b2a00); sm.emissive.set(GREEN); sm.emissiveIntensity = 1.2; }
     else if (state === 'done') { sm.color.set(0x0a1a2a); sm.emissive.set(0x7fc8ff); sm.emissiveIntensity = 0.8; }
     else { sm.color.set(0x16233a); sm.emissive.set(0x1c3a6b); sm.emissiveIntensity = 0.8; }
-    if (state !== 'working') { a.walkTarget = null; a.waypoint = null; a.waypoint2 = null; a.crossed = false; a.faceTo = null; a.wait = 1 + Math.random() * 2; }
+    if (state !== 'working') { a.walkTarget = null; a.path = null; a.seated = false; a.faceTo = null; a.wait = 1 + Math.random() * 2; }
   }
 
   setBoard(lines) {
@@ -537,6 +546,7 @@ export class Office {
   // ---------- animation ----------
   #animate() {
     requestAnimationFrame(() => this.#animate());
+    if (document.hidden) return;
     this.step(Math.min(this.clock.getDelta(), 0.05));
   }
 
@@ -552,42 +562,121 @@ export class Office {
   }
 
   #inMeeting(x, z) { const M = MEETING; return x > M.x0 && x < M.x1 && z > M.z0 && z < M.z1; }
-  #clear(x, z) { return this.obstacles.every(o => Math.hypot(o.x - x, o.z - z) > o.r); }
+  #clear(x, z) { return this.#walkable(x, z); }
+
+  // ---- nav grid ----
+  #buildNav() {
+    const CELL = 0.5; this.navCell = CELL;
+    const cols = Math.ceil(ROOM_W / CELL), rows = Math.ceil(ROOM_D / CELL);
+    const grid = new Uint8Array(cols * rows); // 1 = walkable
+    const M = MEETING;
+    const blocked = (x, z) => {
+      if (x < -ROOM_W / 2 + 0.7 || x > ROOM_W / 2 - 0.7 || z < -ROOM_D / 2 + 1.0 || z > ROOM_D / 2 - 0.7) return true;
+      for (const o of this.obstacles) {
+        if (o.rect) { if (x > o.x0 && x < o.x1 && z > o.z0 && z < o.z1) return true; }
+        else if (Math.hypot(o.x - x, o.z - z) < o.r) return true;
+      }
+      // glass partitions: x = M.x0 line (door gap near z1), z = M.z0 line
+      if (Math.abs(x - M.x0) < 0.45 && z > M.z0 - 0.45 && z < M.z1 - 2.4) return true;
+      if (Math.abs(z - M.z0) < 0.45 && x > M.x0 - 0.45 && x < M.x1 + 0.45) return true;
+      return false;
+    };
+    for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
+      const x = -ROOM_W / 2 + (c + 0.5) * CELL, z = -ROOM_D / 2 + (r + 0.5) * CELL;
+      grid[r * cols + c] = blocked(x, z) ? 0 : 1;
+    }
+    this.nav = { grid, cols, rows };
+  }
+  #cellOf(x, z) { const c = Math.floor((x + ROOM_W / 2) / this.navCell), r = Math.floor((z + ROOM_D / 2) / this.navCell); return [THREE.MathUtils.clamp(c, 0, this.nav.cols - 1), THREE.MathUtils.clamp(r, 0, this.nav.rows - 1)]; }
+  #posOf(c, r) { return new THREE.Vector3(-ROOM_W / 2 + (c + 0.5) * this.navCell, 0, -ROOM_D / 2 + (r + 0.5) * this.navCell); }
+  __walk(x, z) { return this.#walkable(x, z); }
+  #walkable(x, z) { if (!this.nav) return true; const [c, r] = this.#cellOf(x, z); return this.nav.grid[r * this.nav.cols + c] === 1; }
+  #nearestWalkable(x, z) {
+    if (!this.nav) return new THREE.Vector3(x, 0, z);
+    const [c0, r0] = this.#cellOf(x, z);
+    for (let rad = 0; rad < 8; rad++) for (let dr = -rad; dr <= rad; dr++) for (let dc = -rad; dc <= rad; dc++) {
+      const c = c0 + dc, r = r0 + dr; if (c < 0 || r < 0 || c >= this.nav.cols || r >= this.nav.rows) continue;
+      if (this.nav.grid[r * this.nav.cols + c]) return this.#posOf(c, r);
+    }
+    return new THREE.Vector3(x, 0, z);
+  }
+  // A* over the grid (8-neighbour, no corner cutting). Returns a list of world points, simplified.
+  #findPath(from, to) {
+    if (!this.nav) return [to.clone()];
+    const { grid, cols, rows } = this.nav;
+    const [sc, sr] = this.#cellOf(from.x, from.z); let [tc, tr] = this.#cellOf(to.x, to.z);
+    if (!grid[tr * cols + tc]) { const p = this.#nearestWalkable(to.x, to.z); [tc, tr] = this.#cellOf(p.x, p.z); }
+    const start = sr * cols + sc, goal = tr * cols + tc;
+    if (start === goal) return [to.clone()];
+    const open = [start], came = new Map(), gS = new Map([[start, 0]]);
+    const h = (i) => { const c = i % cols, r = (i / cols) | 0; return Math.hypot(c - tc, r - tr); };
+    const fS = new Map([[start, h(start)]]); const closed = new Set();
+    let found = false, guard = 0;
+    while (open.length && guard++ < 6000) {
+      let bi = 0; for (let i = 1; i < open.length; i++) if (fS.get(open[i]) < fS.get(open[bi])) bi = i;
+      const cur = open.splice(bi, 1)[0];
+      if (cur === goal) { found = true; break; }
+      closed.add(cur);
+      const cc = cur % cols, cr = (cur / cols) | 0;
+      for (let dr = -1; dr <= 1; dr++) for (let dc = -1; dc <= 1; dc++) {
+        if (!dc && !dr) continue; const nc = cc + dc, nr = cr + dr;
+        if (nc < 0 || nr < 0 || nc >= cols || nr >= rows) continue;
+        const ni = nr * cols + nc; if (!grid[ni] || closed.has(ni)) continue;
+        if (dc && dr && (!grid[cr * cols + nc] || !grid[nr * cols + cc])) continue; // no corner cutting
+        const ng = gS.get(cur) + (dc && dr ? 1.414 : 1);
+        if (ng < (gS.get(ni) ?? Infinity)) { came.set(ni, cur); gS.set(ni, ng); fS.set(ni, ng + h(ni)); if (!open.includes(ni)) open.push(ni); }
+      }
+    }
+    if (!found) return [this.#nearestWalkable(from.x, from.z)];
+    const cells = []; let cur = goal; while (cur !== start) { cells.push(cur); cur = came.get(cur); } cells.reverse();
+    // string-pull: drop points that are collinear-ish to smooth the path
+    const pts = cells.map(i => this.#posOf(i % cols, (i / cols) | 0));
+    const out = []; let last = from.clone();
+    for (let i = 0; i < pts.length; i++) { const nxt = pts[i + 1]; if (!nxt || !this.#lineClear(last, nxt)) { out.push(pts[i]); last = pts[i]; } }
+    out[out.length - 1] = to.clone(); if (!out.length) out.push(to.clone());
+    return out;
+  }
+  #lineClear(a, b) { const n = Math.ceil(a.distanceTo(b) / (this.navCell * 0.5)) + 1; for (let i = 0; i <= n; i++) { const t = i / n; if (!this.#walkable(a.x + (b.x - a.x) * t, a.z + (b.z - a.z) * t)) return false; } return true; }
 
   #randomIdlePoint() {
-    for (let i = 0; i < 60; i++) {
+    for (let i = 0; i < 80; i++) {
       const x = -ROOM_W / 2 + 1.5 + Math.random() * (ROOM_W - 3);
       const z = -ROOM_D / 2 + 2.5 + Math.random() * (ROOM_D - 4);
-      if (this.#clear(x, z) && !this.#inMeeting(x, z)) return new THREE.Vector3(x, 0, z);
+      if (this.#walkable(x, z) && !this.#inMeeting(x, z)) return new THREE.Vector3(x, 0, z);
     }
-    return new THREE.Vector3(0, 0, 4);
+    return this.#nearestWalkable(0, 4);
   }
 
   #pickWanderTarget(a) {
     if (Math.random() < 0.45 && this.pois.length) {
       const p = this.pois[Math.floor(Math.random() * this.pois.length)];
       a.faceTo = p.face;
-      return new THREE.Vector3(p.x + (Math.random() - 0.5) * 0.6, 0, p.z + (Math.random() - 0.5) * 0.6);
+      return this.#nearestWalkable(p.x + (Math.random() - 0.5) * 0.6, p.z + (Math.random() - 0.5) * 0.6);
     }
     a.faceTo = null;
     return this.#randomIdlePoint();
   }
 
-  // walk to target, going via the meeting-room doorway when crossing its glass
+  // walk to target along an A* path over the nav grid (recomputed when the target changes or we get stuck)
   #goto(a, target, dt, ud) {
     const g = a.group;
-    const inside = this.#inMeeting(g.position.x, g.position.z), want = this.#inMeeting(target.x, target.z);
-    if (inside !== want && !a.waypoint && !a.crossed) {
-      // two legs: to the door on our side, then through to the other side
-      a.waypoint = inside ? MEETING.doorIn.clone() : MEETING.doorOut.clone();
-      a.waypoint2 = inside ? MEETING.doorOut.clone() : MEETING.doorIn.clone();
+    const dxz = Math.hypot(target.x - g.position.x, target.z - g.position.z);
+    if (dxz < 0.15) { a.path = null; return true; }
+    const key = target.x.toFixed(2) + ',' + target.z.toFixed(2);
+    if (!a.path || a.pathKey !== key || a.stuck > 1.2) {
+      a.path = this.#findPath(g.position, target); a.pathKey = key; a.pathIdx = 0; a.stuck = 0;
     }
-    if (a.waypoint) {
-      if (g.position.distanceTo(a.waypoint) < 0.35) { a.waypoint = a.waypoint2 || null; a.waypoint2 = null; if (!a.waypoint) a.crossed = true; }
-      else { this.#walkTowards(g, a.waypoint, dt, ud, a.waypoint2 == null); return false; }
+    if (dxz < 1.0) {
+      // final approach: straight line, turning to face the desk if we're going to sit
+      const d = new THREE.Vector3(target.x - g.position.x, 0, target.z - g.position.z); const step = Math.min(2.2 * dt, d.length()); g.position.addScaledVector(d.normalize(), step);
+      if (a.state === 'working') { let df = a.faceSeat - g.rotation.y; df = Math.atan2(Math.sin(df), Math.cos(df)); g.rotation.y += df * Math.min(1, dt * 6); }
+      return Math.hypot(target.x - g.position.x, target.z - g.position.z) < 0.15;
     }
-    if (g.position.distanceTo(target) < 0.15) { a.crossed = false; return true; }
-    this.#walkTowards(g, target, dt, ud, false, a);
+    const wp = a.path[a.pathIdx] || target;
+    if (Math.hypot(wp.x - g.position.x, wp.z - g.position.z) < 0.25 && a.pathIdx < a.path.length - 1) a.pathIdx++;
+    const bx = g.position.x, bz = g.position.z;
+    this.#walkTowards(g, a.path[a.pathIdx] || target, dt, ud);
+    a.stuck = Math.hypot(g.position.x - bx, g.position.z - bz) < 0.2 * dt ? (a.stuck || 0) + dt : 0;
     return false;
   }
 
@@ -595,9 +684,9 @@ export class Office {
     a.t += dt;
     const ud = a.group.userData, g = a.group;
     if (a.state === 'working') {
-      if (a.walkTarget !== a.seat) { a.walkTarget = a.seat; a.crossed = false; a.waypoint = null; a.waypoint2 = null; }
-      if (!this.#goto(a, a.seat, dt, ud)) return;
-      g.position.copy(a.seat);
+      if (a.walkTarget !== a.seat) { a.walkTarget = a.seat; a.path = null; a.seated = false; }
+      if (!a.seated) { if (!this.#goto(a, a.seat, dt, ud)) return; a.seated = true; }
+      g.position.x = a.seat.x; g.position.z = a.seat.z;
       g.rotation.y = a.faceSeat; ud.head.rotation.y *= 0.9;
       // typing: hands forward on the keyboard, small bob, occasional glance at the second screen
       ud.body.position.y = 0.85 + Math.sin(a.t * 14) * 0.012;
@@ -610,6 +699,7 @@ export class Office {
       return;
     }
     g.position.y += (0 - g.position.y) * Math.min(1, dt * 10);
+    if (this.nav && !this.#walkable(g.position.x, g.position.z)) { const p = this.#nearestWalkable(g.position.x, g.position.z); g.position.x = p.x; g.position.z = p.z; a.path = null; }
     ud.arms.forEach(x => { x.rotation.z *= 0.9; }); ud.head.rotation.x *= 0.9;
     this.#blink(a, dt);
     if (!a.walkTarget) {
@@ -620,10 +710,10 @@ export class Office {
       g.rotation.z = 0;
       this.#separate(a, dt);
       if (a.faceTo !== null) { let d = a.faceTo - g.rotation.y; d = Math.atan2(Math.sin(d), Math.cos(d)); g.rotation.y += d * Math.min(1, dt * 4); }
-      if (a.wait <= 0) { a.walkTarget = this.#pickWanderTarget(a); a.crossed = false; a.waypoint = null; a.waypoint2 = null; }
+      if (a.wait <= 0) { a.walkTarget = this.#pickWanderTarget(a); a.path = null; }
       return;
     }
-    if (this.#goto(a, a.walkTarget, dt, ud)) { a.walkTarget = null; a.wait = 2 + Math.random() * 6; }
+    if (this.#goto(a, a.walkTarget, dt, ud)) { a.walkTarget = null; a.path = null; a.wait = 2 + Math.random() * 6; }
   }
 
   #blink(a, dt) {
@@ -638,27 +728,24 @@ export class Office {
     for (const b of this.agents.values()) {
       if (b === a || b.state === 'working') continue;
       const dx = g.position.x - b.group.position.x, dz = g.position.z - b.group.position.z, d = Math.hypot(dx, dz);
-      if (d < 1.3 && d > 0.001) { g.position.x += dx / d * (1.3 - d) * dt * 2; g.position.z += dz / d * (1.3 - d) * dt * 2; }
+      if (d < 1.3 && d > 0.001) { const nx = g.position.x + dx / d * (1.3 - d) * dt * 2, nz = g.position.z + dz / d * (1.3 - d) * dt * 2; if (this.#walkable(nx, nz)) { g.position.x = nx; g.position.z = nz; } }
     }
   }
 
-  #walkTowards(g, target, dt, ud, ignoreObstacles, self) {
+  #walkTowards(g, target, dt, ud) {
     const dir = target.clone().sub(g.position); dir.y = 0; const dist = dir.length(); dir.normalize();
-    // steer round other agents
+    // mild steer round other agents (never strong enough to cancel forward motion)
     for (const b of this.agents.values()) {
       if (b.group === g) continue;
       const dx = g.position.x - b.group.position.x, dz = g.position.z - b.group.position.z, d = Math.hypot(dx, dz);
-      if (d < 1.6 && d > 0.001 && dist > 0.6) { const push = (1.6 - d) * 1.2; dir.x += dx / d * push; dir.z += dz / d * push; }
-    }
-    if (!ignoreObstacles) for (const o of this.obstacles) {
-      if (Math.hypot(target.x - o.x, target.z - o.z) < o.r) continue;
-      const dx = g.position.x - o.x, dz = g.position.z - o.z, d = Math.hypot(dx, dz);
-      if (d < o.r + 0.5 && d > 0.001) { const push = (o.r + 0.5 - d) * 1.5; dir.x += dx / d * push; dir.z += dz / d * push; }
+      if (d < 1.2 && d > 0.001 && dist > 0.6) { const push = (1.2 - d) * 0.6; dir.x += dx / d * push; dir.z += dz / d * push; }
     }
     dir.normalize();
-    g.position.addScaledVector(dir, Math.min(2.2 * dt, dist));
-    g.position.x = THREE.MathUtils.clamp(g.position.x, -ROOM_W / 2 + 0.8, ROOM_W / 2 - 0.8);
-    g.position.z = THREE.MathUtils.clamp(g.position.z, -ROOM_D / 2 + 0.8, ROOM_D / 2 - 0.8);
+    const step = Math.min(2.2 * dt, dist);
+    const nx = g.position.x + dir.x * step, nz = g.position.z + dir.z * step;
+    if (this.#walkable(nx, nz)) { g.position.x = nx; g.position.z = nz; }
+    else if (this.#walkable(nx, g.position.z)) g.position.x = nx;
+    else if (this.#walkable(g.position.x, nz)) g.position.z = nz;
     const yaw = Math.atan2(dir.x, dir.z);
     let diff = yaw - g.rotation.y; diff = Math.atan2(Math.sin(diff), Math.cos(diff));
     g.rotation.y += diff * Math.min(1, dt * 8);
