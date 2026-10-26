@@ -89,7 +89,7 @@ async function claude({ system, messages }) {
   has(/DRG-001 \| typo/);
   has(/DRG-002 \| struck \| C-104/);                  // struck on the schedule, still on the drawing
   has(/DRG-002 \| missing_on_dwg \| Schedule row 6 \(C-106\)/); // schedule says DRG-002, drawing does not show it
-  has(/Schedule \| not_on_dwg \| Row 7: C-107/);      // schedule row on a drawing nobody supplied
+  has(/Schedule \| dwg_not_supplied \| Row 7: C-107/);      // schedule row on a drawing nobody supplied
   hasNot(/C-101/);                                    // C_101 vs C-101 and 2C 1.5mm SWA are formatting only
   hasNot(/C-999/);                                    // hatched sheet ignored
   assert.ok(r.coverage.some(c => /Drawings → schedule/.test(c)) && r.coverage.some(c => /Schedule → drawings/.test(c)));

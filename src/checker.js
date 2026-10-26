@@ -332,15 +332,33 @@ function compare({ scheduleRows, files }) {
   const byKeyStruck = new Map(); struckRows.forEach(r => byKeyStruck.set(normKey(r.tag), r));
   const sheetsRead = []; // { file, sheet }
   const ignored = { sheets: [], interface: 0 };
+  const cancelledLabels = new Set();
   for (const f of files) for (const s of f.sheets) {
     const label = s.drawingNumber || f.name + (s.page ? ` p${s.page}` : '');
-    if (s.status === 'cancelled' || s.status === 'hatched') { ignored.sheets.push(`${label} (${s.status})`); continue; }
+    if (s.status === 'cancelled' || s.status === 'hatched') { ignored.sheets.push(`${label} (${s.status})`); if (s.drawingNumber) cancelledLabels.add(normKey(s.drawingNumber)); continue; }
     if (s.status === 'unreadable') continue;
     ignored.interface += s.interfaceCables.length;
     sheetsRead.push({ file: f, sheet: s, label });
   }
   const dCables = new Map(); // key -> [{label, cable, sheet}]
-  for (const { sheet, label, file } of sheetsRead) for (const c of sheet.cables) { const k = normKey(c.tag); if (!k) continue; if (!dCables.has(k)) dCables.set(k, []); dCables.get(k).push({ label, cable: c, sheet, file }); }
+  // a drawing tag with a typo (letter O for 0, I or L for 1, or the reader flagged it) is the schedule's tag with a typo, not a different cable
+  const fold = (x) => x.replace(/O/g, '0').replace(/[IL]/g, '1');
+  const schedKeys = new Map(); [...liveRows, ...struckRows].forEach(r => { const k = normKey(r.tag); if (!schedKeys.has(k)) schedKeys.set(k, r.tag); });
+  const foldedSched = new Map(); for (const [k, tag] of schedKeys) { const f = fold(k); if (!foldedSched.has(f)) foldedSched.set(f, []); foldedSched.get(f).push(tag); }
+  const extraTypos = [];
+  for (const { sheet, label, file } of sheetsRead) for (const c of sheet.cables) {
+    let k = normKey(c.tag); if (!k) continue;
+    if (!schedKeys.has(k)) {
+      const said = (sheet.typos || []).find(t => normKey(t.text) === k && t.shouldBe && schedKeys.has(normKey(t.shouldBe)));
+      const near = foldedSched.get(fold(k));
+      if (said) { k = normKey(said.shouldBe); }
+      else if (near && near.length === 1) {
+        k = normKey(near[0]);
+        if (!(sheet.typos || []).some(t => normKey(t.text) === normKey(c.tag))) extraTypos.push({ label, file, sheet, t: { text: c.tag, shouldBe: near[0], where: 'a cable box' } });
+      }
+    }
+    if (!dCables.has(k)) dCables.set(k, []); dCables.get(k).push({ label, cable: c, sheet, file });
+  }
   const findings = [], cands = [];
   // drawings -> schedule
   for (const [k, list] of dCables) {
@@ -348,7 +366,7 @@ function compare({ scheduleRows, files }) {
     const rows = byKeyS.get(k);
     if (!rows) {
       const st = byKeyStruck.get(k);
-      if (st) findings.push({ group: first.label, fi: first.file.srcIndex, page: first.sheet.page, kind: 'struck', tag: first.cable.tag, text: `${first.cable.tag} is struck through on the schedule (row ${st.row}) but still on this drawing`, confirm: true, reason: 'Remove the strike if the drawing is live' });
+      if (st) findings.push({ group: first.label, fi: first.file.srcIndex, page: first.sheet.page, kind: 'struck', tag: first.cable.tag, text: `${first.cable.tag} is struck through on the schedule (row ${st.row}) but still on this drawing`, confirm: false });
       else findings.push({ group: first.label, fi: first.file.srcIndex, page: first.sheet.page, kind: 'add', tag: first.cable.tag, text: `${first.cable.tag} is on the drawing but not on the schedule`, confirm: false });
       continue;
     }
@@ -359,6 +377,8 @@ function compare({ scheduleRows, files }) {
     }
     // schedule says which drawing it is on: that drawing must show it
   }
+  // the same cable twice on the schedule
+  for (const [k, rows] of byKeyS) if (rows.length > 1) findings.push({ group: 'Schedule', kind: 'duplicate', tag: rows[0].tag, text: `${rows[0].tag} is on the schedule ${rows.length} times (rows ${rows.map(r => r.row).join(' and ')})`, confirm: false });
   // schedule -> drawings
   const readLabels = new Set(sheetsRead.map(x => normKey(x.label)));
   for (const r of liveRows) {
@@ -366,11 +386,14 @@ function compare({ scheduleRows, files }) {
     if (r.drawing && readLabels.size) {
       const wanted = normKey(r.drawing);
       const sheet = sheetsRead.find(x => normKey(x.label) && normKey(x.label) === wanted || wanted.includes(normKey(x.label)) || normKey(x.label).includes(wanted));
-      if (sheet && !sheet.sheet.cables.some(c => normKey(c.tag) === k)) { findings.push({ group: sheet.label, fi: sheet.file.srcIndex, page: sheet.sheet.page, kind: 'missing_on_dwg', tag: r.tag, text: `Schedule row ${r.row} (${r.tag}) says it is on this drawing but it is not shown on it`, confirm: true, reason: dCables.has(k) ? `It is on ${dCables.get(k)[0].label}` : 'Not on any drawing that was read' }); continue; }
+      if (sheet && !(dCables.get(k) || []).some(d => d.sheet === sheet.sheet)) { findings.push({ group: sheet.label, fi: sheet.file.srcIndex, page: sheet.sheet.page, kind: 'missing_on_dwg', tag: r.tag, text: `Schedule row ${r.row} (${r.tag}) says it is on this drawing but it is not shown on it`, confirm: true, reason: dCables.has(k) ? `It is on ${dCables.get(k)[0].label} instead, so the drawing number on the schedule may be wrong` : `Not on ${sheet.label} or on any other drawing that was read` }); continue; }
     }
+    if (!dCables.has(k) && r.drawing && cancelledLabels.has(normKey(r.drawing))) { findings.push({ group: 'Schedule', kind: 'on_cancelled', tag: r.tag, text: `Row ${r.row}: ${r.tag} is on ${r.drawing}, which is cancelled or hatched`, confirm: true, reason: 'Remove the row or point it at the drawing that replaced it' }); continue; }
+    if (!dCables.has(k) && r.drawing && readLabels.size && !sheetsRead.some(x => normKey(x.label) && (normKey(x.label) === normKey(r.drawing) || normKey(r.drawing).includes(normKey(x.label)) || normKey(x.label).includes(normKey(r.drawing))))) { findings.push({ group: 'Schedule', kind: 'dwg_not_supplied', tag: r.tag, text: `Row ${r.row}: ${r.tag} is on ${r.drawing}, which was not supplied, so it was not checked`, confirm: true, reason: `Drop ${r.drawing} in to check it` }); continue; }
     if (!dCables.has(k)) findings.push({ group: 'Schedule', kind: 'not_on_dwg', tag: r.tag, text: `Row ${r.row}: ${r.tag} is not on any drawing that was read`, confirm: true, reason: 'Remove it or add the drawing it is on' });
   }
   // typos
+  for (const x of extraTypos) x.sheet.typos = [...(x.sheet.typos || []), x.t];
   for (const { sheet, label, file } of sheetsRead) for (const t of sheet.typos) findings.push({ group: label, fi: file.srcIndex, page: sheet.page, kind: 'typo', tag: t.text, text: `Typo on the drawing: "${t.text}"${t.shouldBe ? ` should be "${t.shouldBe}"` : ''}${t.where ? ` (${t.where})` : ''}. Not copied to the schedule`, confirm: false });
   return { findings, cands, liveRows, struckRows, sheetsRead, ignored, dCableCount: [...dCables.values()].reduce((n, l) => n + l.length, 0) };
 }
