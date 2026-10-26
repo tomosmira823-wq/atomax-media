@@ -21,6 +21,7 @@ function claudeReply(body) {
   }
   if (/judge possible mismatches/.test(sys)) { const items = JSON.parse(body.messages[0].content[0].text); return JSON.stringify({ verdicts: items.map(i => ({ id: i.id, real: !/1\.5mm/.test(i.drawing) && i.schedule !== i.drawing, confirm: false, reason: '' })) }); }
   if (/left you a note/.test(sys)) return JSON.stringify({ answer: 'Mock answer to your note.', extra: [] });
+  if (/red CHECK NOTES/.test(sys)) return JSON.stringify({ items: [{ drawing: 'DRG-001', note: 'Typo on the drawing', action: 'replace_text', before: 'C-1O1', after: 'C-101', why: 'typo' }, { drawing: 'DRG-001', note: 'Schedule says 2C', action: 'none', why: 'Schedule change' }] });
   // reviewer?
   if (/a reviewer in the/.test(sys)) {
     const score = /LinkedIn/.test(sys) ? 6 : 8;

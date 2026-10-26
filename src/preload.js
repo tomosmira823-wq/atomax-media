@@ -14,7 +14,8 @@ contextBridge.exposeInMainWorld('office', {
     describeImage: call('ai:describeImage'),
     test: call('ai:test')
   },
-  check: { run: call('check:run'), skill: call('check:skill'), onProgress: (fn) => ipcRenderer.on('check:progress', (_e, p) => fn(p)) },
+  check: { run: call('check:run'), skill: call('check:skill'), last: call('check:last'), onProgress: (fn) => ipcRenderer.on('check:progress', (_e, p) => fn(p)) },
+  dxf: { propose: call('dxf:propose'), apply: call('dxf:apply') },
   image: { generate: call('image:generate'), edit: call('image:edit'), openaiModels: call('openai:imageModels') },
   social: { connect: call('social:connect'), disconnect: call('social:disconnect'), publish: call('social:publish'), canPost: call('social:canPost') },
   openExternal: call('shell:open'),

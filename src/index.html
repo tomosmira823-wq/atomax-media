@@ -139,8 +139,12 @@
   /* rooms + Cal's desk */
   #top .rooms { margin-left: 0; }
   body.room-drawing #brief, body.room-drawing #board { display: none; }
-  #checkPanel { display: none; right: 16px; width: 420px; }
-  body.room-drawing #checkPanel.open { display: flex; }
+  #checkPanel, #dexPanel { display: none; right: 16px; width: 420px; }
+  body.room-drawing #checkPanel.open, body.room-drawing #dexPanel.open { display: flex; }
+  #dexPanel .fx { display: flex; gap: 9px; align-items: flex-start; padding: 8px 4px; border-bottom: 1px solid var(--line); font-size: 13px; }
+  #dexPanel .fx.none { opacity: .55; } #dexPanel .fx input { margin-top: 3px; }
+  #dexPanel .fx b { font-weight: 700; } #dexPanel .fx .why { color: var(--muted); font-size: 12px; margin-top: 2px; } #dexPanel .fx .warn { color: var(--amber); font-size: 12px; margin-top: 2px; }
+  #dexPanel .fx code { background: #0a0e18; padding: 1px 5px; border-radius: 4px; }
   .lbl.hint { color: var(--green); border-color: var(--green2); font-weight: 600; }
   .drop { border: 1.5px dashed var(--line2); border-radius: 12px; padding: 14px; text-align: center; cursor: pointer; background: #0a0e18; transition: border-color .15s, background .15s; }
   .drop:hover, .drop.over { border-color: var(--green); background: rgba(64,189,0,.06); }
@@ -306,6 +310,26 @@
     </div>
     <div id="checkRun" hidden><span class="spinner"></span><div id="runMsg" style="margin-top:10px;font-weight:600">Cal is getting the files</div><div id="runBar-wrap"><div id="runBar"></div></div><p class="hint">Big drawing sets take a few minutes. You can leave this open and come back.</p></div>
     <div id="checkResult" hidden></div>
+  </div>
+</div>
+
+<!-- Dex's panel (drawing room, drafting table) -->
+<div class="panel" id="dexPanel">
+  <h2><span>Dex · DXF fixer</span><button class="collapse" id="dexBack" title="Back to the room (Esc)">×</button></h2>
+  <div class="body">
+    <div id="dexSetup">
+      <label style="margin-top:0">1 · DXF drawings to fix</label>
+      <div class="drop" id="dropDxf"><div class="dz-t">Drop the DXFs here</div><div class="dz-s">ASCII .dxf only · as many as you like, or click to browse</div><div id="dxfFiles"></div><input type="file" hidden accept=".dxf" /></div>
+      <label>2 · Where do the fixes come from?</label>
+      <div class="seg" id="dexSrc"><button class="on" data-src="cal">Cal's last markups</button><button data-src="pdfs">Drop markup PDFs</button></div>
+      <div class="drop" id="dropMk" style="display:none;margin-top:8px"><div class="dz-t">Drop the marked-up PDFs here</div><div class="dz-s">The ones Cal made, or any with the red notes strip</div><div id="mkFiles"></div><input type="file" hidden accept=".pdf" /></div>
+      <div class="warn-note">Dex only changes text, and only the fixes you tick. Your DXFs are never changed: he saves a copy in a FIXED folder next to each one. Markup PDFs are read by Claude through your own API key. DWG and binary DXF are not supported.</div>
+      <div class="err" id="dexErr" style="margin-top:10px"></div>
+      <button class="btn primary" id="dexFind" style="width:100%;margin-top:12px" disabled>Find fixes</button>
+    </div>
+    <div id="dexRun" hidden><span class="spinner"></span><div id="dexMsg" style="margin-top:10px;font-weight:600">Dex is reading the markups</div></div>
+    <div id="dexList" hidden></div>
+    <div id="dexResult" hidden></div>
   </div>
 </div>
 

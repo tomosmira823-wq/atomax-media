@@ -394,7 +394,7 @@ function compare({ scheduleRows, files }) {
   }
   // typos
   for (const x of extraTypos) x.sheet.typos = [...(x.sheet.typos || []), x.t];
-  for (const { sheet, label, file } of sheetsRead) for (const t of sheet.typos) findings.push({ group: label, fi: file.srcIndex, page: sheet.page, kind: 'typo', tag: t.text, text: `Typo on the drawing: "${t.text}"${t.shouldBe ? ` should be "${t.shouldBe}"` : ''}${t.where ? ` (${t.where})` : ''}. Not copied to the schedule`, confirm: false });
+  for (const { sheet, label, file } of sheetsRead) for (const t of sheet.typos) findings.push({ group: label, fi: file.srcIndex, page: sheet.page, kind: 'typo', tag: t.text, before: t.text, after: t.shouldBe || '', text: `Typo on the drawing: "${t.text}"${t.shouldBe ? ` should be "${t.shouldBe}"` : ''}${t.where ? ` (${t.where})` : ''}. Not copied to the schedule`, confirm: false });
   return { findings, cands, liveRows, struckRows, sheetsRead, ignored, dCableCount: [...dCables.values()].reduce((n, l) => n + l.length, 0) };
 }
 
@@ -476,4 +476,4 @@ function renderText(r) {
   return lines.join('\n');
 }
 
-module.exports = { STANDARD_SKILL, runCheck, readXlsx, readCsv, normKey, compare, kindOf, renderText, parseJson, sheetsAsText };
+module.exports = { contentBlock, STANDARD_SKILL, runCheck, readXlsx, readCsv, normKey, compare, kindOf, renderText, parseJson, sheetsAsText };

@@ -8,6 +8,7 @@ const { autoUpdater } = require('electron-updater');
 const social = require('./social');
 const checker = require('./checker');
 const markup = require('./markup');
+const dxffix = require('./dxffix');
 const { STANDARD_SKILL } = checker;
 const path = require('path');
 const fs = require('fs');
@@ -70,6 +71,11 @@ const DEFAULT_AGENTS = [
     id: 'cal', role: 'drawing', platform: 'Drawing Checker', name: 'Cal', colour: '#ffd43b', enabled: true, gear: ['glasses', 'clipboard', 'lanyard'],
     tone: 'Careful, plain-spoken and honest about what he could not read. Never guesses. Keeps findings short: drawing number, then what needs fixing.',
     rules: STANDARD_SKILL
+  },
+  {
+    id: 'dex', role: 'drafter', platform: 'DXF Fixer', name: 'Dex', colour: '#4dabf7', enabled: true, gear: ['glasses', 'lanyard'],
+    tone: 'Quiet, exact and careful. Changes only what he is told to change, says what he did, and leaves the originals alone.',
+    rules: 'Fix only the text changes ticked by the person. Never touch geometry. Never overwrite the original DXF.'
   },
   {
     id: 'x', platform: 'X / Twitter', name: 'Xander', colour: '#111111', enabled: false,
@@ -170,8 +176,8 @@ function createWindow() {
   if (process.env.AMO_SCREENSHOT) {
     win.webContents.on('console-message', (_e, level, msg, line, src) => console.error('[page]', level, msg, src + ':' + line));
     win.webContents.once('did-finish-load', () => setTimeout(async () => {
-      if (process.env.AMO_SCENARIO === 'run' || process.env.AMO_SCENARIO === 'drawing') {
-        const script = fs.readFileSync(path.join(__dirname, '..', 'test', process.env.AMO_SCENARIO === 'drawing' ? 'scenario-drawing.js' : 'scenario-run.js'), 'utf8');
+      if (['run', 'drawing', 'dex'].includes(process.env.AMO_SCENARIO)) {
+        const script = fs.readFileSync(path.join(__dirname, '..', 'test', ({ drawing: 'scenario-drawing.js', dex: 'scenario-dex.js' }[process.env.AMO_SCENARIO] || 'scenario-run.js')), 'utf8');
         await win.webContents.executeJavaScript(`window.__variant = ${JSON.stringify(process.env.AMO_VARIANT || '')}`);
         const out = await win.webContents.executeJavaScript(script);
         console.error('[scenario]', JSON.stringify(out));
@@ -205,6 +211,7 @@ function createWindow() {
         return { facing, stuckEvents: stuckLog, stuckWhere: stuckWhere.slice(0, 12), navCells: o.nav ? o.nav.grid.reduce((s,v)=>s+v,0) + '/' + o.nav.grid.length : null };
       })()`); console.error('[navtest]', JSON.stringify(out)); }
       else if (process.env.AMO_VIEW === 'closeup') await win.webContents.executeJavaScript(`(async()=>{ for (const id of window.__office.agents.keys()) window.__office.setState(id, 'working', 'writing'); window.__office.scene.traverse(o => { if (o.isPointLight || o.isSpotLight) o.intensity *= 0.3; }); window.__office.controls.target.set(-7.5, 1.0, -3.8); window.__office.controls.update(); window.__office.camera.position.set(-7.5, 7.5, 4.5); window.__office.camera.lookAt(-7.5, 1.0, -3.8); console.log('cam', JSON.stringify(window.__office.camera.position)); for (let i=0;i<${process.env.AMO_FRAMES || 30};i++) { window.__office.step(0.3); await new Promise(r=>setTimeout(r,0)); } })()`);
+      else if (process.env.AMO_VIEW === 'drafting') await win.webContents.executeJavaScript(`(async()=>{ const wait = (ms) => new Promise(r => setTimeout(r, ms)); const o = window.__office; const run = async (ms) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { o.step(0.12); await wait(30); } }; document.querySelectorAll('.modal').forEach(m => m.classList.remove('open')); window.__goRoom('drafting'); await run(1800); o.handOver({ to: 'dex', drawings: 3 }); await run(2500); })()`);
       else if (/^(drawing|desk)(-job)?$/.test(process.env.AMO_VIEW || '')) await win.webContents.executeJavaScript(`(async()=>{ const v = ${JSON.stringify(process.env.AMO_VIEW)}; const wait = (ms) => new Promise(r => setTimeout(r, ms)); const o = window.__office; const run = async (ms) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { o.step(0.12); await wait(30); } }; document.querySelectorAll('.modal').forEach(m => m.classList.remove('open')); window.__goRoom(v.startsWith('desk') ? 'desk' : 'drawing'); await run(1800); if (v.endsWith('-job')) { o.handOver({ hasSchedule: true, drawings: 4 }); const cal = [...o.agents.values()].find(a => a.zone === 'drawing'); o.setState(cal.data.id, 'working', 'reading DRG-002'); await run(4500); } else await run(1500); })()`);
       else if (process.env.AMO_VIEW === 'behind') await win.webContents.executeJavaScript(`(async()=>{ window.__office.camera.position.set(-38, 14, 6); window.__office.controls.target.set(0, 1, 0); for (let i=0;i<${process.env.AMO_FRAMES || 8};i++) { window.__office.step(0.3); await new Promise(r=>setTimeout(r,0)); } })()`);
       else if (process.env.AMO_VIEW === 'collapsed') await win.webContents.executeJavaScript(`(async()=>{ document.querySelectorAll('.panel .collapse').forEach(b => b.click()); window.__office.camera.position.set(-6, 22, 40); window.__office.controls.target.set(1, 0.5, 0); for (let i=0;i<${process.env.AMO_FRAMES || 20};i++) { window.__office.step(0.3); await new Promise(r=>setTimeout(r,0)); } })()`);
@@ -287,9 +294,12 @@ ipcMain.handle('social:canPost', (_e, platform) => {
 });
 // older saved teams predate the drawing checker: add Cal (once) so the drawing room has someone at the desk
 function withDrawingAgent(list) {
-  if (list.some(a => a.role === 'drawing')) return list;
-  const cal = DEFAULT_AGENTS.find(a => a.role === 'drawing');
-  return [...list, { ...cal }];
+  for (const role of ['drawing', 'drafter']) {
+    if (list.some(a => a.role === role)) continue;
+    const d = DEFAULT_AGENTS.find(a => a.role === role);
+    if (d) list = [...list, { ...d }];
+  }
+  return list;
 }
 ipcMain.handle('agents:get', () => withDrawingAgent(readJson(AGENTS_FILE(), DEFAULT_AGENTS)));
 ipcMain.handle('agents:set', (_e, a) => { writeJson(AGENTS_FILE(), a); return true; });
@@ -318,10 +328,71 @@ ipcMain.handle('check:run', async (_e, { agent, schedule, drawings, note }) => {
     catch (e) { report.markups = { dir: '', made: [], failed: [{ name: '(all)', reason: String(e.message || e).slice(0, 160) }], untouched: 0 }; }
     const mk = report.markups;
     report.text += '\n\nMARKED-UP COPIES (originals untouched)\n' + ((mk.made.length || mk.notes) ? `  - Saved ${mk.made.length + (mk.notes ? 1 : 0)} file${mk.made.length + (mk.notes ? 1 : 0) === 1 ? '' : 's'} in ${mk.dir}\n` + mk.made.map(m => `  - ${path.basename(m.out)} (${m.notes} note${m.notes === 1 ? '' : 's'})`).join('\n') + (mk.notes ? `\n  - ${path.basename(mk.notes.out)} (${mk.notes.count} schedule-level note${mk.notes.count === 1 ? '' : 's'} that cannot sit on a drawing)` : '') : '  - None made (nothing to mark on the drawings, or they could not be marked up).') + (mk.failed.length ? '\n' + mk.failed.map(f => `  - Could not mark up ${f.name}: ${f.reason}`).join('\n') : '') + `\n  - ${mk.untouched} file${mk.untouched === 1 ? ' has' : 's have'} nothing to mark.`;
+    try { writeJson(path.join(USER_DIR(), 'last-check.json'), { at: new Date().toISOString(), findings: report.findings || [] }); } catch {}
     return report;
   } finally { checkRunning = false; }
 });
 ipcMain.handle('check:skill', () => STANDARD_SKILL);
+ipcMain.handle('check:last', () => readJson(path.join(USER_DIR(), 'last-check.json'), null));
+
+// ---------- Dex: fixing DXFs from markups ----------
+const dxfBuf = (f) => Buffer.from(f.base64, 'base64');
+ipcMain.handle('dxf:propose', async (_e, { source, dxfs, markups }) => {
+  const notes = [];
+  const files = [];
+  for (const f of dxfs || []) { try { files.push({ ...f, parsed: dxffix.parseDxf(dxfBuf(f)) }); } catch (e) { notes.push(f.name + ': ' + (e.message || e)); } }
+  if (!files.length) return { items: [], notes: notes.length ? notes : ['Drop at least one DXF first.'] };
+  let items = [];
+  if (source === 'cal') {
+    const last = readJson(path.join(USER_DIR(), 'last-check.json'), null);
+    if (!last || !(last.findings || []).length) return { items: [], notes: ['Cal has no markups yet. Run a check in the drawing room first, or drop markup PDFs instead.'] };
+    items = dxffix.proposalsFromFindings(last.findings);
+  } else {
+    if (!(markups || []).length) return { items: [], notes: ['Drop at least one marked-up PDF.'] };
+    for (const m of markups) {
+      try {
+        const r = await claudeFull({ system: dxffix.DEX_SYSTEM, maxTokens: 6000, messages: [{ role: 'user', content: [checker.contentBlock('pdf', m.name, dxfBuf(m)), { type: 'text', text: 'Read every numbered red note on this marked-up drawing (file: ' + m.name + ').' }] }] });
+        const j = checker.parseJson(r.text).value;
+        (j.items || []).forEach((it, i) => items.push({ id: 'M' + (items.length + 1), drawing: it.drawing || m.name, note: it.note || '', action: it.action === 'replace_text' && it.before && it.after ? 'replace_text' : 'none', before: it.before || '', after: it.after || '', why: it.why || '' }));
+      } catch (e) { notes.push(m.name + ': could not be read (' + String(e.message || e).slice(0, 120) + ')'); }
+    }
+  }
+  for (const it of items) {
+    if (it.action !== 'replace_text') continue;
+    let f = dxffix.matchFile(it.drawing, files.map(x => ({ name: x.name, base64: x.base64 })));
+    let hit = f && files.find(x => x.name === f.name);
+    if (hit) { const c = dxffix.countMatches(hit.parsed, it.before); if (!c.places && !c.inBlocks) hit = null; }
+    if (!hit) { const all = files.map(x => ({ x, c: dxffix.countMatches(x.parsed, it.before) })).filter(o => o.c.places || o.c.inBlocks); if (all.length === 1) hit = all[0].x; }
+    if (hit) { const c = dxffix.countMatches(hit.parsed, it.before); it.file = hit.name; it.places = c.places; it.inBlocks = c.inBlocks; if (!c.places) it.warn = 'Only inside a symbol definition, so Dex will not change it.'; }
+    else it.warn = 'Not found in any DXF you dropped.';
+  }
+  return { items, notes };
+});
+ipcMain.handle('dxf:apply', async (_e, { dxfs, fixes }) => {
+  const out = { files: [], results: [], failed: [] };
+  const byFile = new Map();
+  for (const fx of fixes || []) { if (!fx.file) { out.results.push({ id: fx.id, status: 'not found', reason: 'No DXF matched this fix.' }); continue; } (byFile.get(fx.file) || byFile.set(fx.file, []).get(fx.file)).push(fx); }
+  for (const [name, list] of byFile) {
+    const f = (dxfs || []).find(d => d.name === name);
+    if (!f) continue;
+    try {
+      const r = dxffix.applyFixes(dxfBuf(f), list);
+      out.results.push(...r.results.map(x => ({ ...x, file: name })));
+      if (!r.results.some(x => x.status === 'applied')) continue;
+      const base = f.path ? path.dirname(f.path) : path.join(USER_DIR(), 'dxf-fixes');
+      const dir = path.join(base, 'FIXED'); fs.mkdirSync(dir, { recursive: true });
+      const outName = name.replace(/\.dxf$/i, '') + '_FIXED.dxf';
+      const outPath = path.join(dir, outName); fs.writeFileSync(outPath, r.buf);
+      out.files.push({ name: outName, path: outPath, changes: r.results.filter(x => x.status === 'applied').reduce((n, x) => n + x.places, 0) });
+    } catch (e) { out.failed.push({ name, reason: String(e.message || e).slice(0, 200) }); }
+  }
+  if (out.files.length) {
+    const dir = path.dirname(out.files[0].path);
+    const log = ['DEX FIX LOG  ' + new Date().toISOString(), 'Originals untouched. Fixed copies:', ...out.files.map(x => '  ' + x.name + ' (' + x.changes + ' change' + (x.changes === 1 ? '' : 's') + ')'), '', ...out.results.map(x => `  ${x.status.toUpperCase()}  ${x.file || ''}  "${x.before || ''}" -> "${x.after || ''}"  ${x.places ? x.places + ' place(s)' : ''} ${x.reason || ''}`)].join('\n');
+    try { fs.writeFileSync(path.join(dir, 'DEX_FIX_LOG.txt'), log); out.log = path.join(dir, 'DEX_FIX_LOG.txt'); } catch {}
+  }
+  return out;
+});
 
 // ---------- files ----------
 ipcMain.handle('file:pickImages', async () => {

@@ -27,6 +27,7 @@ DRAW.x0 = DRAW.x1 - DRAW.w; DRAW.cx = (DRAW.x0 + DRAW.x1) / 2; DRAW.cz = (DRAW.z
 const DOOR = { z0: -2.4, z1: 0 };
 const NAV = { x0: DRAW.x0, x1: ROOM_W / 2, z0: -ROOM_D / 2, z1: ROOM_D / 2 };
 const DRAW_DESK = [DRAW.cx, -6.6, 0];
+const DRAFT_TABLE = [DRAW.x0 + 5.0, -1.2], DRAFT_STOOL = [DRAW.x0 + 6.4, -1.9];
 const MEETING = { x0: 5, x1: 11.5, z0: 3.5, z1: 10.5, doorOut: new THREE.Vector3(3.8, 0, 9.3), doorIn: new THREE.Vector3(6.2, 0, 9.3) };
 
 function mat(color, opts = {}) { return new THREE.MeshStandardMaterial({ color, roughness: 0.8, metalness: 0.05, ...opts }); }
@@ -491,8 +492,8 @@ export class Office {
   setAgents(list, drawing = null) {
     if (!this.models['desk-teacher']) { this.pendingAgents = { list, drawing }; return; }
     (this.drawExtras || []).forEach(o => { this.scene.remove(o); if (o.element) o.element.remove(); }); this.drawExtras = [];
-    for (const a of this.agents.values()) { this.scene.remove(a.group); this.scene.remove(a.desk); this.scene.remove(a.chair); a.label.element.remove(); }
-    this.agents.clear();
+    for (const a of this.agents.values()) { this.scene.remove(a.group); if (a.desk) this.scene.remove(a.desk); if (a.chair) this.scene.remove(a.chair); a.label.element.remove(); }
+    this.agents.clear(); this.dexRoots = [];
     this.obstacles = this.obstacles.filter(o => !o.desk);
     (this.podRugs || []).forEach(r => this.scene.remove(r)); const a_rugs = []; this.podRugs = a_rugs;
     list.forEach((data, i) => {
@@ -535,7 +536,7 @@ export class Office {
         const inner = new THREE.Mesh(new THREE.PlaneGeometry(3.9, 5.3), mat(0x273047, { roughness: 1, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 })); inner.rotation.x = -Math.PI / 2; inner.position.set(dx, 0.035, dz - 1.4); inner.receiveShadow = true; this.scene.add(inner); this.spareDesks.push(inner);
       }
     }
-    if (drawing) this.#addDrawingAgent(drawing, a_rugs);
+    for (const d of (Array.isArray(drawing) ? drawing : (drawing ? [drawing] : []))) { if (d.role === 'drafter') this.#addDrafter(d); else this.#addDrawingAgent(d, a_rugs); }
     this.#buildNav();
     for (const a of this.agents.values()) a.path = null;
     this.setBoard(this.boardLines);
@@ -546,6 +547,7 @@ export class Office {
     a.state = state;
     a.el.querySelector('.st').textContent = status ? '— ' + status : '';
     a.el.classList.toggle('busy', state === 'working');
+    if (a.drafter) { a.state = 'working'; return; }
     const sm = a.desk.userData.screenMat;
     if (state === 'working') { sm.color.set(0x0b2a00); sm.emissive.set(GREEN); sm.emissiveIntensity = 1.2; }
     else if (state === 'done') { sm.color.set(0x0a1a2a); sm.emissive.set(0x7fc8ff); sm.emissiveIntensity = 0.8; }
@@ -623,10 +625,10 @@ export class Office {
     const sheet = box(1.8, 0.015, 1.15, mat(0xdceaf7), 0, 1.2, 0.0, false); sheet.rotation.x = 0.28; dt.add(sheet);
     for (let k = 0; k < 5; k++) { const l = box(1.4 - k * 0.18, 0.012, 0.03, mat(0x3b6aa8), -0.1, 1.215 - 0.0, -0.4 + k * 0.17, false); l.rotation.x = 0.28; l.position.y = 1.2 + (-0.4 + k * 0.17) * -0.0 + 0.02 + (-0.4 + k * 0.17) * 0.28; dt.add(l); }
     dt.add(box(2.0, 0.05, 0.1, dark, 0, 1.0, 0.75, false));
-    dt.position.set(DRAW.x0 + 5.0, 0, -1.2); dt.rotation.y = Math.PI / 2 + 0.15; add(dt); obs(DRAW.x0 + 5.0, -1.2, 1.6); poi(DRAW.x0 + 7, -1.2, -Math.PI / 2);
+    this.draftTable = dt; dt.position.set(DRAW.x0 + 5.0, 0, -1.2); dt.rotation.y = Math.PI / 2 + 0.15; add(dt); obs(DRAW.x0 + 5.0, -1.2, 1.6); poi(DRAW.x0 + 7, -1.2, -Math.PI / 2);
     const stool = new THREE.Group(); stool.add(new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.28, 0.08, 16), mat(GREEN))); stool.children[0].position.y = 0.78; stool.children[0].castShadow = true;
     [0, 1, 2].forEach(i => { const a = i * 2.094; const leg = box(0.05, 0.78, 0.05, dark, Math.sin(a) * 0.2, 0.39, Math.cos(a) * 0.2); stool.add(leg); });
-    stool.position.set(DRAW.x0 + 6.4, 0, -1.9); add(stool); obs(DRAW.x0 + 6.4, -1.9, 0.5);
+    this.draftStool = stool; stool.position.set(DRAW.x0 + 6.4, 0, -1.9); add(stool); obs(DRAW.x0 + 6.4, -1.9, 0.5);
     // tube rack on the back wall
     const tr = new THREE.Group(); tr.add(box(3.0, 0.1, 0.5, dark, 0, 0.05, 0)); tr.add(box(3.0, 0.1, 0.5, dark, 0, 1.1, 0)); [-1.45, 1.45].forEach(x => tr.add(box(0.1, 1.15, 0.5, dark, x, 0.57, 0)));
     for (let i = 0; i < 9; i++) { const t = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 1.0, 14), mat(i % 3 === 0 ? 0xd9c39a : (i % 3 === 1 ? 0xeee6d0 : 0xc9d6e6))); t.position.set(-1.2 + (i % 5) * 0.58 + (i > 4 ? 0.29 : 0), 0.6, (i > 4 ? 0.1 : -0.1)); t.castShadow = true; tr.add(t); }
@@ -676,19 +678,37 @@ export class Office {
     this.clickRoots = [desk, group, chair];
   }
 
+  // Dex sits on the stool at the drafting table, facing the board, all day
+  #addDrafter(data) {
+    const [sx, sz] = DRAFT_STOOL, [tx, tz] = DRAFT_TABLE;
+    const group = buildCharacter(data.colour, 'writer', data.gear);
+    const seat = new THREE.Vector3(sx, 0, sz), faceSeat = Math.atan2(tx - sx, tz - sz);
+    group.position.set(sx, 0.62, sz); group.rotation.y = faceSeat; this.scene.add(group);
+    const el = document.createElement('div'); el.className = 'lbl';
+    el.innerHTML = `<b>${data.name}</b> · ${data.platform} <span class="st"></span>`;
+    const label = new CSS2DObject(el); label.position.set(0, 2.6, 0); group.add(label);
+    this.agents.set(data.id, { data, group, desk: null, chair: null, seat, faceSeat, zone: 'drawing', drafter: true, sitY: 0.62, state: 'working', seated: true, label, el, walkTarget: null, waypoint: null, faceTo: null, wait: 0, t: Math.random() * 10, blink: 2 + Math.random() * 3 });
+    this.drafterId = data.id;
+    const chip = document.createElement('div'); chip.className = 'lbl hint'; chip.textContent = 'Click to give Dex DXFs to fix';
+    const co = new CSS2DObject(chip); co.position.set(tx + 2.2, 4.2, tz + 1.5); this.scene.add(co); this.drawExtras.push(co); this.dexHint = co; co.visible = this.room === 'drawing';
+    this.dexRoots = [this.draftTable, this.draftStool, group].filter(Boolean);
+  }
+
   // ---------- room switching, picking, hand-over ----------
   focus(where, ms = 1100) {
     const [dx, dz] = DRAW_DESK;
     const spots = {
       media: { p: [26, 19, 32], t: [1, 0.5, 0.5] },
       drawing: { p: [DRAW.cx + 9, 15, 24], t: [DRAW.cx + 1.5, 0.5, -3] },
-      desk: { p: [dx + 8.0, 4.8, dz + 8.0], t: [dx + 2.8, 1.0, dz + 0.6] }
+      desk: { p: [dx + 8.0, 4.8, dz + 8.0], t: [dx + 2.8, 1.0, dz + 0.6] },
+      drafting: { p: [DRAFT_TABLE[0] + 7.5, 4.8, DRAFT_TABLE[1] + 7.5], t: [DRAFT_TABLE[0] + 2.6, 1.0, DRAFT_TABLE[1] + 0.4] }
     };
     const sp = spots[where]; if (!sp) return;
     this.room = where;
     this.tween = { t0: performance.now(), ms, p0: this.camera.position.clone(), tg0: this.controls.target.clone(), p1: new THREE.Vector3(...sp.p), tg1: new THREE.Vector3(...sp.t) };
     this.controls.enabled = false;
     if (this.deskHint) this.deskHint.visible = where === 'drawing';
+    if (this.dexHint) this.dexHint.visible = where === 'drawing';
     this.canvas.style.cursor = '';
   }
 
@@ -700,6 +720,7 @@ export class Office {
       this.ray.setFromCamera(ndc(e), this.camera);
       if (this.room === 'media' && this.doorPlaque && visibleChain(this.doorPlaque) && this.ray.intersectObject(this.doorPlaque, true).length) return 'door';
       if (this.room === 'drawing' && this.clickRoots.length && this.ray.intersectObjects(this.clickRoots, true).some(h => visibleChain(h.object))) return 'desk';
+      if (this.room === 'drawing' && this.dexRoots && this.dexRoots.length && this.ray.intersectObjects(this.dexRoots, true).some(h => visibleChain(h.object))) return 'drafting';
       return null;
     };
     this.canvas.addEventListener('pointerdown', (e) => { this.down = { x: e.clientX, y: e.clientY, t: performance.now() }; });
@@ -716,8 +737,10 @@ export class Office {
   }
 
   // animate the cable schedule (a folder) and the drawings (paper tubes) flying onto Cal's desk
-  handOver({ hasSchedule = true, drawings = 1 } = {}) {
-    this.clearJob(); if (!this.drawingDesk) return;
+  handOver({ hasSchedule = true, drawings = 1, to = 'cal' } = {}) {
+    this.clearJob();
+    if (to === 'dex') return this.#handToDex(drawings);
+    if (!this.drawingDesk) return;
     const [dx, dz] = DRAW_DESK, TH = 1.05; this.jobItems = [];
     const from = new THREE.Vector3(dx + 5, 3.4, dz + 6);
     const make = (mesh, to, delay) => { mesh.position.copy(from); this.scene.add(mesh); this.jobItems.push(mesh); this.props = this.props || []; this.props.push({ mesh, from: from.clone(), to, t: -delay, dur: 1.0 }); };
@@ -732,6 +755,15 @@ export class Office {
       t.rotation.x = Math.PI / 2;
       const wrap = new THREE.Group(); wrap.add(t);
       make(wrap, new THREE.Vector3(dx + 0.55 + (i % 3) * 0.14, TH + 0.1 + Math.floor(i / 3) * 0.11, dz + 0.2), 0.25 + i * 0.18);
+    }
+  }
+  #handToDex(n) {
+    const [tx, tz] = DRAFT_TABLE; this.jobItems = [];
+    const from = new THREE.Vector3(tx + 6, 3.4, tz + 5);
+    for (let i = 0; i < Math.min(n, 5); i++) {
+      const sh = new THREE.Group(); sh.add(box(0.7, 0.015, 0.5, mat(0xdceaf7), 0, 0, 0, false)); sh.add(box(0.5, 0.012, 0.03, mat(0x3b6aa8), 0, 0.012, 0, false));
+      this.jobItems.push(sh); sh.position.copy(from); this.scene.add(sh); this.props = this.props || [];
+      this.props.push({ mesh: sh, from: from.clone(), to: new THREE.Vector3(tx + 0.1 + (i % 2) * 0.1, 1.38 + i * 0.012, tz - 0.1 + i * 0.05), t: -i * 0.2, dur: 1.0 });
     }
   }
   clearJob() { (this.jobItems || []).forEach(m => this.scene.remove(m)); this.jobItems = []; this.props = []; }
@@ -908,7 +940,7 @@ export class Office {
     a.t += dt;
     const ud = a.group.userData, g = a.group;
     if (a.state === 'working') {
-      if (a.walkTarget !== a.seat) { a.walkTarget = a.seat; a.path = null; a.seated = false; }
+      if (!a.drafter && a.walkTarget !== a.seat) { a.walkTarget = a.seat; a.path = null; a.seated = false; }
       if (!a.seated) { if (!this.#goto(a, a.seat, dt, ud)) return; a.seated = true; }
       g.position.x = a.seat.x; g.position.z = a.seat.z;
       g.rotation.y = a.faceSeat; ud.head.rotation.y *= 0.9;
@@ -918,7 +950,7 @@ export class Office {
       ud.arms[1].rotation.x = -1.25 + Math.cos(a.t * 18) * 0.12; ud.arms[1].rotation.z = -0.25;
       ud.head.rotation.y = Math.sin(a.t * 0.6) * 0.25; ud.head.rotation.x = 0.12;
       ud.legs.forEach(l => l.rotation.x = -1.3);
-      g.position.y = 0.32; // sitting
+      g.position.y = a.sitY || 0.32; // sitting
       this.#blink(a, dt);
       return;
     }

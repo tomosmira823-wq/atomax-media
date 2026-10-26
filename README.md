@@ -61,6 +61,17 @@ Drawings go to Claude through your own API key. Try it with dummy files first, a
 
 The room is built so more agents and departments (CAD, checking) can be added alongside Cal later. Tests: `node test/checker-test.js` (offline, fake Claude) and the scenario in `test/scenario-run.js` (drops files, runs a check, shows results).
 
+## Dex (DXF fixer)
+
+Dex sits on the stool at the drafting table in the drawing room. Click the table, the stool or Dex to open his panel.
+
+1. Drop the **DXFs** to fix (ASCII `.dxf` only; DWG and binary DXF are refused).
+2. Choose where the fixes come from: **Cal's last markups** (a button, uses the findings from Cal's most recent check) or **Drop markup PDFs** (Claude reads the red notes strip on each PDF).
+3. **Find fixes.** Dex lists what he can change in the DXFs, with how many places each one appears. Everything starts **unticked**; use **Tick all fixes** or tick one by one.
+4. **Apply ticked fixes.** Only ticked fixes are made.
+
+What he does: swaps exact text (TEXT, MTEXT and ATTRIB values, whole-tag matches only, so `C-O102` never hits `C-O102x`) and saves `<name>_FIXED.dxf` in a `FIXED` folder next to each DXF, plus `DEX_FIX_LOG.txt`. The original is never touched and every other byte of the file is kept as it was. He does not move, add or delete anything (so a cable missing from a drawing is listed greyed out as needing a person), and he leaves text inside block (symbol) definitions alone, because that would change every copy of the symbol. Tests: `node test/dxffix-test.js` and `AMO_SCENARIO=dex` (needs `test/mock-api.js` running and a `last-check.json` in the user data folder).
+
 ## Furniture and look
 
 v1.1: the floor is laid out in pods of two facing workstations (slim white desks, dual monitors on an arm, keyboard, mouse, pedestal, desk plant, coloured mug and chair) with a pendant over each pod; spare pods are furnished and waiting for new agents, so adding a team (a CAD department, say) just fills them in. Windows look out on a soft skyline; the boardroom has a proper long table and pendant row; the open sides have a slim ceiling edge. Agents blink, walk with a distance-driven cycle (no sliding), lean into turns, and sit and type at their desks.
