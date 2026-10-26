@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 
 const $ = (s) => document.querySelector(s);
@@ -29,6 +30,36 @@ async function prepPhoto(file) {
     const base64 = c.toDataURL('image/jpeg', 0.92).split(',')[1];
     return { base64, mime: 'image/jpeg', name: file.name, w, h, preview: url };
   } catch (e) { URL.revokeObjectURL(url); throw e; }
+}
+
+
+// Claude's list of shapes -> a THREE group -> GLB (base64)
+function buildFromParts(parts) {
+  const g = new THREE.Group(), n = (v, d) => (Number.isFinite(+v) ? +v : d), D = Math.PI / 180;
+  for (const p of parts.slice(0, 200)) {
+    const sz = Array.isArray(p.size) ? p.size.map(x => Math.max(0.001, n(x, 0.1))) : [0.2];
+    let geo;
+    switch (String(p.shape).toLowerCase()) {
+      case 'box': geo = new THREE.BoxGeometry(sz[0], sz[1] ?? sz[0], sz[2] ?? sz[0]); break;
+      case 'cylinder': geo = new THREE.CylinderGeometry(sz[0], sz[1] ?? sz[0], sz[2] ?? 0.5, 28); break;
+      case 'sphere': geo = new THREE.SphereGeometry(sz[0], 28, 20); break;
+      case 'cone': geo = new THREE.ConeGeometry(sz[0], sz[1] ?? 0.5, 28); break;
+      case 'torus': geo = new THREE.TorusGeometry(sz[0], sz[1] ?? sz[0] * 0.3, 14, 36); break;
+      case 'capsule': geo = new THREE.CapsuleGeometry(sz[0], sz[1] ?? 0.5, 8, 18); break;
+      default: continue;
+    }
+    let col; try { col = new THREE.Color(p.color || '#999999'); } catch { col = new THREE.Color(0x999999); }
+    const m = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: col, metalness: Math.min(1, Math.max(0, n(p.metal, 0.1))), roughness: Math.min(1, Math.max(0, n(p.rough, 0.6))) }));
+    const pos = p.pos || [0, 0, 0], rot = p.rot || [0, 0, 0];
+    m.position.set(n(pos[0], 0), n(pos[1], 0), n(pos[2], 0)); m.rotation.set(n(rot[0], 0) * D, n(rot[1], 0) * D, n(rot[2], 0) * D);
+    m.castShadow = true; g.add(m);
+  }
+  return g;
+}
+async function exportGlb(obj) {
+  const buf = await new GLTFExporter().parseAsync(obj, { binary: true });
+  const u8 = new Uint8Array(buf); let bin = ''; for (let i = 0; i < u8.length; i += 0x8000) bin += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000));
+  return btoa(bin);
 }
 
 export function initModelingUI({ office, api, getSettings, openSettings }) {
@@ -78,7 +109,7 @@ export function initModelingUI({ office, api, getSettings, openSettings }) {
     $('#photoPrev').innerHTML = photo ? `<img class="photo" src="${photo.preview}" alt="" /><div class="fchip"><span>${esc(photo.name)} <small>${photo.w}×${photo.h}</small></span><button data-rm title="Remove">×</button></div>` : '';
     $('#dropPhoto').classList.toggle('has', !!photo);
     $('#dropPhoto .dz-t').textContent = photo ? 'Drop a different photo to swap it' : 'Drop a photo here';
-    $('#modelGo').disabled = running || !photo;
+    $('#modelGo').disabled = running || !photo; $('#modelClaude').disabled = running || !photo;
   }
   async function addPhoto(files) {
     const f = [...files].find(x => x.type.startsWith('image/') || IMG_OK.test(x.name));
@@ -149,6 +180,28 @@ export function initModelingUI({ office, api, getSettings, openSettings }) {
     } finally { running = false; office.setScanning(false); renderPhoto(); }
   }
   $('#modelGo').addEventListener('click', go);
+  async function goClaude() {
+    if (running || !photo) return;
+    const s = getSettings();
+    if (!s.anthropicKey) { $('#modelErr').textContent = 'Add your Claude API key in Settings first.'; openSettings(); return; }
+    running = true; renderPhoto(); last = null; $('#modelErr').textContent = '';
+    $('#modelSetup').hidden = true; $('#modelResult').hidden = true; $('#modelRun').hidden = false;
+    $('#modelMsg').textContent = 'Claude is studying the photo'; $('#modelBar').style.width = '15%';
+    office.setScanning(true);
+    try {
+      const j = await api.model.claude({ image: { base64: photo.base64, mime: photo.mime } });
+      $('#modelMsg').textContent = 'Building the model'; $('#modelBar').style.width = '70%';
+      const obj = buildFromParts(j.parts);
+      if (!obj.children.length) throw new Error('Claude gave shapes I could not build. Try again.');
+      const r = await api.model.saveGlb({ base64: await exportGlb(obj), name: j.name || photo.name });
+      try { await showResult(r, `Built by Claude from ${obj.children.length} shapes`); }
+      catch (ve) { showSetup(); $('#modelErr').textContent = `Saved to ${r.path} but the viewer could not open it (${String(ve.message || ve).slice(0, 160)}).`; }
+    } catch (e) {
+      showSetup(); $('#modelErr').textContent = String(e.message || e).replace(/^Error invoking remote method '[^']+': (Error: )?/, '');
+    } finally { running = false; office.setScanning(false); renderPhoto(); }
+  }
+  $('#modelClaude').addEventListener('click', goClaude);
+
 
   $('#modelOpen').addEventListener('click', async () => {
     try { const r = await api.model.open(); if (r) await showResult(r, r.path.split(/[\\/]/).pop()); }

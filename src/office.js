@@ -629,10 +629,10 @@ export class Office {
     const sheet = box(1.8, 0.015, 1.15, mat(0xdceaf7), 0, 1.2, 0.0, false); sheet.rotation.x = 0.28; dt.add(sheet);
     for (let k = 0; k < 5; k++) { const l = box(1.4 - k * 0.18, 0.012, 0.03, mat(0x3b6aa8), -0.1, 1.215 - 0.0, -0.4 + k * 0.17, false); l.rotation.x = 0.28; l.position.y = 1.2 + (-0.4 + k * 0.17) * -0.0 + 0.02 + (-0.4 + k * 0.17) * 0.28; dt.add(l); }
     dt.add(box(2.0, 0.05, 0.1, dark, 0, 1.0, 0.75, false));
-    this.draftTable = dt; dt.position.set(DRAW.x0 + 5.0, 0, -1.2); dt.rotation.y = Math.PI / 2 + 0.15; add(dt); obs(DRAW.x0 + 5.0, -1.2, 1.6); poi(DRAW.x0 + 7, -1.2, -Math.PI / 2);
+    this.draftTable = dt; dt.position.set(DRAW.x0 + 5.0, 0, -1.2); dt.rotation.y = Math.PI / 2 + 0.15; add(dt); obs(DRAW.x0 + 5.0, -1.2, 1.6); poi(DRAW.x0 + 3.0, -1.2, Math.PI / 2);
     const stool = new THREE.Group(); stool.add(new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.28, 0.08, 16), mat(GREEN))); stool.children[0].position.y = 0.78; stool.children[0].castShadow = true;
     [0, 1, 2].forEach(i => { const a = i * 2.094; const leg = box(0.05, 0.78, 0.05, dark, Math.sin(a) * 0.2, 0.39, Math.cos(a) * 0.2); stool.add(leg); });
-    this.draftStool = stool; stool.position.set(DRAW.x0 + 6.4, 0, -1.9); add(stool); obs(DRAW.x0 + 6.4, -1.9, 0.5);
+    this.draftStool = stool; stool.position.set(DRAW.x0 + 6.4, 0, -1.9); add(stool); obs(DRAW.x0 + 6.4, -1.9, 1.3);
     // tube rack on the back wall
     const tr = new THREE.Group(); tr.add(box(3.0, 0.1, 0.5, dark, 0, 0.05, 0)); tr.add(box(3.0, 0.1, 0.5, dark, 0, 1.1, 0)); [-1.45, 1.45].forEach(x => tr.add(box(0.1, 1.15, 0.5, dark, x, 0.57, 0)));
     for (let i = 0; i < 9; i++) { const t = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 1.0, 14), mat(i % 3 === 0 ? 0xd9c39a : (i % 3 === 1 ? 0xeee6d0 : 0xc9d6e6))); t.position.set(-1.2 + (i % 5) * 0.58 + (i > 4 ? 0.29 : 0), 0.6, (i > 4 ? 0.1 : -0.1)); t.castShadow = true; tr.add(t); }
@@ -937,6 +937,8 @@ export class Office {
     const dxz = Math.hypot(target.x - g.position.x, target.z - g.position.z);
     if (dxz < 0.15) { a.path = null; return true; }
     const key = target.x.toFixed(2) + ',' + target.z.toFixed(2);
+    if (a.pathKey !== key) a.repath = 0;
+    if (a.stuck > 1.2 && ++a.repath > 3) { a.path = null; a.pathKey = null; a.stuck = 0; a.repath = 0; return true; } // blocked for good: give up and pick something else
     if (!a.path || a.pathKey !== key || a.stuck > 1.2) {
       a.path = this.#findPath(g.position, target); a.pathKey = key; a.pathIdx = 0; a.stuck = 0;
     }
@@ -1000,7 +1002,7 @@ export class Office {
     // keep standing agents from overlapping each other
     const g = a.group;
     for (const b of this.agents.values()) {
-      if (b === a || b.state === 'working') continue;
+      if (b === a) continue;
       const dx = g.position.x - b.group.position.x, dz = g.position.z - b.group.position.z, d = Math.hypot(dx, dz);
       if (d < 1.3 && d > 0.001) { const nx = g.position.x + dx / d * (1.3 - d) * dt * 2, nz = g.position.z + dz / d * (1.3 - d) * dt * 2; if (this.#walkable(nx, nz)) { g.position.x = nx; g.position.z = nz; } }
     }

@@ -426,6 +426,31 @@ ipcMain.handle('model:saveAs', async (_e, { from, name }) => {
   fs.copyFileSync(from, r.filePath);
   return r.filePath;
 });
+// Claude-only route: Claude looks at the photo and describes the object as a set of simple 3D shapes; the page builds and exports the GLB.
+const CLAUDE_3D_SYSTEM = `You are a 3D modeller. Look at the photo and rebuild the main object as a model made only from simple primitives.
+Reply with ONE JSON object and nothing else:
+{"name":"short name","parts":[{"shape":"box|cylinder|sphere|cone|torus|capsule","size":[...],"pos":[x,y,z],"rot":[rx,ry,rz],"color":"#rrggbb","metal":0-1,"rough":0-1}]}
+Sizes: box [width,height,depth]; cylinder [radiusTop,radiusBottom,height]; sphere [radius]; cone [radius,height]; torus [radius,tube]; capsule [radius,length].
+Rules: Y is up, the object stands on y=0 and is centred on x and z, about 2 units tall (or 2 units across if it is flat). rot is in degrees. Match the real proportions, colours and finishes you see (metal and rough make shiny, matte, plastic or metal surfaces). Add the small details that make it recognisable: ports, buttons, legs, handles, labels as thin boxes. Use 20 to 120 parts, ordered big shapes first. Do not add a floor or background.`;
+ipcMain.handle('model:claude', async (_e, { image }) => {
+  if (!image || !image.base64) throw new Error('Drop a photo first.');
+  const { text } = await claudeFull({
+    system: CLAUDE_3D_SYSTEM, maxTokens: 12000,
+    messages: [{ role: 'user', content: [{ type: 'image', source: { type: 'base64', media_type: image.mime || 'image/jpeg', data: image.base64 } }, { type: 'text', text: 'Build this as a primitive 3D model. JSON only.' }] }]
+  });
+  const j = extractJson(text);
+  if (!j || !Array.isArray(j.parts) || !j.parts.length) throw new Error('Claude did not give any shapes. Try again or use a clearer photo.');
+  return j;
+});
+ipcMain.handle('model:saveGlb', (_e, { base64, name }) => {
+  const buf = Buffer.from(base64, 'base64');
+  if (buf.length < 20 || buf.toString('ascii', 0, 4) !== 'glTF') throw new Error('Not a GLB file.');
+  const dir = path.join(USER_DIR(), 'models'); fs.mkdirSync(dir, { recursive: true });
+  const safe = String(name || 'model').replace(/\.[^.]+$/, '').replace(/[^\w.-]+/g, '-').slice(0, 40) || 'model';
+  const file = path.join(dir, `${safe}-${new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14)}.glb`);
+  fs.writeFileSync(file, buf);
+  return { path: file, base64, bytes: buf.length, provider: 'claude' };
+});
 ipcMain.handle('model:folder', () => { const d = path.join(USER_DIR(), 'models'); fs.mkdirSync(d, { recursive: true }); return d; });
 
 // ---------- files ----------
