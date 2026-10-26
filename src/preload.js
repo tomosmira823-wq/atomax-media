@@ -15,6 +15,7 @@ contextBridge.exposeInMainWorld('office', {
     test: call('ai:test')
   },
   check: { run: call('check:run'), skill: call('check:skill'), onProgress: (fn) => ipcRenderer.on('check:progress', (_e, p) => fn(p)) },
+  model: { generate: call('model:generate'), open: call('model:open'), saveAs: call('model:saveAs'), folder: call('model:folder'), onProgress: (fn) => ipcRenderer.on('model:progress', (_e, p) => fn(p)) },
   image: { generate: call('image:generate'), edit: call('image:edit'), openaiModels: call('openai:imageModels') },
   social: { connect: call('social:connect'), disconnect: call('social:disconnect'), publish: call('social:publish'), canPost: call('social:canPost') },
   openExternal: call('shell:open'),

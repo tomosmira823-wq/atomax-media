@@ -8,6 +8,7 @@ const { autoUpdater } = require('electron-updater');
 const social = require('./social');
 const checker = require('./checker');
 const markup = require('./markup');
+const model3d = require('./model3d');
 const { STANDARD_SKILL } = checker;
 const path = require('path');
 const fs = require('fs');
@@ -35,6 +36,9 @@ const DEFAULT_SETTINGS = {
   openaiImageQuality: 'high',
   higgsfieldModel: 'higgsfield-ai/soul/standard',
   imageProvider: 'openai',
+  model3dProvider: 'higgsfield',
+  higgsfield3dModel: '',
+  meshyKey: '',
   social: { linkedin: {}, facebook: {}, x: {} },
   company: {
     name: 'Atomax-UK Ltd',
@@ -92,7 +96,7 @@ function writeJson(file, data) {
   fs.writeFileSync(file, JSON.stringify(data, null, 2), 'utf8');
 }
 
-const SECRET_FIELDS = ['anthropicKey', 'openaiKey', 'googleKey', 'higgsfieldKeyId', 'higgsfieldSecret'];
+const SECRET_FIELDS = ['anthropicKey', 'openaiKey', 'googleKey', 'higgsfieldKeyId', 'higgsfieldSecret', 'meshyKey'];
 function encrypt(str) {
   if (!str) return '';
   if (safeStorage.isEncryptionAvailable()) return 'enc:' + safeStorage.encryptString(str).toString('base64');
@@ -170,8 +174,8 @@ function createWindow() {
   if (process.env.AMO_SCREENSHOT) {
     win.webContents.on('console-message', (_e, level, msg, line, src) => console.error('[page]', level, msg, src + ':' + line));
     win.webContents.once('did-finish-load', () => setTimeout(async () => {
-      if (process.env.AMO_SCENARIO === 'run' || process.env.AMO_SCENARIO === 'drawing') {
-        const script = fs.readFileSync(path.join(__dirname, '..', 'test', process.env.AMO_SCENARIO === 'drawing' ? 'scenario-drawing.js' : 'scenario-run.js'), 'utf8');
+      if (['run', 'drawing', 'model'].includes(process.env.AMO_SCENARIO)) {
+        const script = fs.readFileSync(path.join(__dirname, '..', 'test', 'scenario-' + process.env.AMO_SCENARIO + '.js'), 'utf8');
         await win.webContents.executeJavaScript(`window.__variant = ${JSON.stringify(process.env.AMO_VARIANT || '')}`);
         const out = await win.webContents.executeJavaScript(script);
         console.error('[scenario]', JSON.stringify(out));
@@ -322,6 +326,36 @@ ipcMain.handle('check:run', async (_e, { agent, schedule, drawings, note }) => {
   } finally { checkRunning = false; }
 });
 ipcMain.handle('check:skill', () => STANDARD_SKILL);
+
+// ---------- the modeling room: photo -> 3D model ----------
+let modelRunning = false;
+ipcMain.handle('model:generate', async (_e, { image, textured = true, name }) => {
+  if (modelRunning) throw new Error('A model is already being made. Wait for it to finish.');
+  modelRunning = true;
+  try {
+    const progress = (p) => { try { win && win.webContents.send('model:progress', p); } catch {} };
+    return await model3d.generate({
+      settings: loadSettings(), image, textured, name,
+      outDir: path.join(USER_DIR(), 'models'),
+      bases: { meshy: MOCK ? MOCK + '/meshy' : 'https://api.meshy.ai', higgsfield: MOCK ? MOCK + '/higgsfield' : 'https://api.higgsfield.ai' },
+      fast: !!MOCK, onProgress: progress
+    });
+  } finally { modelRunning = false; }
+});
+// open any .glb from disk (also the way to look at a model made elsewhere)
+ipcMain.handle('model:open', async () => {
+  const r = await dialog.showOpenDialog(win, { properties: ['openFile'], filters: [{ name: '3D model', extensions: ['glb'] }] });
+  if (r.canceled || !r.filePaths[0]) return null;
+  const buf = fs.readFileSync(r.filePaths[0]);
+  return { path: r.filePaths[0], base64: buf.toString('base64'), bytes: buf.length };
+});
+ipcMain.handle('model:saveAs', async (_e, { from, name }) => {
+  const r = await dialog.showSaveDialog(win, { defaultPath: name || path.basename(from || 'model.glb'), filters: [{ name: 'GLB model', extensions: ['glb'] }] });
+  if (r.canceled) return null;
+  fs.copyFileSync(from, r.filePath);
+  return r.filePath;
+});
+ipcMain.handle('model:folder', () => { const d = path.join(USER_DIR(), 'models'); fs.mkdirSync(d, { recursive: true }); return d; });
 
 // ---------- files ----------
 ipcMain.handle('file:pickImages', async () => {

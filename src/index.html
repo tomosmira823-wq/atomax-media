@@ -142,6 +142,16 @@
   #checkPanel { display: none; right: 16px; width: 420px; }
   body.room-drawing #checkPanel.open { display: flex; }
   .lbl.hint { color: var(--green); border-color: var(--green2); font-weight: 600; }
+  /* modeling room panel */
+  #modelPanel { display: none; right: 16px; width: 420px; }
+  body.room-modeling #modelPanel.open { display: flex; }
+  #modelPanel .photo { display: block; max-width: 100%; max-height: 190px; margin: 0 auto 8px; border-radius: 8px; }
+  #modelCanvasWrap { position: relative; border: 1px solid var(--line); border-radius: 14px; overflow: hidden; background: radial-gradient(ellipse at 50% 25%, #1b2131, #0b0f19 70%); }
+  #modelCanvas { width: 100%; height: 300px; display: block; cursor: grab; }
+  #modelRun { text-align: center; padding: 26px 0; }
+  #modelBar-wrap { height: 6px; background: var(--navy3); border-radius: 6px; overflow: hidden; margin-top: 14px; }
+  #modelBar { height: 100%; width: 4%; background: var(--green); transition: width .4s; }
+  #modelCfg summary { cursor: pointer; color: var(--muted); font-size: 12px; margin-top: 12px; }
   .drop { border: 1.5px dashed var(--line2); border-radius: 12px; padding: 14px; text-align: center; cursor: pointer; background: #0a0e18; transition: border-color .15s, background .15s; }
   .drop:hover, .drop.over { border-color: var(--green); background: rgba(64,189,0,.06); }
   .drop.has { border-style: solid; border-color: var(--green2); }
@@ -234,6 +244,7 @@
   <div class="tabs rooms" id="rooms">
     <button class="active" data-room="media">Media office</button>
     <button data-room="drawing">Drawing room</button>
+    <button data-room="modeling">Modeling room</button>
   </div>
   <div class="right">
     <span id="update" class="hint"></span>
@@ -306,6 +317,34 @@
     </div>
     <div id="checkRun" hidden><span class="spinner"></span><div id="runMsg" style="margin-top:10px;font-weight:600">Cal is getting the files</div><div id="runBar-wrap"><div id="runBar"></div></div><p class="hint">Big drawing sets take a few minutes. You can leave this open and come back.</p></div>
     <div id="checkResult" hidden></div>
+  </div>
+</div>
+
+<!-- Modeling room panel: photo in, 3D model out -->
+<div class="panel" id="modelPanel">
+  <h2><span>Modeling room · Photo to 3D</span><button class="collapse" id="modelBack" title="Back to the room (Esc)">×</button></h2>
+  <div class="body">
+    <div id="modelSetup">
+      <label style="margin-top:0">1 · Photo of anything</label>
+      <div class="drop" id="dropPhoto"><div id="photoPrev"></div><div class="dz-t">Drop a photo here</div><div class="dz-s">JPG, PNG or WebP · one object, clear and well lit works best · or click to browse</div><input type="file" hidden accept="image/*" /></div>
+      <label>2 · What kind of model?</label>
+      <div class="seg" id="modelMode"><button class="on" data-tex="1">With colour</button><button data-tex="0">Shape only</button></div>
+      <p class="hint" style="margin:8px 0 0">Shape only is quicker and uses fewer credits. Colour copies the photo onto the model.</p>
+      <div class="warn-note" id="modelVia"></div>
+      <div class="err" id="modelErr" style="margin-top:10px"></div>
+      <button class="btn primary" id="modelGo" style="width:100%;margin-top:12px" disabled>Make the 3D model</button>
+      <div class="row" style="margin-top:8px"><button class="btn small" id="modelOpen">Open a .glb instead</button></div>
+      <details id="modelCfg"><summary>Advanced</summary>
+        <label>Higgsfield 3D model (leave empty to use the default)</label><input type="text" id="m_hfModel" placeholder="automatic" />
+        <div class="row" style="margin-top:8px"><button class="btn small" id="m_save">Save</button><span class="hint" id="m_saved"></span></div>
+      </details>
+    </div>
+    <div id="modelRun" hidden><span class="spinner"></span><div id="modelMsg" style="margin-top:10px;font-weight:600">Starting</div><div id="modelBar-wrap"><div id="modelBar"></div></div><p class="hint">This usually takes a minute or two. The scanner in the room is working while you wait.</p></div>
+    <div id="modelResult" hidden>
+      <div id="modelCanvasWrap"><canvas id="modelCanvas"></canvas></div>
+      <p class="hint" id="modelInfo" style="margin:8px 0"></p>
+      <div class="row"><button class="btn small" id="modelSave">Save a copy</button><button class="btn small" id="modelShow">Show in folder</button><span style="flex:1"></span><button class="btn small" id="modelAgain">Make another</button></div>
+    </div>
   </div>
 </div>
 

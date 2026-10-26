@@ -1,5 +1,6 @@
 import { Office, AgentPreview, GEAR } from './office.js';
 import { initCheckUI } from './checkui.js';
+import { initModelingUI } from './modeling.js';
 
 const $ = (s) => document.querySelector(s);
 const api = window.office;
@@ -525,15 +526,21 @@ function esc(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;
 // ---------- rooms + Cal's desk ----------
 const calAgent = () => agents.find(a => a.enabled && isDrawing(a));
 const checkUI = initCheckUI({ office, api, getAgent: calAgent, getSettings: () => settings, openSettings: () => { fillSettings(); openModal('settingsModal'); } });
+const modelUI = initModelingUI({ office, api, getSettings: () => settings, openSettings: () => { fillSettings(); openModal('settingsModal'); } });
 function goRoom(where) {
+  const inModel = where === 'modeling' || where === 'scan';
   const inDraw = where !== 'media';
   document.body.classList.toggle('room-drawing', inDraw);
-  document.querySelectorAll('#rooms button').forEach(b => b.classList.toggle('active', b.dataset.room === (inDraw ? 'drawing' : 'media')));
+  document.body.classList.toggle('room-modeling', inModel);
+  document.querySelectorAll('#rooms button').forEach(b => b.classList.toggle('active', b.dataset.room === (inModel ? 'modeling' : inDraw ? 'drawing' : 'media')));
   if (where === 'desk') checkUI.show(); else checkUI.hide();
+  if (where === 'scan') modelUI.show(); else modelUI.hide();
   office.focus(where);
 }
 document.querySelectorAll('#rooms button').forEach(b => b.addEventListener('click', () => goRoom(b.dataset.room)));
 $('#deskBack').addEventListener('click', () => goRoom('drawing'));
-office.onPick = (what) => { if (what === 'door') goRoom('drawing'); else if (what === 'desk') { if (calAgent()) goRoom('desk'); } };
-document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !document.querySelector('.modal.open') && office.room === 'desk') goRoom('drawing'); });
+$('#modelBack').addEventListener('click', () => goRoom('modeling'));
+office.onPick = (what) => { if (what === 'door') goRoom('drawing'); else if (what === 'desk') { if (calAgent()) goRoom('desk'); } else if (what === 'modeldoor') goRoom('modeling'); else if (what === 'scan') goRoom('scan'); };
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !document.querySelector('.modal.open') && office.room === 'desk') goRoom('drawing'); else if (e.key === 'Escape' && !document.querySelector('.modal.open') && office.room === 'scan') goRoom('modeling'); });
 window.__goRoom = goRoom;
+window.__modelUI = modelUI;
