@@ -85,10 +85,17 @@ export function buildModelingRoom({ scene, bounds: M, logoTex, drawLeftWall }) {
   // ---- camera on a tripod and two soft boxes, aimed at the pedestal ----
   const dark = mat(NAVY2, { roughness: 0.5, metalness: 0.3 });
   const tri = new THREE.Group();
-  [0, 1, 2].forEach(i => { const a = i * 2.094; const leg = box(0.06, 2.0, 0.06, dark, Math.sin(a) * 0.45, 1.0, Math.cos(a) * 0.45); leg.rotation.z = -Math.sin(a) * 0.22; leg.rotation.x = Math.cos(a) * 0.22; tri.add(leg); });
-  tri.add(box(0.12, 0.5, 0.12, dark, 0, 2.15, 0));
+  // three legs run from one apex under the camera down to feet on the floor
+  const APEX = new THREE.Vector3(0, 2.1, 0);
+  [0, 1, 2].forEach(i => {
+    const a = i * 2.094, foot = new THREE.Vector3(Math.sin(a) * 0.95, 0, Math.cos(a) * 0.95), d = APEX.clone().sub(foot), L = d.length();
+    const leg = box(0.09, L, 0.09, dark, 0, 0, 0); leg.position.copy(foot).addScaledVector(d, 0.5); leg.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), d.normalize()); tri.add(leg);
+    tri.add(box(0.2, 0.06, 0.2, mat(0x0b0e16), foot.x, 0.03, foot.z, false));
+  });
+  tri.add(box(0.2, 0.3, 0.2, dark, 0, 2.15, 0));          // head block where the legs meet
+  tri.add(box(0.34, 0.06, 0.34, mat(0x0b0e16), 0, 2.33, 0)); // mounting plate
   const cam = new THREE.Group(); cam.add(box(0.7, 0.45, 0.4, mat(0x2b3348), 0, 0, 0)); const lens = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.2, 0.4, 20), mat(0x0b0e16, { roughness: 0.2, metalness: 0.5 })); lens.rotation.x = Math.PI / 2; lens.position.z = 0.4; cam.add(lens);
-  cam.add(box(0.12, 0.05, 0.05, mat(GREEN, GL), 0.22, 0.26, 0, false)); cam.position.y = 2.55; tri.add(cam);
+  cam.add(box(0.12, 0.05, 0.05, mat(GREEN, GL), 0.22, 0.26, 0, false)); cam.position.y = 2.33 + 0.03 + 0.225; tri.add(cam); // sits right on the plate
   tri.position.set(px + 5.4, 0, pz + 3.2); tri.lookAt(px, 0, pz); scene.add(tri); obstacles.push({ x: px + 5.4, z: pz + 3.2, r: 1 });
   [[-5.6, 2.6], [4.6, -3.4]].forEach(([dx, dz], i) => {
     const sb = new THREE.Group();
