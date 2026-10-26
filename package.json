@@ -14,7 +14,8 @@
     "dist:portable": "electron-builder --win portable --publish never",
     "test:mock": "node test/mock-api.js",
     "test:checker": "node test/checker-test.js",
-    "test:dxf": "node test/dxffix-test.js"
+    "test:dxf": "node test/dxffix-test.js",
+    "test:model": "node test/model-test.js"
   },
   "dependencies": {
     "electron-updater": "^6.8.9",

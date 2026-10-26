@@ -6,6 +6,7 @@ const path = require('path');
 
 const PNG = fs.readFileSync(path.join(__dirname, '..', 'src', 'icon-512.png')).toString('base64');
 let calls = [];
+let meshyPolls = 0;
 
 function readBody(req) { return new Promise(r => { const c = []; req.on('data', d => c.push(d)); req.on('end', () => r(Buffer.concat(c))); }); }
 
@@ -57,7 +58,7 @@ http.createServer(async (req, res) => {
   try {
     if (u === '/__calls') return json(calls);
     if (u.startsWith('/site')) { res.writeHead(200, { 'content-type': 'text/html' }); return res.end(`<html><head><title>Atomax-UK ${u}</title></head><body><nav><a href="/site/about">About</a></nav><h1>Atomax-UK Engineering Consultants</h1><p>${'We provide electrical design, instrumentation drawings and document control for industrial clients. '.repeat(8)}</p><a href="/site/services">Services</a><a href="/site/contact">Contact</a></body></html>`); }
-    if (u === '/__reset') { calls = []; return json({ ok: true }); }
+    if (u === '/__reset') { calls = []; meshyPolls = 0; return json({ ok: true }); }
     if (u.startsWith('/anthropic/v1/messages')) {
       const body = JSON.parse(raw.toString());
       const text = claudeReply(body);
@@ -72,6 +73,12 @@ http.createServer(async (req, res) => {
       await new Promise(r => setTimeout(r, 300));
       return json({ data: [{ b64_json: PNG }] });
     }
+    // ---- modeling room: photo -> GLB (Meshy-style and Higgsfield-style) ----
+    if (u === '/files/model.glb') { res.writeHead(200, { 'content-type': 'model/gltf-binary' }); return res.end(fs.readFileSync(path.join(__dirname, '..', 'src', 'assets', 'models', (process.env.MOCK_GLB || 'bookcase') + '.glb'))); }
+    if (u === '/meshy/openapi/v1/image-to-3d' && req.method === 'POST') { const b = JSON.parse(raw.toString()); calls[calls.length - 1].dataUri = /^data:image\/(jpeg|png);base64,/.test(b.image_url || ''); calls[calls.length - 1].auth = req.headers.authorization; return json({ result: 'task1' }); }
+    if (u === '/meshy/openapi/v1/image-to-3d/task1') { meshyPolls++; return json(meshyPolls < 2 ? { status: 'IN_PROGRESS', progress: 40 } : { status: 'SUCCEEDED', progress: 100, model_urls: { glb: 'http://127.0.0.1:52900/files/model.glb' } }); }
+    if (u.startsWith('/higgsfield/requests/')) return json({ status: 'completed', result: { model: { url: 'http://127.0.0.1:52900/files/model.glb' } } });
+    if (u.startsWith('/higgsfield/') && req.method === 'POST') { const b = JSON.parse(raw.toString()); calls[calls.length - 1].dataUri = /^data:image\//.test(b.image_url || ''); calls[calls.length - 1].auth = req.headers.authorization; return json({ request_id: 'r1', status_url: 'http://127.0.0.1:52900/higgsfield/requests/r1/status' }); }
     // ---- social publish mocks ----
     if (u.startsWith('/li/rest/images?action=initializeUpload')) return json({ value: { uploadUrl: 'http://127.0.0.1:52900/li/upload', image: 'urn:li:image:MOCK' } });
     if (u.startsWith('/li/upload')) { res.writeHead(201); return res.end(); }

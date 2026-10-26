@@ -5,6 +5,7 @@ import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
+import { buildModelingRoom, modelingBounds } from './modelroom.js';
 
 const GREEN = 0x40bd00, NAVY = 0x0e121d, NAVY2 = 0x1b2131, WHITE = 0xf4f5f7, WOOD = 0xe8d2b0;
 const ROOM_W = 26, ROOM_D = 22, WALL_H = 6;
@@ -25,6 +26,8 @@ const DESK_SLOTS = [
 const DRAW = { w: 18, x1: -ROOM_W / 2 - 0.3, z0: -ROOM_D / 2, z1: 5 };
 DRAW.x0 = DRAW.x1 - DRAW.w; DRAW.cx = (DRAW.x0 + DRAW.x1) / 2; DRAW.cz = (DRAW.z0 + DRAW.z1) / 2; DRAW.d = DRAW.z1 - DRAW.z0;
 const DOOR = { z0: -2.4, z1: 0 };
+// The modeling room sits west of the drawing room (built in modelroom.js).
+const MODEL = modelingBounds(DRAW.x0, DRAW.z0, DRAW.z1);
 const NAV = { x0: DRAW.x0, x1: ROOM_W / 2, z0: -ROOM_D / 2, z1: ROOM_D / 2 };
 const DRAW_DESK = [DRAW.cx, -6.6, 0];
 const DRAFT_TABLE = [DRAW.x0 + 5.0, -1.2], DRAFT_STOOL = [DRAW.x0 + 6.4, -1.9];
@@ -147,6 +150,7 @@ export class Office {
     this.#initRenderer();
     this.#buildShell();
     this.#buildDrawingRoom();
+    this.#buildModelingRoom();
     this.#initPicking();
     this.room = 'media'; this.clickRoots = [];
     this.ready = this.#loadModels().then(() => this.#furnish()).catch(e => console.error('furniture failed', e));
@@ -694,6 +698,15 @@ export class Office {
     this.dexRoots = [this.draftTable, this.draftStool, group].filter(Boolean);
   }
 
+  // ---------- modeling room (west of the drawing room) ----------
+  #buildModelingRoom() {
+    this.modelRoom = buildModelingRoom({ scene: this.scene, bounds: MODEL, logoTex: this.logoWhiteTex, drawLeftWall: this.drawLeftWall });
+  }
+  // show a loaded glTF scene on the scan pedestal (null clears it)
+  showModel(object3d) { if (this.modelRoom) this.modelRoom.setModel(object3d); }
+  // sweep the scanning hoop while a model is being made
+  setScanning(on) { if (this.modelRoom) this.modelRoom.setBusy(on); }
+
   // ---------- room switching, picking, hand-over ----------
   focus(where, ms = 1100) {
     const [dx, dz] = DRAW_DESK;
@@ -701,7 +714,8 @@ export class Office {
       media: { p: [26, 19, 32], t: [1, 0.5, 0.5] },
       drawing: { p: [DRAW.cx + 9, 15, 24], t: [DRAW.cx + 1.5, 0.5, -3] },
       desk: { p: [dx + 8.0, 4.8, dz + 8.0], t: [dx + 2.8, 1.0, dz + 0.6] },
-      drafting: { p: [DRAFT_TABLE[0] + 7.5, 4.8, DRAFT_TABLE[1] + 7.5], t: [DRAFT_TABLE[0] + 2.6, 1.0, DRAFT_TABLE[1] + 0.4] }
+      drafting: { p: [DRAFT_TABLE[0] + 7.5, 4.8, DRAFT_TABLE[1] + 7.5], t: [DRAFT_TABLE[0] + 2.6, 1.0, DRAFT_TABLE[1] + 0.4] },
+      ...(this.modelRoom ? this.modelRoom.spots : {})
     };
     const sp = spots[where]; if (!sp) return;
     this.room = where;
@@ -709,6 +723,7 @@ export class Office {
     this.controls.enabled = false;
     if (this.deskHint) this.deskHint.visible = where === 'drawing';
     if (this.dexHint) this.dexHint.visible = where === 'drawing';
+    if (this.modelRoom) this.modelRoom.hint.visible = where === 'modeling';
     this.canvas.style.cursor = '';
   }
 
@@ -721,6 +736,8 @@ export class Office {
       if (this.room === 'media' && this.doorPlaque && visibleChain(this.doorPlaque) && this.ray.intersectObject(this.doorPlaque, true).length) return 'door';
       if (this.room === 'drawing' && this.clickRoots.length && this.ray.intersectObjects(this.clickRoots, true).some(h => visibleChain(h.object))) return 'desk';
       if (this.room === 'drawing' && this.dexRoots && this.dexRoots.length && this.ray.intersectObjects(this.dexRoots, true).some(h => visibleChain(h.object))) return 'drafting';
+      if (this.room === 'drawing' && this.modelRoom && visibleChain(this.modelRoom.plaque) && this.ray.intersectObject(this.modelRoom.plaque, true).length) return 'modeldoor';
+      if (this.room === 'modeling' && this.modelRoom && this.ray.intersectObjects(this.modelRoom.clickRoots, true).some(h => visibleChain(h.object))) return 'scan';
       return null;
     };
     this.canvas.addEventListener('pointerdown', (e) => { this.down = { x: e.clientX, y: e.clientY, t: performance.now() }; });
@@ -802,6 +819,7 @@ export class Office {
     if (this.leftWall) this.leftWall.visible = c.x > -ROOM_W / 2 + 1 && !(this.room !== 'media' && (!this.tween || tweenK > 0.3));
     if (this.drawBackWall) this.drawBackWall.visible = c.z > DRAW.z0 + 1;
     if (this.drawLeftWall) this.drawLeftWall.visible = c.x > DRAW.x0 + 1;
+    if (this.modelRoom) { this.modelRoom.backWall.visible = c.z > MODEL.z0 + 1; this.modelRoom.leftWall.visible = c.x > MODEL.x0 + 1; this.modelRoom.step(dt); }
     this.renderer.render(this.scene, this.camera);
     this.labelRenderer.render(this.scene, this.camera);
   }
