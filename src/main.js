@@ -2,13 +2,14 @@
 // All API keys live here (encrypted on disk) and every outside call is made from here,
 // so the 3D page never sees a key.
 
-const { app, BrowserWindow, ipcMain, dialog, safeStorage, shell, protocol, net } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, safeStorage, shell, protocol, net, Notification } = require('electron');
 const { pathToFileURL } = require('url');
 const { autoUpdater } = require('electron-updater');
 const social = require('./social');
 const checker = require('./checker');
 const markup = require('./markup');
 const dxffix = require('./dxffix');
+const bizmain = require('./bizmain');
 const model3d = require('./model3d');
 const { STANDARD_SKILL } = checker;
 const path = require('path');
@@ -181,8 +182,8 @@ function createWindow() {
   if (process.env.AMO_SCREENSHOT) {
     win.webContents.on('console-message', (_e, level, msg, line, src) => console.error('[page]', level, msg, src + ':' + line));
     win.webContents.once('did-finish-load', () => setTimeout(async () => {
-      if (['run', 'drawing', 'dex', 'model', 'fp'].includes(process.env.AMO_SCENARIO)) {
-        const script = fs.readFileSync(path.join(__dirname, '..', 'test', ({ drawing: 'scenario-drawing.js', dex: 'scenario-dex.js', model: 'scenario-model.js', fp: 'scenario-fp.js' }[process.env.AMO_SCENARIO] || 'scenario-run.js')), 'utf8');
+      if (['run', 'drawing', 'dex', 'model', 'fp', 'biz'].includes(process.env.AMO_SCENARIO)) {
+        const script = fs.readFileSync(path.join(__dirname, '..', 'test', ({ drawing: 'scenario-drawing.js', dex: 'scenario-dex.js', model: 'scenario-model.js', fp: 'scenario-fp.js', biz: 'scenario-biz.js' }[process.env.AMO_SCENARIO] || 'scenario-run.js')), 'utf8').replace(/__AMO_DIR__/g, (process.env.AMO_PICK_DIR || '').replace(/\\/g, '/'));
         await win.webContents.executeJavaScript(`window.__variant = ${JSON.stringify(process.env.AMO_VARIANT || '')}`);
         const out = await win.webContents.executeJavaScript(script);
         console.error('[scenario]', JSON.stringify(out));
@@ -329,9 +330,12 @@ ipcMain.handle('history:list', (_e, { agent }) => readJson(HISTORY_FILE(), []).f
 ipcMain.handle('history:get', (_e, { id }) => readJson(HISTORY_FILE(), []).find(h => h.id === id) || null);
 ipcMain.handle('history:remove', (_e, { id }) => { writeJson(HISTORY_FILE(), readJson(HISTORY_FILE(), []).filter(h => h.id !== id)); return true; });
 
+// ---------- the business layer: jobs, approvals, issue packs, documents, hours, briefs ----------
+const BIZ = bizmain.register({ ipcMain, dialog, shell, Notification, getWin: () => win, userDir: USER_DIR, claudeFull: (a) => claudeFull(a), checker });
+
 // ---------- the drawing room: cable schedule vs drawings ----------
 let checkRunning = false;
-ipcMain.handle('check:run', async (_e, { agent, schedule, drawings, note }) => {
+ipcMain.handle('check:run', async (_e, { agent, schedule, drawings, note, jobId }) => {
   if (checkRunning) throw new Error('A check is already running. Wait for Cal to finish.');
   checkRunning = true;
   try {
@@ -348,6 +352,7 @@ ipcMain.handle('check:run', async (_e, { agent, schedule, drawings, note }) => {
     const mk = report.markups;
     report.text += '\n\nMARKED-UP COPIES (originals untouched)\n' + ((mk.made.length || mk.notes) ? `  - Saved ${mk.made.length + (mk.notes ? 1 : 0)} file${mk.made.length + (mk.notes ? 1 : 0) === 1 ? '' : 's'} in ${mk.dir}\n` + mk.made.map(m => `  - ${path.basename(m.out)} (${m.notes} note${m.notes === 1 ? '' : 's'})`).join('\n') + (mk.notes ? `\n  - ${path.basename(mk.notes.out)} (${mk.notes.count} schedule-level note${mk.notes.count === 1 ? '' : 's'} that cannot sit on a drawing)` : '') : '  - None made (nothing to mark on the drawings, or they could not be marked up).') + (mk.failed.length ? '\n' + mk.failed.map(f => `  - Could not mark up ${f.name}: ${f.reason}`).join('\n') : '') + `\n  - ${mk.untouched} file${mk.untouched === 1 ? ' has' : 's have'} nothing to mark.`;
     try { writeJson(path.join(USER_DIR(), 'last-check.json'), { at: new Date().toISOString(), findings: report.findings || [] }); } catch {}
+    BIZ.log({ who: 'Cal', action: 'Checked', jobId: jobId || '', detail: `${report.headline || 'Drawing check'} · ${(report.findings || []).length} to look at · ${(drawings || []).length} drawing${(drawings || []).length === 1 ? '' : 's'}` });
     addHistory('cal', { title: report.headline || 'Drawing check', summary: `${(report.findings || []).length} to look at · schedule ${schedule && schedule.name || '?'} · ${(drawings || []).length} drawing${(drawings || []).length === 1 ? '' : 's'}`, data: report });
     return report;
   } finally { checkRunning = false; }
@@ -408,7 +413,7 @@ ipcMain.handle('dxf:propose', async (_e, { source, dxfs, markups, note }) => {
   }
   return { items, notes };
 });
-ipcMain.handle('dxf:apply', async (_e, { dxfs, fixes }) => {
+ipcMain.handle('dxf:apply', async (_e, { dxfs, fixes, jobId }) => {
   const out = { files: [], results: [], failed: [] };
   const byFile = new Map();
   for (const fx of fixes || []) { if (!fx.file) { out.results.push({ id: fx.id, status: 'not found', reason: 'No DXF matched this fix.' }); continue; } (byFile.get(fx.file) || byFile.set(fx.file, []).get(fx.file)).push(fx); }
@@ -433,6 +438,7 @@ ipcMain.handle('dxf:apply', async (_e, { dxfs, fixes }) => {
     try { fs.writeFileSync(path.join(dir, 'DEX_FIX_LOG.txt'), log); out.log = path.join(dir, 'DEX_FIX_LOG.txt'); } catch {}
   }
   const nDone = out.results.filter(x => x.status === 'applied').length;
+  for (const x of out.results.filter(r => r.status === 'applied')) BIZ.log({ who: 'Dex', action: 'Fixed', jobId: jobId || '', before: x.action === 'add_text' ? '' : (x.before || ''), after: x.action === 'delete_text' ? '' : (x.action === 'add_text' ? x.text : x.after || ''), detail: `${x.file || ''} · ${x.action === 'delete_text' ? 'deleted text' : x.action === 'add_text' ? 'added text' : 'changed text'}${x.places ? ' · ' + x.places + ' place' + (x.places === 1 ? '' : 's') : ''}` });
   addHistory('dex', { title: nDone ? `Fixed ${nDone} of ${out.results.length} ticked` : 'Nothing was changed', summary: out.files.map(f => f.name).join(', ') || (out.failed[0] ? out.failed[0].name : ''), data: out });
   return out;
 });

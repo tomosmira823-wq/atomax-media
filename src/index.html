@@ -187,6 +187,32 @@
   .badge.fix { background: #5a3d0f; color: #ffd59a; }
   .badge.fail { background: #5a1414; color: #ffb3b3; }
   .modal .box.wide { width: 1000px; }
+  /* business tab */
+  .pill { display: inline-block; min-width: 16px; padding: 0 5px; border-radius: 9px; background: var(--amber); color: #1a1200; font-size: 11px; font-weight: 800; line-height: 16px; text-align: center; }
+  .biztabs { display: flex; gap: 2px; padding: 3px; background: #0a0e18; border: 1px solid var(--line); border-radius: 10px; margin-bottom: 14px; }
+  .biztabs button { flex: 1; background: transparent; border: none; color: var(--muted); padding: 8px 6px; border-radius: 8px; cursor: pointer; font: inherit; font-weight: 600; }
+  .biztabs button.on { background: var(--navy3); color: var(--text); }
+  #bizBox h4 { font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: var(--green); }
+  #bizBox h5 { margin: 10px 0 2px; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); }
+  #bizBox select, #bizBox input:not([type=checkbox]), #bizBox textarea { width: 100%; box-sizing: border-box; }
+  #bizBox .row select { width: auto; }
+  .jobgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .jobcard, .apcard, .briefcard { background: var(--navy2); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; margin-bottom: 10px; }
+  .jobcard .jt, .apcard .jt, .briefcard .jt { font-size: 14px; }
+  .jobcard .jm { display: flex; gap: 12px; font-size: 12.5px; color: var(--muted); margin: 6px 0 4px; flex-wrap: wrap; }
+  .jobcard .warn, .jobcard .bad, #bizBox .warn { color: var(--amber); } .jobcard .bad, #bizBox .bad { color: var(--red); }
+  .bar { height: 6px; background: var(--navy3); border-radius: 6px; overflow: hidden; } .bar i { display: block; height: 100%; background: var(--green); transition: width .4s; }
+  .st { font-size: 10px; font-weight: 800; padding: 2px 7px; border-radius: 6px; background: var(--navy3); color: var(--muted); margin-left: 6px; letter-spacing: .5px; text-transform: uppercase; }
+  .st-Active { background: #1f5a0f; color: #b9f59a; } .st-Onhold { background: #5a3d0f; color: #ffd59a; } .st-Issued { background: #123a5a; color: #a9d6ff; }
+  .briefcard .bl { font-size: 13px; padding: 2px 0 2px 10px; border-left: 2px solid var(--line2); margin: 2px 0; }
+  #bizBox .headline { font-weight: 700; padding: 10px 12px; border-radius: 10px; margin-bottom: 10px; } #bizBox .headline.good { background: rgba(64,189,0,.1); border: 1px solid #2a6a16; } #bizBox .headline.warn { background: rgba(255,184,77,.08); border: 1px solid #6a4a12; color: var(--text); }
+  #bizBox .grp { margin: 14px 0; } #bizBox .grp h4 { margin: 0 0 4px; display: flex; gap: 8px; } #bizBox .grp h4 span { color: var(--muted); } #bizBox ul { margin: 0; padding-left: 18px; } #bizBox li { margin: 4px 0; font-size: 13px; }
+  #bizBox li.bad b { color: var(--red); } #bizBox li.confirm b { color: var(--amber); } #bizBox li.confirm { color: #ffd59a; } #bizBox .why { color: var(--muted); font-size: 12px; } #bizBox .grp.cov li { color: var(--muted); font-size: 12.5px; }
+  #bizBox .fx { display: flex; gap: 9px; align-items: flex-start; padding: 8px 4px; border-bottom: 1px solid var(--line); font-size: 13px; }
+  .btn.danger { color: var(--red); border-color: #6a1c1c; }
+  table.aud { width: 100%; border-collapse: collapse; font-size: 12.5px; } table.aud th { text-align: left; color: var(--muted); font-weight: 600; padding: 6px 8px; border-bottom: 1px solid var(--line2); } table.aud td { padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: top; } table.aud code { background: #0a0e18; padding: 1px 5px; border-radius: 4px; }
+  .jobsel { margin-top: 10px; }
+
   .team { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 12px; margin: 14px 0; }
   .team .tcard { border: 1px solid var(--line); border-radius: 16px; padding: 18px 14px 14px; background: #0c111c; cursor: pointer; position: relative; transition: border-color .15s, transform .15s, box-shadow .15s; }
   .team .tcard:hover { border-color: var(--green2); transform: translateY(-2px); box-shadow: 0 10px 24px rgba(0,0,0,.35); }
@@ -257,6 +283,7 @@ body.fp canvas#scene{cursor:grab}
   </div>
   <div class="tabs">
     <button class="active" data-tab="office">Office</button>
+    <button data-tab="business">Business <span id="bizBadge" class="pill" style="display:none"></span></button>
     <button data-tab="history">Posts</button>
     <button data-tab="agents">Agents</button>
     <button data-tab="settings">Settings</button>
@@ -324,7 +351,8 @@ body.fp canvas#scene{cursor:grab}
   <h2><span>Cal · Drawing checker</span><button class="collapse" id="deskBack" title="Back to the room (Esc)">×</button></h2>
   <div class="body">
     <div id="checkSetup">
-      <label style="margin-top:0">1 · Cable schedule</label>
+      <label style="margin-top:0">Job <span class="hint">(optional, for the audit trail)</span></label><select id="checkJob"><option value="">No job</option></select>
+      <label>1 · Cable schedule</label>
       <div class="drop" id="dropSched"><div class="dz-t">Drop the cable schedule here</div><div class="dz-s">Excel, CSV or PDF · one file, or click to browse</div><div id="schedFile"></div><input type="file" hidden accept=".xlsx,.csv,.pdf,.png,.jpg,.jpeg" /></div>
       <label>2 · Drawings and cross references</label>
       <div class="drop" id="dropDwg"><div class="dz-t">Drop the drawings here</div><div class="dz-s">PDF is best · as many as you like, or click to browse</div><div id="dwgFiles"></div><input type="file" hidden accept=".pdf,.png,.jpg,.jpeg,.xlsx,.csv,.dwg,.dxf,.xls" /></div>
@@ -349,6 +377,7 @@ body.fp canvas#scene{cursor:grab}
     <div id="dexSetup">
       <label style="margin-top:0">1 · DXF drawings to fix</label>
       <div class="drop" id="dropDxf"><div class="dz-t">Drop the DXFs here</div><div class="dz-s">ASCII .dxf only · as many as you like, or click to browse</div><div id="dxfFiles"></div><input type="file" hidden accept=".dxf" /></div>
+      <label>Job <span class="hint">(optional, for the audit trail)</span></label><select id="dexJob"><option value="">No job</option></select>
       <label>2 · Where do the fixes come from?</label>
       <div class="seg" id="dexSrc"><button class="on" data-src="cal">Cal's last markups</button><button data-src="pdfs">Drop markup PDFs</button><button data-src="note">Just tell Dex</button></div>
       <div id="dexNoteBox" style="display:none;margin-top:8px"><textarea id="dexNote" rows="4" placeholder="No markup needed. Say what to fix, e.g. Change every C-1O4 to C-104. Delete the SAMPLE ONLY line. Add REV C under the revision text. Change the transformer vector group from Dyn1l to Dyn11."></textarea></div>
@@ -447,6 +476,12 @@ body.fp canvas#scene{cursor:grab}
     </div>
     <div class="foot"><button class="btn" id="loRemove">Remove agent</button><span style="flex:1"></span><button class="btn" id="loCancel">Back without saving</button><button class="btn primary" id="loSave">Save loadout</button></div>
   </div>
+</div></div>
+
+<!-- Business modal -->
+<div class="modal" id="bizModal"><div class="box wide"><button class="x" data-close title="Close (Esc)">×</button>
+  <h3>Business</h3><div class="sub">Jobs, approvals, issue packs, documents, hours and the daily brief. Everything the office does hangs off a job, and nothing goes out until you approve it.</div>
+  <div id="bizBox"></div>
 </div></div>
 
 <!-- Settings modal -->

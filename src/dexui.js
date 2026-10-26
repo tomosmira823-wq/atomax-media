@@ -97,7 +97,7 @@ export function initDexUI({ office, api, getAgent, openSettings, getSettings }) 
     if (busy || !chosen.length) return;
     $('#dexList').hidden = true; setBusy(true, 'Dex is fixing the DXFs');
     try {
-      const r = await api.dxf.apply({ dxfs: dxfs.map(d => ({ name: d.name, base64: d.base64, path: d.path })), fixes: chosen.map(c => ({ id: c.id, file: c.file, action: c.action, before: c.before, after: c.after, text: c.text, x: c.x, y: c.y, layer: c.layer, height: c.height, ref: c.ref, editBlocks: c.editBlocks })) });
+      const r = await api.dxf.apply({ jobId: ($('#dexJob') || {}).value || '', dxfs: dxfs.map(d => ({ name: d.name, base64: d.base64, path: d.path })), fixes: chosen.map(c => ({ id: c.id, file: c.file, action: c.action, before: c.before, after: c.after, text: c.text, x: c.x, y: c.y, layer: c.layer, height: c.height, ref: c.ref, editBlocks: c.editBlocks })) });
       setBusy(false); showResult(r, chosen); hist.refresh();
     } catch (e) { setBusy(false); $('#dexList').hidden = false; $('#dexSetup').hidden = true; $('#dexErr').textContent = String(e.message || e); }
   }

@@ -90,7 +90,7 @@ export function initCheckUI({ office, api, getAgent, getSettings, openSettings }
     office.handOver({ hasSchedule: true, drawings: drawings.length });
     if (a) office.setState(a.id, 'working', 'reading the files');
     try {
-      const report = await api.check.run({ agent: a ? { id: a.id, rules: a.rules } : null, schedule: { name: schedule.name, base64: schedule.base64 }, drawings: drawings.map(d => ({ name: d.name, base64: d.base64, path: d.path })), note });
+      const report = await api.check.run({ jobId: ($('#checkJob') || {}).value || '', agent: a ? { id: a.id, rules: a.rules } : null, schedule: { name: schedule.name, base64: schedule.base64 }, drawings: drawings.map(d => ({ name: d.name, base64: d.base64, path: d.path })), note });
       last = report; showResult(report); hist.refresh();
       if (a) office.setState(a.id, 'done', report.findings.length ? `${report.findings.length} to look at` : 'check finished');
     } catch (e) {

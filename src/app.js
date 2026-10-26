@@ -1,6 +1,7 @@
 import { Office, AgentPreview, GEAR } from './office.js';
 import { initDexUI } from './dexui.js';
 import { initCheckUI } from './checkui.js';
+import { initBizUI } from './bizui.js';
 import { initModelingUI } from './modeling.js';
 
 const $ = (s) => document.querySelector(s);
@@ -77,6 +78,7 @@ document.querySelectorAll('#top .tabs button').forEach(b => b.addEventListener('
   b.classList.add('active');
   const t = b.dataset.tab;
   if (t === 'history') { renderHistory(); openModal('historyModal'); }
+  if (t === 'business') { bizUI.open().then(() => openModal('bizModal')); return; }
   if (t === 'agents') { renderTeam(); openModal('agentsModal'); }
   if (t === 'settings') { fillSettings(); openModal('settingsModal'); }
 }));
@@ -530,6 +532,7 @@ function esc(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;
 const calAgent = () => agents.find(a => a.enabled && a.role === 'drawing');
 const dexAgent = () => agents.find(a => a.enabled && isDrafter(a));
 const checkUI = initCheckUI({ office, api, getAgent: calAgent, getSettings: () => settings, openSettings: () => { fillSettings(); openModal('settingsModal'); } });
+const bizUI = initBizUI({ api, getSettings: () => settings, openSettings: () => { fillSettings(); openModal('settingsModal'); } });
 const dexUI = initDexUI({ office, api, getAgent: dexAgent, getSettings: () => settings, openSettings: () => { fillSettings(); openModal('settingsModal'); } });
 const modelUI = initModelingUI({ office, api, getSettings: () => settings, openSettings: () => { fillSettings(); openModal('settingsModal'); } });
 function goRoom(where) {
@@ -539,8 +542,8 @@ function goRoom(where) {
   document.body.classList.toggle('room-modeling', inModel);
   document.querySelectorAll('#rooms button').forEach(b => b.classList.toggle('active', b.dataset.room === (inModel ? 'modeling' : inDraw ? 'drawing' : 'media')));
   ['#checkPanel', '#dexPanel', '#modelPanel'].forEach(sel => $(sel).classList.remove('collapsed'));
-  if (where === 'desk') checkUI.show(); else checkUI.hide();
-  if (where === 'drafting') dexUI.show(); else dexUI.hide();
+  if (where === 'desk') { checkUI.show(); bizUI.fillJobSelect($('#checkJob')); } else checkUI.hide();
+  if (where === 'drafting') { dexUI.show(); bizUI.fillJobSelect($('#dexJob')); } else dexUI.hide();
   if (where === 'scan') modelUI.show(); else modelUI.hide();
   office.focus(where);
 }

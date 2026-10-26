@@ -22,6 +22,13 @@ function claudeReply(body) {
   }
   if (/judge possible mismatches/.test(sys)) { const items = JSON.parse(body.messages[0].content[0].text); return JSON.stringify({ verdicts: items.map(i => ({ id: i.id, real: !/1\.5mm/.test(i.drawing) && i.schedule !== i.drawing, confirm: false, reason: '' })) }); }
   if (/left you a note/.test(sys)) return JSON.stringify({ answer: 'Mock answer to your note.', extra: [] });
+  if (/ONE engineering drawing PDF/.test(sys)) {
+    const name = (userText.match(/\(file: ([^)]+)\)/) || [])[1] || '';
+    const no = (name.match(/X\d{6}-\d{2}-\d{2}-\d{4}/) || [''])[0]; const rev = (name.match(/_([A-Z]\d{2})\./) || [])[1] || '';
+    return JSON.stringify({ no, title: 'Mock title', rev: /_P00/.test(name) ? 'P01' : rev, dead: /_C02/.test(name), deadWhy: /_C02/.test(name) ? 'SUPERSEDED stamp' : '' });
+  }
+  if (/drawing transmittal \/ drawing register/.test(sys)) return JSON.stringify({ rows: [{ no: 'X123456-10-20-0042', rev: 'P02', title: 'Loop' }, { no: 'X123456-10-20-0043', rev: 'P01', title: 'Cable' }] });
+  if (/You write the body of an engineering consultancy document/.test(sys)) return JSON.stringify({ documentTitle: 'Mock RAMS', projectDetails: [{ label: 'Site', value: 'TBC' }], sections: [{ content: [{ type: 'heading1', text: 'Scope of Works' }, { type: 'paragraph', text: 'Mock scope from: ' + userText.slice(0, 40).replace(/[^\w ]/g, '') }, { type: 'dataTable', headers: ['Step', 'Activity'], rows: [['1', 'Isolate'], ['2', 'Test']] }] }] });
   if (/You edit the text in engineering DXF/.test(sys)) {
     const msg = body.messages[0].content; const rows = String(typeof msg === 'string' ? msg : msg[0].text).split('\n').filter(l => /^\d+ \| /.test(l)).map(l => l.split(' | '));
     const file = (String(typeof msg === 'string' ? msg : msg[0].text).match(/FILE: (.+)/) || [])[1];

@@ -15,6 +15,13 @@ contextBridge.exposeInMainWorld('office', {
     test: call('ai:test')
   },
   check: { run: call('check:run'), skill: call('check:skill'), last: call('check:last'), onProgress: (fn) => ipcRenderer.on('check:progress', (_e, p) => fn(p)) },
+  biz: {
+    get: call('biz:get'), jobs: call('biz:jobs'), jobSave: call('biz:jobSave'), jobDelete: call('biz:jobDelete'), parseDrawings: call('biz:parseDrawings'),
+    hoursAdd: call('biz:hoursAdd'), hoursRemove: call('biz:hoursRemove'), people: call('biz:people'), decide: call('biz:decide'),
+    pickFolder: call('biz:pickFolder'), pickFile: call('biz:pickFile'), issueScan: call('biz:issueScan'), issueQueue: call('biz:issueQueue'),
+    docDraft: call('biz:docDraft'), docKinds: call('biz:docKinds'), briefRun: call('biz:briefRun'), routinesSet: call('biz:routinesSet'),
+    onProgress: (fn) => ipcRenderer.on('biz:progress', (_e, p) => fn(p)), onBrief: (fn) => ipcRenderer.on('biz:brief', (_e, b) => fn(b))
+  },
   history: { list: call('history:list'), get: call('history:get'), remove: call('history:remove') },
   dxf: { propose: call('dxf:propose'), apply: call('dxf:apply') },
   model: { generate: call('model:generate'), list: call('model:list'), load: call('model:load'), claude: call('model:claude'), saveGlb: call('model:saveGlb'), open: call('model:open'), saveAs: call('model:saveAs'), folder: call('model:folder'), onProgress: (fn) => ipcRenderer.on('model:progress', (_e, p) => fn(p)) },
