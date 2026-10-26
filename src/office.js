@@ -632,11 +632,43 @@ export class Office {
     pc.position.set(DRAW.x0 + 0.85, 0, -3.6); add(pc); obs(DRAW.x0 + 1, -3.6, 2.0); poi(DRAW.x0 + 2.8, -3.6, -Math.PI / 2);
     // drafting table with a tilted board and a stool
     const dt = new THREE.Group();
-    [[-0.9, -0.5], [0.9, -0.5], [-0.9, 0.5], [0.9, 0.5]].forEach(([x, z]) => dt.add(box(0.07, 1.05, 0.07, dark, x, 0.52, z)));
-    const board = box(2.2, 0.06, 1.5, mat(0xf2f4f7, { roughness: 0.4 }), 0, 1.15, 0); board.rotation.x = 0.28; dt.add(board);
-    const sheet = box(1.8, 0.015, 1.15, mat(0xdceaf7), 0, 1.2, 0.0, false); sheet.rotation.x = 0.28; dt.add(sheet);
-    for (let k = 0; k < 5; k++) { const l = box(1.4 - k * 0.18, 0.012, 0.03, mat(0x3b6aa8), -0.1, 1.215 - 0.0, -0.4 + k * 0.17, false); l.rotation.x = 0.28; l.position.y = 1.2 + (-0.4 + k * 0.17) * -0.0 + 0.02 + (-0.4 + k * 0.17) * 0.28; dt.add(l); }
-    dt.add(box(2.0, 0.05, 0.1, dark, 0, 1.0, 0.75, false));
+    const steel = mat(0x2a3042, { roughness: 0.35, metalness: 0.5 }), maple = mat(0xe3c995, { roughness: 0.55 }), walnut = mat(0x8a6238, { roughness: 0.6 });
+    // frame: two side frames with feet, a foot rail and cross stretchers, so the table stands on something real
+    [-0.98, 0.98].forEach(x => {
+      dt.add(box(0.07, 0.94, 0.07, steel, x, 0.47, 0.6)); dt.add(box(0.07, 1.26, 0.07, steel, x, 0.63, -0.6));
+      dt.add(box(0.07, 0.05, 1.5, steel, x, 0.03, 0.0)); dt.add(box(0.05, 0.05, 1.2, steel, x, 0.42, 0.0));
+    });
+    dt.add(box(1.9, 0.05, 0.05, steel, 0, 0.42, 0.6)); dt.add(box(1.9, 0.05, 0.05, steel, 0, 0.42, -0.6));
+    [-0.98, 0.98].forEach(x => { const r = box(0.07, 0.07, 1.46, steel, x, 1.07, 0); r.rotation.x = 0.28; dt.add(r); });   // rails under the board, sloped to meet it
+    // the tilted drawing board: everything on it lives in this group so it all lines up with the surface
+    const tg = new THREE.Group(); tg.position.set(0, 1.15, 0); tg.rotation.x = 0.28; dt.add(tg); this.draftBoard = tg;
+    tg.add(box(2.34, 0.06, 1.58, maple, 0, 0, 0));
+    tg.add(box(2.34, 0.08, 0.07, walnut, 0, 0.005, -0.755)); tg.add(box(2.34, 0.08, 0.07, walnut, 0, 0.005, 0.755));
+    [-1.135, 1.135].forEach(x => tg.add(box(0.07, 0.08, 1.58, walnut, x, 0.005, 0)));
+    tg.add(box(2.1, 0.012, 1.38, mat(0x3f7d5a, { roughness: 0.7 }), 0, 0.036, 0, false));          // green cutting mat
+    const sheet = box(1.78, 0.008, 1.2, mat(0xfbfcfe, { roughness: 0.9 }), 0.02, 0.046, 0.0, false); tg.add(sheet);
+    const ink = mat(0x1d3f6b), line = (w, d, x, z, c) => tg.add(box(w, 0.004, d, c || ink, x, 0.052, z, false));
+    // a little drawing: border, title block, a bus with feeders and breakers
+    line(1.7, 0.012, 0.02, -0.57); line(1.7, 0.012, 0.02, 0.57); line(0.012, 1.14, -0.83, 0); line(0.012, 1.14, 0.87, 0);
+    line(0.55, 0.012, 0.6, 0.38); line(0.012, 0.19, 0.325, 0.475); line(0.55, 0.012, 0.6, 0.47); line(0.3, 0.02, 0.62, 0.52, mat(0x6b7a8c));
+    line(1.3, 0.025, -0.1, -0.3);
+    [-0.6, -0.3, 0.0, 0.3, 0.6].forEach((x, i) => { line(0.014, 0.4, x, -0.1); tg.add(box(0.07, 0.005, 0.07, mat(0xc0392b), x, 0.054, -0.1, false)); if (i % 2 === 0) line(0.16, 0.014, x, 0.12); });
+    // parallel rule with its end blocks
+    tg.add(box(2.2, 0.022, 0.1, mat(0xdde6f0, { roughness: 0.2, metalness: 0.1 }), 0, 0.07, 0.2, false));
+    [-1.12, 1.12].forEach(x => tg.add(box(0.1, 0.05, 0.14, steel, x, 0.05, 0.2, false)));
+    // pencil ledge along the low edge with pencils, and a scale ruler
+    tg.add(box(2.1, 0.03, 0.12, walnut, 0, 0.0, 0.84, false)); tg.add(box(2.1, 0.06, 0.02, walnut, 0, 0.035, 0.9, false));
+    [[0xffc42e, -0.7], [0x40bd00, -0.55], [0xc0392b, -0.4]].forEach(([c, x]) => { const pc = new THREE.Mesh(new THREE.CylinderGeometry(0.014, 0.014, 0.34, 6), mat(c)); pc.rotation.z = Math.PI / 2; pc.rotation.y = 0.2 + x * 0.1; pc.position.set(x, 0.04, 0.84); tg.add(pc); });
+    tg.add(box(0.6, 0.008, 0.06, mat(0xf0c64a), 0.5, 0.04, 0.85, false));
+    // architect lamp clamped to the back corner
+    const lamp = new THREE.Group(); lamp.position.set(-1.0, 0.05, -0.68); tg.add(lamp);
+    lamp.add(box(0.2, 0.04, 0.16, steel, 0, 0.02, 0));
+    const arm = (len, ang, x, y) => { const c = new THREE.Mesh(new THREE.CylinderGeometry(0.014, 0.014, len, 8), steel); c.position.set(x + Math.sin(ang) * len / 2, y + Math.cos(ang) * len / 2, 0); c.rotation.z = -ang; lamp.add(c); return [x + Math.sin(ang) * len, y + Math.cos(ang) * len]; };
+    const [jx, jy] = arm(0.62, 0.35, 0, 0.04); const [kx, ky] = arm(0.6, -0.9, jx, jy);
+    const shade = new THREE.Mesh(new THREE.ConeGeometry(0.15, 0.2, 18, 1, true), mat(GREEN, { roughness: 0.4 })); shade.material.side = THREE.DoubleSide; shade.position.set(kx - 0.04, ky - 0.1, 0); shade.rotation.z = 0.3; lamp.add(shade);
+    const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.045, 12, 10), new THREE.MeshStandardMaterial({ color: 0xfff3c4, emissive: 0xffe08a, emissiveIntensity: 1.4 })); bulb.position.set(kx - 0.05, ky - 0.13, 0); lamp.add(bulb);
+    // a tube of plans and a mug at the foot of the table
+    const mug = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.055, 0.1, 14), mat(GREEN)); mug.position.set(1.0, 0.07, 0.84); tg.add(mug);
     this.draftTable = dt; dt.position.set(DRAW.x0 + 5.0, 0, -1.2); dt.rotation.y = Math.PI / 2 + 0.15; add(dt); obs(DRAW.x0 + 5.0, -1.2, 1.6); poi(DRAW.x0 + 3.0, -1.2, Math.PI / 2);
     const stool = new THREE.Group(); stool.add(new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.28, 0.08, 16), mat(GREEN))); stool.children[0].position.y = 0.78; stool.children[0].castShadow = true;
     [0, 1, 2].forEach(i => { const a = i * 2.094; const leg = box(0.05, 0.78, 0.05, dark, Math.sin(a) * 0.2, 0.39, Math.cos(a) * 0.2); stool.add(leg); });
@@ -665,6 +697,48 @@ export class Office {
     // a small meeting spot for Cal's reviews
     const t = this.#put('table', { pos: [DRAW.cx + 4.5, 0, 1.8], scale: K * 1.3, colours: { wood: WHITE } }); if (t) obs(DRAW.cx + 4.5, 1.8, 1.6);
     poi(DRAW.cx + 4.5, 3.6, Math.PI);
+    // ---- dressing: rugs, skirting, framed prints, clock, pendants, leafy plants ----
+    const navyRug = mat(0x26324c, { roughness: 1 }), greenTrim = mat(GREEN, { roughness: 0.9 }), cream = mat(0xe9e2cf, { roughness: 1 });
+    const rug = (cx, cz, w, d, base, rot = 0) => {
+      const g = new THREE.Group();
+      g.add(box(w, 0.03, d, base, 0, 0.016, 0, false));
+      [[w, 0.16, 0, -d / 2 + 0.12], [w, 0.16, 0, d / 2 - 0.12]].forEach(([ww, hh, x, z]) => g.add(box(ww - 0.24, 0.034, hh, greenTrim, x, 0.018, z, false)));
+      [-w / 2 + 0.12, w / 2 - 0.12].forEach(x => g.add(box(0.16, 0.034, d - 0.24, greenTrim, x, 0.018, 0, false)));
+      g.add(box(w - 0.9, 0.036, 0.05, cream, 0, 0.02, -d / 2 + 0.48, false)); g.add(box(w - 0.9, 0.036, 0.05, cream, 0, 0.02, d / 2 - 0.48, false));
+      g.position.set(cx, 0, cz); g.rotation.y = rot; add(g);
+    };
+    rug(DRAW.cx + 2.6, 2.9, 8.4, 5.2, navyRug);
+    rug(DRAFT_TABLE[0] + 0.9, DRAFT_TABLE[1], 3.2, 4.0, mat(0x3a475f, { roughness: 1 }), 0);
+    const skirt = mat(0x2c3447, { roughness: 0.6 });
+    add(box(DRAW.w, 0.24, 0.06, skirt, DRAW.cx, 0.12, DRAW.z0 + 0.03, false));
+    add(box(0.06, 0.24, DOOR2.z0 - DRAW.z0, skirt, DRAW.x0 + 0.03, 0.12, (DRAW.z0 + DOOR2.z0) / 2, false));
+    add(box(0.06, 0.24, DRAW.z1 - DOOR2.z1, skirt, DRAW.x0 + 0.03, 0.12, (DOOR2.z1 + DRAW.z1) / 2, false));
+    // framed prints over the plan chest
+    [-4.6, -3.6, -2.6].forEach((z, i) => {
+      const f = new THREE.Group(), w = i === 1 ? 1.1 : 0.85, h = i === 1 ? 0.8 : 1.0;
+      f.add(box(0.05, h + 0.12, w + 0.12, mat(0x1b2131, { roughness: 0.4 }), 0, 0, 0, false)); f.add(box(0.055, h, w, mat(0xf6f8fb), 0.003, 0, 0, false));
+      for (let k = 0; k < 4; k++) f.add(box(0.058, 0.025, w * (0.7 - k * 0.1), mat(i % 2 ? 0x1d3f6b : 0x3b6aa8), 0.006, h * 0.3 - k * h * 0.2, -0.04 * k, false));
+      f.add(box(0.06, 0.07, 0.07, mat(0xd13b3b), 0.008, -h * 0.38, w * 0.3, false));
+      f.position.set(DRAW.x0 + 0.1, 3.3, z); add(f);
+    });
+    // wall clock above the plotter
+    { const c = new THREE.Group(); const face = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.42, 0.06, 32), mat(0xfafafa, { roughness: 0.4 })); face.rotation.x = Math.PI / 2; c.add(face);
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.43, 0.04, 10, 40), mat(NAVY2)); c.add(ring);
+      for (let k = 0; k < 12; k++) { const a = k * Math.PI / 6; const t = box(0.025, k % 3 === 0 ? 0.1 : 0.05, 0.01, mat(NAVY2), Math.sin(a) * 0.34, Math.cos(a) * 0.34, 0.04, false); t.rotation.z = -a; c.add(t); }
+      const hh = box(0.03, 0.22, 0.012, mat(NAVY2), 0, 0.1, 0.05, false); hh.rotation.z = -0.9; c.add(hh); const mh = box(0.022, 0.32, 0.012, mat(GREEN), 0, 0.15, 0.058, false); mh.rotation.z = 0.5; c.add(mh);
+      c.position.set(DRAW.cx - 0.9, 4.3, DRAW.z0 + 0.2); add(c); }
+    // pendant lamps over the work areas
+    const pend = (x, z, y = 4.6) => { const g = new THREE.Group(); g.add(box(0.025, WALL_H - y, 0.025, mat(0x111522), 0, (WALL_H - y) / 2 + y, 0, false));
+      const sh = new THREE.Mesh(new THREE.ConeGeometry(0.55, 0.4, 24, 1, true), mat(0x151a28, { roughness: 0.4, metalness: 0.4 })); sh.material.side = THREE.DoubleSide; sh.position.y = y; g.add(sh);
+      const glow = new THREE.Mesh(new THREE.CircleGeometry(0.4, 20), new THREE.MeshBasicMaterial({ color: 0xfff2c8 })); glow.rotation.x = Math.PI / 2; glow.position.y = y - 0.19; g.add(glow);
+      g.position.set(x, 0, z); add(g); };
+    pend(DRAFT_TABLE[0] + 0.4, DRAFT_TABLE[1] - 0.2); pend(DRAW.cx, -5.6); pend(DRAW.cx + 4.5, 1.8); pend(DRAW.cx - 3.5, 3.0);
+    // leafy plants
+    const plant = (x, z, h = 1.5) => { const g = new THREE.Group(); const pot = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.26, 0.55, 18), mat(0xf2f4f7, { roughness: 0.5 })); pot.position.y = 0.28; pot.castShadow = true; g.add(pot);
+      g.add(box(0.7, 0.04, 0.7, mat(GREEN), 0, 0.02, 0, false)); const lm = [mat(0x2f9e44), mat(0x40bd00), mat(0x237a34)];
+      for (let k = 0; k < 9; k++) { const a = k * 2.4, r = 0.12 + (k % 3) * 0.1; const lf = new THREE.Mesh(new THREE.SphereGeometry(0.2, 10, 8), lm[k % 3]); lf.scale.set(0.55, 1.5 + (k % 3) * 0.35, 0.3); lf.position.set(Math.sin(a) * r, 0.55 + h * 0.3 + (k % 3) * 0.28, Math.cos(a) * r); lf.rotation.set(Math.cos(a) * 0.5, 0, -Math.sin(a) * 0.5); lf.castShadow = true; g.add(lf); }
+      g.position.set(x, 0, z); add(g); obs(x, z, 0.8); };
+    plant(DRAW.x1 - 1.4, -5.4); plant(DRAW.x0 + 1.2, 4.6, 1.8);
   }
 
   #addDrawingAgent(data, rugs) {
@@ -787,9 +861,13 @@ export class Office {
     const [tx, tz] = DRAFT_TABLE; this.jobItems = [];
     const from = new THREE.Vector3(tx + 6, 3.4, tz + 5);
     for (let i = 0; i < Math.min(n, 5); i++) {
-      const sh = new THREE.Group(); sh.add(box(0.7, 0.015, 0.5, mat(0xdceaf7), 0, 0, 0, false)); sh.add(box(0.5, 0.012, 0.03, mat(0x3b6aa8), 0, 0.012, 0, false));
+      const sh = new THREE.Group(); sh.add(box(0.7, 0.012, 0.5, mat(0xf6f9fd), 0, 0, 0, false)); sh.add(box(0.5, 0.008, 0.025, mat(0x1d3f6b), 0, 0.01, -0.1, false)); sh.add(box(0.4, 0.008, 0.025, mat(0x1d3f6b), -0.04, 0.01, 0.05, false));
+      const tg = this.draftBoard; let to, q = new THREE.Quaternion();
+      if (tg) { tg.updateWorldMatrix(true, false); tg.getWorldQuaternion(q); to = tg.localToWorld(new THREE.Vector3(-0.35 + (i % 3) * 0.35, 0.075 + i * 0.013, -0.15 + (i % 2) * 0.3)); }
+      else to = new THREE.Vector3(tx + 0.1, 1.3 + i * 0.012, tz - 0.1);
+      sh.quaternion.copy(q);
       this.jobItems.push(sh); sh.position.copy(from); this.scene.add(sh); this.props = this.props || [];
-      this.props.push({ mesh: sh, from: from.clone(), to: new THREE.Vector3(tx + 0.1 + (i % 2) * 0.1, 1.38 + i * 0.012, tz - 0.1 + i * 0.05), t: -i * 0.2, dur: 1.0 });
+      this.props.push({ mesh: sh, from: from.clone(), to, t: -i * 0.2, dur: 1.0 });
     }
   }
   clearJob() { (this.jobItems || []).forEach(m => this.scene.remove(m)); this.jobItems = []; this.props = []; }

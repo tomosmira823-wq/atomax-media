@@ -129,6 +129,48 @@ export function buildModelingRoom({ scene, bounds: M, logoTex, drawLeftWall, doo
   [[-1.5, 0xe8eaee], [-0.5, GREEN], [0.6, 0xffd43b], [1.5, 0x3b6aa8]].forEach(([z, c], i) => { const m = new THREE.Mesh(i % 2 ? new THREE.IcosahedronGeometry(0.3, 0) : new THREE.CylinderGeometry(0.25, 0.3, 0.6, 12), mat(c, { roughness: 0.5 })); m.position.set(0, 0.4, z); m.castShadow = true; shelf.add(m); });
   shelf.position.set(M.x0 + 0.5, 1.4, M.cz + 1.5); leftWall.add(shelf);
 
+  // ---- dressing: workstation, track lights, wireframe posters, LED strips, plants ----
+  const steel = mat(0x2a3042, { roughness: 0.35, metalness: 0.5 });
+  const wireCanvas = (kind, w = 512, h = 640) => {
+    const c = document.createElement('canvas'); c.width = w; c.height = h; const g = c.getContext('2d');
+    g.fillStyle = '#10151f'; g.fillRect(0, 0, w, h); g.strokeStyle = 'rgba(64,189,0,0.18)'; g.lineWidth = 1;
+    for (let x = 0; x < w; x += 32) { g.beginPath(); g.moveTo(x, 0); g.lineTo(x, h); g.stroke(); } for (let y = 0; y < h; y += 32) { g.beginPath(); g.moveTo(0, y); g.lineTo(w, y); g.stroke(); }
+    g.strokeStyle = '#40bd00'; g.lineWidth = 3; g.lineJoin = 'round';
+    const cx = w / 2, cy = h * 0.46, r = w * 0.27;
+    if (kind === 0) { const o = r * 0.55, f = [[-r, -r + o], [r, -r + o], [r, r + o], [-r, r + o]], b = f.map(([x, y]) => [x + o, y - o]); [f, b].forEach(q => { g.beginPath(); q.forEach(([x, y], i) => i ? g.lineTo(cx + x, cy + y) : g.moveTo(cx + x, cy + y)); g.closePath(); g.stroke(); }); f.forEach((q, i) => { g.beginPath(); g.moveTo(cx + q[0], cy + q[1]); g.lineTo(cx + b[i][0], cy + b[i][1]); g.stroke(); }); }
+    else if (kind === 1) { g.beginPath(); g.arc(cx, cy, r, 0, 7); g.stroke(); for (let k = 1; k < 5; k++) { g.beginPath(); g.ellipse(cx, cy, r, r * k / 5, 0, 0, 7); g.stroke(); g.beginPath(); g.ellipse(cx, cy, r * k / 5, r, 0, 0, 7); g.stroke(); } }
+    else { const a = [cx, cy - r], b = [cx - r, cy + r * 0.7], d = [cx + r, cy + r * 0.7], e = [cx + r * 0.25, cy + r * 1.1]; [[a, b], [a, d], [a, e], [b, e], [e, d], [b, d]].forEach(([u, v]) => { g.beginPath(); g.moveTo(...u); g.lineTo(...v); g.stroke(); }); }
+    g.fillStyle = '#8e97ab'; g.font = '600 26px Segoe UI, Arial, sans-serif'; g.textAlign = 'center'; g.fillText(['CUBE.GLB', 'SPHERE.GLB', 'PYRAMID.GLB'][kind], cx, h - 36);
+    const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
+  };
+  [[-6.6, 0], [-4.9, 2], [4.9, 1], [6.6, 0]].forEach(([dx, k], i) => {
+    const f = new THREE.Group(); f.add(box(1.4, 1.8, 0.06, mat(NAVY2, { roughness: 0.4 }), 0, 0, 0, false));
+    const art = new THREE.Mesh(new THREE.PlaneGeometry(1.26, 1.58), new THREE.MeshBasicMaterial({ map: wireCanvas(k), toneMapped: false })); art.position.z = 0.035; f.add(art);
+    f.position.set(M.cx + dx, 3.7, M.z0 + 0.1); backWall.add(f);
+  });
+  backWall.add(box(M.w, 0.06, 0.04, mat(GREEN, GL), M.cx, 0.16, M.z0 + 0.05, false)); leftWall.add(box(0.04, 0.06, M.d, mat(GREEN, GL), M.x0 + 0.05, 0.16, M.cz, false));
+  // workstation at the back right: two screens with models on them
+  const ws = new THREE.Group(), woodM = mat(0xb98a55, { roughness: 0.6 });
+  ws.add(box(3.0, 0.08, 1.4, woodM, 0, 1.0, 0)); [[-1.4, -0.6], [1.4, -0.6], [-1.4, 0.6], [1.4, 0.6]].forEach(([x, z]) => ws.add(box(0.07, 1.0, 0.07, steel, x, 0.5, z)));
+  ws.add(box(2.9, 0.35, 0.05, steel, 0, 0.7, -0.62, false));
+  [-0.75, 0.75].forEach((x, i) => { const m = new THREE.Group(); m.add(box(1.25, 0.76, 0.05, mat(0x0b0e16), 0, 0, 0)); const sc = new THREE.Mesh(new THREE.PlaneGeometry(1.15, 0.66), new THREE.MeshBasicMaterial({ map: wireCanvas(i ? 1 : 0, 576, 330), toneMapped: false })); sc.position.z = 0.03; m.add(sc); m.add(box(0.06, 0.3, 0.06, steel, 0, -0.5, -0.05, false)); m.add(box(0.4, 0.04, 0.3, steel, 0, -0.66, -0.02, false)); m.position.set(x, 1.45, -0.35); m.rotation.y = i ? -0.18 : 0.18; ws.add(m); });
+  ws.add(box(0.8, 0.03, 0.26, mat(0x151a28), -0.1, 1.06, 0.3, false)); ws.add(box(0.1, 0.03, 0.16, mat(0x151a28), 0.55, 1.06, 0.3, false));
+  const mug = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.065, 0.12, 14), mat(GREEN)); mug.position.set(1.2, 1.1, 0.3); ws.add(mug);
+  ws.position.set(M.cx + 6.3, 0, M.z0 + 1.2); scene.add(ws); obstacles.push({ x: M.cx + 6.3, z: M.z0 + 1.4, r: 2.1 });
+  const stool = new THREE.Group(); const seat = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 0.1, 18), mat(GREEN)); seat.position.y = 0.72; seat.castShadow = true; stool.add(seat);
+  [0, 1, 2].forEach(i => { const a = i * 2.094; stool.add(box(0.05, 0.72, 0.05, steel, Math.sin(a) * 0.2, 0.36, Math.cos(a) * 0.2)); });
+  stool.position.set(M.cx + 6.0, 0, M.z0 + 3.0); scene.add(stool);
+  // track lights over the pedestal
+  const track = new THREE.Group(); track.add(box(4.4, 0.08, 0.14, steel, 0, 0, 0, false));
+  [-1.6, 0, 1.6].forEach((x, i) => { const sp = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.16, 0.34, 14), steel); sp.position.set(x, -0.22, 0); sp.rotation.x = 0.35 * (i - 1); track.add(sp); const gl = new THREE.Mesh(new THREE.CircleGeometry(0.13, 14), new THREE.MeshBasicMaterial({ color: 0xfff2c8 })); gl.position.set(x, -0.4, 0.06 * (i - 1)); gl.rotation.x = Math.PI / 2; track.add(gl); });
+  [-2, 2].forEach(x => track.add(box(0.025, WALL_H - 5.0, 0.025, mat(0x111522), x, (WALL_H - 4.1) / 2, 0, false)));
+  track.position.set(px, 4.1, pz); scene.add(track);
+  // leafy plants
+  const plant = (x, z, h = 1.5) => { const g = new THREE.Group(); const pot = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.26, 0.55, 18), mat(0xf2f4f7, { roughness: 0.5 })); pot.position.y = 0.28; pot.castShadow = true; g.add(pot); const lm = [mat(0x2f9e44), mat(0x40bd00), mat(0x237a34)];
+    for (let k = 0; k < 9; k++) { const a = k * 2.4, r = 0.12 + (k % 3) * 0.1; const lf = new THREE.Mesh(new THREE.SphereGeometry(0.2, 10, 8), lm[k % 3]); lf.scale.set(0.55, 1.5 + (k % 3) * 0.35, 0.3); lf.position.set(Math.sin(a) * r, 0.55 + h * 0.3 + (k % 3) * 0.28, Math.cos(a) * r); lf.rotation.set(Math.cos(a) * 0.5, 0, -Math.sin(a) * 0.5); lf.castShadow = true; g.add(lf); }
+    g.position.set(x, 0, z); scene.add(g); obstacles.push({ x, z, r: 0.8 }); };
+  plant(M.x0 + 1.3, M.z1 - 1.3, 1.8); plant(M.x1 - 1.3, M.z1 - 1.4, 1.4);
+
   // ---- door plaque on the drawing room's west wall: click it to come through ----
   const plaque = new THREE.Group();
   plaque.add(box(0.08, 0.62, 3.0, mat(NAVY2), 0, 0, 0));
