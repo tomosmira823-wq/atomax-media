@@ -233,6 +233,7 @@ body.fp #fpHelp{display:block}
 body.fp #fpBtn{background:#3fc800;color:#0e121d}
 body.fp .lbl.hint{display:none}
 body.fp .panel{display:none!important}
+#modelPanel .photoOnly[hidden],#modelPanel [hidden]{display:none!important}
 body.fp canvas#scene{cursor:grab}
 </style>
 <script type="importmap">
@@ -362,17 +363,19 @@ body.fp canvas#scene{cursor:grab}
 
 <!-- Modeling room panel: photo in, 3D model out -->
 <div class="panel" id="modelPanel">
-  <h2><span>Modeling room · Photo to 3D</span><button class="collapse" id="modelBack" title="Back to the room (Esc)">×</button></h2>
+  <h2><span>Modeling room · Make a 3D model</span><button class="collapse" id="modelBack" title="Back to the room (Esc)">×</button></h2>
   <div class="body">
     <div id="modelSetup">
-      <label style="margin-top:0">1 · Photo of anything</label>
+      <div class="seg" id="modelKind"><button class="on" data-kind="photo">Photo</button><button data-kind="text">Text</button><button data-kind="schematic">Schematic</button></div>
+      <div id="blkText" hidden><label id="lblText">Describe it</label><textarea id="modelText" rows="4" placeholder="e.g. a Raspberry Pi 4 Model B, or a red steel toolbox with a lift-up lid and two latches, 500 mm wide"></textarea></div>
+      <label id="lblPhoto" style="margin-top:12px">1 · Photo of anything</label>
       <div class="drop" id="dropPhoto"><div id="photoPrev"></div><div class="dz-t">Drop a photo here</div><div class="dz-s">JPG, PNG or WebP · one object, clear and well lit works best · or click to browse</div><input type="file" hidden accept="image/*" /></div>
-      <label>2 · What kind of model?</label>
-      <div class="seg" id="modelMode"><button class="on" data-tex="1">With colour</button><button data-tex="0">Shape only</button></div>
-      <p class="hint" style="margin:8px 0 0">Shape only is quicker and uses fewer credits. Colour copies the photo onto the model.</p>
-      <div class="warn-note" id="modelVia"></div>
+      <label class="photoOnly">2 · What kind of model?</label>
+      <div class="seg photoOnly" id="modelMode"><button class="on" data-tex="1">With colour</button><button data-tex="0">Shape only</button></div>
+      <p class="hint photoOnly" style="margin:8px 0 0">Shape only is quicker and uses fewer credits. Colour copies the photo onto the model.</p>
+      <div class="warn-note photoOnly" id="modelVia"></div>
       <div class="err" id="modelErr" style="margin-top:10px"></div>
-      <button class="btn primary" id="modelGo" style="width:100%;margin-top:12px" disabled>Make the 3D model</button>
+      <button class="btn primary photoOnly" id="modelGo" style="width:100%;margin-top:12px" disabled>Make the 3D model</button>
       <button class="btn" id="modelClaude" style="width:100%;margin-top:8px" disabled>Build it with Claude only (no extra key)</button>
       <div class="row" style="margin-top:8px;gap:8px;align-items:center"><select id="m_claudeModel" style="flex:1" title="Which Claude builds the model">
         <option value="">Same Claude as the rest of the app</option>

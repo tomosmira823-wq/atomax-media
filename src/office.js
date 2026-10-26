@@ -876,6 +876,7 @@ export class Office {
       else if (this.#fpFree(f.x, f.z + dz)) f.z += dz;
       f.bob = (f.bob || 0) + sp * 2.4;
     }
+    this.room = this.#fpRoomName(f.x);
     const cam = this.camera;
     cam.position.set(f.x, 1.65 + Math.sin(f.bob || 0) * 0.025, f.z); cam.rotation.set(f.pitch, f.yaw, 0);
   }
@@ -1017,7 +1018,10 @@ export class Office {
     const dxz = Math.hypot(target.x - g.position.x, target.z - g.position.z);
     if (dxz < 0.15) { a.path = null; return true; }
     const key = target.x.toFixed(2) + ',' + target.z.toFixed(2);
-    if (a.pathKey !== key) a.repath = 0;
+    if (a.pathKey !== key) { a.repath = 0; a.bestD = null; }
+    // no real progress towards the target for a few seconds (wobbling in a gap, nudged back by others): give up and pick something else
+    if (a.bestD == null || dxz < a.bestD - 0.4) { a.bestD = dxz; a.bestT = a.t; }
+    else if (a.t - a.bestT > 6) { a.bestD = null; a.path = null; a.pathKey = null; a.stuck = 0; a.repath = 0; const p = this.#nearestWalkable(g.position.x, g.position.z); g.position.x = p.x; g.position.z = p.z; return true; }
     if (a.stuck > 1.2 && ++a.repath > 3) { a.path = null; a.pathKey = null; a.stuck = 0; a.repath = 0; return true; } // blocked for good: give up and pick something else
     if (!a.path || a.pathKey !== key || a.stuck > 1.2) {
       a.path = this.#findPath(g.position, target); a.pathKey = key; a.pathIdx = 0; a.stuck = 0;

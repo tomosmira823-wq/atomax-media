@@ -29,6 +29,21 @@
     const p = walk(D.DRAW.x1 - 2.5, (D.DOOR.z0 + D.DOOR.z1) / 2, E, 80);
     if (!(p[0] > -D.ROOM_W / 2 + 1)) throw new Error('stuck at ' + p); return p;
   });
+  await step('Clicking Cal\'s desk in first person works', async () => {
+    if (!o.fp) { document.dispatchEvent(new KeyboardEvent('keydown', { key: 'f' })); } o.step(0.1);
+    const d = o.drawingDesk.position;
+    o.fp.x = d.x; o.fp.z = d.z + 5; o.fp.yaw = 0; o.fp.pitch = -0.28; o.step(0.1); o.camera.updateMatrixWorld(true); o.camera.updateMatrixWorld(true);
+    let picked = null; const old = o.onPick; o.onPick = (w) => { picked = w; };
+    const r = o.canvas.getBoundingClientRect(), cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+    o.canvas.dispatchEvent(new PointerEvent('pointerdown', { clientX: cx, clientY: cy, buttons: 1, bubbles: true }));
+    o.canvas.dispatchEvent(new PointerEvent('pointerup', { clientX: cx, clientY: cy, bubbles: true }));
+    o.onPick = old; if (picked !== 'desk') throw new Error('picked ' + picked + ' in room ' + o.room);
+    o.exitFirstPerson(true); return picked;
+  });
+  await step('Closing a room panel with the x does not leave it shrunk', async () => {
+    window.__goRoom('desk'); await wait(100); document.querySelector('#deskBack').click(); await wait(100); window.__goRoom('desk'); await wait(100);
+    if (document.querySelector('#checkPanel').classList.contains('collapsed')) throw new Error('panel shrunk to the x'); window.__goRoom('drawing'); return 'ok';
+  });
   await step('Esc leaves first person and returns the room', async () => {
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })); await wait(200);
     if (o.fp || document.body.classList.contains('fp')) throw new Error('still in first person'); return o.room;

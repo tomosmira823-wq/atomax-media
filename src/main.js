@@ -444,36 +444,47 @@ ipcMain.handle('model:saveAs', async (_e, { from, name }) => {
   return r.filePath;
 });
 // Claude-only route: Claude looks at the photo and describes the object as a set of simple 3D shapes; the page builds and exports the GLB.
-const CLAUDE_3D_SYSTEM = `You are a careful 3D modeller. Rebuild the main object in the photo as a model made only from simple primitives.
-Reply with ONE JSON object and nothing else:
+const JSON_RULES = `Reply with ONE JSON object and nothing else:
 {"name":"short name","parts":[{"shape":"box|cylinder|sphere|cone|torus|capsule","size":[...],"pos":[x,y,z],"rot":[rx,ry,rz],"color":"#rrggbb","metal":0-1,"rough":0-1}]}
 Sizes: box [width,height,depth]; cylinder [radiusTop,radiusBottom,height]; sphere [radius]; cone [radius,height]; torus [radius,tube]; capsule [radius,length].
-Rules: Y is up, the object stands on y=0 and is centred on x and z. rot is in degrees. Scale the whole model so its longest side is 2 units, keeping the REAL proportions (if real dimensions are given, use their ratios exactly, including thickness and the height of every component). Match the real colours and finishes (metal and rough make shiny, matte, plastic or metal surfaces). Build the base body first, then every visible component in its real position and relative size: ports, sockets, chips, buttons, connectors, legs, handles, screws, labels as thin boxes. Use 40 to 180 parts, big shapes first. No floor or background.`;
-const CLAUDE_RESEARCH_SYSTEM = `You help build an accurate 3D model from a photo. First identify exactly what the object is (make, model, version if you can tell). Then use web search to confirm it and find its real dimensions (length, width, height in millimetres), the size and position of its main components (for example ports, connectors, buttons, chips, legs, screens), its usual colours and materials, and anything else that makes a model more accurate. Prefer the maker's datasheet or product page. If it is a generic object with no exact specification, say so and give typical real-world dimensions instead.
+Rules: Y is up, the object stands on y=0 and is centred on x and z. rot is in degrees. Scale the whole model so its longest side is 2 units, keeping the REAL proportions exactly (if real dimensions are given or can be read, use their ratios, including thickness and the height of every component). Use sensible real colours and finishes (metal and rough make shiny, matte, plastic or metal surfaces). Build the base body first, then every component in its real position and relative size: ports, sockets, buttons, connectors, legs, handles, doors, shelves, screws, labels as thin boxes. Use 40 to 180 parts, big shapes first. No floor or background.`;
+const CLAUDE_3D_SYSTEMS = {
+  photo: `You are a careful 3D modeller. Rebuild the main object in the photo as a model made only from simple primitives.\n` + JSON_RULES,
+  text: `You are a careful 3D modeller. Build the object the user describes as a model made only from simple primitives. Use the real-world proportions of that kind of object (and any exact size or make given).\n` + JSON_RULES,
+  schematic: `You are a careful 3D modeller who reads engineering drawings. You are given a schematic, plan, elevation, general-arrangement or panel/cabinet drawing (possibly several views). Read every view, dimension, title block note and label, work out the real 3D shape and sizes, and build a model of it from simple primitives, to scale. Combine the views: front/side/top views give the width, height and depth; hidden or detail views give extra parts. Where the drawing is a wiring or circuit schematic with no physical shape, build the equipment it shows (panel, cabinet, devices) laid out as drawn. Never invent parts that are not on the drawing; keep to what it shows.\n` + JSON_RULES
+};
+const CLAUDE_RESEARCH_SYSTEM = `You help build an accurate 3D model. First identify exactly what the object is (make, model, version if you can tell). Then use web search to confirm it and find its real dimensions (length, width, height in millimetres), the size and position of its main components (for example ports, connectors, buttons, chips, legs, screens), its usual colours and materials, and anything else that makes a model more accurate. Prefer the maker's datasheet or product page. If it is a generic object with no exact specification, say so and give typical real-world dimensions instead.
 Reply with ONE JSON object and nothing else:
 {"what":"exact identification","confidence":"high|medium|low","dimensions_mm":{"length":0,"width":0,"height":0},"components":["component: size and where it sits"],"colours":"main colours and finishes","notes":"anything else useful for modelling","sources":["urls you used"]}`;
-ipcMain.handle('model:claude', async (_e, { image, research = true, model }) => {
-  if (!image || !image.base64) throw new Error('Drop a photo first.');
+ipcMain.handle('model:claude', async (_e, { image, text, kind = 'photo', research = true, model }) => {
+  kind = ['photo', 'text', 'schematic'].includes(kind) ? kind : 'photo';
+  const want = String(text || '').trim();
+  if (kind === 'text' && !want) throw new Error('Type what you want a model of first.');
+  if (kind !== 'text' && !(image && image.base64)) throw new Error(kind === 'schematic' ? 'Drop the schematic first.' : 'Drop a photo first.');
   const progress = (p) => { try { win && win.webContents.send('model:progress', p); } catch {} };
   const s = loadSettings(), useModel = String(model || s.claude3dModel || s.claudeModel || '').trim() || s.claudeModel;
-  const img = { type: 'image', source: { type: 'base64', media_type: image.mime || 'image/jpeg', data: image.base64 } };
+  const media = (image && image.base64) ? [image.mime === 'application/pdf'
+    ? { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: image.base64 } }
+    : { type: 'image', source: { type: 'base64', media_type: image.mime || 'image/jpeg', data: image.base64 } }] : [];
+  const what = { photo: 'this photo', text: 'this description', schematic: 'this drawing' }[kind];
+  const ask = (t) => [...media, { type: 'text', text: (want ? `${kind === 'text' ? 'Description' : 'Notes from the user'}: "${want}"\n\n` : '') + t }];
   let facts = null, researchNote = '';
   if (research) {
-    progress({ message: 'Claude is working out what it is and looking it up', pct: 12 });
+    progress({ message: kind === 'schematic' ? 'Claude is reading the drawing and looking up the equipment' : 'Claude is working out what it is and looking it up', pct: 12 });
     try {
       const r = await claudeFull({ system: CLAUDE_RESEARCH_SYSTEM, model: useModel, maxTokens: 4000,
         tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 6 }],
-        messages: [{ role: 'user', content: [img, { type: 'text', text: 'What is this, and what are its real dimensions and component details? JSON only.' }] }] });
+        messages: [{ role: 'user', content: ask(`What is shown or described in ${what}, and what are its real dimensions and component details? JSON only.`) }] });
       facts = extractJson(r.text);
-      researchNote = r.searches ? `looked up online (${r.searches} search${r.searches === 1 ? '' : 'es'})` : 'identified from the photo (no web results used)';
-    } catch (e) { researchNote = 'online lookup unavailable (' + String(e.message || e).slice(0, 90) + '), built from the photo alone'; }
+      researchNote = r.searches ? `looked up online (${r.searches} search${r.searches === 1 ? '' : 'es'})` : 'identified without web results';
+    } catch (e) { researchNote = 'online lookup unavailable (' + String(e.message || e).slice(0, 90) + ')'; }
   }
-  progress({ message: 'Claude is building the shapes', pct: 45 });
-  const brief = facts ? `Verified facts about this object (use them for real proportions and components):\n${JSON.stringify(facts)}\n\nBuild it. JSON only.` : 'Build this as a primitive 3D model. JSON only.';
-  const { text } = await claudeFull({ system: CLAUDE_3D_SYSTEM, model: useModel, maxTokens: 24000, messages: [{ role: 'user', content: [img, { type: 'text', text: brief }] }] });
-  const j = extractJson(text);
+  progress({ message: kind === 'schematic' ? 'Claude is building it to scale from the drawing' : 'Claude is building the shapes', pct: 45 });
+  const brief = (facts ? `Verified facts (use them for real proportions and components):\n${JSON.stringify(facts)}\n\n` : '') + `Build ${what} as a primitive 3D model. JSON only.`;
+  const { text: out } = await claudeFull({ system: CLAUDE_3D_SYSTEMS[kind], model: useModel, maxTokens: 24000, messages: [{ role: 'user', content: ask(brief) }] });
+  const j = extractJson(out);
   if (!j || !Array.isArray(j.parts) || !j.parts.length) throw new Error('Claude did not give any shapes. Try again, or pick a stronger model.');
-  return { ...j, research: facts ? { what: facts.what, confidence: facts.confidence, dims: facts.dimensions_mm, sources: Array.isArray(facts.sources) ? facts.sources.slice(0, 6) : [] } : null, researchNote, model: useModel };
+  return { ...j, kind, research: facts ? { what: facts.what, confidence: facts.confidence, dims: facts.dimensions_mm, sources: Array.isArray(facts.sources) ? facts.sources.slice(0, 6) : [] } : null, researchNote, model: useModel };
 });
 ipcMain.handle('model:saveGlb', (_e, { base64, name }) => {
   const buf = Buffer.from(base64, 'base64');

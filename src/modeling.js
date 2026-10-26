@@ -19,6 +19,13 @@ function b64ToArrayBuffer(b64) {
 }
 const parseGlb = (b64) => new Promise((resolve, reject) => new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).parse(b64ToArrayBuffer(b64), '', resolve, reject));
 
+// a PDF goes to Claude as it is (it reads the pages itself)
+async function prepPdf(file) {
+  if (file.size > 24 * 1048576) throw new Error('That PDF is too big (over 24 MB). Export just the sheet you need.');
+  const buf = new Uint8Array(await file.arrayBuffer()); let bin = ''; for (let i = 0; i < buf.length; i += 0x8000) bin += String.fromCharCode.apply(null, buf.subarray(i, i + 0x8000));
+  const c = document.createElement('canvas'); c.width = 240; c.height = 160; const x = c.getContext('2d'); x.fillStyle = '#ffffff'; x.fillRect(0, 0, 240, 160); x.fillStyle = '#c0392b'; x.font = '700 40px Arial'; x.textAlign = 'center'; x.fillText('PDF', 120, 90);
+  return { base64: btoa(bin), mime: 'application/pdf', name: file.name, w: 0, h: 0, preview: c.toDataURL() };
+}
 // photo -> JPEG on a white background, no bigger than MAX_SIDE (keeps the upload small, flattens transparent cut-outs)
 async function prepPhoto(file) {
   const url = URL.createObjectURL(file);
@@ -64,7 +71,7 @@ async function exportGlb(obj) {
 }
 
 export function initModelingUI({ office, api, getSettings, openSettings }) {
-  let photo = null, textured = true, running = false, last = null;
+  let photo = null, textured = true, running = false, last = null, kind = 'photo';
   const panel = $('#modelPanel');
 
   // ---- the turntable viewer inside the panel (made on first use) ----
@@ -107,16 +114,34 @@ export function initModelingUI({ office, api, getSettings, openSettings }) {
 
   // ---- photo drop ----
   function renderPhoto() {
-    $('#photoPrev').innerHTML = photo ? `<img class="photo" src="${photo.preview}" alt="" /><div class="fchip"><span>${esc(photo.name)} <small>${photo.w}×${photo.h}</small></span><button data-rm title="Remove">×</button></div>` : '';
+    $('#photoPrev').innerHTML = photo ? `<img class="photo" src="${photo.preview}" alt="" /><div class="fchip"><span>${esc(photo.name)} <small>${photo.mime === 'application/pdf' ? 'PDF' : photo.w + '×' + photo.h}</small></span><button data-rm title="Remove">×</button></div>` : '';
     $('#dropPhoto').classList.toggle('has', !!photo);
-    $('#dropPhoto .dz-t').textContent = photo ? 'Drop a different photo to swap it' : 'Drop a photo here';
-    $('#modelGo').disabled = running || !photo; $('#modelClaude').disabled = running || !photo;
+    $('#dropPhoto .dz-t').textContent = photo ? 'Drop a different file to swap it' : (COPY[kind] || COPY.photo)[1];
+    $('#modelGo').disabled = running || !photo; $('#modelClaude').disabled = running || !canClaude();
   }
+  const canClaude = () => kind === 'text' ? !!$('#modelText').value.trim() : !!photo;
+  const COPY = { photo: ['1 · Photo of anything', 'Drop a photo here', 'JPG, PNG or WebP · one object, clear and well lit works best · or click to browse', 'Build it with Claude only (no extra key)'],
+    schematic: ['Schematic or drawing', 'Drop the schematic here', 'PNG, JPG or PDF · plans, elevations, GA or panel drawings, as many views as are on the sheet · or click to browse', 'Build it to scale with Claude'],
+    text: ['', '', '', 'Build it with Claude'] };
+  function setKind(k) {
+    kind = k; document.querySelectorAll('#modelKind button').forEach(x => x.classList.toggle('on', x.dataset.kind === k));
+    const c = COPY[k];
+    $('#blkText').hidden = k !== 'text'; $('#lblText').textContent = 'Describe it'; $('#lblPhoto').hidden = $('#dropPhoto').hidden = k === 'text';
+    if (k !== 'text') { $('#lblPhoto').textContent = c[0]; $('#dropPhoto .dz-t').textContent = photo ? 'Drop a different file to swap it' : c[1]; $('#dropPhoto .dz-s').textContent = c[2]; }
+    document.querySelectorAll('#modelPanel .photoOnly').forEach(el => { el.hidden = k !== 'photo'; });
+    $('#modelClaude').textContent = c[3]; $('#modelClaude').classList.toggle('primary', k !== 'photo');
+    $('#m_research').checked = k !== 'schematic';
+    $('#modelText').placeholder = 'e.g. a Raspberry Pi 4 Model B, or a red steel toolbox with a lift-up lid and two latches, 500 mm wide';
+    $('#dropPhoto input[type=file]').accept = k === 'schematic' ? 'image/*,application/pdf,.pdf' : 'image/*';
+    $('#modelErr').textContent = ''; renderPhoto();
+  }
+  document.querySelectorAll('#modelKind button').forEach(b => b.addEventListener('click', () => setKind(b.dataset.kind)));
+  $('#modelText').addEventListener('input', renderPhoto);
   async function addPhoto(files) {
-    const f = [...files].find(x => x.type.startsWith('image/') || IMG_OK.test(x.name));
+    const f = [...files].find(x => x.type.startsWith('image/') || IMG_OK.test(x.name) || (kind === 'schematic' && (x.type === 'application/pdf' || /\.pdf$/i.test(x.name))));
     if (!f) { if (files.length) $('#modelErr').textContent = 'That is not a photo. Use a JPG, PNG or WebP image.'; return; }
     $('#modelErr').textContent = '';
-    try { if (photo) URL.revokeObjectURL(photo.preview); photo = await prepPhoto(f); } catch (e) { $('#modelErr').textContent = e.message; return; }
+    try { if (photo) URL.revokeObjectURL(photo.preview); photo = (f.type === 'application/pdf' || /\.pdf$/i.test(f.name)) ? await prepPdf(f) : await prepPhoto(f); } catch (e) { $('#modelErr').textContent = e.message; return; }
     renderPhoto();
   }
   const dz = $('#dropPhoto'), input = dz.querySelector('input[type=file]');
@@ -184,21 +209,21 @@ export function initModelingUI({ office, api, getSettings, openSettings }) {
   $('#modelGo').addEventListener('click', go);
   $('#m_claudeModel').addEventListener('change', async () => { const v = $('#m_claudeModel').value; getSettings().claude3dModel = v; await api.settings.set({ claude3dModel: v }); });
   async function goClaude() {
-    if (running || !photo) return;
+    if (running || !canClaude()) return;
     const s = getSettings();
     if (!s.anthropicKey) { $('#modelErr').textContent = 'Add your Claude API key in Settings first.'; openSettings(); return; }
     running = true; renderPhoto(); last = null; $('#modelErr').textContent = '';
     $('#modelSetup').hidden = true; $('#modelResult').hidden = true; $('#modelRun').hidden = false;
-    $('#modelMsg').textContent = 'Claude is studying the photo'; $('#modelBar').style.width = '15%';
+    $('#modelMsg').textContent = kind === 'text' ? 'Claude is reading your description' : kind === 'schematic' ? 'Claude is reading the drawing' : 'Claude is studying the photo'; $('#modelBar').style.width = '15%';
     office.setScanning(true);
     try {
-      const j = await api.model.claude({ image: { base64: photo.base64, mime: photo.mime }, research: $('#m_research').checked, model: $('#m_claudeModel').value });
+      const j = await api.model.claude({ kind, text: $('#modelText').value, image: kind === 'text' || !photo ? null : { base64: photo.base64, mime: photo.mime }, research: $('#m_research').checked, model: $('#m_claudeModel').value });
       $('#modelMsg').textContent = 'Building the model'; $('#modelBar').style.width = '70%';
       const obj = buildFromParts(j.parts);
       if (!obj.children.length) throw new Error('Claude gave shapes I could not build. Try again.');
-      const r = await api.model.saveGlb({ base64: await exportGlb(obj), name: j.name || photo.name });
+      const r = await api.model.saveGlb({ base64: await exportGlb(obj), name: j.name || (photo && photo.name) || 'model' });
       try { const rs = j.research, dm = rs && rs.dims && rs.dims.length ? ` · real size ${rs.dims.length}×${rs.dims.width}×${rs.dims.height} mm` : '';
-        await showResult(r, `${rs && rs.what ? rs.what : 'Built by Claude'} · ${obj.children.length} shapes${dm} · ${j.researchNote || 'built from the photo'}`); }
+        await showResult(r, `${rs && rs.what ? rs.what : 'Built by Claude'} · ${obj.children.length} shapes${dm} · ${j.researchNote || (kind === 'text' ? 'built from your description' : kind === 'schematic' ? 'built to scale from the drawing' : 'built from the photo')}`); }
       catch (ve) { showSetup(); $('#modelErr').textContent = `Saved to ${r.path} but the viewer could not open it (${String(ve.message || ve).slice(0, 160)}).`; }
     } catch (e) {
       showSetup(); $('#modelErr').textContent = String(e.message || e).replace(/^Error invoking remote method '[^']+': (Error: )?/, '');

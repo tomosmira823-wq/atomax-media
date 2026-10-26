@@ -89,7 +89,8 @@ function closeModals() {
 document.querySelectorAll('[data-close]').forEach(b => b.addEventListener('click', closeModals));
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeModals(); });
 document.querySelectorAll('.modal').forEach(m => m.addEventListener('mousedown', (e) => { if (e.target === m) closeModals(); }));
-document.querySelectorAll('.panel .collapse').forEach(b => b.addEventListener('click', () => b.closest('.panel').classList.toggle('collapsed')));
+document.querySelectorAll('.panel .collapse').forEach(b => { if (['deskBack', 'dexBack', 'modelBack'].includes(b.id)) return; b.addEventListener('click', () => b.closest('.panel').classList.toggle('collapsed')); }); // the room panels' x closes them (own handler), it must not also shrink them
+['#checkPanel', '#dexPanel', '#modelPanel'].forEach(sel => $(sel).classList.remove('collapsed'));
 
 // ---------- settings ----------
 function fillConnections() {
@@ -537,6 +538,7 @@ function goRoom(where) {
   document.body.classList.toggle('room-drawing', inDraw);
   document.body.classList.toggle('room-modeling', inModel);
   document.querySelectorAll('#rooms button').forEach(b => b.classList.toggle('active', b.dataset.room === (inModel ? 'modeling' : inDraw ? 'drawing' : 'media')));
+  ['#checkPanel', '#dexPanel', '#modelPanel'].forEach(sel => $(sel).classList.remove('collapsed'));
   if (where === 'desk') checkUI.show(); else checkUI.hide();
   if (where === 'drafting') dexUI.show(); else dexUI.hide();
   if (where === 'scan') modelUI.show(); else modelUI.hide();
