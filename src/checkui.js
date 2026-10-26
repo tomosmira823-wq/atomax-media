@@ -113,15 +113,15 @@ export function initCheckUI({ office, api, getAgent, getSettings, openSettings }
     }
     if (r.notChecked && r.notChecked.length) html.push('<div class="grp unread"><h4>Not checked</h4><ul>' + r.notChecked.map(n => `<li>${esc(n)}</li>`).join('') + '</ul></div>');
     if (r.coverage && r.coverage.length) html.push('<div class="grp cov"><h4>What Cal covered</h4><ul>' + r.coverage.map(n => `<li>${esc(n)}</li>`).join('') + '</ul></div>');
-    if (mk.made.length || mk.failed.length) {
-      html.push('<div class="grp mk"><h4>Marked-up copies</h4>' + (mk.made.length ? `<p class="hint">${mk.made.length} saved in a MARKUPS folder. Your originals are untouched.</p><ul>` + mk.made.map(m => `<li>${esc(m.out.split(/[\\/]/).pop())} <small>${m.notes} note${m.notes === 1 ? '' : 's'}</small></li>`).join('') + '</ul><button class="btn small" id="showMk">Show in folder</button>' : '')
+    if (mk.made.length || mk.notes || mk.failed.length) {
+      html.push('<div class="grp mk"><h4>Marked-up copies</h4>' + ((mk.made.length || mk.notes) ? `<p class="hint">${mk.made.length + (mk.notes ? 1 : 0)} saved in a MARKUPS folder. Your originals are untouched.</p><ul>` + mk.made.map(m => `<li>${esc(m.out.split(/[\\/]/).pop())} <small>${m.notes} note${m.notes === 1 ? '' : 's'}</small></li>`).join('') + (mk.notes ? `<li>${esc(mk.notes.out.split(/[\\/]/).pop())} <small>${mk.notes.count} schedule-level note${mk.notes.count === 1 ? '' : 's'}</small></li>` : '') + '</ul><button class="btn small" id="showMk">Show in folder</button>' : '')
         + (mk.failed.length ? '<ul>' + mk.failed.map(f => `<li class="confirm">${esc(f.name)}: ${esc(f.reason)}</li>`).join('') + '</ul>' : '') + '</div>');
     }
     html.push('<div class="row" style="margin-top:14px"><button class="btn small" id="copyRep">Copy report</button><button class="btn small" id="saveRep">Save report</button><span style="flex:1"></span><button class="btn small" id="again">Check something else</button></div>');
     $('#checkResult').innerHTML = html.join(''); $('#checkResult').hidden = false;
     $('#copyRep').addEventListener('click', async (e) => { try { await navigator.clipboard.writeText(r.text); e.target.textContent = 'Copied'; } catch { e.target.textContent = 'Could not copy'; } });
     $('#saveRep').addEventListener('click', () => api.files.saveText({ text: r.text, name: 'cable-schedule-check.txt' }));
-    if ($('#showMk')) $('#showMk').addEventListener('click', () => api.showItem(mk.made[0].out));
+    if ($('#showMk')) $('#showMk').addEventListener('click', () => api.showItem((mk.made[0] || mk.notes).out));
     $('#again').addEventListener('click', () => { schedule = null; drawings = []; last = null; office.clearJob(); $('#checkResult').hidden = true; $('#checkSetup').hidden = false; renderFiles(); });
   }
 

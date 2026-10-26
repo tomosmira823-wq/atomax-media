@@ -110,6 +110,25 @@ async function markupFile({ buf, kind, name, pageNotes, headings }) {
   return Buffer.from(await out.save());
 }
 
+// Everything that cannot sit on a drawing (schedule rows, duplicates, drawings that were not supplied, files that were not read)
+// goes on one notes sheet, so nothing that is still to be confirmed is left unmarked.
+async function scheduleNotes({ report }) {
+  const items = report.findings.filter(f => f.fi == null).map(f => `${f.text}${f.confirm ? ` [CONFIRM${f.reason ? ': ' + f.reason : ''}]` : ''}`);
+  const unread = (report.notChecked || []).map(n => `NOT CHECKED: ${n}`);
+  if (!items.length && !unread.length) return null;
+  const out = await PDFDocument.create();
+  const fonts = { reg: await out.embedFont(StandardFonts.Helvetica), bold: await out.embedFont(StandardFonts.HelveticaBold) };
+  const W = 595, H = 842, pad = 40;
+  let page = out.addPage([W, H]), y = H - pad;
+  const put = (lines) => { for (const l of lines) { if (y < pad + 20) { page = out.addPage([W, H]); y = H - pad; } y -= (l.gapBefore || 0) + l.size * 1.3; page.drawText(l.text, { x: pad + (l.indent || 0), y: y + l.size * 0.3, size: l.size, font: l.bold ? fonts.bold : fonts.reg, color: RED }); } };
+  put(layoutNotes(fonts, [], 15, W - pad * 2, `CABLE SCHEDULE CHECK NOTES: ${report.schedule}`).lines);
+  put(layoutNotes(fonts, [], 10, W - pad * 2, 'Items that could not be marked on a drawing. The schedule itself has not been changed.').lines.map(l => ({ ...l, bold: false })));
+  y -= 8;
+  if (items.length) put(layoutNotes(fonts, items, 11, W - pad * 2, 'Schedule items').lines);
+  if (unread.length) { y -= 8; put(layoutNotes(fonts, unread, 11, W - pad * 2, 'Not read').lines); }
+  return { buf: Buffer.from(await out.save()), count: items.length + unread.length };
+}
+
 // report.findings carry fi (index into drawings) and page; drawings carry { name, base64, path? }
 async function makeMarkups({ report, drawings, fallbackDir }) {
   const res = { dir: '', made: [], failed: [], untouched: 0 };
@@ -143,7 +162,16 @@ async function makeMarkups({ report, drawings, fallbackDir }) {
       res.made.push({ name: d.name, out: target, notes: list.length });
     } catch (e) { res.failed.push({ name: d.name, reason: String(e.message || e).slice(0, 160) }); }
   }
-  res.dir = res.made.length ? dir : '';
+  try {
+    const n = await scheduleNotes({ report });
+    if (n) {
+      fs.mkdirSync(dir, { recursive: true });
+      let target = path.join(dir, path.basename(String(report.schedule || 'schedule'), path.extname(String(report.schedule || ''))) + '_NOTES.pdf');
+      if (fs.existsSync(target)) target = path.join(dir, path.basename(target, '.pdf') + '_' + new Date().toISOString().replace(/[:T]/g, '-').slice(0, 16) + '.pdf');
+      fs.writeFileSync(target, n.buf); res.notes = { out: target, count: n.count };
+    }
+  } catch (e) { res.failed.push({ name: 'schedule notes sheet', reason: String(e.message || e).slice(0, 160) }); }
+  res.dir = (res.made.length || res.notes) ? dir : '';
   res.untouched = drawings.length - byFile.size;
   return res;
 }

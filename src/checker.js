@@ -332,10 +332,10 @@ function compare({ scheduleRows, files }) {
   const byKeyStruck = new Map(); struckRows.forEach(r => byKeyStruck.set(normKey(r.tag), r));
   const sheetsRead = []; // { file, sheet }
   const ignored = { sheets: [], interface: 0 };
-  const cancelledLabels = new Set();
+  const cancelledLabels = new Set(), cancelledAt = new Map();
   for (const f of files) for (const s of f.sheets) {
     const label = s.drawingNumber || f.name + (s.page ? ` p${s.page}` : '');
-    if (s.status === 'cancelled' || s.status === 'hatched') { ignored.sheets.push(`${label} (${s.status})`); if (s.drawingNumber) cancelledLabels.add(normKey(s.drawingNumber)); continue; }
+    if (s.status === 'cancelled' || s.status === 'hatched') { ignored.sheets.push(`${label} (${s.status})`); if (s.drawingNumber) { cancelledLabels.add(normKey(s.drawingNumber)); cancelledAt.set(normKey(s.drawingNumber), { file: f, sheet: s, label }); } continue; }
     if (s.status === 'unreadable') continue;
     ignored.interface += s.interfaceCables.length;
     sheetsRead.push({ file: f, sheet: s, label });
@@ -388,7 +388,7 @@ function compare({ scheduleRows, files }) {
       const sheet = sheetsRead.find(x => normKey(x.label) && normKey(x.label) === wanted || wanted.includes(normKey(x.label)) || normKey(x.label).includes(wanted));
       if (sheet && !(dCables.get(k) || []).some(d => d.sheet === sheet.sheet)) { findings.push({ group: sheet.label, fi: sheet.file.srcIndex, page: sheet.sheet.page, kind: 'missing_on_dwg', tag: r.tag, text: `Schedule row ${r.row} (${r.tag}) says it is on this drawing but it is not shown on it`, confirm: true, reason: dCables.has(k) ? `It is on ${dCables.get(k)[0].label} instead, so the drawing number on the schedule may be wrong` : `Not on ${sheet.label} or on any other drawing that was read` }); continue; }
     }
-    if (!dCables.has(k) && r.drawing && cancelledLabels.has(normKey(r.drawing))) { findings.push({ group: 'Schedule', kind: 'on_cancelled', tag: r.tag, text: `Row ${r.row}: ${r.tag} is on ${r.drawing}, which is cancelled or hatched`, confirm: true, reason: 'Remove the row or point it at the drawing that replaced it' }); continue; }
+    if (!dCables.has(k) && r.drawing && cancelledLabels.has(normKey(r.drawing))) { { const cx = cancelledAt.get(normKey(r.drawing)); findings.push({ group: cx ? cx.label : 'Schedule', fi: cx ? cx.file.srcIndex : undefined, page: cx ? cx.sheet.page : undefined, kind: 'on_cancelled', tag: r.tag, text: `Row ${r.row}: ${r.tag} is on ${r.drawing}, which is cancelled or hatched`, confirm: true, reason: 'Remove the row or point it at the drawing that replaced it' }); } continue; }
     if (!dCables.has(k) && r.drawing && readLabels.size && !sheetsRead.some(x => normKey(x.label) && (normKey(x.label) === normKey(r.drawing) || normKey(r.drawing).includes(normKey(x.label)) || normKey(x.label).includes(normKey(r.drawing))))) { findings.push({ group: 'Schedule', kind: 'dwg_not_supplied', tag: r.tag, text: `Row ${r.row}: ${r.tag} is on ${r.drawing}, which was not supplied, so it was not checked`, confirm: true, reason: `Drop ${r.drawing} in to check it` }); continue; }
     if (!dCables.has(k)) findings.push({ group: 'Schedule', kind: 'not_on_dwg', tag: r.tag, text: `Row ${r.row}: ${r.tag} is not on any drawing that was read`, confirm: true, reason: 'Remove it or add the drawing it is on' });
   }
