@@ -22,6 +22,14 @@ function claudeReply(body) {
   }
   if (/judge possible mismatches/.test(sys)) { const items = JSON.parse(body.messages[0].content[0].text); return JSON.stringify({ verdicts: items.map(i => ({ id: i.id, real: !/1\.5mm/.test(i.drawing) && i.schedule !== i.drawing, confirm: false, reason: '' })) }); }
   if (/left you a note/.test(sys)) return JSON.stringify({ answer: 'Mock answer to your note.', extra: [] });
+  if (/You edit the text in engineering DXF/.test(sys)) {
+    const msg = body.messages[0].content; const rows = String(typeof msg === 'string' ? msg : msg[0].text).split('\n').filter(l => /^\d+ \| /.test(l)).map(l => l.split(' | '));
+    const file = (String(typeof msg === 'string' ? msg : msg[0].text).match(/FILE: (.+)/) || [])[1];
+    const items = [];
+    for (const r of rows) { if (/Dyn1l/.test(r[6])) items.push({ file, ref: +r[0], action: 'replace_text', before: 'Dyn1l', after: 'Dyn11', why: 'Vector group typo' }); if (/SAMPLE ONLY/.test(r[6])) items.push({ file, ref: +r[0], action: 'delete_text', why: 'Asked to remove it' }); }
+    if (/add rev c/i.test(JSON.stringify(body.messages))) items.push({ file, action: 'add_text', text: 'REV C', x: 10, y: 20, layer: 'ANNOT', height: 2.5, why: 'Asked to add it' });
+    return JSON.stringify({ items });
+  }
   if (/red CHECK NOTES/.test(sys)) return JSON.stringify({ items: [{ drawing: 'DRG-001', note: 'Typo on the drawing', action: 'replace_text', before: 'C-1O1', after: 'C-101', why: 'typo' }, { drawing: 'DRG-001', note: 'Schedule says 2C', action: 'none', why: 'Schedule change' }] });
   // reviewer?
   if (/a reviewer in the/.test(sys)) {

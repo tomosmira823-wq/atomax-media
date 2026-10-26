@@ -144,6 +144,8 @@
   #dexPanel .fx { display: flex; gap: 9px; align-items: flex-start; padding: 8px 4px; border-bottom: 1px solid var(--line); font-size: 13px; }
   #dexPanel .fx.none { opacity: .55; } #dexPanel .fx input { margin-top: 3px; }
   #dexPanel .fx b { font-weight: 700; } #dexPanel .fx .why { color: var(--muted); font-size: 12px; margin-top: 2px; } #dexPanel .fx .warn { color: var(--amber); font-size: 12px; margin-top: 2px; }
+  #dexPanel .fx .blk { display: flex; gap: 6px; align-items: flex-start; color: var(--amber); font-size: 12px; margin-top: 4px; } #dexPanel .fx .blk input { margin-top: 2px; }
+  #dexNote { width: 100%; box-sizing: border-box; }
   #dexPanel .fx code { background: #0a0e18; padding: 1px 5px; border-radius: 4px; }
   .lbl.hint { color: var(--green); border-color: var(--green2); font-weight: 600; }
   /* modeling room panel */
@@ -348,9 +350,10 @@ body.fp canvas#scene{cursor:grab}
       <label style="margin-top:0">1 · DXF drawings to fix</label>
       <div class="drop" id="dropDxf"><div class="dz-t">Drop the DXFs here</div><div class="dz-s">ASCII .dxf only · as many as you like, or click to browse</div><div id="dxfFiles"></div><input type="file" hidden accept=".dxf" /></div>
       <label>2 · Where do the fixes come from?</label>
-      <div class="seg" id="dexSrc"><button class="on" data-src="cal">Cal's last markups</button><button data-src="pdfs">Drop markup PDFs</button></div>
+      <div class="seg" id="dexSrc"><button class="on" data-src="cal">Cal's last markups</button><button data-src="pdfs">Drop markup PDFs</button><button data-src="note">Just tell Dex</button></div>
+      <div id="dexNoteBox" style="display:none;margin-top:8px"><textarea id="dexNote" rows="4" placeholder="No markup needed. Say what to fix, e.g. Change every C-1O4 to C-104. Delete the SAMPLE ONLY line. Add REV C under the revision text. Change the transformer vector group from Dyn1l to Dyn11."></textarea></div>
       <div class="drop" id="dropMk" style="display:none;margin-top:8px"><div class="dz-t">Drop the marked-up PDFs here</div><div class="dz-s">The ones Cal made, or any with the red notes strip</div><div id="mkFiles"></div><input type="file" hidden accept=".pdf" /></div>
-      <div class="warn-note">Dex only changes text, and only the fixes you tick. Your DXFs are never changed: he saves a copy in a FIXED folder next to each one. Markup PDFs are read by Claude through your own API key. DWG and binary DXF are not supported.</div>
+      <div class="warn-note">Dex edits text (change, delete or add), including text inside symbols if you let him, and only the fixes you tick. Your DXFs are never changed: he saves a copy in a FIXED folder next to each one. Markup PDFs and typed instructions are read by Claude through your own API key. DWG and binary DXF are not supported.</div>
       <div class="err" id="dexErr" style="margin-top:10px"></div>
       <button class="btn primary" id="dexFind" style="width:100%;margin-top:12px" disabled>Find fixes</button>
       <div id="dexHist"></div>

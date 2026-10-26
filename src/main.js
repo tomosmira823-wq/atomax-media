@@ -356,7 +356,7 @@ ipcMain.handle('check:last', () => readJson(path.join(USER_DIR(), 'last-check.js
 
 // ---------- Dex: fixing DXFs from markups ----------
 const dxfBuf = (f) => Buffer.from(f.base64, 'base64');
-ipcMain.handle('dxf:propose', async (_e, { source, dxfs, markups }) => {
+ipcMain.handle('dxf:propose', async (_e, { source, dxfs, markups, note }) => {
   const notes = [];
   const files = [];
   for (const f of dxfs || []) { try { files.push({ ...f, parsed: dxffix.parseDxf(dxfBuf(f)) }); } catch (e) { notes.push(f.name + ': ' + (e.message || e)); } }
@@ -366,6 +366,26 @@ ipcMain.handle('dxf:propose', async (_e, { source, dxfs, markups }) => {
     const last = readJson(path.join(USER_DIR(), 'last-check.json'), null);
     if (!last || !(last.findings || []).length) return { items: [], notes: ['Cal has no markups yet. Run a check in the drawing room first, or drop markup PDFs instead.'] };
     items = dxffix.proposalsFromFindings(last.findings);
+  } else if (source === 'note') {
+    if (!String(note || '').trim()) return { items: [], notes: ['Type what you want Dex to do first.'] };
+    const inv = files.map(f => 'FILE: ' + f.name + '\n' + dxffix.inventory(f.parsed)).join('\n\n');
+    try {
+      const r = await claudeFull({ system: dxffix.DEX_NOTE_SYSTEM, maxTokens: 6000, messages: [{ role: 'user', content: 'The engineer says:\n<instruction>' + String(note).slice(0, 4000) + '</instruction>\n\nText in the drawing(s):\n' + inv }] });
+      const j = checker.parseJson(r.text).value;
+      for (const it of (j.items || [])) {
+        const fl = files.find(x => x.name === it.file) || (files.length === 1 ? files[0] : null);
+        const action = ['replace_text', 'delete_text', 'add_text'].includes(it.action) ? it.action : 'none';
+        const ref = Number.isInteger(it.ref) ? it.ref : (/^\d+$/.test(String(it.ref ?? '')) ? +it.ref : undefined);
+        const base = { id: 'N' + (items.length + 1), drawing: fl ? fl.name : (it.file || ''), note: it.why || '', why: it.why || '', action, ref, before: it.before || '', after: it.after || '', text: it.text || '', x: it.x, y: it.y, layer: it.layer || '', height: it.height };
+        if (action === 'none') { items.push({ ...base, note: it.why || 'Dex could not turn that into a text change.' }); continue; }
+        if (!fl) { items.push({ ...base, action, warn: 'Dex could not tell which DXF this is for.' }); continue; }
+        if (action === 'delete_text' && ref !== undefined && fl.parsed.ents[ref]) base.before = fl.parsed.ents[ref].plain;
+        const c = dxffix.checkItem(fl.parsed, base);
+        items.push({ ...base, file: fl.name, can: c.can, places: c.places, inBlocks: c.inBlocks, blocks: c.blocks, warn: c.warn });
+      }
+      if (!items.length) notes.push('Dex did not find anything to change from that.');
+    } catch (e) { notes.push('Dex could not read that instruction (' + String(e.message || e).slice(0, 160) + ')'); }
+    return { items, notes };
   } else {
     if (!(markups || []).length) return { items: [], notes: ['Drop at least one marked-up PDF.'] };
     for (const m of markups) {
@@ -382,7 +402,7 @@ ipcMain.handle('dxf:propose', async (_e, { source, dxfs, markups }) => {
     let hit = f && files.find(x => x.name === f.name);
     if (hit) { const c = dxffix.countMatches(hit.parsed, it.before); if (!c.places && !c.inBlocks) hit = null; }
     if (!hit) { const all = files.map(x => ({ x, c: dxffix.countMatches(x.parsed, it.before) })).filter(o => o.c.places || o.c.inBlocks); if (all.length === 1) hit = all[0].x; }
-    if (hit) { const c = dxffix.countMatches(hit.parsed, it.before); it.file = hit.name; it.places = c.places; it.inBlocks = c.inBlocks; if (!c.places) it.warn = 'Only inside a symbol definition, so Dex will not change it.'; }
+    if (hit) { const c = dxffix.countMatches(hit.parsed, it.before); it.file = hit.name; it.places = c.places; it.inBlocks = c.inBlocks; it.blocks = c.blocks; it.can = true; }
     else it.warn = 'Not found in any DXF you dropped.';
   }
   return { items, notes };
@@ -407,7 +427,8 @@ ipcMain.handle('dxf:apply', async (_e, { dxfs, fixes }) => {
   }
   if (out.files.length) {
     const dir = path.dirname(out.files[0].path);
-    const log = ['DEX FIX LOG  ' + new Date().toISOString(), 'Originals untouched. Fixed copies:', ...out.files.map(x => '  ' + x.name + ' (' + x.changes + ' change' + (x.changes === 1 ? '' : 's') + ')'), '', ...out.results.map(x => `  ${x.status.toUpperCase()}  ${x.file || ''}  "${x.before || ''}" -> "${x.after || ''}"  ${x.places ? x.places + ' place(s)' : ''} ${x.reason || ''}`)].join('\n');
+    const desc = (x) => x.action === 'delete_text' ? `delete "${x.before || ''}"` : x.action === 'add_text' ? `add "${x.text || ''}"` : `"${x.before || ''}" -> "${x.after || ''}"`;
+    const log = ['DEX FIX LOG  ' + new Date().toISOString(), 'Originals untouched. Fixed copies:', ...out.files.map(x => '  ' + x.name + ' (' + x.changes + ' change' + (x.changes === 1 ? '' : 's') + ')'), '', ...out.results.map(x => `  ${x.status.toUpperCase()}  ${x.file || ''}  ${desc(x)}  ${x.places ? x.places + ' place(s)' : ''} ${x.reason || ''}`)].join('\n');
     try { fs.writeFileSync(path.join(dir, 'DEX_FIX_LOG.txt'), log); out.log = path.join(dir, 'DEX_FIX_LOG.txt'); } catch {}
   }
   const nDone = out.results.filter(x => x.status === 'applied').length;

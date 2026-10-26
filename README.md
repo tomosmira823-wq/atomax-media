@@ -70,7 +70,7 @@ Dex sits on the stool at the drafting table in the drawing room. Click the table
 3. **Find fixes.** Dex lists what he can change in the DXFs, with how many places each one appears. Everything starts **unticked**; use **Tick all fixes** or tick one by one.
 4. **Apply ticked fixes.** Only ticked fixes are made.
 
-What he does: swaps exact text (TEXT, MTEXT and ATTRIB values, whole-tag matches only, so `C-O102` never hits `C-O102x`) and saves `<name>_FIXED.dxf` in a `FIXED` folder next to each DXF, plus `DEX_FIX_LOG.txt`. The original is never touched and every other byte of the file is kept as it was. He does not move, add or delete anything (so a cable missing from a drawing is listed greyed out as needing a person), and he leaves text inside block (symbol) definitions alone, because that would change every copy of the symbol. Tests: `node test/dxffix-test.js` and `AMO_SCENARIO=dex` (needs `test/mock-api.js` running and a `last-check.json` in the user data folder).
+What he does: swaps exact text (TEXT, MTEXT and ATTRIB values, whole-tag matches only, so `C-O102` never hits `C-O102x`) and saves `<name>_FIXED.dxf` in a `FIXED` folder next to each DXF, plus `DEX_FIX_LOG.txt`. The original is never touched and every other byte of the file is kept as it was. He can change, delete and add text. Text inside symbol (block) definitions is changed only when you leave the symbol tick on, because that changes every copy of the symbol. With no markup you can pick Just tell Dex and type the fix; Claude reads the DXF's text list and proposes changes you tick. Tests: `node test/dxffix-test.js` and `AMO_SCENARIO=dex` (needs `test/mock-api.js` running and a `last-check.json` in the user data folder).
 
 ## Furniture and look
 
