@@ -359,7 +359,8 @@
       <button class="btn primary" id="modelGo" style="width:100%;margin-top:12px" disabled>Make the 3D model</button>
       <div class="row" style="margin-top:8px"><button class="btn small" id="modelOpen">Open a .glb instead</button></div>
       <details id="modelCfg"><summary>Advanced</summary>
-        <label>Higgsfield 3D model (leave empty to use the default)</label><input type="text" id="m_hfModel" placeholder="automatic" />
+        <label>Meshy API key (makes the 3D model)</label><input type="password" id="m_meshyKey" placeholder="msy_..." autocomplete="off" />
+        <label>Higgsfield 3D model (leave empty)</label><input type="text" id="m_hfModel" placeholder="automatic" />
         <div class="row" style="margin-top:8px"><button class="btn small" id="m_save">Save</button><span class="hint" id="m_saved"></span></div>
       </details>
     </div>

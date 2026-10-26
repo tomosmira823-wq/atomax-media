@@ -74,16 +74,23 @@ async function viaHiggsfield({ keyId, secret, model, base, image, textured, onPr
   keyId = String(keyId || '').trim(); secret = String(secret || '').trim();
   if (!keyId && !secret) throw new Error('No Higgsfield key. Add it in Settings.');
   model = String(model || '').trim().replace(/^\/+/, '');
-  if (!model) model = DEFAULT_HF_3D;
+  // a key pasted into the model box (they contain ":") is not a model name
+  if (model.includes(':') || /\s/.test(model)) model = '';
   // Higgsfield shows one combined key (id:secret); two boxes also work
   const auth = keyId && secret ? `Key ${keyId}:${secret}` : `Key ${keyId || secret}`;
-  const res = await fetch(`${base}/${model}`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', accept: 'application/json', authorization: auth },
-    body: JSON.stringify({ image_url: dataUri(image), should_texture: !!textured })
-  });
-  const data = await jsonOrText(res);
-  if (!res.ok) throw new Error(`Higgsfield ${res.status}: ${JSON.stringify(data).slice(0, 400)}`);
+  const candidates = model ? [model] : HF_3D_CANDIDATES;
+  let res, data, tried = [];
+  for (const m of candidates) {
+    res = await fetch(`${base}/${m}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', accept: 'application/json', authorization: auth },
+      body: JSON.stringify({ image_url: dataUri(image), should_texture: !!textured })
+    });
+    data = await jsonOrText(res);
+    tried.push(m);
+    if (res.status !== 404) break;
+  }
+  if (!res.ok) throw new Error(`Higgsfield ${res.status}: ${JSON.stringify(data).slice(0, 300)}` + (res.status === 404 ? ` (tried: ${tried.join(', ')}). Higgsfield's API may not offer 3D to API keys: add a Meshy key under Advanced.` : '') + (res.status === 401 || res.status === 403 ? ' - check the key in Settings' : ''));
   const direct = findGlbUrl(data);
   if (direct && /complete|succe/i.test(String(data.status || 'completed'))) return downloadGlb(direct);
   const statusUrl = data.status_url || (data.request_id ? `${base}/requests/${data.request_id}/status` : null);
@@ -109,6 +116,7 @@ async function viaHiggsfield({ keyId, secret, model, base, image, textured, onPr
 let MOCK_FAST = false;
 // Higgsfield's own image-to-3D model, used automatically so nobody has to pick one. Can be overridden in the modeling room settings.
 const DEFAULT_HF_3D = 'meshy_v7_image_to_3d';
+const HF_3D_CANDIDATES = [DEFAULT_HF_3D, 'higgsfield-ai/' + DEFAULT_HF_3D, 'image_to_3d', 'meshy_image_to_3d'];
 
 async function generate({ settings, image, textured = true, outDir, name, bases, onProgress = () => {}, fast = false }) {
   MOCK_FAST = !!fast;

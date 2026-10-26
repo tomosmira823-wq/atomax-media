@@ -103,12 +103,16 @@ export function initModelingUI({ office, api, getSettings, openSettings }) {
 
   // ---- 3D settings (saved straight into the shared settings object so the main Settings screen never overwrites them) ----
   function fillCfg() {
-    $('#m_hfModel').value = getSettings().higgsfield3dModel || '';
-    $('#modelVia').textContent = 'Your photo is sent to Higgsfield through the key in Settings to make the model. Use photos you are happy to share.';
+    const sv = getSettings().higgsfield3dModel || '';
+    $('#m_hfModel').value = sv.includes(':') ? '' : sv;
+    const mk = !!getSettings().meshyKey; $('#m_meshyKey').value = getSettings().meshyKey || '';
+    $('#modelVia').textContent = mk ? 'Your photo is sent to Meshy with your Meshy key to make the model. Use photos you are happy to share.' : 'Your photo is sent to Higgsfield through the key in Settings to make the model. Higgsfield\'s API may not include 3D: if you get "model_not_found", add a Meshy key under Advanced.';
   }
   $('#m_save').addEventListener('click', async () => {
-    const s = getSettings(); s.model3dProvider = 'higgsfield'; s.higgsfield3dModel = $('#m_hfModel').value.trim();
-    await api.settings.set({ model3dProvider: 'higgsfield', higgsfield3dModel: s.higgsfield3dModel });
+    const v = $('#m_hfModel').value.trim();
+    if (v.includes(':')) { $('#m_hfModel').value = ''; $('#m_saved').textContent = 'That is your API key. Keys go in Settings, leave this empty.'; setTimeout(() => { $('#m_saved').textContent = ''; }, 4000); await api.settings.set({ higgsfield3dModel: '' }); getSettings().higgsfield3dModel = ''; return; }
+    const s = getSettings(); const mk = $('#m_meshyKey').value.trim(); s.meshyKey = mk; s.model3dProvider = mk ? 'meshy' : 'higgsfield'; s.higgsfield3dModel = v;
+    await api.settings.set({ model3dProvider: s.model3dProvider, meshyKey: mk, higgsfield3dModel: v }); fillCfg();
     $('#m_saved').textContent = 'Saved'; setTimeout(() => { $('#m_saved').textContent = ''; }, 1800);
   });
 
@@ -131,14 +135,14 @@ export function initModelingUI({ office, api, getSettings, openSettings }) {
   async function go() {
     if (running || !photo) return;
     const s = getSettings();
-    if (!(s.higgsfieldKeyId || s.higgsfieldSecret)) { $('#modelErr').textContent = 'Connect Higgsfield first: paste your Higgsfield API key in Settings.'; openSettings(); return; }
+    if (s.model3dProvider !== 'meshy' && !(s.higgsfieldKeyId || s.higgsfieldSecret)) { $('#modelErr').textContent = 'Connect Higgsfield first: paste your Higgsfield API key in Settings.'; openSettings(); return; }
     running = true; renderPhoto(); last = null; $('#modelErr').textContent = '';
     $('#modelSetup').hidden = true; $('#modelResult').hidden = true; $('#modelRun').hidden = false;
     $('#modelMsg').textContent = 'Sending the photo'; $('#modelBar').style.width = '4%';
     office.setScanning(true);
     try {
       const r = await api.model.generate({ image: { base64: photo.base64, mime: photo.mime }, textured, name: photo.name });
-      try { await showResult(r, 'Made with Higgsfield'); }
+      try { await showResult(r, r.provider === 'meshy' ? 'Made with Meshy' : 'Made with Higgsfield'); }
       catch (ve) { showSetup(); $('#modelErr').textContent = `The model was made and saved to ${r.path}, but the viewer could not open it (${String(ve.message || ve).slice(0, 160)}). You can still open that file in other 3D software.`; }
     } catch (e) {
       showSetup(); $('#modelErr').textContent = String(e.message || e).replace(/^Error invoking remote method '[^']+': (Error: )?/, '');
