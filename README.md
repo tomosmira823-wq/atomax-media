@@ -44,6 +44,23 @@ Default writers: Lena (LinkedIn, formal), Izzy (Instagram, casual), Frank (Faceb
 
 **Reviewers.** Charlie the Checker reads every post after the writers finish and scores it out of 10 with a PASS / NEEDS WORK / FAIL verdict, what works, what's wrong, and a corrected version you can apply with one click. Add more reviewer bots in the Agents tab (*+ Add reviewer*) — each one has its own attitude and its own list of things to check, e.g. a brand guardian, a spelling pedant, an engagement coach. Reviewers wear glasses and carry a clipboard in the office.
 
+## The drawing room and Cal (cable schedule checker)
+
+Next door to the media office is a drawing room with one agent, **Cal**. Click the *DRAWING ROOM* sign over the door (or the *Drawing room* switch at the top) to go in, then click Cal's desk. The camera zooms to the desk and a panel opens:
+
+1. Drop the **cable schedule** (Excel, CSV or PDF) in the first box.
+2. Drop the **drawings and cross references** (PDF is best, PNG/JPG, Excel/CSV) in the second box.
+3. Choose **Standard skill** (the rules in Cal's loadout, editable under Agents) or **Leave Cal a note** for extra instructions.
+4. **Hand it to Cal.** The files fly onto his desk, he checks, and his progress shows above his head and in the panel.
+
+How it checks: Claude only *reads* (maps the schedule columns, pulls cables off each drawing, judges near-miss differences). The comparison itself is plain code, run in both directions (drawings to schedule and schedule to drawings), so Cal never says "all matches" unless both directions really ran on everything. Anything he could not read (scans, DWG/DXF, oversize files) is listed under *Not checked* rather than guessed. DWG and DXF cannot be read, so export them to PDF first.
+
+Cal also writes **marked-up copies** of every drawing with findings into a `MARKUPS` folder beside the drawings: the original page unchanged plus a strip of red notes on the right. Originals are never edited.
+
+Drawings go to Claude through your own API key. Try it with dummy files first, and check the client contract before sending client drawings (for example National Grid work).
+
+The room is built so more agents and departments (CAD, checking) can be added alongside Cal later. Tests: `node test/checker-test.js` (offline, fake Claude) and the scenario in `test/scenario-run.js` (drops files, runs a check, shows results).
+
 ## Furniture and look
 
 v1.1: the floor is laid out in pods of two facing workstations (slim white desks, dual monitors on an arm, keyboard, mouse, pedestal, desk plant, coloured mug and chair) with a pendant over each pod; spare pods are furnished and waiting for new agents, so adding a team (a CAD department, say) just fills them in. Windows look out on a soft skyline; the boardroom has a proper long table and pendant row; the open sides have a slim ceiling edge. Agents blink, walk with a distance-driven cycle (no sliding), lean into turns, and sit and type at their desks.

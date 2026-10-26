@@ -1,4 +1,5 @@
 import { Office, AgentPreview, GEAR } from './office.js';
+import { initCheckUI } from './checkui.js';
 
 const $ = (s) => document.querySelector(s);
 const api = window.office;
@@ -12,13 +13,17 @@ async function boot() {
   settings = await api.settings.get();
   agents = await api.agents.get();
   posts = await api.posts.get();
-  office.setAgents(agents.filter(a => a.enabled));
+  syncOffice();
   renderAgentPick();
   updateKeyDots();
   fillImageSelects();
   if (!settings.anthropicKey) { fillSettings(); openModal('settingsModal'); }
 }
 boot();
+function syncOffice() {
+  const on = agents.filter(a => a.enabled);
+  office.setAgents(on.filter(a => !isDrawing(a)), on.find(isDrawing) || null);
+}
 
 // ---------- updates ----------
 api.version().then(v => { $('#verText').textContent = 'Atomax Media Office v' + v; });
@@ -174,8 +179,9 @@ document.querySelectorAll('[data-test]').forEach(b => b.addEventListener('click'
 
 // ---------- agents ----------
 const isReviewer = (a) => a.role === 'reviewer';
+function isDrawing(a) { return a.role === 'drawing'; }
 function renderAgentPick() {
-  const writers = agents.filter(a => a.enabled && !isReviewer(a));
+  const writers = agents.filter(a => a.enabled && !isReviewer(a) && !isDrawing(a));
   const reviewers = agents.filter(a => a.enabled && isReviewer(a));
   const row = (a) => `<label><input type="checkbox" data-id="${a.id}" checked /> <i class="swatch" style="background:${a.colour}"></i> ${esc(a.name)} · ${esc(a.platform)}</label>`;
   $('#agentPick').innerHTML = (writers.map(row).join('') || '<span class="hint">No writers enabled. Add some in the Agents tab.</span>')
@@ -185,7 +191,7 @@ function renderAgentPick() {
 const SWATCHES = ['#0a66c2', '#e1306c', '#1877f2', '#111111', '#00f2ea', '#f59f00', '#40bd00', '#8e44ad', '#20c997', '#ff6b35', '#ffffff', '#ff4757'];
 let preview = null, loIndex = -1, loDraft = null;
 
-function roleBadge(a) { return isReviewer(a) ? '<span class="badge role rev">REVIEWER</span>' : '<span class="badge role">WRITER</span>'; }
+function roleBadge(a) { if (isDrawing(a)) return '<span class="badge role rev">DRAWINGS</span>'; return isReviewer(a) ? '<span class="badge role rev">REVIEWER</span>' : '<span class="badge role">WRITER</span>'; }
 
 function renderTeam() {
   $('#teamView').style.display = ''; $('#loadoutView').style.display = 'none';
@@ -210,14 +216,15 @@ function openLoadout(i) {
 
 function fillLoadout() {
   const a = loDraft, rev = isReviewer(a);
-  $('#loName').textContent = a.name; $('#loRole').textContent = rev ? 'reviewer' : a.platform;
-  $('#lo_name').value = a.name; $('#lo_platform').value = a.platform; $('#lo_role').value = rev ? 'reviewer' : 'writer';
+  $('#loName').textContent = a.name; $('#loRole').textContent = isDrawing(a) ? 'drawing checker' : (rev ? 'reviewer' : a.platform);
+  $('#lo_name').value = a.name; $('#lo_platform').value = a.platform; $('#lo_role').innerHTML = isDrawing(a) ? '<option value="drawing">Drawing checker — works in the drawing room</option>' : '<option value="writer">Writer — posts to one account</option><option value="reviewer">Reviewer — checks every post</option>'; $('#lo_role').value = isDrawing(a) ? 'drawing' : (rev ? 'reviewer' : 'writer');
   $('#lo_enabled').checked = !!a.enabled; $('#lo_colour').value = a.colour;
   $('#lo_tone').value = a.tone || ''; $('#lo_rules').value = a.rules || ''; $('#lo_examples').value = a.examples || '';
-  $('#lo_platformLabel').textContent = rev ? 'Job (e.g. Checker, Brand guardian)' : 'Platform';
-  $('#lo_toneLabel').textContent = rev ? 'How they review (attitude, what they care about)' : 'Tone / personality';
-  $('#lo_rulesLabel').textContent = rev ? 'What they check' : 'Format rules';
-  $('#lo_examplesLabel').textContent = rev ? 'Example reviews or notes (optional)' : 'Example posts in this voice (optional)';
+  const dr = isDrawing(a);
+  $('#lo_platformLabel').textContent = dr ? 'Job' : rev ? 'Job (e.g. Checker, Brand guardian)' : 'Platform';
+  $('#lo_toneLabel').textContent = dr ? 'How Cal behaves (attitude)' : rev ? 'How they review (attitude, what they care about)' : 'Tone / personality';
+  $('#lo_rulesLabel').textContent = dr ? 'The standard skill (what Cal checks every time)' : rev ? 'What they check' : 'Format rules';
+  $('#lo_examplesLabel').textContent = dr ? 'Notes for Cal (optional)' : rev ? 'Example reviews or notes (optional)' : 'Example posts in this voice (optional)';
   $('#loSwatches').innerHTML = SWATCHES.map(c => `<div class="sw ${c.toLowerCase() === a.colour.toLowerCase() ? 'on' : ''}" style="background:${c}" data-c="${c}"></div>`).join('');
   $('#loSwatches').querySelectorAll('.sw').forEach(s => s.addEventListener('click', () => { loDraft.colour = s.dataset.c; $('#lo_colour').value = s.dataset.c; fillLoadout(); preview.show(loDraft); }));
   const names = { glasses: 'Glasses', hardhat: 'Hard hat', headset: 'Headset', tie: 'Green tie', clipboard: 'Clipboard', lanyard: 'Lanyard' };
@@ -247,7 +254,7 @@ $('#addReviewer').addEventListener('click', () => {
 $('#resetAgents').addEventListener('click', async () => { agents = await api.agents.reset(); renderTeam(); });
 $('#saveAgents').addEventListener('click', async () => {
   await api.agents.set(agents);
-  office.setAgents(agents.filter(a => a.enabled)); renderAgentPick(); closeModals();
+  syncOffice(); renderAgentPick(); closeModals();
 });
 
 // ---------- brief: images ----------
@@ -287,14 +294,14 @@ $('#run').addEventListener('click', async () => {
   const refText = $('#refText').value.trim();
   const imageBrief = $('#imageBrief').value.trim();
   const ids = [...$('#agentPick').querySelectorAll('input:checked')].map(i => i.dataset.id);
-  const chosen = agents.filter(a => a.enabled && !isReviewer(a) && ids.includes(a.id));
+  const chosen = agents.filter(a => a.enabled && !isReviewer(a) && !isDrawing(a) && ids.includes(a.id));
   const reviewers = agents.filter(a => a.enabled && isReviewer(a) && ids.includes(a.id));
   if (!brief && !images.length) { $('#briefErr').textContent = 'Write a brief or add an image.'; return; }
   if (!chosen.length) { $('#briefErr').textContent = 'Pick at least one agent.'; return; }
   if (!settings.anthropicKey) { $('#briefErr').textContent = 'Add your Claude API key in Settings.'; openModal('settingsModal'); return; }
   $('#briefErr').textContent = '';
   $('#run').disabled = true;
-  const boardRows = agents.filter(a => a.enabled).map(a => ({ colour: a.colour, text: `${a.name} · ${a.platform}`, status: chosen.includes(a) ? 'Working' : 'Ready' }));
+  const boardRows = agents.filter(a => a.enabled && !isDrawing(a)).map(a => ({ colour: a.colour, text: `${a.name} · ${a.platform}`, status: chosen.includes(a) ? 'Working' : 'Ready' }));
   office.setBoard(boardRows);
 
   const runEntries = [];
@@ -513,3 +520,20 @@ function renderHistory() {
 $('#clearHistory').addEventListener('click', async () => { if (confirm('Delete all saved posts?')) { posts = []; await api.posts.set(posts); renderHistory(); } });
 
 function esc(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+
+
+// ---------- rooms + Cal's desk ----------
+const calAgent = () => agents.find(a => a.enabled && isDrawing(a));
+const checkUI = initCheckUI({ office, api, getAgent: calAgent, getSettings: () => settings, openSettings: () => { fillSettings(); openModal('settingsModal'); } });
+function goRoom(where) {
+  const inDraw = where !== 'media';
+  document.body.classList.toggle('room-drawing', inDraw);
+  document.querySelectorAll('#rooms button').forEach(b => b.classList.toggle('active', b.dataset.room === (inDraw ? 'drawing' : 'media')));
+  if (where === 'desk') checkUI.show(); else checkUI.hide();
+  office.focus(where);
+}
+document.querySelectorAll('#rooms button').forEach(b => b.addEventListener('click', () => goRoom(b.dataset.room)));
+$('#deskBack').addEventListener('click', () => goRoom('drawing'));
+office.onPick = (what) => { if (what === 'door') goRoom('drawing'); else if (what === 'desk') { if (calAgent()) goRoom('desk'); } };
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !document.querySelector('.modal.open') && office.room === 'desk') goRoom('drawing'); });
+window.__goRoom = goRoom;

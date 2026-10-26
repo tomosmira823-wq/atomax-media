@@ -135,6 +135,37 @@
   .review ul { margin: 4px 0 6px; padding-left: 18px; }
   .review ul.good li { color: #9be37a; }
   .review ul.bad li { color: #ffb86b; }
+
+  /* rooms + Cal's desk */
+  #top .rooms { margin-left: 0; }
+  body.room-drawing #brief, body.room-drawing #board { display: none; }
+  #checkPanel { display: none; right: 16px; width: 420px; }
+  body.room-drawing #checkPanel.open { display: flex; }
+  .lbl.hint { color: var(--green); border-color: var(--green2); font-weight: 600; }
+  .drop { border: 1.5px dashed var(--line2); border-radius: 12px; padding: 14px; text-align: center; cursor: pointer; background: #0a0e18; transition: border-color .15s, background .15s; }
+  .drop:hover, .drop.over { border-color: var(--green); background: rgba(64,189,0,.06); }
+  .drop.has { border-style: solid; border-color: var(--green2); }
+  .drop .dz-t { font-weight: 700; } .drop .dz-s { color: var(--muted); font-size: 12px; margin-top: 2px; }
+  .fchip { display: flex; align-items: center; gap: 8px; justify-content: space-between; margin-top: 8px; background: var(--navy3); border: 1px solid var(--line2); border-radius: 8px; padding: 5px 6px 5px 10px; text-align: left; font-size: 12.5px; }
+  .fchip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .fchip small { color: var(--muted); }
+  .fchip button { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 16px; line-height: 1; }
+  .fchip button:hover { color: var(--red); }
+  .seg { display: flex; gap: 2px; padding: 3px; background: #0a0e18; border: 1px solid var(--line); border-radius: 10px; }
+  .seg button { flex: 1; background: transparent; border: none; color: var(--muted); padding: 7px 8px; border-radius: 8px; cursor: pointer; font: inherit; font-weight: 600; }
+  .seg button.on { background: var(--navy3); color: var(--text); }
+  #skillBox summary { cursor: pointer; color: var(--muted); font-size: 12px; margin-top: 8px; }
+  #skillBox pre { white-space: pre-wrap; font: 11.5px/1.5 inherit; color: var(--muted); max-height: 190px; overflow: auto; margin: 6px 0 0; }
+  .warn-note { margin-top: 14px; font-size: 11.5px; color: var(--muted); border-left: 2px solid var(--amber); padding-left: 9px; }
+  #checkRun { text-align: center; padding: 26px 0; } #runBar-wrap { height: 6px; background: var(--navy3); border-radius: 6px; overflow: hidden; margin-top: 14px; }
+  #runBar { height: 100%; width: 4%; background: var(--green); transition: width .4s; }
+  #checkResult .headline { font-weight: 700; padding: 10px 12px; border-radius: 10px; margin-bottom: 10px; }
+  #checkResult .headline.good { background: rgba(64,189,0,.1); border: 1px solid #2a6a16; } #checkResult .headline.warn { background: rgba(255,184,77,.08); border: 1px solid #6a4a12; }
+  #checkResult .noteans { background: var(--navy3); border-radius: 10px; padding: 10px 12px; margin-bottom: 10px; }
+  #checkResult .grp { margin: 14px 0; } #checkResult .grp h4 { margin: 0 0 4px; font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: var(--green); display: flex; gap: 8px; }
+  #checkResult .grp h4 span { color: var(--muted); }
+  #checkResult ul { margin: 0; padding-left: 18px; } #checkResult li { margin: 4px 0; }
+  #checkResult li.confirm { color: #ffd59a; } #checkResult .why { color: var(--muted); font-size: 12px; }
+  #checkResult .grp.cov li, #checkResult .grp.unread li { color: var(--muted); font-size: 12.5px; } #checkResult .grp.unread h4 { color: var(--amber); }
   .badge { font-size: 10px; font-weight: 800; letter-spacing: .6px; padding: 3px 7px; border-radius: 6px; }
   .badge.pass { background: #1f5a0f; color: #b9f59a; }
   .badge.fix { background: #5a3d0f; color: #ffd59a; }
@@ -200,6 +231,10 @@
     <button data-tab="agents">Agents</button>
     <button data-tab="settings">Settings</button>
   </div>
+  <div class="tabs rooms" id="rooms">
+    <button class="active" data-room="media">Media office</button>
+    <button data-room="drawing">Drawing room</button>
+  </div>
   <div class="right">
     <span id="update" class="hint"></span>
     <span id="k-claude"><i class="dot"></i>Claude</span>
@@ -249,6 +284,29 @@
 <div class="panel" id="board">
   <h2><span>Board</span><button class="collapse" title="Collapse">›</button></h2>
   <div class="body" id="boardBody"><p class="hint">Posts from the office land here.</p></div>
+</div>
+
+
+<!-- Cal's desk panel (drawing room) -->
+<div class="panel" id="checkPanel">
+  <h2><span>Cal · Drawing checker</span><button class="collapse" id="deskBack" title="Back to the room (Esc)">×</button></h2>
+  <div class="body">
+    <div id="checkSetup">
+      <label style="margin-top:0">1 · Cable schedule</label>
+      <div class="drop" id="dropSched"><div class="dz-t">Drop the cable schedule here</div><div class="dz-s">Excel, CSV or PDF · one file, or click to browse</div><div id="schedFile"></div><input type="file" hidden accept=".xlsx,.csv,.pdf,.png,.jpg,.jpeg" /></div>
+      <label>2 · Drawings and cross references</label>
+      <div class="drop" id="dropDwg"><div class="dz-t">Drop the drawings here</div><div class="dz-s">PDF is best · as many as you like, or click to browse</div><div id="dwgFiles"></div><input type="file" hidden accept=".pdf,.png,.jpg,.jpeg,.xlsx,.csv,.dwg,.dxf,.xls" /></div>
+      <label>3 · How should Cal check?</label>
+      <div class="seg" id="checkMode"><button class="on" data-mode="std">Standard skill</button><button data-mode="note">Leave Cal a note</button></div>
+      <textarea id="checkNote" style="display:none;margin-top:8px" placeholder="e.g. Only look at the PLC cabinet loops. Tell me if any cable types changed on revision B."></textarea>
+      <details id="skillBox"><summary>What the standard skill checks</summary><pre id="skillText"></pre></details>
+      <div class="warn-note">Drawings are sent to Claude through your own API key. Use dummy files first and check the contract before sending client drawings. DWG and DXF cannot be read, so export those to PDF.</div>
+      <div class="err" id="checkErr" style="margin-top:10px"></div>
+      <button class="btn primary" id="checkGo" style="width:100%;margin-top:12px" disabled>Hand it to Cal</button>
+    </div>
+    <div id="checkRun" hidden><span class="spinner"></span><div id="runMsg" style="margin-top:10px;font-weight:600">Cal is getting the files</div><div id="runBar-wrap"><div id="runBar"></div></div><p class="hint">Big drawing sets take a few minutes. You can leave this open and come back.</p></div>
+    <div id="checkResult" hidden></div>
+  </div>
 </div>
 
 <!-- History modal -->

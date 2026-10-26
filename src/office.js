@@ -21,6 +21,12 @@ const DESK_SLOTS = [
   [5.0, -2.2, 0], [5.0, -5.4, Math.PI],
   [11.0, -2.2, 0], [11.0, -5.4, Math.PI]
 ];
+// The drawing room sits next door, west of the media office's window wall (shared wall at x = -ROOM_W/2, door at z DOOR.z0..DOOR.z1).
+const DRAW = { w: 18, x1: -ROOM_W / 2 - 0.3, z0: -ROOM_D / 2, z1: 5 };
+DRAW.x0 = DRAW.x1 - DRAW.w; DRAW.cx = (DRAW.x0 + DRAW.x1) / 2; DRAW.cz = (DRAW.z0 + DRAW.z1) / 2; DRAW.d = DRAW.z1 - DRAW.z0;
+const DOOR = { z0: -2.4, z1: 0 };
+const NAV = { x0: DRAW.x0, x1: ROOM_W / 2, z0: -ROOM_D / 2, z1: ROOM_D / 2 };
+const DRAW_DESK = [DRAW.cx, -6.6, 0];
 const MEETING = { x0: 5, x1: 11.5, z0: 3.5, z1: 10.5, doorOut: new THREE.Vector3(3.8, 0, 9.3), doorIn: new THREE.Vector3(6.2, 0, 9.3) };
 
 function mat(color, opts = {}) { return new THREE.MeshStandardMaterial({ color, roughness: 0.8, metalness: 0.05, ...opts }); }
@@ -139,6 +145,9 @@ export class Office {
     this.logoWhiteTex = tex('./assets/atomax-logo-white.png');
     this.#initRenderer();
     this.#buildShell();
+    this.#buildDrawingRoom();
+    this.#initPicking();
+    this.room = 'media'; this.clickRoots = [];
     this.ready = this.#loadModels().then(() => this.#furnish()).catch(e => console.error('furniture failed', e));
     this.#animate();
     window.addEventListener('resize', () => this.#resize());
@@ -172,12 +181,14 @@ export class Office {
 
     this.scene.add(new THREE.HemisphereLight(0xe8eeff, 0x202633, 0.6));
     const sun = new THREE.DirectionalLight(0xfff1dc, 2.0);
-    sun.position.set(-16, 24, 12); sun.castShadow = true;
+    sun.position.set(-25, 24, 12); sun.castShadow = true;
     sun.shadow.mapSize.set(2048, 2048);
-    const sc = sun.shadow.camera; sc.left = -26; sc.right = 26; sc.top = 26; sc.bottom = -26; sc.near = 1; sc.far = 80;
+    sun.target.position.set(-9, 0, 0); this.scene.add(sun.target);
+    const sc = sun.shadow.camera; sc.left = -34; sc.right = 34; sc.top = 34; sc.bottom = -34; sc.near = 1; sc.far = 90;
     sun.shadow.bias = -0.0003; sun.shadow.normalBias = 0.04; sun.shadow.radius = 3;
     this.scene.add(sun);
     const fill = new THREE.PointLight(0xa8ffb0, 10, 40, 1.5); fill.position.set(6, 5, 4); this.scene.add(fill);
+    const drawLight = new THREE.PointLight(0xffe9c4, 9, 34, 1.6); drawLight.position.set(DRAW.cx, 5.2, -3); this.scene.add(drawLight);
     const sky = new THREE.DirectionalLight(0xcfe3ff, 0.8); sky.position.set(-20, 8, -4); this.scene.add(sky);
     this.#resize();
   }
@@ -211,10 +222,24 @@ export class Office {
     const B = this.backWall, L = this.leftWall;
     B.add(box(W, WALL_H, 0.3, mat(NAVY, { roughness: 0.9 }), 0, WALL_H / 2, -D / 2 - 0.15));
     B.add(box(W, 0.14, 0.05, mat(GREEN, { emissive: GREEN, emissiveIntensity: 0.5 }), 0, 5.3, -D / 2 + 0.05, false));
-    L.add(box(0.3, WALL_H, D, mat(0xeef0f3, { roughness: 0.95 }), -W / 2 - 0.15, WALL_H / 2, 0));
+    const wallM = mat(0xeef0f3, { roughness: 0.95 });
+    L.add(box(0.3, WALL_H, DOOR.z0 + D / 2, wallM, -W / 2 - 0.15, WALL_H / 2, (-D / 2 + DOOR.z0) / 2));   // wall up to the door
+    L.add(box(0.3, WALL_H, D / 2 - DOOR.z1, wallM, -W / 2 - 0.15, WALL_H / 2, (DOOR.z1 + D / 2) / 2));    // wall after the door
+    L.add(box(0.3, WALL_H - 3.2, DOOR.z1 - DOOR.z0, wallM, -W / 2 - 0.15, 3.2 + (WALL_H - 3.2) / 2, (DOOR.z0 + DOOR.z1) / 2)); // above the door
+    [DOOR.z0, DOOR.z1].forEach(z => L.add(box(0.36, 3.25, 0.12, mat(NAVY2), -W / 2 - 0.15, 1.62, z)));      // door frame
+    L.add(box(0.36, 0.12, DOOR.z1 - DOOR.z0 + 0.12, mat(NAVY2), -W / 2 - 0.15, 3.25, (DOOR.z0 + DOOR.z1) / 2));
+    L.add(box(0.4, 0.03, DOOR.z1 - DOOR.z0, mat(GREEN, { emissive: GREEN, emissiveIntensity: 0.35 }), -W / 2 - 0.15, 0.03, (DOOR.z0 + DOOR.z1) / 2, false)); // threshold
+    // plaque over the door on the media-office side: click it to go next door
+    const plaque = new THREE.Group();
+    plaque.add(box(0.08, 0.62, 3.0, mat(NAVY2), 0, 0, 0));
+    plaque.add(box(0.09, 0.05, 3.0, mat(GREEN, { emissive: GREEN, emissiveIntensity: 0.5 }), 0, -0.3, 0, false));
+    const plText = this.#textPlane('DRAWING ROOM  ›', 2.8, 0.42, { color: '#ffffff', size: 62, weight: '700', spacing: 4 }); plText.rotation.y = Math.PI / 2; plText.position.set(0.05, 0.02, 0); plaque.add(plText);
+    plaque.position.set(-W / 2 + 0.04, 3.9, (DOOR.z0 + DOOR.z1) / 2); L.add(plaque);
+    this.doorPlaque = plaque;
     L.add(box(0.05, 0.14, D, mat(GREEN, { emissive: GREEN, emissiveIntensity: 0.5 }), -W / 2 + 0.05, 5.3, 0, false));
     const glass = new THREE.MeshPhysicalMaterial({ color: 0xcfe8ff, transmission: 0.75, opacity: 0.45, transparent: true, roughness: 0.03, metalness: 0, ior: 1.45, thickness: 0.05, depthWrite: false });
     for (let i = 0; i < 4; i++) {
+      if (i === 1) continue;   // this window is where the door to the drawing room is
       const z = -7.5 + i * 4.6;
       L.add(box(0.1, 3.2, 3.0, glass, -W / 2 + 0.1, 3.2, z, false));
       L.add(box(0.2, 3.4, 0.15, mat(NAVY2), -W / 2 + 0.1, 3.2, z - 1.55));
@@ -229,7 +254,7 @@ export class Office {
     sx.fillStyle = 'rgba(120,140,170,0.35)'; for (let i = 0; i < 40; i++) { const bw = 20 + Math.random() * 50, bh = 60 + Math.random() * 180; sx.fillRect(i * 26, 512 - bh, bw, bh); }
     sx.fillStyle = 'rgba(90,110,140,0.5)'; for (let i = 0; i < 30; i++) { const bw = 25 + Math.random() * 40, bh = 30 + Math.random() * 110; sx.fillRect(10 + i * 34, 512 - bh, bw, bh); }
     const skyTex = new THREE.CanvasTexture(skyC); skyTex.colorSpace = THREE.SRGBColorSpace;
-    const sky = new THREE.Mesh(new THREE.PlaneGeometry(D - 0.6, WALL_H - 1.2), new THREE.MeshBasicMaterial({ map: skyTex, depthWrite: false })); sky.rotation.y = Math.PI / 2; sky.position.set(-W / 2 - 0.6, WALL_H / 2 - 0.5, 0); sky.renderOrder = -1; L.add(sky);
+    const sky = new THREE.Mesh(new THREE.PlaneGeometry(D - 0.6, WALL_H - 1.2), new THREE.MeshBasicMaterial({ map: skyTex, depthWrite: false })); sky.rotation.y = Math.PI / 2; sky.position.set(-W / 2 - 0.6, WALL_H / 2 - 0.5, 0); sky.renderOrder = -1; /* sky plane not added: the drawing room is on the other side of this wall now */
     const sunLight = new THREE.SpotLight(0xfff4e0, 40, 40, Math.PI / 5, 0.6, 1.2); sunLight.castShadow = false; sunLight.position.set(-W / 2 - 4, 7, -2); sunLight.target.position.set(-2, 0, 0); s.add(sunLight); s.add(sunLight.target);
 
     // ceiling structure on the open sides: slim beams so the room reads as a space, not a tray
@@ -370,7 +395,7 @@ export class Office {
     this.pois.push({ x: -8.8, z: 5.6, face: 0 });
     // bench under the windows + plants in corners
     // tall plants along the window wall
-    [[-W / 2 + 1.1, -3.2], [-W / 2 + 1.1, 1.0]].forEach(([x, z]) => { const p = this.#put('cactus', { pos: [x, 0, z], scale: K * 1.3 }); if (p) this.obstacles.push({ x, z, r: 1 }); });
+    [[-W / 2 + 1.1, -5.4], [-W / 2 + 1.1, 1.5]].forEach(([x, z]) => { const p = this.#put('cactus', { pos: [x, 0, z], scale: K * 1.3 }); if (p) this.obstacles.push({ x, z, r: 1 }); });
     this.#put('cactus', { pos: [-W / 2 + 1.2, 0, -D / 2 + 1.2], scale: K * 1.4 });
     this.#put('flowers', { pos: [W / 2 - 1.2, 0, D / 2 - 1.2], scale: K * 1.2 });
     this.#put('cactus', { pos: [M.x1 - 0.8, 0, M.z0 + 0.8], scale: K });
@@ -389,9 +414,10 @@ export class Office {
     // lounge pendant
     const lp = new THREE.PointLight(0xffe2b3, 6, 7, 2); lp.position.set(-8.8, WALL_H - 2.2, 8.4); s.add(lp);
     const lshade = new THREE.Mesh(new THREE.ConeGeometry(0.5, 0.45, 24, 1, true), mat(NAVY2, { side: THREE.DoubleSide })); lshade.position.set(-8.8, WALL_H - 2.1, 8.4); s.add(lshade); s.add(box(0.015, 2.1, 0.015, mat(NAVY2), -8.8, WALL_H - 1.05, 8.4, false));
+    this.#furnishDrawing();
     this.#buildNav();
     // if agents were requested before the models arrived, place them now
-    if (this.pendingAgents) { const l = this.pendingAgents; this.pendingAgents = null; this.setAgents(l); }
+    if (this.pendingAgents) { const l = this.pendingAgents; this.pendingAgents = null; this.setAgents(l.list, l.drawing); }
     this.setBoard(this.boardLines);
   }
 
@@ -462,8 +488,9 @@ export class Office {
   }
 
   // ---------- public API ----------
-  setAgents(list) {
-    if (!this.models['desk-teacher']) { this.pendingAgents = list; return; }
+  setAgents(list, drawing = null) {
+    if (!this.models['desk-teacher']) { this.pendingAgents = { list, drawing }; return; }
+    (this.drawExtras || []).forEach(o => { this.scene.remove(o); if (o.element) o.element.remove(); }); this.drawExtras = [];
     for (const a of this.agents.values()) { this.scene.remove(a.group); this.scene.remove(a.desk); this.scene.remove(a.chair); a.label.element.remove(); }
     this.agents.clear();
     this.obstacles = this.obstacles.filter(o => !o.desk);
@@ -508,6 +535,7 @@ export class Office {
         const inner = new THREE.Mesh(new THREE.PlaneGeometry(3.9, 5.3), mat(0x273047, { roughness: 1, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 })); inner.rotation.x = -Math.PI / 2; inner.position.set(dx, 0.035, dz - 1.4); inner.receiveShadow = true; this.scene.add(inner); this.spareDesks.push(inner);
       }
     }
+    if (drawing) this.#addDrawingAgent(drawing, a_rugs);
     this.#buildNav();
     for (const a of this.agents.values()) a.path = null;
     this.setBoard(this.boardLines);
@@ -532,7 +560,7 @@ export class Office {
     ctx.fillStyle = '#40bd00'; ctx.fillRect(0, 0, c.width, 8);
     ctx.fillStyle = '#ffffff'; ctx.font = 'bold 34px Segoe UI, sans-serif'; ctx.textAlign = 'left'; ctx.fillText('PROJECT STATUS', 36, 64);
     ctx.font = '22px Segoe UI, sans-serif'; ctx.fillStyle = '#8e97ab'; ctx.fillText('Atomax-UK · Media Office', 36, 98);
-    const rows = lines.length ? lines : [...this.agents.values()].map(a => ({ colour: a.data.colour, text: `${a.data.name} · ${a.data.platform}`, status: 'Ready' }));
+    const rows = lines.length ? lines : [...this.agents.values()].filter(a => a.zone !== 'drawing').map(a => ({ colour: a.data.colour, text: `${a.data.name} · ${a.data.platform}`, status: 'Ready' }));
     rows.slice(0, 7).forEach((r, i) => {
       const y = 150 + i * 42;
       ctx.fillStyle = r.colour || '#40bd00'; ctx.beginPath(); ctx.arc(52, y - 8, 9, 0, Math.PI * 2); ctx.fill();
@@ -541,6 +569,182 @@ export class Office {
       ctx.textAlign = 'right'; ctx.fillText(r.status || '', c.width - 40, y);
     });
     this.boardTex.needsUpdate = true;
+  }
+
+  // ---------- drawing room (next door) ----------
+  #buildDrawingRoom() {
+    const s = this.scene, DW = DRAW.w, DD = DRAW.d;
+    // oak plank floor
+    const fc = document.createElement('canvas'); fc.width = 1024; fc.height = Math.round(1024 * DD / DW);
+    const fx = fc.getContext('2d'); fx.fillStyle = '#c9a77a'; fx.fillRect(0, 0, fc.width, fc.height);
+    const pw = fc.width / 24;
+    for (let i = 0; i < 24; i++) { fx.fillStyle = `hsl(${30 + Math.random() * 6},${38 + Math.random() * 8}%,${58 + Math.random() * 10}%)`; fx.fillRect(i * pw, 0, pw - 2, fc.height); for (let k = 0; k < 9; k++) { const y = Math.random() * fc.height; fx.fillStyle = 'rgba(80,50,20,0.18)'; fx.fillRect(i * pw, y, pw - 2, 2); } }
+    const ft = new THREE.CanvasTexture(fc); ft.colorSpace = THREE.SRGBColorSpace; ft.anisotropy = 8;
+    const floor = new THREE.Mesh(new THREE.PlaneGeometry(DW, DD), new THREE.MeshStandardMaterial({ map: ft, roughness: 0.55, metalness: 0.02 }));
+    floor.rotation.x = -Math.PI / 2; floor.position.set(DRAW.cx, 0.002, DRAW.cz); floor.receiveShadow = true; s.add(floor);
+    s.add(box(DW + 1, 0.6, DD + 1, mat(NAVY2), DRAW.cx, -0.32, DRAW.cz, false));
+    this.drawBackWall = new THREE.Group(); this.drawLeftWall = new THREE.Group(); s.add(this.drawBackWall); s.add(this.drawLeftWall);
+    const B = this.drawBackWall, L = this.drawLeftWall, GL = { emissive: GREEN, emissiveIntensity: 0.5 };
+    B.add(box(DW + 0.3, WALL_H, 0.3, mat(NAVY, { roughness: 0.9 }), DRAW.cx, WALL_H / 2, DRAW.z0 - 0.15));
+    B.add(box(DW, 0.14, 0.05, mat(GREEN, GL), DRAW.cx, 5.3, DRAW.z0 + 0.05, false));
+    L.add(box(0.3, WALL_H, DD, mat(0xeef0f3, { roughness: 0.95 }), DRAW.x0 - 0.15, WALL_H / 2, DRAW.cz));
+    L.add(box(0.05, 0.14, DD, mat(GREEN, GL), DRAW.x0 + 0.05, 5.3, DRAW.cz, false));
+    // sign + logo
+    const logo = new THREE.Mesh(new THREE.PlaneGeometry(6, 6 * LOGO_AR), new THREE.MeshBasicMaterial({ map: this.logoWhiteTex, transparent: true, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }));
+    logo.position.set(DRAW.cx + 4.2, 3.9, DRAW.z0 + 0.05); B.add(logo);
+    B.add(box(6.4, 0.05, 0.03, mat(GREEN, GL), DRAW.cx + 4.2, 2.95, DRAW.z0 + 0.06, false));
+    const tag = this.#textPlane('DRAWING ROOM', 6.4, 0.7, { color: '#8e97ab', size: 64, weight: '600', spacing: 10 }); tag.position.set(DRAW.cx + 4.2, 2.5, DRAW.z0 + 0.05); B.add(tag);
+    // pinboard with drawing sheets
+    B.add(box(5.6, 2.8, 0.08, mat(0x6b4f2f), DRAW.cx - 5.2, 3.3, DRAW.z0 + 0.1, false));
+    B.add(box(5.4, 2.6, 0.04, mat(0xc79b62, { roughness: 1 }), DRAW.cx - 5.2, 3.3, DRAW.z0 + 0.14, false));
+    [[-1.9, 0.5, 1.4, 1.0], [-0.3, 0.45, 1.5, 1.1], [1.4, 0.4, 1.4, 1.0], [-1.6, -0.75, 1.0, 0.9], [-0.1, -0.7, 1.3, 0.9], [1.5, -0.7, 1.1, 0.9]].forEach(([x, y, w, h], i) => {
+      B.add(box(w, h, 0.02, mat(i % 3 === 0 ? 0xdceaf7 : 0xfafafa), DRAW.cx - 5.2 + x, 3.3 + y, DRAW.z0 + 0.18, false));
+      for (let k = 0; k < 3; k++) B.add(box(w * 0.7 - k * 0.15, 0.025, 0.01, mat(i % 3 === 0 ? 0x3b6aa8 : 0x8e97ab), DRAW.cx - 5.2 + x, 3.3 + y + h * 0.25 - k * 0.2, DRAW.z0 + 0.195, false));
+      B.add(box(0.07, 0.07, 0.04, mat(0xd13b3b), DRAW.cx - 5.2 + x, 3.3 + y + h / 2 - 0.08, DRAW.z0 + 0.2, false));
+    });
+    // low beams on the open sides
+    // (front of the room stays open so the camera can see in)
+  }
+
+  #furnishDrawing() {
+    const s = this.scene, wood = mat(0xb98a55, { roughness: 0.6 }), dark = mat(NAVY2, { roughness: 0.5, metalness: 0.3 }), paper = mat(0xfafafa);
+    const add = (o) => { s.add(o); return o; }, obs = (x, z, r) => this.obstacles.push({ x, z, r }), poi = (x, z, face) => this.pois.push({ x, z, face, zone: 'drawing' });
+    // plan chest (flat-file drawers) on the left wall
+    const pc = new THREE.Group();
+    pc.add(box(1.3, 1.0, 3.2, mat(0xe8eaee, { roughness: 0.5 }), 0, 0.5, 0));
+    [0.17, 0.5, 0.83].forEach(y => { pc.add(box(0.03, 0.26, 2.9, dark, 0.66, y, 0, false)); pc.add(box(0.04, 0.05, 0.6, mat(GREEN), 0.69, y, 0, false)); });
+    pc.add(box(1.4, 0.05, 3.3, wood, 0, 1.025, 0));
+    [[-0.3, 0.2, 0.9, 0.5], [0.1, -0.7, 0.7, 0.6]].forEach(([x, z, w, d]) => pc.add(box(w, 0.02, d, paper, x, 1.06, z, false)));
+    pc.position.set(DRAW.x0 + 0.85, 0, -3.6); add(pc); obs(DRAW.x0 + 1, -3.6, 2.0); poi(DRAW.x0 + 2.8, -3.6, -Math.PI / 2);
+    // drafting table with a tilted board and a stool
+    const dt = new THREE.Group();
+    [[-0.9, -0.5], [0.9, -0.5], [-0.9, 0.5], [0.9, 0.5]].forEach(([x, z]) => dt.add(box(0.07, 1.05, 0.07, dark, x, 0.52, z)));
+    const board = box(2.2, 0.06, 1.5, mat(0xf2f4f7, { roughness: 0.4 }), 0, 1.15, 0); board.rotation.x = 0.28; dt.add(board);
+    const sheet = box(1.8, 0.015, 1.15, mat(0xdceaf7), 0, 1.2, 0.0, false); sheet.rotation.x = 0.28; dt.add(sheet);
+    for (let k = 0; k < 5; k++) { const l = box(1.4 - k * 0.18, 0.012, 0.03, mat(0x3b6aa8), -0.1, 1.215 - 0.0, -0.4 + k * 0.17, false); l.rotation.x = 0.28; l.position.y = 1.2 + (-0.4 + k * 0.17) * -0.0 + 0.02 + (-0.4 + k * 0.17) * 0.28; dt.add(l); }
+    dt.add(box(2.0, 0.05, 0.1, dark, 0, 1.0, 0.75, false));
+    dt.position.set(DRAW.x0 + 5.0, 0, -1.2); dt.rotation.y = Math.PI / 2 + 0.15; add(dt); obs(DRAW.x0 + 5.0, -1.2, 1.6); poi(DRAW.x0 + 7, -1.2, -Math.PI / 2);
+    const stool = new THREE.Group(); stool.add(new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.28, 0.08, 16), mat(GREEN))); stool.children[0].position.y = 0.78; stool.children[0].castShadow = true;
+    [0, 1, 2].forEach(i => { const a = i * 2.094; const leg = box(0.05, 0.78, 0.05, dark, Math.sin(a) * 0.2, 0.39, Math.cos(a) * 0.2); stool.add(leg); });
+    stool.position.set(DRAW.x0 + 6.4, 0, -1.9); add(stool); obs(DRAW.x0 + 6.4, -1.9, 0.5);
+    // tube rack on the back wall
+    const tr = new THREE.Group(); tr.add(box(3.0, 0.1, 0.5, dark, 0, 0.05, 0)); tr.add(box(3.0, 0.1, 0.5, dark, 0, 1.1, 0)); [-1.45, 1.45].forEach(x => tr.add(box(0.1, 1.15, 0.5, dark, x, 0.57, 0)));
+    for (let i = 0; i < 9; i++) { const t = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 1.0, 14), mat(i % 3 === 0 ? 0xd9c39a : (i % 3 === 1 ? 0xeee6d0 : 0xc9d6e6))); t.position.set(-1.2 + (i % 5) * 0.58 + (i > 4 ? 0.29 : 0), 0.6, (i > 4 ? 0.1 : -0.1)); t.castShadow = true; tr.add(t); }
+    tr.position.set(DRAW.x0 + 6.2, 0, DRAW.z0 + 0.45); add(tr); obs(DRAW.x0 + 6.2, DRAW.z0 + 0.9, 1.8); poi(DRAW.x0 + 6.2, DRAW.z0 + 2.3, Math.PI);
+    // large-format plotter on a stand
+    const pl = new THREE.Group();
+    pl.add(box(1.9, 0.5, 0.8, mat(0xf2f4f7, { roughness: 0.4 }), 0, 1.0, 0)); pl.add(box(1.9, 0.08, 0.82, mat(GREEN), 0, 1.28, 0, false)); pl.add(box(1.5, 0.1, 0.35, mat(0x0b0e16), 0, 0.92, 0.38, false));
+    pl.add(box(1.5, 0.012, 0.5, paper, 0, 0.7, 0.55, false)); pl.add(box(1.5, 0.35, 0.02, paper, 0, 0.56, 0.62, false));
+    [[-0.8, -0.3], [0.8, -0.3], [-0.8, 0.3], [0.8, 0.3]].forEach(([x, z]) => pl.add(box(0.06, 0.78, 0.06, dark, x, 0.39, z)));
+    pl.position.set(DRAW.x1 - 3.2, 0, DRAW.z0 + 0.9); add(pl); obs(DRAW.x1 - 3.2, DRAW.z0 + 1.2, 1.6); poi(DRAW.x1 - 3.2, DRAW.z0 + 3, Math.PI);
+    // cable drums by the left wall
+    [[DRAW.x0 + 1.1, -9.0, 0xc47b2b], [DRAW.x0 + 1.2, -7.2, 0x1c7ed6]].forEach(([x, z, c]) => {
+      const d = new THREE.Group(); [-0.3, 0.3].forEach(o => { const f = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.6, 0.06, 24), wood); f.rotation.z = Math.PI / 2; f.position.x = o; f.castShadow = true; d.add(f); });
+      const core = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 0.54, 24), mat(c, { roughness: 0.6 })); core.rotation.z = Math.PI / 2; core.castShadow = true; d.add(core);
+      d.rotation.y = Math.PI / 2; d.position.set(x, 0.6, z); add(d); obs(x, z, 0.9);
+    });
+    // bookcases, plants
+    this.#put('bookcase', { pos: [DRAW.x0 + 0.5, 0, 1.6], rot: Math.PI / 2, scale: K, colours: { 'Wood': NAVY2, 'DarkWood': GREEN } });
+    this.#put('bookcase', { pos: [DRAW.x0 + 0.5, 0, 3.8], rot: Math.PI / 2, scale: K, colours: { 'Wood': NAVY2, 'DarkWood': GREEN } });
+    obs(DRAW.x0 + 0.8, 2.7, 2.2); poi(DRAW.x0 + 2.4, 2.7, -Math.PI / 2);
+    [[DRAW.x1 - 1.0, 3.9], [DRAW.x0 + 1.2, DRAW.z0 + 1.2]].forEach(([x, z], i) => { const p = this.#put(i ? 'flowers' : 'cactus', { pos: [x, 0, z], scale: K * 1.3 }); if (p) obs(x, z, 0.9); });
+    // a small meeting spot for Cal's reviews
+    const t = this.#put('table', { pos: [DRAW.cx + 4.5, 0, 1.8], scale: K * 1.3, colours: { wood: WHITE } }); if (t) obs(DRAW.cx + 4.5, 1.8, 1.6);
+    poi(DRAW.cx + 4.5, 3.6, Math.PI);
+  }
+
+  #addDrawingAgent(data, rugs) {
+    const colour = new THREE.Color(data.colour || '#ffd43b'), [dx, dz, facing] = DRAW_DESK;
+    const desk = this.#desk(colour); desk.position.set(dx, 0, dz); desk.rotation.y = facing; this.scene.add(desk);
+    const rug = new THREE.Mesh(new THREE.PlaneGeometry(4.2, 4.2), mat(NAVY2, { roughness: 1, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 })); rug.rotation.x = -Math.PI / 2; rug.position.set(dx, 0.02, dz + 0.5); rug.receiveShadow = true; this.scene.add(rug); rugs.push(rug);
+    const inner = new THREE.Mesh(new THREE.PlaneGeometry(3.9, 3.9), mat(0x273047, { roughness: 1, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 })); inner.rotation.x = -Math.PI / 2; inner.position.set(dx, 0.035, dz + 0.5); inner.receiveShadow = true; this.scene.add(inner); rugs.push(inner);
+    desk.updateMatrixWorld(true);
+    const front = new THREE.Vector3(0, 0, 1).applyQuaternion(desk.quaternion);
+    const chair = this.#officeChair(colour); chair.position.set(dx, 0, dz).addScaledVector(front, 1.15); chair.rotation.y = Math.atan2(-front.x, -front.z); this.scene.add(chair);
+    const seat = new THREE.Vector3(dx, 0, dz).addScaledVector(front, 1.05), faceSeat = Math.atan2(-front.x, -front.z);
+    this.obstacles.push({ rect: true, x0: dx - 1.45, x1: dx + 1.45, z0: dz - 0.75, z1: dz + 0.75, desk: true });
+    const group = buildCharacter(data.colour, data.role === 'drawing' ? 'reviewer' : data.role, data.gear);
+    group.position.copy(this.#randomIdlePoint('drawing')); this.scene.add(group);
+    const el = document.createElement('div'); el.className = 'lbl';
+    el.innerHTML = `<b>${data.name}</b> · ${data.platform} <span class="st"></span>`;
+    const label = new CSS2DObject(el); label.position.set(0, 2.6, 0); group.add(label);
+    this.agents.set(data.id, { data, group, desk, chair, seat, faceSeat, zone: 'drawing', state: 'idle', label, el, walkTarget: null, waypoint: null, faceTo: null, wait: Math.random() * 3, t: Math.random() * 10, blink: 2 + Math.random() * 3 });
+    this.drawingId = data.id; this.drawingDesk = desk;
+    // little chip over the desk: tells you it can be clicked
+    const chip = document.createElement('div'); chip.className = 'lbl hint'; chip.textContent = 'Click to hand Cal a drawing check';
+    const co = new CSS2DObject(chip); co.position.set(dx, 4.3, dz); this.scene.add(co); this.drawExtras.push(co); this.deskHint = co; co.visible = this.room === 'drawing';
+    this.clickRoots = [desk, group, chair];
+  }
+
+  // ---------- room switching, picking, hand-over ----------
+  focus(where, ms = 1100) {
+    const [dx, dz] = DRAW_DESK;
+    const spots = {
+      media: { p: [26, 19, 32], t: [1, 0.5, 0.5] },
+      drawing: { p: [DRAW.cx + 9, 15, 24], t: [DRAW.cx + 1.5, 0.5, -3] },
+      desk: { p: [dx + 8.0, 4.8, dz + 8.0], t: [dx + 2.8, 1.0, dz + 0.6] }
+    };
+    const sp = spots[where]; if (!sp) return;
+    this.room = where;
+    this.tween = { t0: performance.now(), ms, p0: this.camera.position.clone(), tg0: this.controls.target.clone(), p1: new THREE.Vector3(...sp.p), tg1: new THREE.Vector3(...sp.t) };
+    this.controls.enabled = false;
+    if (this.deskHint) this.deskHint.visible = where === 'drawing';
+    this.canvas.style.cursor = '';
+  }
+
+  #initPicking() {
+    this.ray = new THREE.Raycaster(); this.down = null;
+    const ndc = (e) => { const r = this.canvas.getBoundingClientRect(); return new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1); };
+    const visibleChain = (o) => { for (let n = o; n; n = n.parent) if (!n.visible) return false; return true; };
+    const what = (e) => {
+      this.ray.setFromCamera(ndc(e), this.camera);
+      if (this.room === 'media' && this.doorPlaque && visibleChain(this.doorPlaque) && this.ray.intersectObject(this.doorPlaque, true).length) return 'door';
+      if (this.room === 'drawing' && this.clickRoots.length && this.ray.intersectObjects(this.clickRoots, true).some(h => visibleChain(h.object))) return 'desk';
+      return null;
+    };
+    this.canvas.addEventListener('pointerdown', (e) => { this.down = { x: e.clientX, y: e.clientY, t: performance.now() }; });
+    this.canvas.addEventListener('pointerup', (e) => {
+      const d = this.down; this.down = null; if (!d || this.tween) return;
+      if (Math.hypot(e.clientX - d.x, e.clientY - d.y) > 5 || performance.now() - d.t > 500) return;
+      const w = what(e); if (w && this.onPick) this.onPick(w);
+    });
+    let last = 0;
+    this.canvas.addEventListener('pointermove', (e) => {
+      const n = performance.now(); if (n - last < 60 || e.buttons) return; last = n;
+      this.canvas.style.cursor = this.tween ? '' : (what(e) ? 'pointer' : '');
+    });
+  }
+
+  // animate the cable schedule (a folder) and the drawings (paper tubes) flying onto Cal's desk
+  handOver({ hasSchedule = true, drawings = 1 } = {}) {
+    this.clearJob(); if (!this.drawingDesk) return;
+    const [dx, dz] = DRAW_DESK, TH = 1.05; this.jobItems = [];
+    const from = new THREE.Vector3(dx + 5, 3.4, dz + 6);
+    const make = (mesh, to, delay) => { mesh.position.copy(from); this.scene.add(mesh); this.jobItems.push(mesh); this.props = this.props || []; this.props.push({ mesh, from: from.clone(), to, t: -delay, dur: 1.0 }); };
+    if (hasSchedule) {
+      const f = new THREE.Group(); f.add(box(0.5, 0.04, 0.38, mat(0x1c7ed6, { roughness: 0.5 }), 0, 0, 0, false)); f.add(box(0.46, 0.02, 0.34, mat(0xffffff), 0.01, 0.025, 0, false)); f.add(box(0.12, 0.045, 0.1, mat(GREEN), -0.15, 0.05, 0, false));
+      make(f, new THREE.Vector3(dx - 0.8, TH + 0.12, dz - 0.2), 0);
+    }
+    const n = Math.min(drawings, 6);
+    for (let i = 0; i < n; i++) {
+      const t = new THREE.Group(); const body = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.055, 0.6, 12), mat(i % 2 ? 0xeee6d0 : 0xd9c39a)); body.castShadow = true; t.add(body);
+      [-0.3, 0.3].forEach(y => { const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.058, 0.058, 0.02, 12), mat(NAVY2)); cap.position.y = y; t.add(cap); });
+      t.rotation.x = Math.PI / 2;
+      const wrap = new THREE.Group(); wrap.add(t);
+      make(wrap, new THREE.Vector3(dx + 0.55 + (i % 3) * 0.14, TH + 0.1 + Math.floor(i / 3) * 0.11, dz + 0.2), 0.25 + i * 0.18);
+    }
+  }
+  clearJob() { (this.jobItems || []).forEach(m => this.scene.remove(m)); this.jobItems = []; this.props = []; }
+  #stepProps(dt) {
+    if (!this.props || !this.props.length) return;
+    for (const p of this.props) {
+      p.t += dt; if (p.t < 0) { p.mesh.visible = false; continue; } p.mesh.visible = true;
+      const k = Math.min(1, p.t / p.dur), e = k * k * (3 - 2 * k);
+      p.mesh.position.lerpVectors(p.from, p.to, e); p.mesh.position.y += Math.sin(k * Math.PI) * 1.2;
+      p.mesh.rotation.y = (1 - e) * 5;
+    }
+    this.props = this.props.filter(p => p.t < p.dur);
+    if (!this.props.length) this.props = [];
   }
 
   // ---------- animation ----------
@@ -552,11 +756,20 @@ export class Office {
 
   step(dt) {
     for (const a of this.agents.values()) this.#stepAgent(a, dt);
+    let tweenK = 1;
+    if (this.tween) {
+      const tw = this.tween; tweenK = Math.min(1, (performance.now() - tw.t0) / tw.ms); const e = tweenK * tweenK * (3 - 2 * tweenK);
+      this.camera.position.lerpVectors(tw.p0, tw.p1, e); this.controls.target.lerpVectors(tw.tg0, tw.tg1, e);
+      if (tweenK >= 1) { this.tween = null; this.controls.enabled = true; }
+    }
     this.controls.update();
+    this.#stepProps(dt);
     // hide walls the camera is behind, so you never look at the back of one
     const c = this.camera.position;
     if (this.backWall) this.backWall.visible = c.z > -ROOM_D / 2 + 1;
-    if (this.leftWall) this.leftWall.visible = c.x > -ROOM_W / 2 + 1;
+    if (this.leftWall) this.leftWall.visible = c.x > -ROOM_W / 2 + 1 && !(this.room !== 'media' && (!this.tween || tweenK > 0.3));
+    if (this.drawBackWall) this.drawBackWall.visible = c.z > DRAW.z0 + 1;
+    if (this.drawLeftWall) this.drawLeftWall.visible = c.x > DRAW.x0 + 1;
     this.renderer.render(this.scene, this.camera);
     this.labelRenderer.render(this.scene, this.camera);
   }
@@ -567,11 +780,14 @@ export class Office {
   // ---- nav grid ----
   #buildNav() {
     const CELL = 0.5; this.navCell = CELL;
-    const cols = Math.ceil(ROOM_W / CELL), rows = Math.ceil(ROOM_D / CELL);
+    const cols = Math.ceil((NAV.x1 - NAV.x0) / CELL), rows = Math.ceil((NAV.z1 - NAV.z0) / CELL);
     const grid = new Uint8Array(cols * rows); // 1 = walkable
     const M = MEETING;
     const blocked = (x, z) => {
-      if (x < -ROOM_W / 2 + 0.7 || x > ROOM_W / 2 - 0.7 || z < -ROOM_D / 2 + 1.0 || z > ROOM_D / 2 - 0.7) return true;
+      const inMedia = x >= -ROOM_W / 2 + 0.7 && x <= ROOM_W / 2 - 0.7 && z >= -ROOM_D / 2 + 1.0 && z <= ROOM_D / 2 - 0.7;
+      const inDraw = x >= DRAW.x0 + 0.7 && x <= DRAW.x1 - 0.7 && z >= DRAW.z0 + 1.0 && z <= DRAW.z1 - 0.7;
+      const inDoor = x >= DRAW.x1 - 0.75 && x <= -ROOM_W / 2 + 0.8 && z >= DOOR.z0 + 0.25 && z <= DOOR.z1 - 0.25;
+      if (!inMedia && !inDraw && !inDoor) return true;
       for (const o of this.obstacles) {
         if (o.rect) { if (x > o.x0 && x < o.x1 && z > o.z0 && z < o.z1) return true; }
         else if (Math.hypot(o.x - x, o.z - z) < o.r) return true;
@@ -582,13 +798,13 @@ export class Office {
       return false;
     };
     for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
-      const x = -ROOM_W / 2 + (c + 0.5) * CELL, z = -ROOM_D / 2 + (r + 0.5) * CELL;
+      const x = NAV.x0 + (c + 0.5) * CELL, z = NAV.z0 + (r + 0.5) * CELL;
       grid[r * cols + c] = blocked(x, z) ? 0 : 1;
     }
     this.nav = { grid, cols, rows };
   }
-  #cellOf(x, z) { const c = Math.floor((x + ROOM_W / 2) / this.navCell), r = Math.floor((z + ROOM_D / 2) / this.navCell); return [THREE.MathUtils.clamp(c, 0, this.nav.cols - 1), THREE.MathUtils.clamp(r, 0, this.nav.rows - 1)]; }
-  #posOf(c, r) { return new THREE.Vector3(-ROOM_W / 2 + (c + 0.5) * this.navCell, 0, -ROOM_D / 2 + (r + 0.5) * this.navCell); }
+  #cellOf(x, z) { const c = Math.floor((x - NAV.x0) / this.navCell), r = Math.floor((z - NAV.z0) / this.navCell); return [THREE.MathUtils.clamp(c, 0, this.nav.cols - 1), THREE.MathUtils.clamp(r, 0, this.nav.rows - 1)]; }
+  #posOf(c, r) { return new THREE.Vector3(NAV.x0 + (c + 0.5) * this.navCell, 0, NAV.z0 + (r + 0.5) * this.navCell); }
   __walk(x, z) { return this.#walkable(x, z); }
   #walkable(x, z) { if (!this.nav) return true; const [c, r] = this.#cellOf(x, z); return this.nav.grid[r * this.nav.cols + c] === 1; }
   #nearestWalkable(x, z) {
@@ -638,7 +854,14 @@ export class Office {
   }
   #lineClear(a, b) { const n = Math.ceil(a.distanceTo(b) / (this.navCell * 0.5)) + 1; for (let i = 0; i <= n; i++) { const t = i / n; if (!this.#walkable(a.x + (b.x - a.x) * t, a.z + (b.z - a.z) * t)) return false; } return true; }
 
-  #randomIdlePoint() {
+  #randomIdlePoint(zone = 'media') {
+    if (zone === 'drawing') {
+      for (let i = 0; i < 80; i++) {
+        const x = DRAW.x0 + 1.5 + Math.random() * (DRAW.w - 3), z = DRAW.z0 + 2.5 + Math.random() * (DRAW.d - 4);
+        if (this.#walkable(x, z)) return new THREE.Vector3(x, 0, z);
+      }
+      return this.#nearestWalkable(DRAW.cx, -1);
+    }
     for (let i = 0; i < 80; i++) {
       const x = -ROOM_W / 2 + 1.5 + Math.random() * (ROOM_W - 3);
       const z = -ROOM_D / 2 + 2.5 + Math.random() * (ROOM_D - 4);
@@ -648,13 +871,14 @@ export class Office {
   }
 
   #pickWanderTarget(a) {
-    if (Math.random() < 0.45 && this.pois.length) {
-      const p = this.pois[Math.floor(Math.random() * this.pois.length)];
+    const zone = a.zone || 'media', pois = this.pois.filter(p => (p.zone || 'media') === zone);
+    if (Math.random() < 0.45 && pois.length) {
+      const p = pois[Math.floor(Math.random() * pois.length)];
       a.faceTo = p.face;
       return this.#nearestWalkable(p.x + (Math.random() - 0.5) * 0.6, p.z + (Math.random() - 0.5) * 0.6);
     }
     a.faceTo = null;
-    return this.#randomIdlePoint();
+    return this.#randomIdlePoint(zone);
   }
 
   // walk to target along an A* path over the nav grid (recomputed when the target changes or we get stuck)

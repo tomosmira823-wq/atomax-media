@@ -6,6 +6,9 @@ const { app, BrowserWindow, ipcMain, dialog, safeStorage, shell, protocol, net }
 const { pathToFileURL } = require('url');
 const { autoUpdater } = require('electron-updater');
 const social = require('./social');
+const checker = require('./checker');
+const markup = require('./markup');
+const { STANDARD_SKILL } = checker;
 const path = require('path');
 const fs = require('fs');
 
@@ -62,6 +65,11 @@ const DEFAULT_AGENTS = [
     id: 'checker', role: 'reviewer', platform: 'Checker', name: 'Charlie', colour: '#f59f00', enabled: true,
     tone: 'Picky but fair. A senior marketing lead reviewing a junior\'s work: honest about weak posts, quick to say when one is good. Thinks about whether a real person would stop scrolling for it.',
     rules: 'Check: British spelling and grammar; the platform rules for that agent (length, hashtag count); nothing invented (client names, figures, dates, certifications); nothing confidential; tone matches the platform; the post actually answers the brief; the hook is strong; there is a clear point or call to action. Score 1-10. Below 6 is a fail.'
+  },
+  {
+    id: 'cal', role: 'drawing', platform: 'Drawing Checker', name: 'Cal', colour: '#ffd43b', enabled: true, gear: ['glasses', 'clipboard', 'lanyard'],
+    tone: 'Careful, plain-spoken and honest about what he could not read. Never guesses. Keeps findings short: drawing number, then what needs fixing.',
+    rules: STANDARD_SKILL
   },
   {
     id: 'x', platform: 'X / Twitter', name: 'Xander', colour: '#111111', enabled: false,
@@ -162,8 +170,8 @@ function createWindow() {
   if (process.env.AMO_SCREENSHOT) {
     win.webContents.on('console-message', (_e, level, msg, line, src) => console.error('[page]', level, msg, src + ':' + line));
     win.webContents.once('did-finish-load', () => setTimeout(async () => {
-      if (process.env.AMO_SCENARIO === 'run') {
-        const script = fs.readFileSync(path.join(__dirname, '..', 'test', 'scenario-run.js'), 'utf8');
+      if (process.env.AMO_SCENARIO === 'run' || process.env.AMO_SCENARIO === 'drawing') {
+        const script = fs.readFileSync(path.join(__dirname, '..', 'test', process.env.AMO_SCENARIO === 'drawing' ? 'scenario-drawing.js' : 'scenario-run.js'), 'utf8');
         await win.webContents.executeJavaScript(`window.__variant = ${JSON.stringify(process.env.AMO_VARIANT || '')}`);
         const out = await win.webContents.executeJavaScript(script);
         console.error('[scenario]', JSON.stringify(out));
@@ -197,6 +205,7 @@ function createWindow() {
         return { facing, stuckEvents: stuckLog, stuckWhere: stuckWhere.slice(0, 12), navCells: o.nav ? o.nav.grid.reduce((s,v)=>s+v,0) + '/' + o.nav.grid.length : null };
       })()`); console.error('[navtest]', JSON.stringify(out)); }
       else if (process.env.AMO_VIEW === 'closeup') await win.webContents.executeJavaScript(`(async()=>{ for (const id of window.__office.agents.keys()) window.__office.setState(id, 'working', 'writing'); window.__office.scene.traverse(o => { if (o.isPointLight || o.isSpotLight) o.intensity *= 0.3; }); window.__office.controls.target.set(-7.5, 1.0, -3.8); window.__office.controls.update(); window.__office.camera.position.set(-7.5, 7.5, 4.5); window.__office.camera.lookAt(-7.5, 1.0, -3.8); console.log('cam', JSON.stringify(window.__office.camera.position)); for (let i=0;i<${process.env.AMO_FRAMES || 30};i++) { window.__office.step(0.3); await new Promise(r=>setTimeout(r,0)); } })()`);
+      else if (/^(drawing|desk)(-job)?$/.test(process.env.AMO_VIEW || '')) await win.webContents.executeJavaScript(`(async()=>{ const v = ${JSON.stringify(process.env.AMO_VIEW)}; const wait = (ms) => new Promise(r => setTimeout(r, ms)); const o = window.__office; const run = async (ms) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { o.step(0.12); await wait(30); } }; document.querySelectorAll('.modal').forEach(m => m.classList.remove('open')); window.__goRoom(v.startsWith('desk') ? 'desk' : 'drawing'); await run(1800); if (v.endsWith('-job')) { o.handOver({ hasSchedule: true, drawings: 4 }); const cal = [...o.agents.values()].find(a => a.zone === 'drawing'); o.setState(cal.data.id, 'working', 'reading DRG-002'); await run(4500); } else await run(1500); })()`);
       else if (process.env.AMO_VIEW === 'behind') await win.webContents.executeJavaScript(`(async()=>{ window.__office.camera.position.set(-38, 14, 6); window.__office.controls.target.set(0, 1, 0); for (let i=0;i<${process.env.AMO_FRAMES || 8};i++) { window.__office.step(0.3); await new Promise(r=>setTimeout(r,0)); } })()`);
       else if (process.env.AMO_VIEW === 'collapsed') await win.webContents.executeJavaScript(`(async()=>{ document.querySelectorAll('.panel .collapse').forEach(b => b.click()); window.__office.camera.position.set(-6, 22, 40); window.__office.controls.target.set(1, 0.5, 0); for (let i=0;i<${process.env.AMO_FRAMES || 20};i++) { window.__office.step(0.3); await new Promise(r=>setTimeout(r,0)); } })()`);
       else if (process.env.AMO_VIEW === 'loadout') await win.webContents.executeJavaScript(`(async()=>{ document.querySelector('[data-tab=agents]').click(); await new Promise(r=>setTimeout(r,200)); document.querySelector('.tcard').click(); await new Promise(r=>setTimeout(r,200)); for (let i=0;i<${process.env.AMO_FRAMES || 20};i++) { window.__preview.t += 0.1; window.__preview.step(); await new Promise(r=>setTimeout(r,0)); } })()`);
@@ -276,13 +285,43 @@ ipcMain.handle('social:canPost', (_e, platform) => {
   if (key === 'instagram' && connected) { const p = (c.pages || []).find(x => x.id === c.pageId) || c.pages?.[0]; if (!p?.igId) return { ok: false, why: 'Facebook Page has no Instagram linked' }; }
   return { ok: connected, why: connected ? '' : 'not connected (Settings → Connections)', key };
 });
-ipcMain.handle('agents:get', () => readJson(AGENTS_FILE(), DEFAULT_AGENTS));
+// older saved teams predate the drawing checker: add Cal (once) so the drawing room has someone at the desk
+function withDrawingAgent(list) {
+  if (list.some(a => a.role === 'drawing')) return list;
+  const cal = DEFAULT_AGENTS.find(a => a.role === 'drawing');
+  return [...list, { ...cal }];
+}
+ipcMain.handle('agents:get', () => withDrawingAgent(readJson(AGENTS_FILE(), DEFAULT_AGENTS)));
 ipcMain.handle('agents:set', (_e, a) => { writeJson(AGENTS_FILE(), a); return true; });
 ipcMain.handle('agents:reset', () => { writeJson(AGENTS_FILE(), DEFAULT_AGENTS); return DEFAULT_AGENTS; });
 ipcMain.handle('posts:get', () => readJson(POSTS_FILE(), []));
 ipcMain.handle('posts:set', (_e, p) => { writeJson(POSTS_FILE(), p); return true; });
 ipcMain.handle('paths:get', () => ({ userData: USER_DIR() }));
 ipcMain.handle('shell:open', (_e, url) => shell.openExternal(url));
+ipcMain.handle('shell:showItem', (_e, p) => { try { shell.showItemInFolder(p); return true; } catch { return false; } });
+
+// ---------- the drawing room: cable schedule vs drawings ----------
+let checkRunning = false;
+ipcMain.handle('check:run', async (_e, { agent, schedule, drawings, note }) => {
+  if (checkRunning) throw new Error('A check is already running. Wait for Cal to finish.');
+  checkRunning = true;
+  try {
+    const progress = (p) => { try { win && win.webContents.send('check:progress', p); } catch {} };
+    const report = await checker.runCheck({
+      schedule, drawings, note: note || '',
+      skill: (agent && agent.rules && agent.rules.trim()) || STANDARD_SKILL,
+      claude: claudeFull, progress
+    });
+    // marked-up copies of the drawings that have findings; originals are never touched
+    progress({ message: 'marking up the drawings', stage: 'markup' });
+    try { report.markups = await markup.makeMarkups({ report, drawings, fallbackDir: path.join(USER_DIR(), 'drawing-checks') }); }
+    catch (e) { report.markups = { dir: '', made: [], failed: [{ name: '(all)', reason: String(e.message || e).slice(0, 160) }], untouched: 0 }; }
+    const mk = report.markups;
+    report.text += '\n\nMARKED-UP COPIES (originals untouched)\n' + (mk.made.length ? `  - Saved ${mk.made.length} file${mk.made.length === 1 ? '' : 's'} in ${mk.dir}\n` + mk.made.map(m => `  - ${path.basename(m.out)} (${m.notes} note${m.notes === 1 ? '' : 's'})`).join('\n') : '  - None made (nothing to mark on the drawings, or they could not be marked up).') + (mk.failed.length ? '\n' + mk.failed.map(f => `  - Could not mark up ${f.name}: ${f.reason}`).join('\n') : '') + `\n  - ${mk.untouched} file${mk.untouched === 1 ? ' has' : 's have'} nothing to mark.`;
+    return report;
+  } finally { checkRunning = false; }
+});
+ipcMain.handle('check:skill', () => STANDARD_SKILL);
 
 // ---------- files ----------
 ipcMain.handle('file:pickImages', async () => {
@@ -314,7 +353,7 @@ ipcMain.handle('file:saveText', async (_e, { text, name }) => {
 });
 
 // ---------- Claude (Anthropic) ----------
-async function claudeMessage({ system, messages, maxTokens = 4000 }) {
+async function claudeFull({ system, messages, maxTokens = 4000 }) {
   const s = loadSettings();
   if (!s.anthropicKey) throw new Error('No Claude API key. Add it in Settings.');
   const res = await fetch(ANTHROPIC + '/v1/messages', {
@@ -328,8 +367,9 @@ async function claudeMessage({ system, messages, maxTokens = 4000 }) {
   });
   const data = await res.json();
   if (!res.ok) throw new Error(`Claude ${res.status}: ${data?.error?.message || JSON.stringify(data)}`);
-  return (data.content || []).filter(c => c.type === 'text').map(c => c.text).join('\n');
+  return { text: (data.content || []).filter(c => c.type === 'text').map(c => c.text).join('\n'), stop: data.stop_reason };
 }
+async function claudeMessage(args) { return (await claudeFull(args)).text; }
 
 function extractJson(text) {
   const start = text.indexOf('{');

@@ -12,6 +12,15 @@ function readBody(req) { return new Promise(r => { const c = []; req.on('data', 
 function claudeReply(body) {
   const sys = body.system || '';
   const userText = JSON.stringify(body.messages || []);
+  // ---- Cal (drawing checker) ----
+  if (/map the columns/.test(sys)) return JSON.stringify({ sheets: [{ sheet: 'CSV', isSchedule: true, headerRow: 1, firstDataRow: 2, cols: { tag: 'A', from: 'B', to: 'C', type: 'D', drawing: 'E' } }] });
+  if (/reading ONE source document/.test(sys)) {
+    const name = (userText.match(/Document file name: ([^\\]+?)\\n/) || [])[1];
+    const note = /ENGINEER:/.test(sys) ? 'note-seen' : '';
+    return 'Here you go:\n' + JSON.stringify({ docType: 'loop', sheets: [{ page: 1, drawingNumber: 'DRG-001', title: note, status: 'live', cables: [{ tag: 'C_101', from: 'JB-1', to: 'PLC-RIO1', type: '2C 1.5mm SWA' }, { tag: 'C-102', from: 'JB-2', to: 'PLC/RIO1', type: 'Instrument 2PR' }, { tag: 'C-105', from: 'JB-5', to: 'PLC/RIO1', type: '' }], interfaceCables: [], typos: [] }] });
+  }
+  if (/judge possible mismatches/.test(sys)) { const items = JSON.parse(body.messages[0].content[0].text); return JSON.stringify({ verdicts: items.map(i => ({ id: i.id, real: !/1\.5mm/.test(i.drawing) && i.schedule !== i.drawing, confirm: false, reason: '' })) }); }
+  if (/left you a note/.test(sys)) return JSON.stringify({ answer: 'Mock answer to your note.', extra: [] });
   // reviewer?
   if (/a reviewer in the/.test(sys)) {
     const score = /LinkedIn/.test(sys) ? 6 : 8;

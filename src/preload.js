@@ -1,4 +1,4 @@
-const { contextBridge, ipcRenderer } = require('electron');
+const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
 const call = (ch) => (payload) => ipcRenderer.invoke(ch, payload);
 
@@ -14,9 +14,12 @@ contextBridge.exposeInMainWorld('office', {
     describeImage: call('ai:describeImage'),
     test: call('ai:test')
   },
+  check: { run: call('check:run'), skill: call('check:skill'), onProgress: (fn) => ipcRenderer.on('check:progress', (_e, p) => fn(p)) },
   image: { generate: call('image:generate'), edit: call('image:edit'), openaiModels: call('openai:imageModels') },
   social: { connect: call('social:connect'), disconnect: call('social:disconnect'), publish: call('social:publish'), canPost: call('social:canPost') },
   openExternal: call('shell:open'),
+  showItem: call('shell:showItem'),
+  pathForFile: (file) => { try { return webUtils.getPathForFile(file) || ''; } catch { return ''; } },
   update: { install: call('update:install'), check: call('update:check'), onStatus: (fn) => ipcRenderer.on('update:status', (_e, s) => fn(s)) },
   version: call('app:version'),
   companyFromWebsite: call('company:fromWebsite'),
