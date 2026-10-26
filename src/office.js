@@ -28,6 +28,7 @@ DRAW.x0 = DRAW.x1 - DRAW.w; DRAW.cx = (DRAW.x0 + DRAW.x1) / 2; DRAW.cz = (DRAW.z
 const DOOR = { z0: -2.4, z1: 0 };
 // The modeling room sits west of the drawing room (built in modelroom.js).
 const MODEL = modelingBounds(DRAW.x0, DRAW.z0, DRAW.z1);
+const DOOR2 = { z0: -1.5, z1: 0.5 };   // doorway in the wall between the drawing room and the modeling room
 const NAV = { x0: DRAW.x0, x1: ROOM_W / 2, z0: -ROOM_D / 2, z1: ROOM_D / 2 };
 const DRAW_DESK = [DRAW.cx, -6.6, 0];
 const DRAFT_TABLE = [DRAW.x0 + 5.0, -1.2], DRAFT_STOOL = [DRAW.x0 + 6.4, -1.9];
@@ -144,6 +145,7 @@ export class Office {
     this.clock = new THREE.Clock();
     this.boardLines = [];
     this.obstacles = [];
+    this.fp = null; this.onFirstPerson = null;
     this.pois = [];
     this.models = {};
     this.logoWhiteTex = tex('./assets/atomax-logo-white.png');
@@ -593,7 +595,13 @@ export class Office {
     const B = this.drawBackWall, L = this.drawLeftWall, GL = { emissive: GREEN, emissiveIntensity: 0.5 };
     B.add(box(DW + 0.3, WALL_H, 0.3, mat(NAVY, { roughness: 0.9 }), DRAW.cx, WALL_H / 2, DRAW.z0 - 0.15));
     B.add(box(DW, 0.14, 0.05, mat(GREEN, GL), DRAW.cx, 5.3, DRAW.z0 + 0.05, false));
-    L.add(box(0.3, WALL_H, DD, mat(0xeef0f3, { roughness: 0.95 }), DRAW.x0 - 0.15, WALL_H / 2, DRAW.cz));
+    const wallW = mat(0xeef0f3, { roughness: 0.95 }), wx = DRAW.x0 - 0.15;
+    L.add(box(0.3, WALL_H, DOOR2.z0 - DRAW.z0, wallW, wx, WALL_H / 2, (DRAW.z0 + DOOR2.z0) / 2));              // wall up to the doorway
+    L.add(box(0.3, WALL_H, DRAW.z1 - DOOR2.z1, wallW, wx, WALL_H / 2, (DOOR2.z1 + DRAW.z1) / 2));              // wall after the doorway
+    L.add(box(0.3, WALL_H - 3.2, DOOR2.z1 - DOOR2.z0, wallW, wx, 3.2 + (WALL_H - 3.2) / 2, (DOOR2.z0 + DOOR2.z1) / 2)); // above the doorway
+    [DOOR2.z0, DOOR2.z1].forEach(z => L.add(box(0.36, 3.25, 0.12, mat(NAVY2), wx, 1.62, z)));                    // door frame
+    L.add(box(0.36, 0.12, DOOR2.z1 - DOOR2.z0 + 0.12, mat(NAVY2), wx, 3.25, (DOOR2.z0 + DOOR2.z1) / 2));
+    L.add(box(0.4, 0.03, DOOR2.z1 - DOOR2.z0, mat(GREEN, GL), wx, 0.03, (DOOR2.z0 + DOOR2.z1) / 2, false));       // threshold
     L.add(box(0.05, 0.14, DD, mat(GREEN, GL), DRAW.x0 + 0.05, 5.3, DRAW.cz, false));
     // sign + logo
     const logo = new THREE.Mesh(new THREE.PlaneGeometry(6, 6 * LOGO_AR), new THREE.MeshBasicMaterial({ map: this.logoWhiteTex, transparent: true, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }));
@@ -700,7 +708,7 @@ export class Office {
 
   // ---------- modeling room (west of the drawing room) ----------
   #buildModelingRoom() {
-    this.modelRoom = buildModelingRoom({ scene: this.scene, bounds: MODEL, logoTex: this.logoWhiteTex, drawLeftWall: this.drawLeftWall });
+    this.modelRoom = buildModelingRoom({ scene: this.scene, bounds: MODEL, logoTex: this.logoWhiteTex, drawLeftWall: this.drawLeftWall, doorZ: (DOOR2.z0 + DOOR2.z1) / 2 });
   }
   // show a loaded glTF scene on the scan pedestal (null clears it)
   showModel(object3d) { if (this.modelRoom) this.modelRoom.setModel(object3d); }
@@ -709,6 +717,7 @@ export class Office {
 
   // ---------- room switching, picking, hand-over ----------
   focus(where, ms = 1100) {
+    if (this.fp) this.exitFirstPerson(true);
     const [dx, dz] = DRAW_DESK;
     const spots = {
       media: { p: [26, 19, 32], t: [1, 0.5, 0.5] },
@@ -803,6 +812,74 @@ export class Office {
     this.step(Math.min(this.clock.getDelta(), 0.05));
   }
 
+
+  get _dims() { return { DRAW, MODEL, DOOR, DOOR2, ROOM_W, ROOM_D }; }
+  // ---------- first person: walk through the rooms (W A S D / arrows, drag to look, Shift to hurry, Esc to leave) ----------
+  #fpAllowed(x, z) {
+    const m = 0.5, inR = (b, x0, x1, z0, z1) => x >= x0 && x <= x1 && z >= z0 && z <= z1;
+    return inR(0, -ROOM_W / 2 + m, ROOM_W / 2 - m, -ROOM_D / 2 + m, ROOM_D / 2 - m)
+      || inR(0, DRAW.x0 + m, DRAW.x1 - m, DRAW.z0 + m, DRAW.z1 - m)
+      || inR(0, MODEL.x0 + m, MODEL.x1 - m, MODEL.z0 + m, MODEL.z1 - m)
+      || inR(0, DRAW.x1 - 0.9, -ROOM_W / 2 + 0.6, DOOR.z0 + 0.4, DOOR.z1 - 0.4)
+      || inR(0, MODEL.x1 - 0.6, DRAW.x0 + 0.6, DOOR2.z0 + 0.4, DOOR2.z1 - 0.4);
+  }
+  #fpFree(x, z) {
+    if (!this.#fpAllowed(x, z)) return false;
+    const list = this.obstacles.concat(this.modelRoom ? this.modelRoom.obstacles : []);
+    for (const o of list) {
+      if (o.rect) { if (x > o.x0 - 0.3 && x < o.x1 + 0.3 && z > o.z0 - 0.3 && z < o.z1 + 0.3) return false; }
+      else if (Math.hypot(o.x - x, o.z - z) < o.r * 0.75 + 0.25) return false;
+    }
+    return true;
+  }
+  #fpRoomName(x) { return x < MODEL.x1 ? 'modeling' : x < DRAW.x1 ? 'drawing' : 'media'; }
+  enterFirstPerson() {
+    if (this.fp) return; if (this.tween) { this.tween = null; }
+    const t = this.controls.target, cp = this.camera.position;
+    const tries = [[t.x, t.z], [0, 4], [DRAW.cx, -1], [MODEL.cx, 6], [0, 0]];
+    const spot = tries.find(([x, z]) => this.#fpFree(x, z)) || [0, 4];
+    const look = new THREE.Vector2(t.x - spot[0], t.z - spot[1]);
+    const yaw = look.length() > 1 ? Math.atan2(-look.x, -look.y) : Math.PI / 2;
+    this.fp = { x: spot[0], z: spot[1], yaw, pitch: -0.05, keys: {}, drag: null, saved: { fov: this.camera.fov, near: this.camera.near, p: cp.clone(), t: t.clone() } };
+    this.controls.enabled = false; this.camera.fov = 70; this.camera.near = 0.1; this.camera.updateProjectionMatrix(); this.camera.rotation.order = 'YXZ';
+    const f = this.fp, typing = () => /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement && document.activeElement.tagName) || document.querySelector('.modal.open');
+    const kd = (e) => { if (typing()) return; const k = e.key.toLowerCase(); if ('wasd'.includes(k) && k.length === 1 || k.startsWith('arrow') || k === 'shift') { f.keys[k] = true; e.preventDefault(); } };
+    const ku = (e) => { f.keys[e.key.toLowerCase()] = false; };
+    const pd = (e) => { f.drag = { x: e.clientX, y: e.clientY }; };
+    const pm = (e) => { if (!f.drag || !e.buttons) return; f.yaw -= (e.clientX - f.drag.x) * 0.0045; f.pitch = Math.max(-1.2, Math.min(1.2, f.pitch - (e.clientY - f.drag.y) * 0.0045)); f.drag = { x: e.clientX, y: e.clientY }; };
+    const pu = () => { f.drag = null; };
+    window.addEventListener('keydown', kd); window.addEventListener('keyup', ku); this.canvas.addEventListener('pointerdown', pd); window.addEventListener('pointermove', pm); window.addEventListener('pointerup', pu);
+    f.off = () => { window.removeEventListener('keydown', kd); window.removeEventListener('keyup', ku); this.canvas.removeEventListener('pointerdown', pd); window.removeEventListener('pointermove', pm); window.removeEventListener('pointerup', pu); };
+    if (this.onFirstPerson) this.onFirstPerson(true);
+  }
+  // returns the name of the room you were standing in
+  exitFirstPerson(quiet = false) {
+    const f = this.fp; if (!f) return 'media';
+    f.off(); this.fp = null;
+    const room = this.#fpRoomName(f.x), cam = this.camera;
+    cam.fov = f.saved.fov; cam.near = f.saved.near; cam.updateProjectionMatrix();
+    // hand the orbit camera the current view so nothing jumps
+    const fwd = new THREE.Vector3(-Math.sin(f.yaw), 0, -Math.cos(f.yaw));
+    this.controls.target.set(f.x + fwd.x * 5, 0.5, f.z + fwd.z * 5); this.controls.enabled = true; this.controls.update();
+    if (this.onFirstPerson && !quiet) this.onFirstPerson(false, room); else if (this.onFirstPerson) this.onFirstPerson(false, null);
+    return room;
+  }
+  #stepFirstPerson(dt) {
+    const f = this.fp, k = f.keys, sp = (k.shift ? 7.5 : 4.2) * dt;
+    const turn = ((k.arrowleft ? 1 : 0) - (k.arrowright ? 1 : 0)) * 1.9 * dt; f.yaw += turn;
+    const fwd = ((k.w || k.arrowup) ? 1 : 0) - ((k.s || k.arrowdown) ? 1 : 0), side = (k.d ? 1 : 0) - (k.a ? 1 : 0);
+    if (fwd || side) {
+      const fx = -Math.sin(f.yaw), fz = -Math.cos(f.yaw), rx = -fz, rz = fx;
+      const dx = (fx * fwd + rx * side) * sp, dz = (fz * fwd + rz * side) * sp;
+      if (this.#fpFree(f.x + dx, f.z + dz)) { f.x += dx; f.z += dz; }
+      else if (this.#fpFree(f.x + dx, f.z)) f.x += dx;
+      else if (this.#fpFree(f.x, f.z + dz)) f.z += dz;
+      f.bob = (f.bob || 0) + sp * 2.4;
+    }
+    const cam = this.camera;
+    cam.position.set(f.x, 1.65 + Math.sin(f.bob || 0) * 0.025, f.z); cam.rotation.set(f.pitch, f.yaw, 0);
+  }
+
   step(dt) {
     for (const a of this.agents.values()) this.#stepAgent(a, dt);
     let tweenK = 1;
@@ -811,15 +888,18 @@ export class Office {
       this.camera.position.lerpVectors(tw.p0, tw.p1, e); this.controls.target.lerpVectors(tw.tg0, tw.tg1, e);
       if (tweenK >= 1) { this.tween = null; this.controls.enabled = true; }
     }
-    this.controls.update();
+    if (this.fp) this.#stepFirstPerson(dt); else this.controls.update();
     this.#stepProps(dt);
     // hide walls the camera is behind, so you never look at the back of one
-    const c = this.camera.position;
+    const c = this.camera.position, fp = !!this.fp;
+    if (fp) { for (const w of [this.backWall, this.leftWall, this.drawBackWall, this.drawLeftWall]) if (w) w.visible = true; if (this.modelRoom) { this.modelRoom.backWall.visible = true; this.modelRoom.leftWall.visible = true; this.modelRoom.step(dt); } }
+    else {
     if (this.backWall) this.backWall.visible = c.z > -ROOM_D / 2 + 1;
     if (this.leftWall) this.leftWall.visible = c.x > -ROOM_W / 2 + 1 && !(this.room !== 'media' && (!this.tween || tweenK > 0.3));
     if (this.drawBackWall) this.drawBackWall.visible = c.z > DRAW.z0 + 1;
     if (this.drawLeftWall) this.drawLeftWall.visible = c.x > DRAW.x0 + 1;
     if (this.modelRoom) { this.modelRoom.backWall.visible = c.z > MODEL.z0 + 1; this.modelRoom.leftWall.visible = c.x > MODEL.x0 + 1; this.modelRoom.step(dt); }
+    }
     this.renderer.render(this.scene, this.camera);
     this.labelRenderer.render(this.scene, this.camera);
   }

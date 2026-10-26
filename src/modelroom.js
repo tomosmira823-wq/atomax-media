@@ -28,7 +28,7 @@ export function modelingBounds(drawX0, z0, z1, w = 16) {
   return { w, x0, x1, z0, z1, cx: (x0 + x1) / 2, cz: (z0 + z1) / 2, d: z1 - z0 };
 }
 
-export function buildModelingRoom({ scene, bounds: M, logoTex, drawLeftWall }) {
+export function buildModelingRoom({ scene, bounds: M, logoTex, drawLeftWall, doorZ = -0.5 }) {
   const GL = { emissive: GREEN, emissiveIntensity: 0.5 };
   const backWall = new THREE.Group(), leftWall = new THREE.Group();
   scene.add(backWall); scene.add(leftWall);
@@ -96,7 +96,7 @@ export function buildModelingRoom({ scene, bounds: M, logoTex, drawLeftWall }) {
   tri.add(box(0.34, 0.06, 0.34, mat(0x0b0e16), 0, 2.33, 0)); // mounting plate
   const cam = new THREE.Group(); cam.add(box(0.7, 0.45, 0.4, mat(0x2b3348), 0, 0, 0)); const lens = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.2, 0.4, 20), mat(0x0b0e16, { roughness: 0.2, metalness: 0.5 })); lens.rotation.x = Math.PI / 2; lens.position.z = 0.4; cam.add(lens);
   cam.add(box(0.12, 0.05, 0.05, mat(GREEN, GL), 0.22, 0.26, 0, false)); cam.position.y = 2.33 + 0.03 + 0.225; tri.add(cam); // sits right on the plate
-  tri.position.set(px + 5.4, 0, pz + 3.2); tri.lookAt(px, 0, pz); scene.add(tri); obstacles.push({ x: px + 5.4, z: pz + 3.2, r: 1 });
+  tri.position.set(px + 3.2, 0, pz - 4.4); tri.lookAt(px, 0, pz); scene.add(tri); obstacles.push({ x: px + 3.2, z: pz - 4.4, r: 1 });   // back right, so the doorway stays clear
   [[-5.6, 2.6], [4.6, -3.4]].forEach(([dx, dz], i) => {
     const sb = new THREE.Group();
     sb.add(box(0.07, 2.6, 0.07, dark, 0, 1.3, 0)); sb.add(box(0.7, 0.06, 0.7, dark, 0, 0.03, 0));
@@ -131,10 +131,10 @@ export function buildModelingRoom({ scene, bounds: M, logoTex, drawLeftWall }) {
 
   // ---- door plaque on the drawing room's west wall: click it to come through ----
   const plaque = new THREE.Group();
-  plaque.add(box(0.08, 0.62, 3.2, mat(NAVY2), 0, 0, 0));
-  plaque.add(box(0.09, 0.05, 3.2, mat(GREEN, GL), 0, -0.3, 0, false));
+  plaque.add(box(0.08, 0.62, 3.0, mat(NAVY2), 0, 0, 0));
+  plaque.add(box(0.09, 0.05, 3.0, mat(GREEN, GL), 0, -0.3, 0, false));
   const plText = textPlane('‹  MODELING ROOM', 3.0, 0.42, { color: '#ffffff', size: 62, weight: '700', spacing: 4 }); plText.rotation.y = Math.PI / 2; plText.position.set(0.05, 0.02, 0); plaque.add(plText);
-  plaque.position.set(M.x1 + 0.3 + 0.04, 3.9, -3.8);
+  plaque.position.set(M.x1 + 0.3 + 0.04, 3.9, doorZ);
   if (drawLeftWall) drawLeftWall.add(plaque); else scene.add(plaque);
 
   // little chip above the pedestal: tells you it can be clicked

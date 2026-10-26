@@ -1,4 +1,5 @@
 // The drawing room's desk panel: drop the cable schedule and the drawings, optionally leave Cal a note, watch him check.
+import { mountHistory } from './history.js';
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const SCHED_OK = /\.(xlsx|csv|pdf|png|jpe?g)$/i, DWG_OK = /\.(pdf|png|jpe?g|xlsx|csv|dwg|dxf|xls)$/i;
@@ -90,7 +91,7 @@ export function initCheckUI({ office, api, getAgent, getSettings, openSettings }
     if (a) office.setState(a.id, 'working', 'reading the files');
     try {
       const report = await api.check.run({ agent: a ? { id: a.id, rules: a.rules } : null, schedule: { name: schedule.name, base64: schedule.base64 }, drawings: drawings.map(d => ({ name: d.name, base64: d.base64, path: d.path })), note });
-      last = report; showResult(report);
+      last = report; showResult(report); hist.refresh();
       if (a) office.setState(a.id, 'done', report.findings.length ? `${report.findings.length} to look at` : 'check finished');
     } catch (e) {
       $('#checkSetup').hidden = false; $('#checkErr').textContent = String(e.message || e).replace(/^Error invoking remote method '[^']+': (Error: )?/, '');
@@ -125,6 +126,12 @@ export function initCheckUI({ office, api, getAgent, getSettings, openSettings }
     $('#again').addEventListener('click', () => { schedule = null; drawings = []; last = null; office.clearJob(); $('#checkResult').hidden = true; $('#checkSetup').hidden = false; renderFiles(); });
   }
 
+  const hist = mountHistory($('#checkHist'), {
+    heading: 'Previous checks',
+    load: async () => (await api.history.list({ agent: 'cal' })).map(h => ({ key: h.id, at: h.at, title: h.title, summary: h.summary })),
+    open: async (id) => { const h = await api.history.get({ id }); if (!h) return; last = h.data; $('#checkSetup').hidden = true; $('#checkRun').hidden = true; showResult(h.data); },
+    remove: (id) => api.history.remove({ id })
+  });
   renderFiles();
-  return { show() { panel.classList.add('open'); }, hide() { panel.classList.remove('open'); }, get running() { return running; } };
+  return { show() { hist.refresh(); panel.classList.add('open'); }, hide() { panel.classList.remove('open'); }, get running() { return running; } };
 }

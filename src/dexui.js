@@ -1,3 +1,4 @@
+import { mountHistory } from './history.js';
 // Dex's panel at the drafting table: DXFs in, fixes found from Cal's last markups or dropped markup PDFs, tick what to change, fixed copies out.
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -89,7 +90,7 @@ export function initDexUI({ office, api, getAgent, openSettings, getSettings }) 
     $('#dexList').hidden = true; setBusy(true, 'Dex is fixing the DXFs');
     try {
       const r = await api.dxf.apply({ dxfs: dxfs.map(d => ({ name: d.name, base64: d.base64, path: d.path })), fixes: chosen.map(c => ({ id: c.id, file: c.file, before: c.before, after: c.after })) });
-      setBusy(false); showResult(r, chosen);
+      setBusy(false); showResult(r, chosen); hist.refresh();
     } catch (e) { setBusy(false); $('#dexList').hidden = false; $('#dexSetup').hidden = true; $('#dexErr').textContent = String(e.message || e); }
   }
 
@@ -107,6 +108,12 @@ export function initDexUI({ office, api, getAgent, openSettings, getSettings }) 
     $('#dexAgain').addEventListener('click', () => { dxfs = []; mks = []; items = []; office.clearJob(); $('#dexResult').hidden = true; $('#dexList').hidden = true; $('#dexSetup').hidden = false; render(); });
   }
 
+  const hist = mountHistory($('#dexHist'), {
+    heading: 'Previous fixes',
+    load: async () => (await api.history.list({ agent: 'dex' })).map(h => ({ key: h.id, at: h.at, title: h.title, summary: h.summary })),
+    open: async (id) => { const h = await api.history.get({ id }); if (h) { $('#dexRun').hidden = true; $('#dexList').hidden = true; showResult(h.data, []); } },
+    remove: (id) => api.history.remove({ id })
+  });
   render();
-  return { show() { panel.classList.add('open'); }, hide() { panel.classList.remove('open'); } };
+  return { show() { hist.refresh(); panel.classList.add('open'); }, hide() { panel.classList.remove('open'); } };
 }

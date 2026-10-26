@@ -222,6 +222,18 @@
   .panel.collapsed .pfoot { display: none; }
   #update:empty { display: none; }
   #addImages, #addRefImages { white-space: nowrap; }
+.hist{list-style:none;margin:6px 0 0;padding:0;display:flex;flex-direction:column;gap:6px}
+.hist li{display:flex;gap:6px;align-items:stretch}
+.hist .hopen{flex:1;text-align:left;display:flex;flex-direction:column;gap:2px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:8px 10px;color:inherit;cursor:pointer;font:inherit}
+.hist .hopen:hover{border-color:#3fc800}
+.hist .hopen b{font-size:11px;opacity:.7;font-weight:600}.hist .hopen span{font-size:13px}.hist .hopen small{opacity:.65;font-size:11px;overflow-wrap:anywhere}
+.hist .hdel{background:none;border:0;color:inherit;opacity:.5;cursor:pointer;font-size:16px}.hist .hdel:hover{opacity:1}
+#fpHelp{display:none;position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:30;background:rgba(14,18,29,.88);border:1px solid #3fc800;color:#fff;border-radius:999px;padding:8px 16px;font-size:12px;pointer-events:none}
+body.fp #fpHelp{display:block}
+body.fp #fpBtn{background:#3fc800;color:#0e121d}
+body.fp .lbl.hint{display:none}
+body.fp .panel{display:none!important}
+body.fp canvas#scene{cursor:grab}
 </style>
 <script type="importmap">
 { "imports": {
@@ -231,6 +243,7 @@
 </script>
 </head>
 <body>
+<div id="fpHelp"><b>First person</b> · W A S D or arrows to walk · drag to look · Shift to hurry · Esc to leave</div>
 <canvas id="scene"></canvas>
 <div id="labels"></div>
 
@@ -249,6 +262,7 @@
     <button class="active" data-room="media">Media office</button>
     <button data-room="drawing">Drawing room</button>
     <button data-room="modeling">Modeling room</button>
+    <button id="fpBtn" title="Walk around inside the rooms (F)">First person</button>
   </div>
   <div class="right">
     <span id="update" class="hint"></span>
@@ -318,6 +332,7 @@
       <div class="warn-note">Drawings are sent to Claude through your own API key. Use dummy files first and check the contract before sending client drawings. DWG and DXF cannot be read, so export those to PDF.</div>
       <div class="err" id="checkErr" style="margin-top:10px"></div>
       <button class="btn primary" id="checkGo" style="width:100%;margin-top:12px" disabled>Hand it to Cal</button>
+      <div id="checkHist"></div>
     </div>
     <div id="checkRun" hidden><span class="spinner"></span><div id="runMsg" style="margin-top:10px;font-weight:600">Cal is getting the files</div><div id="runBar-wrap"><div id="runBar"></div></div><p class="hint">Big drawing sets take a few minutes. You can leave this open and come back.</p></div>
     <div id="checkResult" hidden></div>
@@ -337,6 +352,7 @@
       <div class="warn-note">Dex only changes text, and only the fixes you tick. Your DXFs are never changed: he saves a copy in a FIXED folder next to each one. Markup PDFs are read by Claude through your own API key. DWG and binary DXF are not supported.</div>
       <div class="err" id="dexErr" style="margin-top:10px"></div>
       <button class="btn primary" id="dexFind" style="width:100%;margin-top:12px" disabled>Find fixes</button>
+      <div id="dexHist"></div>
     </div>
     <div id="dexRun" hidden><span class="spinner"></span><div id="dexMsg" style="margin-top:10px;font-weight:600">Dex is reading the markups</div></div>
     <div id="dexList" hidden></div>
@@ -358,8 +374,16 @@
       <div class="err" id="modelErr" style="margin-top:10px"></div>
       <button class="btn primary" id="modelGo" style="width:100%;margin-top:12px" disabled>Make the 3D model</button>
       <button class="btn" id="modelClaude" style="width:100%;margin-top:8px" disabled>Build it with Claude only (no extra key)</button>
-      <p class="hint" style="margin:6px 0 0">Claude studies the photo and builds the model from simple shapes using your Claude key. Fast and free of extra costs, but blockier than a scanner-style model.</p>
+      <div class="row" style="margin-top:8px;gap:8px;align-items:center"><select id="m_claudeModel" style="flex:1" title="Which Claude builds the model">
+        <option value="">Same Claude as the rest of the app</option>
+        <option value="claude-opus-5-5">Claude Opus 5.5 (more accurate)</option>
+        <option value="claude-fable-5-1">Claude Fable 5.1 (most accurate, slowest)</option>
+        <option value="claude-sonnet-5-5">Claude Sonnet 5.5</option>
+        <option value="claude-haiku-5-5">Claude Haiku 5.5 (quickest)</option></select></div>
+      <label class="chk" style="display:flex;gap:8px;align-items:center;margin-top:8px;text-transform:none;letter-spacing:0;font-size:12px"><input type="checkbox" id="m_research" checked /> Look the object up online first (real sizes and parts)</label>
+      <p class="hint" style="margin:6px 0 0">Claude studies the photo, searches the web for the real dimensions and details, then builds the model from simple shapes using your Claude key. A stronger model is more accurate but takes longer and costs more.</p>
       <div class="row" style="margin-top:8px"><button class="btn small" id="modelOpen">Open a .glb instead</button></div>
+      <div id="modelHist"></div>
       <details id="modelCfg"><summary>Advanced</summary>
         <label>Meshy API key (makes the 3D model)</label><input type="password" id="m_meshyKey" placeholder="msy_..." autocomplete="off" />
         <label>Higgsfield 3D model (leave empty)</label><input type="text" id="m_hfModel" placeholder="automatic" />

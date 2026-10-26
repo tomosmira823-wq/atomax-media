@@ -32,6 +32,7 @@ const DEFAULT_SETTINGS = {
   higgsfieldKeyId: '',
   higgsfieldSecret: '',
   claudeModel: 'claude-sonnet-5-5',
+  claude3dModel: '',
   openaiImageModel: 'gpt-image-2',
   openaiImageModels: [],
   openaiImageQuality: 'high',
@@ -180,8 +181,8 @@ function createWindow() {
   if (process.env.AMO_SCREENSHOT) {
     win.webContents.on('console-message', (_e, level, msg, line, src) => console.error('[page]', level, msg, src + ':' + line));
     win.webContents.once('did-finish-load', () => setTimeout(async () => {
-      if (['run', 'drawing', 'dex', 'model'].includes(process.env.AMO_SCENARIO)) {
-        const script = fs.readFileSync(path.join(__dirname, '..', 'test', ({ drawing: 'scenario-drawing.js', dex: 'scenario-dex.js', model: 'scenario-model.js' }[process.env.AMO_SCENARIO] || 'scenario-run.js')), 'utf8');
+      if (['run', 'drawing', 'dex', 'model', 'fp'].includes(process.env.AMO_SCENARIO)) {
+        const script = fs.readFileSync(path.join(__dirname, '..', 'test', ({ drawing: 'scenario-drawing.js', dex: 'scenario-dex.js', model: 'scenario-model.js', fp: 'scenario-fp.js' }[process.env.AMO_SCENARIO] || 'scenario-run.js')), 'utf8');
         await win.webContents.executeJavaScript(`window.__variant = ${JSON.stringify(process.env.AMO_VARIANT || '')}`);
         const out = await win.webContents.executeJavaScript(script);
         console.error('[scenario]', JSON.stringify(out));
@@ -314,6 +315,19 @@ ipcMain.handle('paths:get', () => ({ userData: USER_DIR() }));
 ipcMain.handle('shell:open', (_e, url) => shell.openExternal(url));
 ipcMain.handle('shell:showItem', (_e, p) => { try { shell.showItemInFolder(p); return true; } catch { return false; } });
 
+// ---------- dated history of what Cal and Dex did (kept on disk, survives closing the app) ----------
+const HISTORY_FILE = () => path.join(USER_DIR(), 'history.json');
+function addHistory(agent, entry) {
+  try {
+    const all = readJson(HISTORY_FILE(), []);
+    all.unshift({ id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), agent, at: new Date().toISOString(), ...entry });
+    writeJson(HISTORY_FILE(), all.slice(0, 300));
+  } catch (e) { console.error('history save failed', e); }
+}
+ipcMain.handle('history:list', (_e, { agent }) => readJson(HISTORY_FILE(), []).filter(h => h.agent === agent).map(({ data, ...rest }) => rest));
+ipcMain.handle('history:get', (_e, { id }) => readJson(HISTORY_FILE(), []).find(h => h.id === id) || null);
+ipcMain.handle('history:remove', (_e, { id }) => { writeJson(HISTORY_FILE(), readJson(HISTORY_FILE(), []).filter(h => h.id !== id)); return true; });
+
 // ---------- the drawing room: cable schedule vs drawings ----------
 let checkRunning = false;
 ipcMain.handle('check:run', async (_e, { agent, schedule, drawings, note }) => {
@@ -333,6 +347,7 @@ ipcMain.handle('check:run', async (_e, { agent, schedule, drawings, note }) => {
     const mk = report.markups;
     report.text += '\n\nMARKED-UP COPIES (originals untouched)\n' + ((mk.made.length || mk.notes) ? `  - Saved ${mk.made.length + (mk.notes ? 1 : 0)} file${mk.made.length + (mk.notes ? 1 : 0) === 1 ? '' : 's'} in ${mk.dir}\n` + mk.made.map(m => `  - ${path.basename(m.out)} (${m.notes} note${m.notes === 1 ? '' : 's'})`).join('\n') + (mk.notes ? `\n  - ${path.basename(mk.notes.out)} (${mk.notes.count} schedule-level note${mk.notes.count === 1 ? '' : 's'} that cannot sit on a drawing)` : '') : '  - None made (nothing to mark on the drawings, or they could not be marked up).') + (mk.failed.length ? '\n' + mk.failed.map(f => `  - Could not mark up ${f.name}: ${f.reason}`).join('\n') : '') + `\n  - ${mk.untouched} file${mk.untouched === 1 ? ' has' : 's have'} nothing to mark.`;
     try { writeJson(path.join(USER_DIR(), 'last-check.json'), { at: new Date().toISOString(), findings: report.findings || [] }); } catch {}
+    addHistory('cal', { title: report.headline || 'Drawing check', summary: `${(report.findings || []).length} to look at · schedule ${schedule && schedule.name || '?'} · ${(drawings || []).length} drawing${(drawings || []).length === 1 ? '' : 's'}`, data: report });
     return report;
   } finally { checkRunning = false; }
 });
@@ -395,6 +410,8 @@ ipcMain.handle('dxf:apply', async (_e, { dxfs, fixes }) => {
     const log = ['DEX FIX LOG  ' + new Date().toISOString(), 'Originals untouched. Fixed copies:', ...out.files.map(x => '  ' + x.name + ' (' + x.changes + ' change' + (x.changes === 1 ? '' : 's') + ')'), '', ...out.results.map(x => `  ${x.status.toUpperCase()}  ${x.file || ''}  "${x.before || ''}" -> "${x.after || ''}"  ${x.places ? x.places + ' place(s)' : ''} ${x.reason || ''}`)].join('\n');
     try { fs.writeFileSync(path.join(dir, 'DEX_FIX_LOG.txt'), log); out.log = path.join(dir, 'DEX_FIX_LOG.txt'); } catch {}
   }
+  const nDone = out.results.filter(x => x.status === 'applied').length;
+  addHistory('dex', { title: nDone ? `Fixed ${nDone} of ${out.results.length} ticked` : 'Nothing was changed', summary: out.files.map(f => f.name).join(', ') || (out.failed[0] ? out.failed[0].name : ''), data: out });
   return out;
 });
 
@@ -427,20 +444,36 @@ ipcMain.handle('model:saveAs', async (_e, { from, name }) => {
   return r.filePath;
 });
 // Claude-only route: Claude looks at the photo and describes the object as a set of simple 3D shapes; the page builds and exports the GLB.
-const CLAUDE_3D_SYSTEM = `You are a 3D modeller. Look at the photo and rebuild the main object as a model made only from simple primitives.
+const CLAUDE_3D_SYSTEM = `You are a careful 3D modeller. Rebuild the main object in the photo as a model made only from simple primitives.
 Reply with ONE JSON object and nothing else:
 {"name":"short name","parts":[{"shape":"box|cylinder|sphere|cone|torus|capsule","size":[...],"pos":[x,y,z],"rot":[rx,ry,rz],"color":"#rrggbb","metal":0-1,"rough":0-1}]}
 Sizes: box [width,height,depth]; cylinder [radiusTop,radiusBottom,height]; sphere [radius]; cone [radius,height]; torus [radius,tube]; capsule [radius,length].
-Rules: Y is up, the object stands on y=0 and is centred on x and z, about 2 units tall (or 2 units across if it is flat). rot is in degrees. Match the real proportions, colours and finishes you see (metal and rough make shiny, matte, plastic or metal surfaces). Add the small details that make it recognisable: ports, buttons, legs, handles, labels as thin boxes. Use 20 to 120 parts, ordered big shapes first. Do not add a floor or background.`;
-ipcMain.handle('model:claude', async (_e, { image }) => {
+Rules: Y is up, the object stands on y=0 and is centred on x and z. rot is in degrees. Scale the whole model so its longest side is 2 units, keeping the REAL proportions (if real dimensions are given, use their ratios exactly, including thickness and the height of every component). Match the real colours and finishes (metal and rough make shiny, matte, plastic or metal surfaces). Build the base body first, then every visible component in its real position and relative size: ports, sockets, chips, buttons, connectors, legs, handles, screws, labels as thin boxes. Use 40 to 180 parts, big shapes first. No floor or background.`;
+const CLAUDE_RESEARCH_SYSTEM = `You help build an accurate 3D model from a photo. First identify exactly what the object is (make, model, version if you can tell). Then use web search to confirm it and find its real dimensions (length, width, height in millimetres), the size and position of its main components (for example ports, connectors, buttons, chips, legs, screens), its usual colours and materials, and anything else that makes a model more accurate. Prefer the maker's datasheet or product page. If it is a generic object with no exact specification, say so and give typical real-world dimensions instead.
+Reply with ONE JSON object and nothing else:
+{"what":"exact identification","confidence":"high|medium|low","dimensions_mm":{"length":0,"width":0,"height":0},"components":["component: size and where it sits"],"colours":"main colours and finishes","notes":"anything else useful for modelling","sources":["urls you used"]}`;
+ipcMain.handle('model:claude', async (_e, { image, research = true, model }) => {
   if (!image || !image.base64) throw new Error('Drop a photo first.');
-  const { text } = await claudeFull({
-    system: CLAUDE_3D_SYSTEM, maxTokens: 12000,
-    messages: [{ role: 'user', content: [{ type: 'image', source: { type: 'base64', media_type: image.mime || 'image/jpeg', data: image.base64 } }, { type: 'text', text: 'Build this as a primitive 3D model. JSON only.' }] }]
-  });
+  const progress = (p) => { try { win && win.webContents.send('model:progress', p); } catch {} };
+  const s = loadSettings(), useModel = String(model || s.claude3dModel || s.claudeModel || '').trim() || s.claudeModel;
+  const img = { type: 'image', source: { type: 'base64', media_type: image.mime || 'image/jpeg', data: image.base64 } };
+  let facts = null, researchNote = '';
+  if (research) {
+    progress({ message: 'Claude is working out what it is and looking it up', pct: 12 });
+    try {
+      const r = await claudeFull({ system: CLAUDE_RESEARCH_SYSTEM, model: useModel, maxTokens: 4000,
+        tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 6 }],
+        messages: [{ role: 'user', content: [img, { type: 'text', text: 'What is this, and what are its real dimensions and component details? JSON only.' }] }] });
+      facts = extractJson(r.text);
+      researchNote = r.searches ? `looked up online (${r.searches} search${r.searches === 1 ? '' : 'es'})` : 'identified from the photo (no web results used)';
+    } catch (e) { researchNote = 'online lookup unavailable (' + String(e.message || e).slice(0, 90) + '), built from the photo alone'; }
+  }
+  progress({ message: 'Claude is building the shapes', pct: 45 });
+  const brief = facts ? `Verified facts about this object (use them for real proportions and components):\n${JSON.stringify(facts)}\n\nBuild it. JSON only.` : 'Build this as a primitive 3D model. JSON only.';
+  const { text } = await claudeFull({ system: CLAUDE_3D_SYSTEM, model: useModel, maxTokens: 24000, messages: [{ role: 'user', content: [img, { type: 'text', text: brief }] }] });
   const j = extractJson(text);
-  if (!j || !Array.isArray(j.parts) || !j.parts.length) throw new Error('Claude did not give any shapes. Try again or use a clearer photo.');
-  return j;
+  if (!j || !Array.isArray(j.parts) || !j.parts.length) throw new Error('Claude did not give any shapes. Try again, or pick a stronger model.');
+  return { ...j, research: facts ? { what: facts.what, confidence: facts.confidence, dims: facts.dimensions_mm, sources: Array.isArray(facts.sources) ? facts.sources.slice(0, 6) : [] } : null, researchNote, model: useModel };
 });
 ipcMain.handle('model:saveGlb', (_e, { base64, name }) => {
   const buf = Buffer.from(base64, 'base64');
@@ -450,6 +483,15 @@ ipcMain.handle('model:saveGlb', (_e, { base64, name }) => {
   const file = path.join(dir, `${safe}-${new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14)}.glb`);
   fs.writeFileSync(file, buf);
   return { path: file, base64, bytes: buf.length, provider: 'claude' };
+});
+ipcMain.handle('model:list', () => {
+  const d = path.join(USER_DIR(), 'models'); try { fs.mkdirSync(d, { recursive: true }); } catch {}
+  return fs.readdirSync(d).filter(f => /\.glb$/i.test(f)).map(f => { const st = fs.statSync(path.join(d, f)); return { name: f, path: path.join(d, f), at: st.mtime.toISOString(), bytes: st.size }; }).sort((a, b) => b.at.localeCompare(a.at)).slice(0, 100);
+});
+ipcMain.handle('model:load', (_e, { file }) => {
+  const d = path.join(USER_DIR(), 'models'), p = path.resolve(d, path.basename(String(file || '')));
+  if (path.dirname(p) !== path.resolve(d) || !fs.existsSync(p)) throw new Error('That model file is gone.');
+  const buf = fs.readFileSync(p); return { path: p, base64: buf.toString('base64'), bytes: buf.length };
 });
 ipcMain.handle('model:folder', () => { const d = path.join(USER_DIR(), 'models'); fs.mkdirSync(d, { recursive: true }); return d; });
 
@@ -483,21 +525,26 @@ ipcMain.handle('file:saveText', async (_e, { text, name }) => {
 });
 
 // ---------- Claude (Anthropic) ----------
-async function claudeFull({ system, messages, maxTokens = 4000 }) {
+async function claudeFull({ system, messages, maxTokens = 4000, model, tools }) {
   const s = loadSettings();
   if (!s.anthropicKey) throw new Error('No Claude API key. Add it in Settings.');
-  const res = await fetch(ANTHROPIC + '/v1/messages', {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      'x-api-key': s.anthropicKey,
-      'anthropic-version': '2023-06-01'
-    },
-    body: JSON.stringify({ model: s.claudeModel, max_tokens: maxTokens, system, messages })
-  });
-  const data = await res.json();
-  if (!res.ok) throw new Error(`Claude ${res.status}: ${data?.error?.message || JSON.stringify(data)}`);
-  return { text: (data.content || []).filter(c => c.type === 'text').map(c => c.text).join('\n'), stop: data.stop_reason };
+  let msgs = messages, text = '', stop = '', searches = 0;
+  for (let turn = 0; turn < 4; turn++) {   // server-side tools (web search) can pause a long turn: carry on where it stopped
+    const res = await fetch(ANTHROPIC + '/v1/messages', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-api-key': s.anthropicKey, 'anthropic-version': '2023-06-01' },
+      body: JSON.stringify({ model: model || s.claudeModel, max_tokens: maxTokens, system, messages: msgs, ...(tools ? { tools } : {}) })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(`Claude ${res.status}: ${data?.error?.message || JSON.stringify(data)}`);
+    const parts = data.content || [];
+    searches += parts.filter(c => c.type === 'server_tool_use').length;
+    text += (text ? '\n' : '') + parts.filter(c => c.type === 'text').map(c => c.text).join('\n');
+    stop = data.stop_reason;
+    if (stop !== 'pause_turn') break;
+    msgs = [...msgs, { role: 'assistant', content: parts }];
+  }
+  return { text, stop, searches };
 }
 async function claudeMessage(args) { return (await claudeFull(args)).text; }
 

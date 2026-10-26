@@ -15,8 +15,9 @@ contextBridge.exposeInMainWorld('office', {
     test: call('ai:test')
   },
   check: { run: call('check:run'), skill: call('check:skill'), last: call('check:last'), onProgress: (fn) => ipcRenderer.on('check:progress', (_e, p) => fn(p)) },
+  history: { list: call('history:list'), get: call('history:get'), remove: call('history:remove') },
   dxf: { propose: call('dxf:propose'), apply: call('dxf:apply') },
-  model: { generate: call('model:generate'), claude: call('model:claude'), saveGlb: call('model:saveGlb'), open: call('model:open'), saveAs: call('model:saveAs'), folder: call('model:folder'), onProgress: (fn) => ipcRenderer.on('model:progress', (_e, p) => fn(p)) },
+  model: { generate: call('model:generate'), list: call('model:list'), load: call('model:load'), claude: call('model:claude'), saveGlb: call('model:saveGlb'), open: call('model:open'), saveAs: call('model:saveAs'), folder: call('model:folder'), onProgress: (fn) => ipcRenderer.on('model:progress', (_e, p) => fn(p)) },
   image: { generate: call('image:generate'), edit: call('image:edit'), openaiModels: call('openai:imageModels') },
   social: { connect: call('social:connect'), disconnect: call('social:disconnect'), publish: call('social:publish'), canPost: call('social:canPost') },
   openExternal: call('shell:open'),

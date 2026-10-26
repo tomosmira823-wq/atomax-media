@@ -1,5 +1,6 @@
 // The modeling room's panel: drop a photo, get a 3D model, turn it around, save it. The model also appears on the scan pedestal.
 import * as THREE from 'three';
+import { mountHistory } from './history.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
@@ -136,6 +137,7 @@ export function initModelingUI({ office, api, getSettings, openSettings }) {
   function fillCfg() {
     const sv = getSettings().higgsfield3dModel || '';
     $('#m_hfModel').value = sv.includes(':') ? '' : sv;
+    $('#m_claudeModel').value = getSettings().claude3dModel || '';
     const mk = !!getSettings().meshyKey; $('#m_meshyKey').value = getSettings().meshyKey || '';
     $('#modelVia').textContent = mk ? 'Your photo is sent to Meshy with your Meshy key to make the model. Use photos you are happy to share.' : 'Your photo is sent to Higgsfield through the key in Settings to make the model. Higgsfield\'s API may not include 3D: if you get "model_not_found", add a Meshy key under Advanced.';
   }
@@ -180,6 +182,7 @@ export function initModelingUI({ office, api, getSettings, openSettings }) {
     } finally { running = false; office.setScanning(false); renderPhoto(); }
   }
   $('#modelGo').addEventListener('click', go);
+  $('#m_claudeModel').addEventListener('change', async () => { const v = $('#m_claudeModel').value; getSettings().claude3dModel = v; await api.settings.set({ claude3dModel: v }); });
   async function goClaude() {
     if (running || !photo) return;
     const s = getSettings();
@@ -189,12 +192,13 @@ export function initModelingUI({ office, api, getSettings, openSettings }) {
     $('#modelMsg').textContent = 'Claude is studying the photo'; $('#modelBar').style.width = '15%';
     office.setScanning(true);
     try {
-      const j = await api.model.claude({ image: { base64: photo.base64, mime: photo.mime } });
+      const j = await api.model.claude({ image: { base64: photo.base64, mime: photo.mime }, research: $('#m_research').checked, model: $('#m_claudeModel').value });
       $('#modelMsg').textContent = 'Building the model'; $('#modelBar').style.width = '70%';
       const obj = buildFromParts(j.parts);
       if (!obj.children.length) throw new Error('Claude gave shapes I could not build. Try again.');
       const r = await api.model.saveGlb({ base64: await exportGlb(obj), name: j.name || photo.name });
-      try { await showResult(r, `Built by Claude from ${obj.children.length} shapes`); }
+      try { const rs = j.research, dm = rs && rs.dims && rs.dims.length ? ` · real size ${rs.dims.length}×${rs.dims.width}×${rs.dims.height} mm` : '';
+        await showResult(r, `${rs && rs.what ? rs.what : 'Built by Claude'} · ${obj.children.length} shapes${dm} · ${j.researchNote || 'built from the photo'}`); }
       catch (ve) { showSetup(); $('#modelErr').textContent = `Saved to ${r.path} but the viewer could not open it (${String(ve.message || ve).slice(0, 160)}).`; }
     } catch (e) {
       showSetup(); $('#modelErr').textContent = String(e.message || e).replace(/^Error invoking remote method '[^']+': (Error: )?/, '');
@@ -209,11 +213,16 @@ export function initModelingUI({ office, api, getSettings, openSettings }) {
   });
   $('#modelSave').addEventListener('click', async (e) => { if (!last) return; const p = await api.model.saveAs({ from: last.path, name: last.path.split(/[\\/]/).pop() }); if (p) e.target.textContent = 'Saved'; setTimeout(() => { e.target.textContent = 'Save a copy'; }, 1800); });
   $('#modelShow').addEventListener('click', () => { if (last) api.showItem(last.path); });
-  $('#modelAgain').addEventListener('click', () => { showSetup(); renderPhoto(); });
+  $('#modelAgain').addEventListener('click', () => { showSetup(); renderPhoto(); hist.refresh(); });
 
+  const hist = mountHistory($('#modelHist'), {
+    heading: 'Previous models',
+    load: async () => (await api.model.list()).map(m => ({ key: m.name, at: m.at, title: m.name.replace(/\.glb$/i, ''), summary: Math.max(1, Math.round(m.bytes / 1024)) + ' KB' })),
+    open: async (name) => { try { const r = await api.model.load({ file: name }); await showResult(r, name.replace(/\.glb$/i, '')); } catch (e) { $('#modelErr').textContent = String(e.message || e); } }
+  });
   fillCfg(); renderPhoto();
   return {
-    show() { fillCfg(); panel.classList.add('open'); },
+    show() { fillCfg(); hist.refresh(); panel.classList.add('open'); },
     hide() { panel.classList.remove('open'); },
     get running() { return running; },
     get _viewer() { return viewer; },

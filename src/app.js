@@ -548,5 +548,18 @@ $('#dexBack').addEventListener('click', () => goRoom('drawing'));
 $('#modelBack').addEventListener('click', () => goRoom('modeling'));
 office.onPick = (what) => { if (what === 'door') goRoom('drawing'); else if (what === 'desk') { if (calAgent()) goRoom('desk'); } else if (what === 'drafting') { if (dexAgent()) goRoom('drafting'); } else if (what === 'modeldoor') goRoom('modeling'); else if (what === 'scan') goRoom('scan'); };
 document.addEventListener('keydown', (e) => { if (e.key !== 'Escape' || document.querySelector('.modal.open')) return; if (office.room === 'desk' || office.room === 'drafting') goRoom('drawing'); else if (office.room === 'scan') goRoom('modeling'); });
+// ---- first person ----
+office.onFirstPerson = (on, room) => {
+  document.body.classList.toggle('fp', on);
+  if (on) { checkUI.hide(); dexUI.hide(); modelUI.hide(); }
+  else if (room) goRoom(room);
+};
+const toggleFP = () => { if (office.fp) office.exitFirstPerson(); else { if (['desk', 'drafting', 'scan'].includes(office.room)) goRoom(office.room === 'scan' ? 'modeling' : 'drawing'); office.enterFirstPerson(); } };
+$('#fpBtn').addEventListener('click', toggleFP);
+document.addEventListener('keydown', (e) => {
+  if (/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement && document.activeElement.tagName) || document.querySelector('.modal.open')) return;
+  if (e.key === 'Escape' && office.fp) { office.exitFirstPerson(); e.preventDefault(); }
+  else if (e.key.toLowerCase() === 'f' && !e.ctrlKey && !e.metaKey && !e.altKey) toggleFP();
+});
 window.__goRoom = goRoom;
 window.__modelUI = modelUI;
