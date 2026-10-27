@@ -11,22 +11,28 @@ const PORT = 52817;
 const REDIRECT = `http://127.0.0.1:${PORT}/callback`;
 
 // ---------- loopback OAuth helper ----------
+let active = null;
 function waitForCallback(expectedState) {
+  // a previous attempt (abandoned tab, double click) may still hold the port: shut it down first
+  if (active) { try { active.stop(new Error('Replaced by a new connect attempt')); } catch {} active = null; }
   return new Promise((resolve, reject) => {
+    let timer;
+    const stop = (err) => { clearTimeout(timer); try { server.close(); server.closeAllConnections?.(); } catch {} if (active && active.server === server) active = null; if (err) reject(err); };
     const server = http.createServer((req, res) => {
       const u = new URL(req.url, `http://127.0.0.1:${PORT}`);
       if (u.pathname !== '/callback') { res.writeHead(404); res.end(); return; }
       const err = u.searchParams.get('error'), code = u.searchParams.get('code'), state = u.searchParams.get('state');
       res.writeHead(200, { 'content-type': 'text/html' });
       res.end(`<html><body style="font-family:sans-serif;background:#0e121d;color:#e6eaf2;display:grid;place-items:center;height:100vh"><div style="text-align:center"><h2 style="color:#40bd00">${err ? 'Connection failed' : 'Connected'}</h2><p>${err ? err : 'You can close this tab and go back to Atomax Media Office.'}</p></div></body></html>`);
-      server.close();
+      clearTimeout(timer); try { server.close(); server.closeAllConnections?.(); } catch {} if (active && active.server === server) active = null;
       if (err) reject(new Error(err + (u.searchParams.get('error_description') ? ': ' + u.searchParams.get('error_description') : '')));
       else if (expectedState && state !== expectedState) reject(new Error('OAuth state mismatch'));
       else resolve(code);
     });
-    server.on('error', reject);
+    active = { server, stop };
+    server.on('error', (e) => stop(e.code === 'EADDRINUSE' ? new Error('Port 52817 is used by another program. Close it or restart the app, then try again.') : e));
     server.listen(PORT, '127.0.0.1');
-    setTimeout(() => { try { server.close(); } catch {} reject(new Error('Timed out waiting for the login to finish (5 min)')); }, 5 * 60 * 1000);
+    timer = setTimeout(() => stop(new Error('Timed out waiting for the login to finish (5 min)')), 5 * 60 * 1000);
   });
 }
 const b64url = (buf) => buf.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
