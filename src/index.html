@@ -234,6 +234,7 @@
   .gear { display: flex; flex-wrap: wrap; gap: 6px; }
   .gear button { background: var(--navy2); color: var(--muted); border: 1px solid var(--line2); border-radius: 20px; padding: 5px 12px; cursor: pointer; font: inherit; font-size: 12px; font-weight: 600; }
   .gear button.on { color: #061000; background: var(--green); border-color: var(--green); }
+  .guide { margin:8px 0; font-size:12px; color:var(--muted,#9aa6bd) } .guide summary { cursor:pointer; color:var(--text) } .guide ol { padding-left:18px; margin:6px 0 } .guide li { margin-bottom:4px }
   .conn { border: 1px solid var(--line); border-radius: 14px; padding: 14px; margin-bottom: 12px; background: #0c111c; }
   .cstat.on { color: var(--green); }
   #history .card pre { max-height: 180px; }
@@ -532,6 +533,7 @@ body.fp canvas#scene{cursor:grab}
       <label>Client secret</label><input type="password" id="li_clientSecret" />
       <label style="display:flex;align-items:center;gap:8px;color:var(--text)"><input type="checkbox" id="li_wantOrg" /> Also ask for company-page posting (needs Community Management API approval)</label>
       <label>Post as</label><select id="li_target"></select>
+      <details class="guide"><summary>LinkedIn setup (once, about 3 minutes)</summary><ol><li>Create app: name it Atomax Posts, link any company page, upload any logo.</li><li>On the Products tab add <b>Share on LinkedIn</b> and <b>Sign In with LinkedIn using OpenID Connect</b> (both instant).</li><li>On the Auth tab add the callback URL below under Authorized redirect URLs.</li><li>Copy the Client ID and Primary Client Secret into the boxes above, then press Connect and click Allow.</li></ol><button class="btn small" type="button" data-open="https://www.linkedin.com/developers/apps/new">Open LinkedIn developer page</button></details>
       <div class="row" style="margin-top:6px"><button class="btn small cconnect">Connect</button><button class="btn small cdisconnect">Disconnect</button></div>
     </div>
     <div class="conn" data-key="facebook">
@@ -540,15 +542,17 @@ body.fp canvas#scene{cursor:grab}
       <label>Meta app secret</label><input type="password" id="fb_appSecret" />
       <label>Page</label><select id="fb_pageId"></select>
       <div class="hint" id="fb_ig"></div>
+      <details class="guide"><summary>Facebook + Instagram setup (once)</summary><ol><li>Instagram must be a Business or Creator account linked to a Facebook Page.</li><li>Create a Business app, add Facebook Login for Business, and put the callback URL below in Valid OAuth Redirect URIs.</li><li>Copy App ID and App Secret from Settings, Basic into the boxes above, then press Connect and click Allow.</li><li>Instagram posts need an image or video.</li></ol><button class="btn small" type="button" data-open="https://developers.facebook.com/apps/creation/">Open Meta developer page</button></details>
       <div class="row" style="margin-top:6px"><button class="btn small cconnect">Connect</button><button class="btn small cdisconnect">Disconnect</button></div>
     </div>
     <div class="conn" data-key="x">
       <b>X / Twitter</b> <span class="cstat hint"></span>
       <label>Client ID (OAuth 2.0)</label><input type="text" id="x_clientId" />
       <label>Client secret (confidential apps only, else blank)</label><input type="password" id="x_clientSecret" />
+      <details class="guide"><summary>X setup (once)</summary><ol><li>Create a project and app, turn on User authentication (OAuth 2.0), type Web App, permissions Read and write.</li><li>Add the callback URL below, then copy the Client ID into the box above and press Connect.</li></ol><button class="btn small" type="button" data-open="https://developer.x.com/en/portal/dashboard">Open X developer page</button></details>
       <div class="row" style="margin-top:6px"><button class="btn small cconnect">Connect</button><button class="btn small cdisconnect">Disconnect</button></div>
     </div>
-    <div><label>Callback URL to register in each developer app</label><input type="text" readonly value="http://127.0.0.1:52817/callback" /></div>
+    <div><label>Callback URL to register in each developer app</label><div class="row"><input type="text" readonly id="cbUrl" value="http://127.0.0.1:52817/callback" /><button class="btn small" type="button" id="cbCopy">Copy</button></div></div>
   </div>
   <h3 class="section">Company profile</h3><div class="sub">Every agent reads this before writing. Pull it from the website so it's in the company's own words, then tweak if you like.</div>
   <label>Website</label>

@@ -124,6 +124,8 @@ document.querySelectorAll('.conn .cconnect').forEach(b => b.addEventListener('cl
   try { settings.social = await api.social.connect({ key, wantOrg: $('#li_wantOrg').checked }); fillConnections(); }
   catch (e) { st.textContent = e.message; st.className = 'cstat err'; }
 }));
+document.querySelectorAll('[data-open]').forEach(b => b.addEventListener('click', () => api.openExternal(b.dataset.open)));
+$('#cbCopy').addEventListener('click', () => { navigator.clipboard.writeText($('#cbUrl').value); $('#cbCopy').textContent = 'Copied ✓'; setTimeout(() => $('#cbCopy').textContent = 'Copy', 1500); });
 document.querySelectorAll('.conn .cdisconnect').forEach(b => b.addEventListener('click', async () => {
   settings.social = await api.social.disconnect(b.closest('.conn').dataset.key); fillConnections();
 }));
@@ -458,8 +460,16 @@ function fillCard(card, agent, entry) {
   c.querySelector('.b_save').addEventListener('click', () => api.files.saveText({ text: `${agent.platform} post — ${new Date(entry.created).toLocaleString('en-GB')}\n\n${p.caption}\n\nAlt text: ${p.altText || ''}\nBest time: ${p.bestTime || ''}\nImage idea: ${p.imageIdea || ''}`, name: `${agent.platform.replace(/\W+/g, '-')}-post.txt` }));
   const postBtn = c.querySelector('.b_post');
   if (isReviewer(agent)) postBtn.remove();
-  else api.social.canPost(agent.platform).then(r => { if (!r.ok) { postBtn.disabled = true; postBtn.classList.remove('primary'); postBtn.title = r.why; } });
+  else api.social.canPost(agent.platform).then(r => { if (!r.ok) { postBtn.dataset.connect = '1'; postBtn.textContent = 'Connect ' + agent.platform; postBtn.title = r.why; } });
   if (postBtn.isConnected) postBtn.addEventListener('click', async () => {
+    if (postBtn.dataset.connect) {
+      const p0 = agent.platform.toLowerCase(); const key = p0.includes('linkedin') ? 'linkedin' : p0.includes('x') || p0.includes('twitter') ? 'x' : 'facebook';
+      const have = settings.social?.[key] || {};
+      if (!(have.clientId || have.appId)) { document.querySelector('[data-tab=settings]').click(); document.querySelector(`.conn[data-key="${key}"]`)?.scrollIntoView(); document.querySelector(`.conn[data-key="${key}"] details`)?.setAttribute('open', ''); return; }
+      postBtn.disabled = true; postBtn.textContent = 'Opening login…';
+      try { settings.social = await api.social.connect({ key, wantOrg: false }); fillConnections(); delete postBtn.dataset.connect; postBtn.textContent = 'Post'; } catch (e) { postBtn.textContent = 'Connect ' + agent.platform; postBtn.title = e.message; }
+      postBtn.disabled = false; return;
+    }
     const img = entry.image ? { base64: entry.image, mime: 'image/png', alt: p.altText || '' } : (images[0] ? { ...images[0], alt: p.altText || '' } : null);
     if (!confirm(`Post this to ${agent.platform} now${img ? ' with the image' : ' (no image)'}?`)) return;
     postBtn.disabled = true; postBtn.innerHTML = '<span class="spinner"></span> posting';
