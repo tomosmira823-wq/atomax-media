@@ -13,6 +13,18 @@ function readBody(req) { return new Promise(r => { const c = []; req.on('data', 
 function claudeReply(body) {
   const sys = body.system || '';
   const userText = JSON.stringify(body.messages || []);
+  // ---- Milo (3D modeller) and Vera (model checker) ----
+  if (/You are Milo/.test(sys)) {
+    if (/pipe/i.test(userText) && !/Your earlier questions/.test(userText)) return JSON.stringify({ status: 'questions', questions: ['What diameter should the pipe be?', 'Which side of the rail is the back?'] });
+    const fixing = /Vera \(model checker\) sent it back/.test(userText);
+    const ops = [{ op: 'add_pipe', name: 'New pipe', points: [[0.5, 0.35, -0.6], [9.5, 0.35, -0.6], [9.5, 0.35, 2]], radius: 0.075, colour: '#2f6fb5', flanges: true }, { op: 'recolour', node: 'Rail', colour: '#888888' }, { op: 'move', node: 'Nothing here', by: [1, 0, 0] }];
+    if (fixing) ops.push({ op: 'add_box', name: 'Pipe support', size: [0.2, 0.3, 0.2], position: [5, 0.15, -0.6], colour: '#444444' });
+    return JSON.stringify({ status: 'ready', summary: fixing ? 'Added a support under the pipe.' : 'Ran a 150 mm pipe behind the rail.', assumptions: ['Back of the rail is the -Z side', 'Pipe centre 350 mm above the floor'], ops });
+  }
+  if (/You are Vera/.test(sys)) {
+    const hasSupport = /Pipe support/.test(userText);
+    return JSON.stringify(hasSupport ? { verdict: 'pass', score: 9, summary: 'Pipe is in the right place and supported.', findings: [], good: ['Pipe size matches the notes', 'No clashes'] } : { verdict: 'fix', score: 5, summary: 'The pipe has no support.', findings: [{ severity: 'fix', text: 'A pipe this long needs a support under it.' }], good: ['Route is right'] });
+  }
   // ---- Cal (drawing checker) ----
   if (/map the columns/.test(sys)) return JSON.stringify({ sheets: [{ sheet: 'CSV', isSchedule: true, headerRow: 1, firstDataRow: 2, cols: { tag: 'A', from: 'B', to: 'C', type: 'D', drawing: 'E' } }] });
   if (/reading ONE source document/.test(sys)) {

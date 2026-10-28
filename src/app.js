@@ -1,5 +1,6 @@
 import { Office, AgentPreview, GEAR } from './office.js';
 import { initDexUI } from './dexui.js';
+import { initModellerUI } from './modui.js';
 import { initCheckUI } from './checkui.js';
 import { initBizUI } from './bizui.js';
 import { initModelingUI } from './modeling.js';
@@ -25,7 +26,7 @@ async function boot() {
 boot();
 function syncOffice() {
   const on = agents.filter(a => a.enabled);
-  office.setAgents(on.filter(a => !isDrawing(a)), on.filter(isDrawing).slice(0, 2));
+  office.setAgents(on.filter(a => !isDrawing(a)), on.filter(a => !isModelling(a) && isDrawing(a)).slice(0, 2), on.filter(isModelling).slice(0, 2));
 }
 
 // ---------- updates ----------
@@ -186,7 +187,8 @@ document.querySelectorAll('[data-test]').forEach(b => b.addEventListener('click'
 
 // ---------- agents ----------
 const isReviewer = (a) => a.role === 'reviewer';
-function isDrawing(a) { return a.role === 'drawing' || a.role === 'drafter'; }
+const isModelling = (a) => a.role === 'modeller' || a.role === 'modelchecker';
+function isDrawing(a) { return a.role === 'drawing' || a.role === 'drafter' || isModelling(a); }
 const isDrafter = (a) => a.role === 'drafter';
 function renderAgentPick() {
   const writers = agents.filter(a => a.enabled && !isReviewer(a) && !isDrawing(a));
@@ -199,7 +201,7 @@ function renderAgentPick() {
 const SWATCHES = ['#0a66c2', '#e1306c', '#1877f2', '#111111', '#00f2ea', '#f59f00', '#40bd00', '#8e44ad', '#20c997', '#ff6b35', '#ffffff', '#ff4757'];
 let preview = null, loIndex = -1, loDraft = null;
 
-function roleBadge(a) { if (isDrawing(a)) return '<span class="badge role rev">' + (isDrafter(a) ? 'DXF FIXER' : 'DRAWINGS') + '</span>'; return isReviewer(a) ? '<span class="badge role rev">REVIEWER</span>' : '<span class="badge role">WRITER</span>'; }
+function roleBadge(a) { if (isDrawing(a)) return '<span class="badge role rev">' + (isModelling(a) ? (a.role === 'modeller' ? '3D MODELLER' : '3D CHECKER') : isDrafter(a) ? 'DXF FIXER' : 'DRAWINGS') + '</span>'; return isReviewer(a) ? '<span class="badge role rev">REVIEWER</span>' : '<span class="badge role">WRITER</span>'; }
 
 function renderTeam() {
   $('#teamView').style.display = ''; $('#loadoutView').style.display = 'none';
@@ -224,14 +226,14 @@ function openLoadout(i) {
 
 function fillLoadout() {
   const a = loDraft, rev = isReviewer(a);
-  $('#loName').textContent = a.name; $('#loRole').textContent = isDrawing(a) ? (isDrafter(a) ? 'DXF fixer' : 'drawing checker') : (rev ? 'reviewer' : a.platform);
-  $('#lo_name').value = a.name; $('#lo_platform').value = a.platform; $('#lo_role').innerHTML = isDrawing(a) ? (isDrafter(a) ? '<option value="drafter">DXF fixer — sits at the drafting table</option>' : '<option value="drawing">Drawing checker — works in the drawing room</option>') : '<option value="writer">Writer — posts to one account</option><option value="reviewer">Reviewer — checks every post</option>'; $('#lo_role').value = isDrawing(a) ? a.role : (rev ? 'reviewer' : 'writer');
+  $('#loName').textContent = a.name; $('#loRole').textContent = isDrawing(a) ? (isModelling(a) ? (a.role === 'modeller' ? '3D modeller' : '3D model checker') : isDrafter(a) ? 'DXF fixer' : 'drawing checker') : (rev ? 'reviewer' : a.platform);
+  $('#lo_name').value = a.name; $('#lo_platform').value = a.platform; $('#lo_role').innerHTML = isDrawing(a) ? (isModelling(a) ? `<option value="${a.role}">${a.role === 'modeller' ? '3D modeller — sits at the board in the modeling room' : '3D model checker — sits at the review table'}</option>` : isDrafter(a) ? '<option value="drafter">DXF fixer — sits at the drafting table</option>' : '<option value="drawing">Drawing checker — works in the drawing room</option>') : '<option value="writer">Writer — posts to one account</option><option value="reviewer">Reviewer — checks every post</option>'; $('#lo_role').value = isDrawing(a) ? a.role : (rev ? 'reviewer' : 'writer');
   $('#lo_enabled').checked = !!a.enabled; $('#lo_colour').value = a.colour;
   $('#lo_tone').value = a.tone || ''; $('#lo_rules').value = a.rules || ''; $('#lo_examples').value = a.examples || '';
   const dr = isDrawing(a);
   $('#lo_platformLabel').textContent = dr ? 'Job' : rev ? 'Job (e.g. Checker, Brand guardian)' : 'Platform';
   $('#lo_toneLabel').textContent = dr ? `How ${a.name} behaves (attitude)` : rev ? 'How they review (attitude, what they care about)' : 'Tone / personality';
-  $('#lo_rulesLabel').textContent = dr ? (isDrafter(a) ? 'Standing rules' : 'The standard skill (what Cal checks every time)') : rev ? 'What they check' : 'Format rules';
+  $('#lo_rulesLabel').textContent = dr ? (isModelling(a) ? 'Standing rules' : isDrafter(a) ? 'Standing rules' : 'The standard skill (what Cal checks every time)') : rev ? 'What they check' : 'Format rules';
   $('#lo_examplesLabel').textContent = dr ? `Notes for ${a.name} (optional)` : rev ? 'Example reviews or notes (optional)' : 'Example posts in this voice (optional)';
   $('#loSwatches').innerHTML = SWATCHES.map(c => `<div class="sw ${c.toLowerCase() === a.colour.toLowerCase() ? 'on' : ''}" style="background:${c}" data-c="${c}"></div>`).join('');
   $('#loSwatches').querySelectorAll('.sw').forEach(s => s.addEventListener('click', () => { loDraft.colour = s.dataset.c; $('#lo_colour').value = s.dataset.c; fillLoadout(); preview.show(loDraft); }));
@@ -544,14 +546,18 @@ const dexAgent = () => agents.find(a => a.enabled && isDrafter(a));
 const checkUI = initCheckUI({ office, api, getAgent: calAgent, getSettings: () => settings, openSettings: () => { fillSettings(); openModal('settingsModal'); } });
 const bizUI = initBizUI({ api, getSettings: () => settings, openSettings: () => { fillSettings(); openModal('settingsModal'); } });
 const dexUI = initDexUI({ office, api, getAgent: dexAgent, getSettings: () => settings, openSettings: () => { fillSettings(); openModal('settingsModal'); } });
+const modellerAgent = () => agents.find(a => a.enabled && a.role === 'modeller');
+const vera = () => agents.find(a => a.enabled && a.role === 'modelchecker');
+const modellerUI = initModellerUI({ office, api, getAgent: modellerAgent, getChecker: vera, getSettings: () => settings, openSettings: () => { fillSettings(); openModal('settingsModal'); }, fillJobSelect: (el) => bizUI.fillJobSelect(el), showModel: (o) => office.showModel(o) });
 const modelUI = initModelingUI({ office, api, getSettings: () => settings, openSettings: () => { fillSettings(); openModal('settingsModal'); } });
 function goRoom(where) {
-  const inModel = where === 'modeling' || where === 'scan';
+  const inModel = where === 'modeling' || where === 'scan' || where === 'modeler';
   const inDraw = where !== 'media';
   document.body.classList.toggle('room-drawing', inDraw);
   document.body.classList.toggle('room-modeling', inModel);
   document.querySelectorAll('#rooms button').forEach(b => b.classList.toggle('active', b.dataset.room === (inModel ? 'modeling' : inDraw ? 'drawing' : 'media')));
-  ['#checkPanel', '#dexPanel', '#modelPanel'].forEach(sel => $(sel).classList.remove('collapsed'));
+  ['#checkPanel', '#dexPanel', '#modelPanel', '#modPanel'].forEach(sel => $(sel).classList.remove('collapsed'));
+  if (where === 'modeler') modellerUI.show(); else modellerUI.hide();
   if (where === 'desk') { checkUI.show(); bizUI.fillJobSelect($('#checkJob')); } else checkUI.hide();
   if (where === 'drafting') { dexUI.show(); bizUI.fillJobSelect($('#dexJob')); } else dexUI.hide();
   if (where === 'scan') modelUI.show(); else modelUI.hide();
@@ -561,15 +567,15 @@ document.querySelectorAll('#rooms button').forEach(b => b.addEventListener('clic
 $('#deskBack').addEventListener('click', () => goRoom('drawing'));
 $('#dexBack').addEventListener('click', () => goRoom('drawing'));
 $('#modelBack').addEventListener('click', () => goRoom('modeling'));
-office.onPick = (what) => { if (what === 'door') goRoom('drawing'); else if (what === 'desk') { if (calAgent()) goRoom('desk'); } else if (what === 'drafting') { if (dexAgent()) goRoom('drafting'); } else if (what === 'modeldoor') goRoom('modeling'); else if (what === 'scan') goRoom('scan'); };
-document.addEventListener('keydown', (e) => { if (e.key !== 'Escape' || document.querySelector('.modal.open')) return; if (office.room === 'desk' || office.room === 'drafting') goRoom('drawing'); else if (office.room === 'scan') goRoom('modeling'); });
+office.onPick = (what) => { if (what === 'door') goRoom('drawing'); else if (what === 'desk') { if (calAgent()) goRoom('desk'); } else if (what === 'drafting') { if (dexAgent()) goRoom('drafting'); } else if (what === 'modeldoor') goRoom('modeling'); else if (what === 'scan') goRoom('scan'); else if (what === 'modeler' || what === 'modelcheck') { if (modellerAgent()) goRoom('modeler'); } };
+document.addEventListener('keydown', (e) => { if (e.key !== 'Escape' || document.querySelector('.modal.open')) return; if (office.room === 'desk' || office.room === 'drafting') goRoom('drawing'); else if (office.room === 'scan' || office.room === 'modeler') goRoom('modeling'); });
 // ---- first person ----
 office.onFirstPerson = (on, room) => {
   document.body.classList.toggle('fp', on);
-  if (on) { checkUI.hide(); dexUI.hide(); modelUI.hide(); }
+  if (on) { checkUI.hide(); dexUI.hide(); modelUI.hide(); modellerUI.hide(); }
   else if (room) goRoom(room);
 };
-const toggleFP = () => { if (office.fp) office.exitFirstPerson(); else { if (['desk', 'drafting', 'scan'].includes(office.room)) goRoom(office.room === 'scan' ? 'modeling' : 'drawing'); office.enterFirstPerson(); } };
+const toggleFP = () => { if (office.fp) office.exitFirstPerson(); else { if (['desk', 'drafting', 'scan', 'modeler'].includes(office.room)) goRoom(office.room === 'scan' || office.room === 'modeler' ? 'modeling' : 'drawing'); office.enterFirstPerson(); } };
 $('#fpBtn').addEventListener('click', toggleFP);
 document.addEventListener('keydown', (e) => {
   if (/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement && document.activeElement.tagName) || document.querySelector('.modal.open')) return;
@@ -578,3 +584,4 @@ document.addEventListener('keydown', (e) => {
 });
 window.__goRoom = goRoom;
 window.__modelUI = modelUI;
+window.__modellerUI = modellerUI;

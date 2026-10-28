@@ -149,6 +149,13 @@
   #dexPanel .fx code { background: #0a0e18; padding: 1px 5px; border-radius: 4px; }
   .lbl.hint { color: var(--green); border-color: var(--green2); font-weight: 600; }
   /* modeling room panel */
+  #modPanel { display: none; right: 16px; width: 440px; }
+  body.room-modeling #modPanel.open { display: flex; }
+  #modPanel .op { font-size: 12.5px; padding: 5px 0; border-bottom: 1px solid var(--line); } #modPanel .op:last-child { border: 0; }
+  #modPanel .vcard { border: 1px solid var(--line); border-radius: 12px; padding: 12px; margin-top: 12px; background: #0c111c; }
+  #modPanel .vcard.pass { border-color: #2f9e44; } #modPanel .vcard.fix { border-color: #e8590c; }
+  #modPanel .q { margin-top: 10px; } #modPanel .q b { display: block; margin-bottom: 4px; font-size: 13px; }
+  #modPanel .sev { font-weight: 700; font-size: 11px; padding: 1px 6px; border-radius: 6px; margin-right: 6px; } #modPanel .sev.fix { background: #e8590c; color: #fff; } #modPanel .sev.look { background: #f59f00; color: #111; }
   #modelPanel { display: none; right: 16px; width: 420px; }
   body.room-modeling #modelPanel.open { display: flex; }
   #modelPanel .photo { display: block; max-width: 100%; max-height: 190px; margin: 0 auto 8px; border-radius: 8px; }
@@ -391,6 +398,28 @@ body.fp canvas#scene{cursor:grab}
     <div id="dexRun" hidden><span class="spinner"></span><div id="dexMsg" style="margin-top:10px;font-weight:600">Dex is reading the markups</div></div>
     <div id="dexList" hidden></div>
     <div id="dexResult" hidden></div>
+  </div>
+</div>
+
+<!-- Modeling room: Milo edits a 3D model, Vera checks it -->
+<div class="panel" id="modPanel">
+  <h2><span>Milo · 3D modeller</span><button class="collapse" id="modBack" title="Back to the room (Esc)">×</button></h2>
+  <div class="body">
+    <div id="moSetup">
+      <label style="margin-top:0">1 · What should change?</label>
+      <textarea id="moRequest" rows="4" placeholder="e.g. A new 150 mm pipe needs to run along the back of the rail, about 300 mm off the floor, from the left end to the tank."></textarea>
+      <label>2 · The 3D model(s) to change</label>
+      <div class="drop" id="moDropModel"><div class="dz-t">Drop the 3D model here</div><div class="dz-s">GLB, GLTF, OBJ or STL · or click to browse. Milo changes a copy, never your file.</div><div id="moModels"></div><input type="file" hidden multiple accept=".glb,.gltf,.obj,.stl" /></div>
+      <label>3 · Context <span class="hint">(optional: notes, drawings, photos, schedules)</span></label>
+      <div class="drop" id="moDropCtx"><div class="dz-t">Drop a folder or files here</div><div class="dz-s">PDF, Word, Excel, text, photos · or click to browse</div><div id="moCtx"></div><input type="file" hidden multiple /></div>
+      <div class="row" style="margin-top:6px"><button class="btn small" id="moFolder" type="button">Choose a context folder…</button></div>
+      <label>Job <span class="hint">(optional, for the audit trail)</span></label><select id="moJob"><option value="">No job</option></select>
+      <div class="err" id="moErr" style="margin-top:10px"></div>
+      <button class="btn primary" id="moGo" style="width:100%;margin-top:12px" disabled>Ask Milo to do it</button>
+    </div>
+    <div id="moRun" hidden><span class="spinner"></span><div id="moMsg" style="margin-top:10px;font-weight:600">Milo is reading the request</div></div>
+    <div id="moQs" hidden></div>
+    <div id="moResult" hidden></div>
   </div>
 </div>
 

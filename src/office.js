@@ -424,7 +424,7 @@ export class Office {
     this.#furnishDrawing();
     this.#buildNav();
     // if agents were requested before the models arrived, place them now
-    if (this.pendingAgents) { const l = this.pendingAgents; this.pendingAgents = null; this.setAgents(l.list, l.drawing); }
+    if (this.pendingAgents) { const l = this.pendingAgents; this.pendingAgents = null; this.setAgents(l.list, l.drawing, l.modelling); }
     this.setBoard(this.boardLines);
   }
 
@@ -495,11 +495,11 @@ export class Office {
   }
 
   // ---------- public API ----------
-  setAgents(list, drawing = null) {
-    if (!this.models['desk-teacher']) { this.pendingAgents = { list, drawing }; return; }
+  setAgents(list, drawing = null, modelling = null) {
+    if (!this.models['desk-teacher']) { this.pendingAgents = { list, drawing, modelling }; return; }
     (this.drawExtras || []).forEach(o => { this.scene.remove(o); if (o.element) o.element.remove(); }); this.drawExtras = [];
     for (const a of this.agents.values()) { this.scene.remove(a.group); if (a.desk) this.scene.remove(a.desk); if (a.chair) this.scene.remove(a.chair); a.label.element.remove(); }
-    this.agents.clear(); this.dexRoots = [];
+    this.agents.clear(); this.dexRoots = []; this.modRoots = {};
     this.obstacles = this.obstacles.filter(o => !o.desk);
     (this.podRugs || []).forEach(r => this.scene.remove(r)); const a_rugs = []; this.podRugs = a_rugs;
     list.forEach((data, i) => {
@@ -543,6 +543,7 @@ export class Office {
       }
     }
     for (const d of (Array.isArray(drawing) ? drawing : (drawing ? [drawing] : []))) { if (d.role === 'drafter') this.#addDrafter(d); else this.#addDrawingAgent(d, a_rugs); }
+    for (const d of (Array.isArray(modelling) ? modelling : [])) this.#addModelling(d);
     this.#buildNav();
     for (const a of this.agents.values()) a.path = null;
     this.setBoard(this.boardLines);
@@ -780,6 +781,21 @@ export class Office {
     this.dexRoots = [this.draftTable, this.draftStool, group].filter(Boolean);
   }
 
+  // Milo (3D modeller) sits at his board and Vera (model checker) at her review table in the modeling room, working all day
+  #addModelling(data) {
+    const st = this.modelRoom && this.modelRoom.stations[data.role === 'modeller' ? 'modeller' : 'checker']; if (!st) return;
+    const [sx, sz] = st.stool, [tx, tz] = st.table;
+    const group = buildCharacter(data.colour, 'writer', data.gear);
+    const seat = new THREE.Vector3(sx, 0, sz), faceSeat = Math.atan2(tx - sx, tz - sz);
+    group.position.set(sx, 0.62, sz); group.rotation.y = faceSeat; this.scene.add(group);
+    const el = document.createElement('div'); el.className = 'lbl';
+    el.innerHTML = `<b>${data.name}</b> · ${data.platform} <span class="st"></span>`;
+    const label = new CSS2DObject(el); label.position.set(0, 2.6, 0); group.add(label);
+    this.agents.set(data.id, { data, group, desk: null, chair: null, seat, faceSeat, zone: 'modeling', drafter: true, sitY: 0.62, state: 'working', seated: true, label, el, walkTarget: null, waypoint: null, faceTo: null, wait: 0, t: Math.random() * 10, blink: 2 + Math.random() * 3 });
+    (this.modRoots = this.modRoots || {})[data.role] = [...st.roots, group];
+    st.hint.visible = this.room === 'modeling' || this.room === 'modeler';
+  }
+
   // ---------- modeling room (west of the drawing room) ----------
   #buildModelingRoom() {
     this.modelRoom = buildModelingRoom({ scene: this.scene, bounds: MODEL, logoTex: this.logoWhiteTex, drawLeftWall: this.drawLeftWall, doorZ: (DOOR2.z0 + DOOR2.z1) / 2 });
@@ -806,7 +822,7 @@ export class Office {
     this.controls.enabled = false;
     if (this.deskHint) this.deskHint.visible = where === 'drawing';
     if (this.dexHint) this.dexHint.visible = where === 'drawing';
-    if (this.modelRoom) this.modelRoom.hint.visible = where === 'modeling';
+    if (this.modelRoom) { this.modelRoom.hint.visible = where === 'modeling'; for (const k of Object.values(this.modelRoom.stations)) k.hint.visible = where === 'modeling'; }
     this.canvas.style.cursor = '';
   }
 
@@ -820,6 +836,9 @@ export class Office {
       if (this.room === 'drawing' && this.clickRoots.length && this.ray.intersectObjects(this.clickRoots, true).some(h => visibleChain(h.object))) return 'desk';
       if (this.room === 'drawing' && this.dexRoots && this.dexRoots.length && this.ray.intersectObjects(this.dexRoots, true).some(h => visibleChain(h.object))) return 'drafting';
       if (this.room === 'drawing' && this.modelRoom && visibleChain(this.modelRoom.plaque) && this.ray.intersectObject(this.modelRoom.plaque, true).length) return 'modeldoor';
+      if ((this.room === 'modeling' || this.room === 'modeler') && this.modRoots) {
+        for (const [role, roots] of Object.entries(this.modRoots)) if (roots.length && this.ray.intersectObjects(roots, true).some(h => visibleChain(h.object))) return role === 'modeller' ? 'modeler' : 'modelcheck';
+      }
       if (this.room === 'modeling' && this.modelRoom && this.ray.intersectObjects(this.modelRoom.clickRoots, true).some(h => visibleChain(h.object))) return 'scan';
       return null;
     };

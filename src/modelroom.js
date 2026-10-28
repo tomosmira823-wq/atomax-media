@@ -179,6 +179,56 @@ export function buildModelingRoom({ scene, bounds: M, logoTex, drawLeftWall, doo
   plaque.position.set(M.x1 + 0.3 + 0.04, 3.9, doorZ);
   if (drawLeftWall) drawLeftWall.add(plaque); else scene.add(plaque);
 
+  // ---- Milo's drafting board and Vera's review table (seated agents are added by office.js) ----
+  const stations = {}, holos = [];
+  const sketchTex = (label) => {
+    const c = document.createElement('canvas'); c.width = 640; c.height = 440; const g = c.getContext('2d');
+    g.fillStyle = '#f2f5f8'; g.fillRect(0, 0, 640, 440); g.strokeStyle = 'rgba(40,90,160,0.22)'; g.lineWidth = 1;
+    for (let x = 0; x <= 640; x += 20) { g.beginPath(); g.moveTo(x, 0); g.lineTo(x, 440); g.stroke(); } for (let y = 0; y <= 440; y += 20) { g.beginPath(); g.moveTo(0, y); g.lineTo(640, y); g.stroke(); }
+    g.strokeStyle = '#1d3f73'; g.lineWidth = 3; g.lineJoin = 'round';
+    const cube = (cx, cy, r) => { const o = r * 0.5, f = [[-r, -r + o], [r, -r + o], [r, r + o], [-r, r + o]], b = f.map(([x, y]) => [x + o, y - o]); [f, b].forEach(q => { g.beginPath(); q.forEach(([x, y], i) => i ? g.lineTo(cx + x, cy + y) : g.moveTo(cx + x, cy + y)); g.closePath(); g.stroke(); }); f.forEach((pt, i) => { g.beginPath(); g.moveTo(cx + pt[0], cy + pt[1]); g.lineTo(cx + b[i][0], cy + b[i][1]); g.stroke(); }); };
+    cube(190, 230, 70);
+    g.strokeStyle = '#c0392b'; g.lineWidth = 8; g.lineCap = 'round'; g.beginPath(); g.moveTo(60, 380); g.lineTo(560, 380); g.lineTo(560, 120); g.lineTo(610, 120); g.stroke();
+    g.fillStyle = '#1d3f73'; g.font = '700 26px Segoe UI, Arial, sans-serif'; g.fillText(label, 340, 70);
+    const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
+  };
+  const holoCube = (size) => { const l = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(size, size, size)), new THREE.LineBasicMaterial({ color: 0x8dff6a, transparent: true, opacity: 0.9 })); holos.push(l); return l; };
+  const station = (id, tx, tz, yaw, build, hintText) => {
+    const g = new THREE.Group(); g.position.set(tx, 0, tz); g.rotation.y = yaw; scene.add(g);
+    const woodT = mat(0xb98a55, { roughness: 0.6 });
+    g.add(box(2.6, 0.1, 1.7, woodT, 0, 1.0, 0)); [[-1.2, -0.7], [1.2, -0.7], [-1.2, 0.7], [1.2, 0.7]].forEach(([x, z]) => g.add(box(0.08, 1.0, 0.08, steel, x, 0.5, z)));
+    build(g);
+    const sg = new THREE.Group(); const seat = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.32, 0.1, 18), mat(GREEN)); seat.position.y = 0.72; seat.castShadow = true; sg.add(seat);
+    [0, 1, 2].forEach(i => { const a = i * 2.094; sg.add(box(0.05, 0.72, 0.05, steel, Math.sin(a) * 0.2, 0.36, Math.cos(a) * 0.2)); });
+    sg.position.set(0, 0, 1.45); g.add(sg);
+    g.updateMatrixWorld(true);
+    const stool = sg.getWorldPosition(new THREE.Vector3()), table = g.getWorldPosition(new THREE.Vector3());
+    const hint = document.createElement('div'); hint.className = 'lbl hint'; hint.textContent = hintText;
+    const hObj = new CSS2DObject(hint); hObj.position.set(tx, 3.6, tz); scene.add(hObj); hObj.visible = false;
+    obstacles.push({ x: tx, z: tz, r: 1.5 });
+    stations[id] = { table: [table.x, table.z], stool: [stool.x, stool.z], roots: [g], hint: hObj };
+  };
+  const bx = M.cx + 5.4, bz = M.cz + 1.2;
+  station('modeller', bx, bz, Math.PI / 2, (g) => {
+    const tg = new THREE.Group(); tg.position.set(0, 1.12, -0.1); tg.rotation.x = 0.45; g.add(tg);
+    tg.add(box(2.2, 0.06, 1.4, mat(0x2a3042, { roughness: 0.5 }), 0, 0, 0));
+    const sheet = new THREE.Mesh(new THREE.PlaneGeometry(2.0, 1.25), new THREE.MeshStandardMaterial({ map: sketchTex('NEW PIPE RUN'), roughness: 0.9 })); sheet.rotation.x = -Math.PI / 2; sheet.position.y = 0.035; tg.add(sheet);
+    g.add(box(2.2, 0.05, 0.1, mat(GREEN, GL), 0, 1.07, 0.65, false));
+    const h = holoCube(0.6); h.position.set(0.5, 2.2, -0.2); g.add(h);
+    const ring2 = new THREE.Mesh(new THREE.TorusGeometry(0.5, 0.012, 8, 48), new THREE.MeshBasicMaterial({ color: 0x8dff6a, transparent: true, opacity: 0.7 })); ring2.rotation.x = Math.PI / 2; ring2.position.set(0.5, 1.72, -0.2); g.add(ring2);
+    const lamp = new THREE.Group(); lamp.add(box(0.2, 0.04, 0.2, steel, 0, 0, 0)); lamp.add(box(0.03, 0.7, 0.03, steel, 0, 0.35, 0)); const hd = box(0.3, 0.06, 0.2, steel, 0.1, 0.72, 0); lamp.add(hd); lamp.position.set(-1.0, 1.05, -0.5); g.add(lamp);
+    const pen = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.1, 12), mat(0xffd43b)); pen.position.set(-0.8, 1.1, 0.5); g.add(pen);
+  }, 'Click to give Milo a 3D job');
+  const vx = M.cx - 5.2, vz = M.cz + 3.9;
+  station('checker', vx, vz, -Math.PI / 2, (g) => {
+    g.add(box(2.2, 0.03, 1.3, new THREE.MeshStandardMaterial({ color: 0xf8fbff, emissive: 0xdfeeff, emissiveIntensity: 0.9, roughness: 0.6 }), 0, 1.07, -0.05, false));
+    const h = holoCube(0.45); h.position.set(-0.2, 1.6, -0.1); g.add(h);
+    const frame = new THREE.Group(); frame.add(new THREE.Mesh(new THREE.TorusGeometry(0.34, 0.035, 10, 32), mat(0x2a3042, { metalness: 0.5, roughness: 0.4 })));
+    const lens2 = new THREE.Mesh(new THREE.CircleGeometry(0.31, 28), new THREE.MeshPhysicalMaterial({ color: 0xcfe8ff, transparent: true, opacity: 0.3, roughness: 0.05 })); frame.add(lens2);
+    frame.add(box(0.05, 0.6, 0.05, steel, 0, -0.62, 0)); frame.position.set(0.7, 1.75, -0.1); frame.rotation.x = -0.4; g.add(frame);
+    g.add(box(0.5, 0.02, 0.38, mat(0xf4f5f7), -0.9, 1.07, 0.4, false)); g.add(box(0.38, 0.01, 0.01, mat(0x40bd00), -0.9, 1.09, 0.34, false));
+  }, 'Click to see the model check');
+
   // little chip above the pedestal: tells you it can be clicked
   const chip = document.createElement('div'); chip.className = 'lbl hint'; chip.textContent = 'Click to turn a photo into a 3D model';
   const chipObj = new CSS2DObject(chip); chipObj.position.set(px, 3.7, pz); scene.add(chipObj); chipObj.visible = false;
@@ -186,10 +236,11 @@ export function buildModelingRoom({ scene, bounds: M, logoTex, drawLeftWall, doo
   // ---- model on the pedestal ----
   let current = null, spin = 0, busyT = 0, busy = false;
   const api = {
-    backWall, leftWall, clickRoots, obstacles, plaque, hint: chipObj, pedestal: { x: px, z: pz },
+    backWall, leftWall, clickRoots, obstacles, plaque, hint: chipObj, stations, pedestal: { x: px, z: pz },
     spots: {
       modeling: { p: [M.cx + 8, 15, 24], t: [M.cx + 1, 0.5, -2] },
-      scan: { p: [px + 6.5, 5.0, pz + 8.5], t: [px + 0.4, 1.3, pz] }
+      scan: { p: [px + 6.5, 5.0, pz + 8.5], t: [px + 0.4, 1.3, pz] },
+      modeler: { p: [M.cx + 0.5, 5.6, M.cz + 12.5], t: [M.cx + 2.2, 1.3, M.cz + 0.6] }
     },
     // put a loaded glTF scene on the pedestal, scaled to fit
     setModel(object3d) {
@@ -206,7 +257,7 @@ export function buildModelingRoom({ scene, bounds: M, logoTex, drawLeftWall, doo
     hasModel() { return !!current; },
     setBusy(v) { busy = !!v; if (!busy) hoop.material.opacity = 0; },
     step(dt) {
-      slot.rotation.y += dt * 0.45; spin += dt;
+      slot.rotation.y += dt * 0.45; spin += dt; holos.forEach((h, i) => { h.rotation.y += dt * (0.8 + i * 0.3); h.rotation.x += dt * 0.35; });
       if (busy) { busyT += dt; hoop.material.opacity = 0.85; hoop.position.y = 0.6 + (Math.sin(busyT * 1.8) * 0.5 + 0.5) * 2.6; ring.material.emissiveIntensity = 0.9 + Math.sin(busyT * 6) * 0.5; }
       else ring.material.emissiveIntensity = 0.9;
     }

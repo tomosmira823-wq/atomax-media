@@ -72,6 +72,15 @@ Dex sits on the stool at the drafting table in the drawing room. Click the table
 
 What he does: swaps exact text (TEXT, MTEXT and ATTRIB values, whole-tag matches only, so `C-O102` never hits `C-O102x`) and saves `<name>_FIXED.dxf` in a `FIXED` folder next to each DXF, plus `DEX_FIX_LOG.txt`. The original is never touched and every other byte of the file is kept as it was. He can change, delete and add text. Text inside symbol (block) definitions is changed only when you leave the symbol tick on, because that changes every copy of the symbol. With no markup you can pick Just tell Dex and type the fix; Claude reads the DXF's text list and proposes changes you tick. Tests: `node test/dxffix-test.js` and `AMO_SCENARIO=dex` (needs `test/mock-api.js` running and a `last-check.json` in the user data folder).
 
+## Milo (3D modeller) and Vera (model checker)
+Both sit in the modeling room: Milo at his drafting board, Vera at a review table. Click Milo.
+1. Say what should change ("a new pipe along the back of the rail"), drop a 3D model (GLB, GLTF, OBJ or STL) and optionally a context folder or files (PDF, Word, Excel, text, photos; nested folders are read, up to 40 files).
+2. Milo reads the model (named parts with their boxes, plus four pictures) and the context. If something matters and is not given he asks up to four short questions first. Otherwise he returns an edit list: add pipe/box/cylinder, move, rotate, scale, delete, recolour. The edits are applied to a copy and shown on the pedestal (new parts red in the pictures Claude sees). Before/After toggle.
+3. A clash test runs in code (boxes overlapping, parts sticking out, tiny parts). Then "Send to Vera": she checks the result against the request and context and passes it or sends it back with findings; "Send back to Milo" redoes it with her findings.
+4. Save copy writes a GLB to the models folder (never over the original). Milo and Vera log to the audit trail.
+Limits: STEP, IFC, DWG and DXF models are not opened (export a GLB). Clash test is box-based, so diagonal pipes can report false overlaps.
+Test: AMO_SCENARIO=mo AMO_MO_DIR=<folder with an .obj and notes> AMO_MOCK=1 with test/mock-api.js running.
+
 ## Furniture and look
 
 v1.1: the floor is laid out in pods of two facing workstations (slim white desks, dual monitors on an arm, keyboard, mouse, pedestal, desk plant, coloured mug and chair) with a pendant over each pod; spare pods are furnished and waiting for new agents, so adding a team (a CAD department, say) just fills them in. Windows look out on a soft skyline; the boardroom has a proper long table and pendant row; the open sides have a slim ceiling edge. Agents blink, walk with a distance-driven cycle (no sliding), lean into turns, and sit and type at their desks.
