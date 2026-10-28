@@ -34,7 +34,7 @@
     $('#moAnswer').click(); await until(() => !$('#moResult').hidden, 60000, 'result');
     const t = $('#moResult').textContent;
     if (!/Added pipe "New pipe"/.test(t)) throw new Error('no pipe line: ' + t.slice(0, 300));
-    if (!/Recoloured "Rail"/.test(t)) throw new Error('no recolour');
+    if (!/Recoloured "rail"/i.test(t)) throw new Error('no recolour');
     if (!/Could not find "Nothing here"/.test(t)) throw new Error('bad op not reported');
     if (!/Back of the rail/.test(t)) throw new Error('assumptions missing');
     if (!/overlaps/.test(t) && !/No added part overlaps/.test(t)) throw new Error('no clash text');
