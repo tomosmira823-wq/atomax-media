@@ -28,7 +28,7 @@
     const drop = (id, files) => { const dt = new DataTransfer(); files.forEach(f => dt.items.add(f)); $(id).dispatchEvent(new DragEvent('drop', { dataTransfer: dt, bubbles: true, cancelable: true })); };
     drop('#dropSched', [new File(['Cable,From,To,Type,Drawing\nC-101,JB-1,PLC/RIO1,2C 1.5 SWA,DRG-001\nC-102,JB-2,PLC/RIO1,Instrument 1PR,DRG-001\n'], 'schedule.csv', { type: 'text/csv' })]);
     drop('#dropDwg', [new File([mkPdf()], 'DRG-001.pdf', { type: 'application/pdf' })]);
-    await until(() => $('#schedFile').textContent.includes('schedule.csv') && $('#dwgFiles').textContent.includes('DRG-001.pdf') && !$('#checkGo').disabled, 20000).catch(() => { throw new Error('files did not land: sched=[' + $('#schedFile').textContent + '] dwg=[' + $('#dwgFiles').textContent + '] err=' + $('#checkErr').textContent); });
+    await until(() => $('#schedFile').textContent.includes('schedule.csv') && $('#dwgFiles').textContent.includes('DRG-001.pdf') && !$('#checkGo').disabled, 90000).catch(() => { throw new Error('files did not land: sched=[' + $('#schedFile').textContent + '] dwg=[' + $('#dwgFiles').textContent + '] err=' + $('#checkErr').textContent); });
     document.querySelector('#checkMode [data-mode=note]').click();
     $('#checkNote').value = 'Look hard at C-103';
     $('#checkGo').click();

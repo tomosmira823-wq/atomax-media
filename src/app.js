@@ -1,5 +1,6 @@
 import { Office, AgentPreview, GEAR } from './office.js';
 import { initDexUI } from './dexui.js';
+import { initBoardUI } from './boardui.js';
 import { initModellerUI } from './modui.js';
 import { initCheckUI } from './checkui.js';
 import { initBizUI } from './bizui.js';
@@ -26,7 +27,7 @@ async function boot() {
 boot();
 function syncOffice() {
   const on = agents.filter(a => a.enabled);
-  office.setAgents(on.filter(a => !isDrawing(a)), on.filter(a => !isModelling(a) && isDrawing(a)).slice(0, 2), on.filter(isModelling).slice(0, 3));
+  office.setAgents(on.filter(a => !isDrawing(a)), on.filter(a => !isModelling(a) && !isDocs(a) && isDrawing(a)).slice(0, 2), on.filter(isModelling).slice(0, 3), on.filter(isDocs).slice(0, 1));
 }
 
 // ---------- updates ----------
@@ -188,7 +189,8 @@ document.querySelectorAll('[data-test]').forEach(b => b.addEventListener('click'
 // ---------- agents ----------
 const isReviewer = (a) => a.role === 'reviewer';
 const isModelling = (a) => a.role === 'modeller' || a.role === 'builder' || a.role === 'modelchecker';
-function isDrawing(a) { return a.role === 'drawing' || a.role === 'drafter' || isModelling(a); }
+const isDocs = (a) => a.role === 'documents';
+function isDrawing(a) { return a.role === 'drawing' || a.role === 'drafter' || isModelling(a) || isDocs(a); }
 const isDrafter = (a) => a.role === 'drafter';
 function renderAgentPick() {
   const writers = agents.filter(a => a.enabled && !isReviewer(a) && !isDrawing(a));
@@ -201,7 +203,7 @@ function renderAgentPick() {
 const SWATCHES = ['#0a66c2', '#e1306c', '#1877f2', '#111111', '#00f2ea', '#f59f00', '#40bd00', '#8e44ad', '#20c997', '#ff6b35', '#ffffff', '#ff4757'];
 let preview = null, loIndex = -1, loDraft = null;
 
-function roleBadge(a) { if (isDrawing(a)) return '<span class="badge role rev">' + (isModelling(a) ? (a.role === 'modeller' ? '3D MODELLER' : a.role === 'builder' ? '3D BUILDER' : '3D CHECKER') : isDrafter(a) ? 'DXF FIXER' : 'DRAWINGS') + '</span>'; return isReviewer(a) ? '<span class="badge role rev">REVIEWER</span>' : '<span class="badge role">WRITER</span>'; }
+function roleBadge(a) { if (isDrawing(a)) return '<span class="badge role rev">' + (isDocs(a) ? 'DOCUMENTS' : isModelling(a) ? (a.role === 'modeller' ? '3D MODELLER' : a.role === 'builder' ? '3D BUILDER' : '3D CHECKER') : isDrafter(a) ? 'DXF FIXER' : 'DRAWINGS') + '</span>'; return isReviewer(a) ? '<span class="badge role rev">REVIEWER</span>' : '<span class="badge role">WRITER</span>'; }
 
 function renderTeam() {
   $('#teamView').style.display = ''; $('#loadoutView').style.display = 'none';
@@ -550,26 +552,48 @@ const modellerAgent = () => agents.find(a => a.enabled && a.role === 'modeller')
 const theo = () => agents.find(a => a.enabled && a.role === 'builder');
 const vera = () => agents.find(a => a.enabled && a.role === 'modelchecker');
 const modellerUI = initModellerUI({ office, api, getAgent: modellerAgent, getBuilder: theo, getChecker: vera, getSettings: () => settings, openSettings: () => { fillSettings(); openModal('settingsModal'); }, fillJobSelect: (el) => bizUI.fillJobSelect(el), showModel: (o) => office.showModel(o) });
+const boardUI = initBoardUI({
+  office, api, getAgents: () => agents,
+  goBack: () => goRoom('overview'),
+  openBusiness: () => { bizUI.open('jobs').then(() => openModal('bizModal')); },
+  openAgent: (task, job) => openAgentForTask(task, job)
+});
+// open the agent a task was set for, with the job in hand and the task text ready as the prompt
+function openAgentForTask(task, job) {
+  const ag = agents.find(a => a.id === task.agentId) || agents.find(a => a.name === task.agentName);
+  const text = task.title + (task.detail ? '\n' + task.detail : '');
+  const role = ag && ag.role;
+  if (role === 'modeller') { modellerUI.setMode('edit'); goRoom('modeler'); $('#moRequest').value = text; $('#moRequest').dispatchEvent(new Event('input')); }
+  else if (role === 'builder') { modellerUI.setMode('build'); goRoom('modeler'); $('#moRequest').value = text; $('#moRequest').dispatchEvent(new Event('input')); }
+  else if (role === 'modelchecker') { modellerUI.setMode('edit'); goRoom('modeler'); }
+  else if (role === 'drawing') { goRoom('desk'); const n = $('#checkNote'); if (n) { n.style.display = 'block'; n.value = text; } }
+  else if (role === 'drafter') { goRoom('drafting'); const box = $('#dexNoteBox'), n = $('#dexNote'); if (box && n) { box.style.display = 'block'; n.value = text; } }
+  else if (role === 'documents') { bizUI.open('docs').then(() => openModal('bizModal')); }
+  else goRoom('overview');
+}
 const modelUI = initModelingUI({ office, api, getSettings: () => settings, openSettings: () => { fillSettings(); openModal('settingsModal'); } });
 function goRoom(where) {
   const inModel = where === 'modeling' || where === 'scan' || where === 'modeler';
-  const inDraw = where !== 'media';
+  const wideView = where === 'media' || where === 'overview' || where === 'board';
+  const inDraw = !wideView;
   document.body.classList.toggle('room-drawing', inDraw);
+  document.body.classList.toggle('room-board', where === 'board');
   document.body.classList.toggle('room-modeling', inModel);
-  document.querySelectorAll('#rooms button').forEach(b => b.classList.toggle('active', b.dataset.room === (inModel ? 'modeling' : inDraw ? 'drawing' : 'media')));
+  document.querySelectorAll('#rooms button').forEach(b => b.classList.toggle('active', b.dataset.room === (inModel ? 'modeling' : inDraw ? 'drawing' : where === 'media' ? 'media' : 'overview')));
   ['#checkPanel', '#dexPanel', '#modelPanel', '#modPanel'].forEach(sel => $(sel).classList.remove('collapsed'));
   if (where === 'modeler') modellerUI.show(); else modellerUI.hide();
   if (where === 'desk') { checkUI.show(); bizUI.fillJobSelect($('#checkJob')); } else checkUI.hide();
   if (where === 'drafting') { dexUI.show(); bizUI.fillJobSelect($('#dexJob')); } else dexUI.hide();
   if (where === 'scan') modelUI.show(); else modelUI.hide();
+  if (where === 'board') boardUI.show(); else boardUI.hide();
   office.focus(where);
 }
 document.querySelectorAll('#rooms button').forEach(b => b.addEventListener('click', () => goRoom(b.dataset.room)));
 $('#deskBack').addEventListener('click', () => goRoom('drawing'));
 $('#dexBack').addEventListener('click', () => goRoom('drawing'));
 $('#modelBack').addEventListener('click', () => goRoom('modeling'));
-office.onPick = (what) => { if (what === 'door') goRoom('drawing'); else if (what === 'desk') { if (calAgent()) goRoom('desk'); } else if (what === 'drafting') { if (dexAgent()) goRoom('drafting'); } else if (what === 'modeldoor') goRoom('modeling'); else if (what === 'scan') goRoom('scan'); else if (what === 'modeler' || what === 'modelcheck') { if (modellerAgent()) { modellerUI.setMode('edit'); goRoom('modeler'); } } else if (what === 'builder') { if (theo()) { modellerUI.setMode('build'); goRoom('modeler'); } } };
-document.addEventListener('keydown', (e) => { if (e.key !== 'Escape' || document.querySelector('.modal.open')) return; if (office.room === 'desk' || office.room === 'drafting') goRoom('drawing'); else if (office.room === 'scan' || office.room === 'modeler') goRoom('modeling'); });
+office.onPick = (what) => { if (what === 'door') goRoom('drawing'); else if (what === 'desk') { if (calAgent()) goRoom('desk'); } else if (what === 'drafting') { if (dexAgent()) goRoom('drafting'); } else if (what === 'modeldoor') goRoom('modeling'); else if (what === 'scan') goRoom('scan'); else if (what === 'board') goRoom('board'); else if (what === 'approvals') { bizUI.open('approvals').then(() => openModal('bizModal')); } else if (what === 'issue') { bizUI.open('issue').then(() => openModal('bizModal')); } else if (what === 'docs') { bizUI.open('docs').then(() => openModal('bizModal')); } else if (what === 'nextdesk') { const t = document.querySelector('[data-tab=agents]'); if (t) t.click(); } else if (what === 'modeler' || what === 'modelcheck') { if (modellerAgent()) { modellerUI.setMode('edit'); goRoom('modeler'); } } else if (what === 'builder') { if (theo()) { modellerUI.setMode('build'); goRoom('modeler'); } } };
+document.addEventListener('keydown', (e) => { if (e.key !== 'Escape' || document.querySelector('.modal.open')) return; if (office.room === 'desk' || office.room === 'drafting') goRoom('drawing'); else if (office.room === 'scan' || office.room === 'modeler') goRoom('modeling'); else if (office.room === 'board') goRoom('overview'); });
 // ---- first person ----
 office.onFirstPerson = (on, room) => {
   document.body.classList.toggle('fp', on);
@@ -586,3 +610,4 @@ document.addEventListener('keydown', (e) => {
 window.__goRoom = goRoom;
 window.__modelUI = modelUI;
 window.__modellerUI = modellerUI;
+window.__boardUI = boardUI;

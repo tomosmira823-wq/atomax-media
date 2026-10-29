@@ -197,6 +197,14 @@ export function initBizUI({ api, getSettings, openSettings }) {
     async open(which) { await refresh(); if (which) pane = which; render(); },
     refresh,
     // job picker for the Cal and Dex panels
-    async fillJobSelect(sel) { try { const jobs = await api.biz.jobs(); const keep = sel.value; sel.innerHTML = '<option value="">No job</option>' + jobs.filter(j => j.status !== 'Closed').map(j => `<option value="${j.id}">${esc(j.number)} ${esc(j.name)}</option>`).join(''); sel.value = jobs.some(j => j.id === keep) ? keep : ''; } catch {} }
+    async fillJobSelect(sel) {
+      try {
+        const jobs = await api.biz.jobs(), cur = await api.biz.current(), keep = sel.value;
+        sel.innerHTML = '<option value="">No job</option>' + jobs.filter(j => j.status !== 'Closed').map(j => `<option value="${j.id}">${esc(j.number)} ${esc(j.name)}</option>`).join('');
+        // the job in hand (set on the whiteboard or in any agent's panel) is what every panel starts on
+        sel.value = jobs.some(j => j.id === cur) ? cur : (jobs.some(j => j.id === keep) ? keep : '');
+        if (!sel.dataset.jobSync) { sel.dataset.jobSync = '1'; sel.addEventListener('change', () => { try { api.biz.setCurrent({ id: sel.value }); } catch {} }); }
+      } catch {}
+    }
   };
 }

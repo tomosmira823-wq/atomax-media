@@ -86,7 +86,7 @@ function claudeReply(body) {
 http.createServer(async (req, res) => {
   const raw = await readBody(req);
   const u = req.url;
-  calls.push({ url: u, method: req.method, len: raw.length });
+  calls.push({ url: u, method: req.method, len: raw.length, jobctx: /JOB CONTEXT/.test(raw.toString('utf8')) && /Grey everything/.test(raw.toString('utf8')) });
   const json = (o, code = 200) => { res.writeHead(code, { 'content-type': 'application/json', 'access-control-allow-origin': '*' }); res.end(JSON.stringify(o)); };
   try {
     if (u === '/__calls') return json(calls);

@@ -20,19 +20,25 @@ const DESK_SLOTS = [
   [-7.5, 5.2, 0], [-7.5, 2.0, Math.PI],
   [-1.0, 5.2, 0], [-1.0, 2.0, Math.PI],
   [5.0, -2.2, 0], [5.0, -5.4, Math.PI],
-  [11.0, -2.2, 0], [11.0, -5.4, Math.PI]
+  [11.0, 5.2, 0], [11.0, 2.0, Math.PI]   // kept clear of the doorway into the drawing room (z -1.5 to 0.5)
 ];
-// The drawing room sits next door, west of the media office's window wall (shared wall at x = -ROOM_W/2, door at z DOOR.z0..DOOR.z1).
-const DRAW = { w: 18, x1: -ROOM_W / 2 - 0.3, z0: -ROOM_D / 2, z1: 5 };
-DRAW.x0 = DRAW.x1 - DRAW.w; DRAW.cx = (DRAW.x0 + DRAW.x1) / 2; DRAW.cz = (DRAW.z0 + DRAW.z1) / 2; DRAW.d = DRAW.z1 - DRAW.z0;
-const DOOR = { z0: -2.4, z1: 0 };
-// The modeling room sits west of the drawing room (built in modelroom.js).
-const MODEL = modelingBounds(DRAW.x0, DRAW.z0, DRAW.z1);
-const DOOR2 = { z0: -1.5, z1: 0.5 };   // doorway in the wall between the drawing room and the modeling room
-const NAV = { x0: DRAW.x0, x1: ROOM_W / 2, z0: -ROOM_D / 2, z1: ROOM_D / 2 };
+// ---- the building (x east, z south): top row Media | Drawing | Modelling | next department; a corridor; bottom row Reception | Documents | Meeting | Lounge.
+// Every room is a floor with a back (north) wall and a west wall; the west wall of a room is the divider with its western neighbour (doorways cut into it).
+const DRAW = { w: 18, x0: ROOM_W / 2 + 0.3, z0: -ROOM_D / 2, z1: ROOM_D / 2 };
+DRAW.x1 = DRAW.x0 + DRAW.w; DRAW.cx = (DRAW.x0 + DRAW.x1) / 2; DRAW.cz = (DRAW.z0 + DRAW.z1) / 2; DRAW.d = DRAW.z1 - DRAW.z0;
+const DOOR2 = { z0: -1.5, z1: 0.5 };   // doorway in the west wall of the drawing room (to media) and of the modelling room (to drawing)
+const MODEL = modelingBounds(DRAW.x1, -ROOM_D / 2, ROOM_D / 2);
+const NEXT = { x0: MODEL.x1 + 0.6, x1: MODEL.x1 + 13, z0: -ROOM_D / 2, z1: ROOM_D / 2 };   // empty plot for the next department
+const CORR = { z0: ROOM_D / 2, z1: ROOM_D / 2 + 6.5 };
+const BR_Z0 = CORR.z1, BR_Z1 = CORR.z1 + 10.5;
+const mkRoom = (x0, x1, z0, z1) => ({ x0, x1, z0, z1, cx: (x0 + x1) / 2, cz: (z0 + z1) / 2, w: x1 - x0, d: z1 - z0 });
+const RECEP = mkRoom(-ROOM_W / 2, -2.3, BR_Z0, BR_Z1);
+const DOCS = mkRoom(-2.0, 11.2, BR_Z0, BR_Z1);
+const MEET = mkRoom(11.5, 26.0, BR_Z0, BR_Z1);
+const LOUNGE = mkRoom(26.3, 39.5, BR_Z0, BR_Z1);
+const NAV = { x0: -ROOM_W / 2, x1: NEXT.x1, z0: -ROOM_D / 2, z1: BR_Z1 };
 const DRAW_DESK = [DRAW.cx, -6.6, 0];
 const DRAFT_TABLE = [DRAW.x0 + 5.0, -1.2], DRAFT_STOOL = [DRAW.x0 + 6.4, -1.9];
-const MEETING = { x0: 5, x1: 11.5, z0: 3.5, z1: 10.5, doorOut: new THREE.Vector3(3.8, 0, 9.3), doorIn: new THREE.Vector3(6.2, 0, 9.3) };
 
 function mat(color, opts = {}) { return new THREE.MeshStandardMaterial({ color, roughness: 0.8, metalness: 0.05, ...opts }); }
 function box(w, h, d, m, x = 0, y = 0, z = 0, cast = true) {
@@ -153,8 +159,9 @@ export class Office {
     this.#buildShell();
     this.#buildDrawingRoom();
     this.#buildModelingRoom();
+    this.#buildBuilding();
     this.#initPicking();
-    this.room = 'media'; this.clickRoots = [];
+    this.room = 'overview'; this.clickRoots = [];
     this.ready = this.#loadModels().then(() => this.#furnish()).catch(e => console.error('furniture failed', e));
     this.#animate();
     window.addEventListener('resize', () => this.#resize());
@@ -172,26 +179,30 @@ export class Office {
 
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(NAVY);
-    this.scene.fog = new THREE.Fog(NAVY, 60, 100);
+    this.scene.fog = new THREE.Fog(NAVY, 90, 160);
     const pmrem = new THREE.PMREMGenerator(this.renderer);
     this.scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
     this.scene.environmentIntensity = 0.8;
 
-    this.camera = new THREE.PerspectiveCamera(36, 1, 1, 160);
-    this.camera.position.set(26, 19, 32);
+    this.camera = new THREE.PerspectiveCamera(36, 1, 1, 260);
+    this.camera.position.set(52, 46, 68);
     this.controls = new OrbitControls(this.camera, this.canvas);
-    this.controls.target.set(1, 0.5, 0.5);
+    this.controls.target.set(14, 0, 8);
     this.controls.enableDamping = true;
     this.controls.maxPolarAngle = Math.PI / 2.3;
-    this.controls.minDistance = 4; this.controls.maxDistance = 70;
-    this.controls.enablePan = false;
+    this.controls.minDistance = 4; this.controls.maxDistance = 110;
+    // free movement: drag to slide the view along the floor, right-drag (or two fingers) to turn, wheel to zoom. Clicking a room only flies you there; you can drag away at any time.
+    this.controls.enablePan = true; this.controls.screenSpacePanning = false; this.controls.panSpeed = 1.1;
+    this.controls.mouseButtons = { LEFT: THREE.MOUSE.PAN, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.ROTATE };
+    this.controls.touches = { ONE: THREE.TOUCH.PAN, TWO: THREE.TOUCH.DOLLY_ROTATE };
+    this.controls.addEventListener('change', () => { const t = this.controls.target; t.x = THREE.MathUtils.clamp(t.x, -20, 75); t.z = THREE.MathUtils.clamp(t.z, -20, 40); });
 
     this.scene.add(new THREE.HemisphereLight(0xe8eeff, 0x202633, 0.6));
     const sun = new THREE.DirectionalLight(0xfff1dc, 2.0);
-    sun.position.set(-25, 24, 12); sun.castShadow = true;
-    sun.shadow.mapSize.set(2048, 2048);
-    sun.target.position.set(-9, 0, 0); this.scene.add(sun.target);
-    const sc = sun.shadow.camera; sc.left = -34; sc.right = 34; sc.top = 34; sc.bottom = -34; sc.near = 1; sc.far = 90;
+    sun.position.set(-8, 34, 32); sun.castShadow = true;
+    sun.shadow.mapSize.set(4096, 4096);
+    sun.target.position.set(14, 0, 6); this.scene.add(sun.target);
+    const sc = sun.shadow.camera; sc.left = -46; sc.right = 46; sc.top = 36; sc.bottom = -36; sc.near = 1; sc.far = 110;
     sun.shadow.bias = -0.0003; sun.shadow.normalBias = 0.04; sun.shadow.radius = 3;
     this.scene.add(sun);
     const fill = new THREE.PointLight(0xa8ffb0, 10, 40, 1.5); fill.position.set(6, 5, 4); this.scene.add(fill);
@@ -230,23 +241,10 @@ export class Office {
     B.add(box(W, WALL_H, 0.3, mat(NAVY, { roughness: 0.9 }), 0, WALL_H / 2, -D / 2 - 0.15));
     B.add(box(W, 0.14, 0.05, mat(GREEN, { emissive: GREEN, emissiveIntensity: 0.5 }), 0, 5.3, -D / 2 + 0.05, false));
     const wallM = mat(0xeef0f3, { roughness: 0.95 });
-    L.add(box(0.3, WALL_H, DOOR.z0 + D / 2, wallM, -W / 2 - 0.15, WALL_H / 2, (-D / 2 + DOOR.z0) / 2));   // wall up to the door
-    L.add(box(0.3, WALL_H, D / 2 - DOOR.z1, wallM, -W / 2 - 0.15, WALL_H / 2, (DOOR.z1 + D / 2) / 2));    // wall after the door
-    L.add(box(0.3, WALL_H - 3.2, DOOR.z1 - DOOR.z0, wallM, -W / 2 - 0.15, 3.2 + (WALL_H - 3.2) / 2, (DOOR.z0 + DOOR.z1) / 2)); // above the door
-    [DOOR.z0, DOOR.z1].forEach(z => L.add(box(0.36, 3.25, 0.12, mat(NAVY2), -W / 2 - 0.15, 1.62, z)));      // door frame
-    L.add(box(0.36, 0.12, DOOR.z1 - DOOR.z0 + 0.12, mat(NAVY2), -W / 2 - 0.15, 3.25, (DOOR.z0 + DOOR.z1) / 2));
-    L.add(box(0.4, 0.03, DOOR.z1 - DOOR.z0, mat(GREEN, { emissive: GREEN, emissiveIntensity: 0.35 }), -W / 2 - 0.15, 0.03, (DOOR.z0 + DOOR.z1) / 2, false)); // threshold
-    // plaque over the door on the media-office side: click it to go next door
-    const plaque = new THREE.Group();
-    plaque.add(box(0.08, 0.62, 3.0, mat(NAVY2), 0, 0, 0));
-    plaque.add(box(0.09, 0.05, 3.0, mat(GREEN, { emissive: GREEN, emissiveIntensity: 0.5 }), 0, -0.3, 0, false));
-    const plText = this.#textPlane('DRAWING ROOM  ›', 2.8, 0.42, { color: '#ffffff', size: 62, weight: '700', spacing: 4 }); plText.rotation.y = Math.PI / 2; plText.position.set(0.05, 0.02, 0); plaque.add(plText);
-    plaque.position.set(-W / 2 + 0.04, 3.9, (DOOR.z0 + DOOR.z1) / 2); L.add(plaque);
-    this.doorPlaque = plaque;
+    L.add(box(0.3, WALL_H, D, wallM, -W / 2 - 0.15, WALL_H / 2, 0));   // exterior west wall (windows below)
     L.add(box(0.05, 0.14, D, mat(GREEN, { emissive: GREEN, emissiveIntensity: 0.5 }), -W / 2 + 0.05, 5.3, 0, false));
     const glass = new THREE.MeshPhysicalMaterial({ color: 0xcfe8ff, transmission: 0.75, opacity: 0.45, transparent: true, roughness: 0.03, metalness: 0, ior: 1.45, thickness: 0.05, depthWrite: false });
     for (let i = 0; i < 4; i++) {
-      if (i === 1) continue;   // this window is where the door to the drawing room is
       const z = -7.5 + i * 4.6;
       L.add(box(0.1, 3.2, 3.0, glass, -W / 2 + 0.1, 3.2, z, false));
       L.add(box(0.2, 3.4, 0.15, mat(NAVY2), -W / 2 + 0.1, 3.2, z - 1.55));
@@ -291,41 +289,6 @@ export class Office {
     for (let i = 0; i < 4; i++) B.add(box(2.2 - i * 0.3, 0.06, 0.02, mat(0x2b2f38), -8.8, 4.1 - i * 0.35, -D / 2 + 0.19, false));
     this.pois.push({ x: -10, z: -D / 2 + 2.3, face: Math.PI });
 
-    // glass meeting room (front-right): two glass partitions with navy frames and a door gap
-    const M = MEETING, gh = 3.4;
-    const part = (w, d, x, z) => { const g = box(w, gh, d, glass, x, gh / 2, z, false); s.add(g); };
-    part(0.08, M.z1 - M.z0 - 2.4, M.x0, M.z0 + (M.z1 - M.z0 - 2.4) / 2);          // x0 wall, door gap at the front end
-    part(M.x1 - M.x0, 0.08, (M.x0 + M.x1) / 2, M.z0);                             // z0 wall
-    [[M.x0, M.z0], [M.x0, M.z1 - 2.4], [M.x1, M.z0], [M.x0, M.z1]].forEach(([x, z]) => s.add(box(0.14, gh, 0.14, mat(NAVY2), x, gh / 2, z)));
-    s.add(box(0.14, 0.14, M.z1 - M.z0, mat(NAVY2), M.x0, gh, (M.z0 + M.z1) / 2, false));
-    s.add(box(M.x1 - M.x0, 0.14, 0.14, mat(NAVY2), (M.x0 + M.x1) / 2, gh, M.z0, false));
-    // mid-height rail on the glass so it reads as a partition, not empty space
-    s.add(box(0.1, 0.06, M.z1 - M.z0 - 2.4, mat(NAVY2), M.x0, 1.1, M.z0 + (M.z1 - M.z0 - 2.4) / 2, false));
-    s.add(box(M.x1 - M.x0, 0.06, 0.1, mat(NAVY2), (M.x0 + M.x1) / 2, 1.1, M.z0, false));
-    const mtLabel = this.#textPlane('MEETING ROOM', 3.2, 0.35, { color: '#0e121d', size: 60, weight: '700', spacing: 8 });
-    mtLabel.rotation.y = -Math.PI / 2; mtLabel.position.set(M.x0 - 0.18, 2.9, M.z0 + 2.2); s.add(mtLabel);
-    const rug = new THREE.Mesh(new THREE.PlaneGeometry(M.x1 - M.x0 - 1, M.z1 - M.z0 - 1), mat(NAVY2, { roughness: 1 })); rug.rotation.x = -Math.PI / 2; rug.position.set((M.x0 + M.x1) / 2, 0.02, (M.z0 + M.z1) / 2); rug.receiveShadow = true; s.add(rug);
-    const rugIn = new THREE.Mesh(new THREE.PlaneGeometry(M.x1 - M.x0 - 1.4, M.z1 - M.z0 - 1.4), mat(0x273047, { roughness: 1 })); rugIn.rotation.x = -Math.PI / 2; rugIn.position.set((M.x0 + M.x1) / 2, 0.035, (M.z0 + M.z1) / 2); s.add(rugIn);
-    // glass walls as a row of small obstacles so wanderers go round them (door gap left open)
-    this.meetingPoint = new THREE.Vector3((M.x0 + M.x1) / 2, 0, (M.z0 + M.z1) / 2);
-    // project whiteboard inside the meeting room, against the back glass, facing the room: click it to open the projects
-    {
-      const bx = (M.x0 + M.x1) / 2, bz = M.z0 + 0.35, bw = 4.4, bh = 2.3, by = 2.15;
-      const frame = box(bw + 0.2, bh + 0.2, 0.08, mat(0x6b7280, { metalness: 0.5, roughness: 0.4 }), bx, by, bz, false); s.add(frame);
-      this.projCanvas = document.createElement('canvas'); this.projCanvas.width = 1100; this.projCanvas.height = 575;
-      this.projTex = new THREE.CanvasTexture(this.projCanvas); this.projTex.colorSpace = THREE.SRGBColorSpace; this.projTex.anisotropy = 4;
-      const face = new THREE.Mesh(new THREE.PlaneGeometry(bw, bh), new THREE.MeshBasicMaterial({ map: this.projTex }));
-      face.position.set(bx, by, bz + 0.05); s.add(face); this.projBoard = face;
-      s.add(box(bw * 0.9, 0.06, 0.16, mat(0x6b7280), bx, by - bh / 2 - 0.12, bz + 0.06, false));   // marker tray
-      [0xe03131, 0x1971c2, 0x2f9e44].forEach((c, i) => s.add(box(0.28, 0.04, 0.04, mat(c), bx - 0.4 + i * 0.4, by - bh / 2 - 0.07, bz + 0.1, false)));
-      const hint = document.createElement('div'); hint.className = 'hint3d'; hint.textContent = 'Click the whiteboard for projects and tasks';
-      const co = new CSS2DObject(hint); co.position.set(bx, by + bh / 2 + 0.45, bz + 0.2); s.add(co); this.projHint = co;
-      this.projSpot = { p: [bx, 2.35, M.z0 + 5.4], t: [bx, 2.15, bz] };
-      this.setProjectBoard(null);
-    }
-    this.obstacles.push({ rect: true, x0: this.meetingPoint.x - 2.6, x1: this.meetingPoint.x + 2.6, z0: this.meetingPoint.z - 2.0, z1: this.meetingPoint.z + 2.0 });   // table + chairs
-    [[M.x0 + 1.2, M.z0 + 2.2, 0], [M.x1 - 1.2, M.z1 - 1.5, Math.PI], [M.x0 + 2.8, M.z1 - 1.2, -Math.PI / 2 * 0], [M.x1 - 1.4, M.z0 + 1.5, Math.PI / 2]].forEach(([x, z, f]) => this.pois.push({ x, z, face: f, room: true }));
-
     // reception sign (right-hand side, angled toward the viewer)
     const sign = new THREE.Group();
     sign.add(box(0.3, 2.6, 2.6, mat(NAVY), 0, 1.3, 0));
@@ -353,6 +316,164 @@ export class Office {
     printer.position.set(1.8, 0, D / 2 - 1.2); s.add(printer);
     this.obstacles.push({ x: 1.8, z: D / 2 - 1.2, r: 1.8 });
     this.pois.push({ x: 1.8, z: D / 2 - 3, face: 0 });
+  }
+
+
+  // ---------- the rest of the building: corridor, bottom row of rooms, the next-department plot ----------
+  #woodFloor(w, d, { base = '#c9a77a', hue = 30, plank = 18 } = {}) {
+    const fc = document.createElement('canvas'); fc.width = 1024; fc.height = Math.max(256, Math.round(1024 * d / w));
+    const fx = fc.getContext('2d'); fx.fillStyle = base; fx.fillRect(0, 0, fc.width, fc.height);
+    const pw = fc.width / plank;
+    for (let i = 0; i < plank; i++) { fx.fillStyle = `hsl(${hue + Math.random() * 6},${38 + Math.random() * 8}%,${58 + Math.random() * 10}%)`; fx.fillRect(i * pw, 0, pw - 2, fc.height); }
+    const ft = new THREE.CanvasTexture(fc); ft.colorSpace = THREE.SRGBColorSpace; ft.anisotropy = 8; return ft;
+  }
+
+  // a room slab with a tall back (north) wall and west wall; doorways: wallDoorZ [z0,z1] in the west wall, backDoorX [x0,x1] in the back wall
+  #roomShell(R, { name, floor, wallDoorZ = null, backDoorX = null, accent = GREEN, lowBack = false }) {
+    const s = this.scene, GL = { emissive: accent, emissiveIntensity: 0.5 };
+    const fl = new THREE.Mesh(new THREE.PlaneGeometry(R.w, R.d), floor); fl.rotation.x = -Math.PI / 2; fl.position.set(R.cx, 0.002, R.cz); fl.receiveShadow = true; s.add(fl);
+    s.add(box(R.w + 1, 0.6, R.d + 1, mat(NAVY2), R.cx, -0.32, R.cz, false));
+    const B = new THREE.Group(), L = new THREE.Group(); s.add(B); s.add(L);
+    const wallN = mat(NAVY, { roughness: 0.9 }), wallW = mat(0xeef0f3, { roughness: 0.95 }), frame = mat(NAVY2);
+    const BH = lowBack ? 1.2 : WALL_H;
+    const hole = (g, mt, horiz, at, lo, hi, thick, H = WALL_H) => {   // wall along an axis with a doorway between lo..hi
+      const len0 = horiz ? [R.x0 - 0.3, lo] : [R.z0, lo], len1 = horiz ? [hi, R.x1] : [hi, R.z1];
+      const put = (a, b, y0, y1) => { if (b - a <= 0.01) return; const mid = (a + b) / 2, h = y1 - y0; g.add(horiz ? box(b - a, h, thick, mt, mid, y0 + h / 2, at) : box(thick, h, b - a, mt, at, y0 + h / 2, mid)); };
+      put(len0[0], len0[1], 0, H); put(len1[0], len1[1], 0, H); if (H > 3.3) put(lo, hi, 3.2, H);
+      if (H > 3.3) { [lo, hi].forEach(v => g.add(horiz ? box(0.12, 3.25, 0.36, frame, v, 1.62, at) : box(0.36, 3.25, 0.12, frame, at, 1.62, v)));
+      g.add(horiz ? box(hi - lo + 0.12, 0.12, 0.36, frame, (lo + hi) / 2, 3.25, at) : box(0.36, 0.12, hi - lo + 0.12, frame, at, 3.25, (lo + hi) / 2)); }
+      g.add(horiz ? box(hi - lo, 0.03, 0.4, mat(accent, GL), (lo + hi) / 2, 0.03, at, false) : box(0.4, 0.03, hi - lo, mat(accent, GL), at, 0.03, (lo + hi) / 2, false));
+    };
+    if (backDoorX) hole(B, wallN, true, R.z0 - 0.15, backDoorX[0], backDoorX[1], 0.3, BH); else B.add(box(R.w + 0.3, BH, 0.3, wallN, R.cx, BH / 2, R.z0 - 0.15));
+    if (wallDoorZ) hole(L, wallW, false, R.x0 - 0.15, wallDoorZ[0], wallDoorZ[1], 0.3); else L.add(box(0.3, WALL_H, R.d, wallW, R.x0 - 0.15, WALL_H / 2, R.cz));
+    B.add(box(R.w, 0.1, 0.06, mat(accent, GL), R.cx, lowBack ? BH - 0.05 : 5.3, R.z0 + 0.05, false));
+    L.add(box(0.05, 0.14, R.d, mat(accent, GL), R.x0 + 0.05, 5.3, R.cz, false));
+    B.add(box(R.w, 0.24, 0.06, mat(NAVY2), R.cx, 0.12, R.z0 + 0.03, false));
+    if (lowBack) {   // a standing name board behind the low wall
+      const sx = R.x0 + R.w * 0.3, sw = Math.min(5.4, R.w - 4), sg = new THREE.Group();
+      sg.add(box(sw, 1.0, 0.1, mat(NAVY, { roughness: 0.6 }), 0, 2.9, 0)); sg.add(box(sw, 0.06, 0.12, mat(accent, GL), 0, 2.35, 0.01, false));
+      [-1, 1].forEach(k => sg.add(box(0.08, 2.4, 0.08, mat(NAVY2), k * (sw / 2 - 0.3), 1.2, 0)));
+      const tx = this.#textPlane(name, sw - 0.5, 0.62, { color: '#' + accent.toString(16).padStart(6, '0'), size: 64, weight: '700', spacing: 8 }); tx.position.set(0, 2.92, 0.07); sg.add(tx);
+      sg.position.set(sx, 0, R.z0 + 0.7); B.add(sg);
+    } else {
+      const tag = this.#textPlane(name, Math.min(7, R.w - 2), 0.7, { color: '#8e97ab', size: 64, weight: '600', spacing: 10 }); tag.position.set(R.cx, 4.4, R.z0 + 0.05); B.add(tag);
+      B.add(box(Math.min(6.4, R.w - 3), 0.05, 0.03, mat(accent, GL), R.cx, 3.95, R.z0 + 0.06, false));
+    }
+    (this.roomShells = this.roomShells || []).push({ R, B, L });
+    return { B, L };
+  }
+
+  #chip(text, x, y, z, cls = 'lbl hint') { const el = document.createElement('div'); el.className = cls; el.textContent = text; const co = new CSS2DObject(el); co.position.set(x, y, z); this.scene.add(co); return co; }
+
+  #buildBuilding() {
+    const s = this.scene;
+    // ---- corridor ----
+    const cw = NEXT.x1 - (-ROOM_W / 2), cd = CORR.z1 - CORR.z0, ccx = (NEXT.x1 - ROOM_W / 2) / 2, ccz = (CORR.z0 + CORR.z1) / 2;
+    s.add(box(cw + 1, 0.6, cd + 0.4, mat(NAVY2), ccx, -0.32, ccz, false));
+    const cf = new THREE.Mesh(new THREE.PlaneGeometry(cw, cd), mat(0x1c2333, { roughness: 0.45, metalness: 0.15 })); cf.rotation.x = -Math.PI / 2; cf.position.set(ccx, 0.005, ccz); cf.receiveShadow = true; s.add(cf);
+    for (const z of [CORR.z0 + 0.05, CORR.z1 - 0.05]) { const st = new THREE.Mesh(new THREE.PlaneGeometry(cw, 0.12), mat(GREEN, { emissive: GREEN, emissiveIntensity: 0.4 })); st.rotation.x = -Math.PI / 2; st.position.set(ccx, 0.012, z); s.add(st); }
+    const ctext = this.#textPlane('MAIN CORRIDOR', 6, 0.7, { color: '#8e97ab', size: 60, weight: '700', spacing: 12 }); ctext.rotation.x = -Math.PI / 2; ctext.position.set(ROOM_W / 2 + 6, 0.02, ccz); s.add(ctext);
+
+    // ---- bottom row ----
+    const doorBack = (R) => [R.cx - 1.6, R.cx + 1.6];
+    const woodTex = (R, hue) => new THREE.MeshStandardMaterial({ map: this.#woodFloor(R.w, R.d, { hue }), roughness: 0.55, metalness: 0.02 });
+    this.#roomShell(RECEP, { name: 'RECEPTION', floor: woodTex(RECEP, 30), wallDoorZ: null, backDoorX: doorBack(RECEP), lowBack: true });
+    const docsFloor = new THREE.MeshStandardMaterial({ color: 0xdfe3ea, roughness: 0.3, metalness: 0.1 });
+    this.#roomShell(DOCS, { name: 'JOBS · APPROVALS', floor: docsFloor, wallDoorZ: [DOCS.cz - 0.5, DOCS.cz + 1.5], backDoorX: doorBack(DOCS), accent: 0xb197fc, lowBack: true });
+    this.#roomShell(MEET, { name: 'MEETING ROOM', floor: woodTex(MEET, 28), wallDoorZ: [MEET.cz - 0.5, MEET.cz + 1.5], backDoorX: doorBack(MEET), lowBack: true });
+    this.#roomShell(LOUNGE, { name: 'LOUNGE', floor: woodTex(LOUNGE, 32), wallDoorZ: [LOUNGE.cz - 0.5, LOUNGE.cz + 1.5], backDoorX: doorBack(LOUNGE), lowBack: true });
+    // lime kerb along the south edge of the bottom row and the east end of the building
+    const kerb = (x0, x1, z, thick = 0.14) => s.add(box(x1 - x0, 0.1, thick, mat(GREEN, { emissive: GREEN, emissiveIntensity: 0.5 }), (x0 + x1) / 2, 0.05, z, false));
+    kerb(-ROOM_W / 2, LOUNGE.x1, BR_Z1 + 0.05);
+    s.add(box(0.14, 0.1, BR_Z1 - CORR.z0, mat(GREEN, { emissive: GREEN, emissiveIntensity: 0.5 }), LOUNGE.x1 + 0.05, 0.05, (CORR.z0 + BR_Z1) / 2, false));
+
+    // ---- next department: dashed plot, click "+ desk" ----
+    const pc = document.createElement('canvas'); pc.width = 1024; pc.height = Math.round(1024 * NEXT.d / (NEXT.x1 - NEXT.x0)) || 900;
+    const px = pc.getContext('2d'); px.fillStyle = 'rgba(20,26,40,0.55)'; px.fillRect(0, 0, pc.width, pc.height);
+    px.strokeStyle = 'rgba(142,151,171,0.85)'; px.lineWidth = 6; px.setLineDash([26, 18]); px.strokeRect(8, 8, pc.width - 16, pc.height - 16);
+    px.setLineDash([]); px.fillStyle = 'rgba(142,151,171,0.9)'; px.font = '700 44px system-ui, sans-serif'; px.textAlign = 'center'; px.fillText('NEXT DEPARTMENT', pc.width / 2, 70);
+    const ptex = new THREE.CanvasTexture(pc); ptex.colorSpace = THREE.SRGBColorSpace;
+    const plot = new THREE.Mesh(new THREE.PlaneGeometry(NEXT.x1 - NEXT.x0, NEXT.d), new THREE.MeshBasicMaterial({ map: ptex, transparent: true, depthWrite: false }));
+    plot.rotation.x = -Math.PI / 2; plot.position.set((NEXT.x0 + NEXT.x1) / 2, 0.02, (NEXT.z0 + NEXT.z1) / 2); s.add(plot); this.nextPlot = plot;
+    const dd = new THREE.Group();   // dashed ghost desk
+    const dm = new THREE.LineBasicMaterial({ color: 0x8e97ab });
+    const edges = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(3, 1.1, 1.5)), dm); edges.position.y = 0.55; dd.add(edges);
+    dd.position.set((NEXT.x0 + NEXT.x1) / 2, 0, (NEXT.z0 + NEXT.z1) / 2); s.add(dd);
+    this.nextChip = this.#chip('+ desk', dd.position.x, 2.2, dd.position.z, 'lbl hint');
+    this.nextRoots = [plot, edges];
+  }
+
+  #furnishBuilding() {
+    const s = this.scene, put = (n, o) => this.#put(n, o);
+    const obs = (x, z, r) => this.obstacles.push({ x, z, r }), poi = (x, z, face, visit = '') => this.pois.push({ x, z, face, zone: 'media', visit });
+    const rect = (x0, x1, z0, z1) => this.obstacles.push({ rect: true, x0, x1, z0, z1 });
+    const slab = (w, h, d, c, x, y, z, m = {}) => { const b = box(w, h, d, mat(c, m), x, y, z); s.add(b); return b; };
+    // ---- reception: long white desk, waiting sofa, plants ----
+    {
+      const R = RECEP, dz = R.z0 + 4.2;
+      slab(5.2, 1.1, 1.3, WHITE, R.cx + 1.0, 0.55, dz, { roughness: 0.4 }); slab(5.3, 0.06, 1.4, GREEN, R.cx + 1.0, 1.12, dz, { emissive: GREEN, emissiveIntensity: 0.4 });
+      rect(R.cx - 1.8, R.cx + 3.8, dz - 0.8, dz + 0.8);
+      this.#chip('Reception', R.cx + 1.0, 2.0, dz);
+      put('sofa', { pos: [R.x0 + 2.0, 0, R.z0 + 8.2], rot: Math.PI / 2 * 0 + Math.PI, scale: K * 1.15, colours: { carpet: 0x34405c, wood: WHITE } }); rect(R.x0 + 0.5, R.x0 + 4.0, R.z0 + 7.2, R.z0 + 9.3);
+      put('table', { pos: [R.x0 + 6.4, 0, R.z0 + 8.3], scale: K * 1.1, colours: { wood: WHITE } }); obs(R.x0 + 6.4, R.z0 + 8.3, 1.2);
+      put('cactus', { pos: [R.x0 + 1.0, 0, R.z0 + 1.0], scale: K * 1.3 }); put('flowers', { pos: [R.x1 - 1.0, 0, R.z1 - 1.0], scale: K * 1.2 });
+      poi(R.x0 + 5.2, R.z0 + 6.4, 0, 'Reception'); poi(R.x0 + 2.4, R.z0 + 6.6, Math.PI, 'Reception');
+    }
+    // ---- documents: Approvals and Issue-pack desks, the Documents agent's desk ----
+    {
+      const R = DOCS, appr = new THREE.Group(), iss = new THREE.Group();
+      const counter = (g, w, c) => { g.add(box(w, 1.0, 1.4, mat(NAVY2, { roughness: 0.5, metalness: 0.2 }), 0, 0.5, 0)); g.add(box(w + 0.1, 0.06, 1.5, mat(c, { emissive: c, emissiveIntensity: 0.35 }), 0, 1.03, 0, false)); };
+      counter(appr, 4.0, 0xb197fc); appr.position.set(R.cx + 2.6, 0, R.z0 + 4.4); s.add(appr); rect(R.cx + 0.4, R.cx + 4.8, R.z0 + 3.6, R.z0 + 5.2);
+      counter(iss, 4.0, 0x74c0fc); iss.position.set(R.cx + 2.6, 0, R.z0 + 8.0); s.add(iss); rect(R.cx + 0.4, R.cx + 4.8, R.z0 + 7.2, R.z0 + 8.8);
+      this.#chip('Approvals', R.cx + 2.6, 2.0, R.z0 + 4.4); this.#chip('Issue pack', R.cx + 2.6, 2.0, R.z0 + 8.0);
+      this.docRoots = { approvals: [appr], issue: [iss] };
+      // a screen on the back wall: JOBS · APPROVALS
+      put('cactus', { pos: [R.x1 - 1.0, 0, R.z1 - 1.0], scale: K * 1.2 });
+      poi(R.cx + 0.2, R.z0 + 6.2, 0, 'Documents');
+    }
+    // ---- meeting room: long table, six chairs, the projects whiteboard ----
+    {
+      const R = MEET, bt = new THREE.Group();
+      bt.add(box(4.6, 0.09, 1.8, mat(0xf6f7f9, { roughness: 0.3 }), 0, 1.0, 0));
+      bt.add(box(4.6, 0.03, 1.8, mat(GREEN, { emissive: GREEN, emissiveIntensity: 0.25 }), 0, 0.94, 0, false));
+      [[-1.9, -0.6], [1.9, -0.6], [-1.9, 0.6], [1.9, 0.6]].forEach(([x, z]) => bt.add(box(0.1, 0.95, 0.1, mat(NAVY2, { metalness: 0.4 }), x, 0.47, z)));
+      const plant = put('flowers', { scale: 0.9 }); if (plant) { s.remove(plant); plant.position.set(0, 1.05, 0); bt.add(plant); }
+      [[-1.5, -1.5, 0], [0, -1.5, 0], [1.5, -1.5, 0], [-1.5, 1.5, Math.PI], [0, 1.5, Math.PI], [1.5, 1.5, Math.PI]].forEach(([x, z, r]) => { const ch = this.#officeChair(new THREE.Color(GREEN)); ch.position.set(x, 0, z); ch.rotation.y = r; bt.add(ch); });
+      [-1.4, 0, 1.4].forEach(x => { const shade = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.36, 0.3, 20, 1, true), mat(NAVY2, { side: THREE.DoubleSide })); shade.position.set(x, WALL_H - 2.0, 0); bt.add(shade); bt.add(box(0.015, 1.9, 0.015, mat(NAVY2), x, WALL_H - 0.95, 0, false)); });
+      const bpl = new THREE.PointLight(0xffe2b3, 8, 9, 2); bpl.position.set(0, WALL_H - 2.2, 0); bt.add(bpl);
+      bt.position.set(R.cx, 0, R.cz + 1.4); s.add(bt); rect(R.cx - 2.6, R.cx + 2.6, R.cz + 1.4 - 2.0, R.cz + 1.4 + 2.0);
+      const rug = new THREE.Mesh(new THREE.PlaneGeometry(7.4, 5.4), mat(NAVY2, { roughness: 1 })); rug.rotation.x = -Math.PI / 2; rug.position.set(R.cx, 0.02, R.cz + 1.4); rug.receiveShadow = true; s.add(rug);
+      // the projects whiteboard on the back wall, facing the room
+      const bx = R.cx + 3.2, bz = R.z0 + 1.4, bw = 4.4, bh = 2.3, by = 2.55;
+      s.add(box(bw + 0.2, bh + 0.2, 0.08, mat(0x6b7280, { metalness: 0.5, roughness: 0.4 }), bx, by, bz, false));
+      [-1, 1].forEach(k => s.add(box(0.1, by - bh / 2 + 0.1, 0.1, mat(0x6b7280), bx + k * (bw / 2 - 0.3), (by - bh / 2) / 2, bz, false)));
+      this.projCanvas = document.createElement('canvas'); this.projCanvas.width = 1100; this.projCanvas.height = 575;
+      this.projTex = new THREE.CanvasTexture(this.projCanvas); this.projTex.colorSpace = THREE.SRGBColorSpace; this.projTex.anisotropy = 4;
+      const face = new THREE.Mesh(new THREE.PlaneGeometry(bw, bh), new THREE.MeshBasicMaterial({ map: this.projTex })); face.position.set(bx, by, bz + 0.05); s.add(face); this.projBoard = face;
+      s.add(box(bw * 0.9, 0.06, 0.16, mat(0x6b7280), bx, by - bh / 2 - 0.12, bz + 0.06, false));
+      [0xe03131, 0x1971c2, 0x2f9e44].forEach((c, i) => s.add(box(0.28, 0.04, 0.04, mat(c), bx - 0.4 + i * 0.4, by - bh / 2 - 0.07, bz + 0.1, false)));
+      this.projHint = this.#chip('Click the whiteboard for projects and tasks', bx, by + bh / 2 + 0.5, bz + 0.2);
+      this.projSpot = { p: [bx, 2.6, R.z0 + 6.6], t: [bx, 2.6, bz] };
+      this.setProjectBoard(this.projData || null);
+      poi(R.x0 + 2.0, R.cz + 1.4, -Math.PI / 2, 'Meeting room'); poi(R.x1 - 2.0, R.cz + 1.4, Math.PI / 2, 'Meeting room');
+    }
+    // ---- lounge: sofa, coffee table, coffee machine ----
+    {
+      const R = LOUNGE;
+      put('sofa', { pos: [R.cx - 2.4, 0, R.z1 - 1.2], rot: Math.PI, scale: K * 1.15, colours: { carpet: 0x34405c, wood: WHITE } });
+      const ct = put('table', { pos: [R.cx - 2.4, 0, R.z1 - 3.4], scale: K * 1.4, colours: { wood: WHITE } });
+      const th = ct ? new THREE.Box3().setFromObject(ct).max.y : 0.8;
+      put('cake', { pos: [R.cx - 3.0, th, R.z1 - 3.4], scale: K }); put('radio', { pos: [R.cx - 1.8, th, R.z1 - 3.5], rot: -0.5, scale: K * 0.9, colours: { metalMedium: GREEN } });
+      put('lamp-table', { pos: [R.x0 + 1.2, 0.6, R.z1 - 1.0], scale: K * 1.2, colours: { metal: NAVY2 }, emissive: { lamp: 0xffd9a0 } }); slab(0.8, 0.6, 0.8, NAVY2, R.x0 + 1.2, 0.3, R.z1 - 1.0);
+      rect(R.cx - 5.2, R.cx + 0.4, R.z1 - 4.6, R.z1 - 0.3);
+      const cm = new THREE.Group(); cm.add(box(2.4, 1.0, 1.2, mat(NAVY2, { roughness: 0.5 }), 0, 0.5, 0)); cm.add(box(0.8, 0.5, 0.6, mat(0x0b0e16), -0.5, 1.25, 0)); cm.add(box(0.4, 0.04, 0.4, mat(GREEN, { emissive: GREEN, emissiveIntensity: 0.6 }), 0.5, 1.02, 0, false));
+      cm.position.set(R.cx + 3.6, 0, R.z0 + 2.6); s.add(cm); rect(R.cx + 2.3, R.cx + 4.9, R.z0 + 1.8, R.z0 + 3.4);
+      this.#chip('Coffee', R.cx + 3.6, 2.0, R.z0 + 2.6);
+      put('fridge', { pos: [R.x1 - 0.7, 0, R.z0 + 1.0], rot: -Math.PI / 2, scale: K, colours: { metalLight: WHITE, metal: 0xd7dbe0, metalDark: NAVY2 } }); obs(R.x1 - 0.8, R.z0 + 1.0, 1.0);
+      put('cactus', { pos: [R.x1 - 1.0, 0, R.z1 - 1.0], scale: K * 1.2 }); put('flowers', { pos: [R.x0 + 1.0, 0, R.z0 + 1.2], scale: K });
+      const lp = new THREE.PointLight(0xffe2b3, 6, 8, 2); lp.position.set(R.cx - 2.4, WALL_H - 2.2, R.z1 - 2.6); s.add(lp);
+      poi(R.cx - 2.4, R.z1 - 5.6, 0, 'Lounge'); poi(R.cx + 3.6, R.z0 + 4.4, Math.PI, 'Coffee');
+    }
   }
 
   // ---------- models ----------
@@ -386,7 +507,7 @@ export class Office {
   }
 
   #furnish() {
-    const s = this.scene, W = ROOM_W, D = ROOM_D, M = MEETING;
+    const s = this.scene, W = ROOM_W, D = ROOM_D;
     // status screen on the back wall: slim bezel, screen flush on its face, soft glow underneath
     const sw = 7.2, sh = sw * 448 / 768;
     const bezel = box(sw + 0.3, sh + 0.3, 0.12, mat(0x05070c, { roughness: 0.4, metalness: 0.3 }), 7.5, 3.1, -D / 2 + 0.08, false); this.backWall.add(bezel);
@@ -403,43 +524,20 @@ export class Office {
     this.#put('bookcase', { pos: [-W / 2 + 0.5, 0, 5.2], rot: Math.PI / 2, scale: K, colours: { 'Wood': NAVY2, 'DarkWood': GREEN } });
     this.obstacles.push({ x: -W / 2 + 0.8, z: 4, r: 2.4 });
     this.pois.push({ x: -W / 2 + 2.4, z: 4, face: -Math.PI / 2 });
-    // lounge (front-left): sofa, coffee table with cake + radio, lamp, plants
-    this.#put('sofa', { pos: [-8.8, 0, 9.6], rot: Math.PI, scale: K * 1.15, colours: { carpet: 0x34405c, wood: WHITE } });
-    const ct = this.#put('table', { pos: [-8.8, 0, 7.4], scale: K * 1.4, colours: { wood: WHITE } });
-    const th = ct ? new THREE.Box3().setFromObject(ct).max.y : 0.8;
-    this.#put('cake', { pos: [-9.5, th, 7.4], scale: K });
-    this.#put('radio', { pos: [-8, th, 7.3], rot: -0.5, scale: K * 0.9, colours: { metalMedium: GREEN } });
-    this.#put('lamp-table', { pos: [-11.3, 0.6, 9.7], scale: K * 1.2, colours: { metal: NAVY2 }, emissive: { lamp: 0xffd9a0 } });
-    this.scene.add(box(0.8, 0.6, 0.8, mat(NAVY2), -11.3, 0.3, 9.7));
-    this.#put('flowers', { pos: [-11.3, 0, 7.6], scale: K });
-    this.#put('cactus', { pos: [-6.2, 0, 9.8], scale: K * 1.2 });
-    this.obstacles.push({ x: -8.8, z: 8.6, r: 3.2 });
-    this.pois.push({ x: -8.8, z: 5.6, face: 0 });
+    // front-left corner: a bench by the window wall
+    this.#put('bench', { pos: [-8.8, 0, 9.8], rot: Math.PI, scale: K * 1.1 });
+    this.obstacles.push({ x: -8.8, z: 9.6, r: 1.6 });
+    this.pois.push({ x: -8.8, z: 8.2, face: 0 });
     // bench under the windows + plants in corners
     // tall plants along the window wall
     [[-W / 2 + 1.1, -5.4], [-W / 2 + 1.1, 1.5]].forEach(([x, z]) => { const p = this.#put('cactus', { pos: [x, 0, z], scale: K * 1.3 }); if (p) this.obstacles.push({ x, z, r: 1 }); });
     this.#put('cactus', { pos: [-W / 2 + 1.2, 0, -D / 2 + 1.2], scale: K * 1.4 });
     this.#put('flowers', { pos: [W / 2 - 1.2, 0, D / 2 - 1.2], scale: K * 1.2 });
-    this.#put('cactus', { pos: [M.x1 - 0.8, 0, M.z0 + 0.8], scale: K });
-    // boardroom: long white table with navy legs, six chairs, pendant row above
-    const mp = this.meetingPoint;
-    const bt = new THREE.Group();
-    bt.add(box(4.6, 0.09, 1.8, mat(0xf6f7f9, { roughness: 0.3 }), 0, 1.0, 0));
-    bt.add(box(4.6, 0.03, 1.8, mat(GREEN, { emissive: GREEN, emissiveIntensity: 0.25 }), 0, 0.94, 0, false));
-    [[-1.9, -0.6], [1.9, -0.6], [-1.9, 0.6], [1.9, 0.6]].forEach(([x, z]) => bt.add(box(0.1, 0.95, 0.1, mat(NAVY2, { metalness: 0.4 }), x, 0.47, z)));
-    const plant = this.#put('flowers', { scale: 0.9 }); if (plant) { this.scene.remove(plant); plant.position.set(0, 1.05, 0); bt.add(plant); }
-    [-1.3, 1.3].forEach(x => { bt.add(box(0.5, 0.012, 0.35, mat(0xffffff), x, 1.06, 0.3, false)); bt.add(box(0.5, 0.012, 0.35, mat(0xffffff), -x, 1.06, -0.3, false)); });
-    [[-1.5, -1.5, 0], [0, -1.5, 0], [1.5, -1.5, 0], [-1.5, 1.5, Math.PI], [0, 1.5, Math.PI], [1.5, 1.5, Math.PI]].forEach(([x, z, r]) => { const ch = this.#officeChair(new THREE.Color(GREEN)); ch.position.set(x, 0, z); ch.rotation.y = r; bt.add(ch); });
-    [-1.4, 0, 1.4].forEach(x => { const shade = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.36, 0.3, 20, 1, true), mat(NAVY2, { side: THREE.DoubleSide })); shade.position.set(x, WALL_H - 2.0, 0); bt.add(shade); bt.add(box(0.015, 1.9, 0.015, mat(NAVY2), x, WALL_H - 0.95, 0, false)); });
-    const bpl = new THREE.PointLight(0xffe2b3, 8, 8, 2); bpl.position.set(0, WALL_H - 2.2, 0); bt.add(bpl);
-    bt.position.set(mp.x, 0, mp.z); s.add(bt);
-    // lounge pendant
-    const lp = new THREE.PointLight(0xffe2b3, 6, 7, 2); lp.position.set(-8.8, WALL_H - 2.2, 8.4); s.add(lp);
-    const lshade = new THREE.Mesh(new THREE.ConeGeometry(0.5, 0.45, 24, 1, true), mat(NAVY2, { side: THREE.DoubleSide })); lshade.position.set(-8.8, WALL_H - 2.1, 8.4); s.add(lshade); s.add(box(0.015, 2.1, 0.015, mat(NAVY2), -8.8, WALL_H - 1.05, 8.4, false));
     this.#furnishDrawing();
+    this.#furnishBuilding();
     this.#buildNav();
     // if agents were requested before the models arrived, place them now
-    if (this.pendingAgents) { const l = this.pendingAgents; this.pendingAgents = null; this.setAgents(l.list, l.drawing, l.modelling); }
+    if (this.pendingAgents) { const l = this.pendingAgents; this.pendingAgents = null; this.setAgents(l.list, l.drawing, l.modelling, l.docs); }
     this.setBoard(this.boardLines);
   }
 
@@ -510,11 +608,11 @@ export class Office {
   }
 
   // ---------- public API ----------
-  setAgents(list, drawing = null, modelling = null) {
-    if (!this.models['desk-teacher']) { this.pendingAgents = { list, drawing, modelling }; return; }
+  setAgents(list, drawing = null, modelling = null, docs = null) {
+    if (!this.models['desk-teacher']) { this.pendingAgents = { list, drawing, modelling, docs }; return; }
     (this.drawExtras || []).forEach(o => { this.scene.remove(o); if (o.element) o.element.remove(); }); this.drawExtras = [];
     for (const a of this.agents.values()) { this.scene.remove(a.group); if (a.desk) this.scene.remove(a.desk); if (a.chair) this.scene.remove(a.chair); a.label.element.remove(); }
-    this.agents.clear(); this.dexRoots = []; this.modRoots = {};
+    this.agents.clear(); this.dexRoots = []; this.modRoots = {}; this.docsAgentRoots = [];
     this.obstacles = this.obstacles.filter(o => !o.desk);
     (this.podRugs || []).forEach(r => this.scene.remove(r)); const a_rugs = []; this.podRugs = a_rugs;
     list.forEach((data, i) => {
@@ -559,6 +657,7 @@ export class Office {
     }
     for (const d of (Array.isArray(drawing) ? drawing : (drawing ? [drawing] : []))) { if (d.role === 'drafter') this.#addDrafter(d); else this.#addDrawingAgent(d, a_rugs); }
     for (const d of (Array.isArray(modelling) ? modelling : [])) this.#addModelling(d);
+    for (const d of (Array.isArray(docs) ? docs : [])) this.#addDocsAgent(d);
     this.#buildNav();
     for (const a of this.agents.values()) a.path = null;
     this.setBoard(this.boardLines);
@@ -619,6 +718,13 @@ export class Office {
     L.add(box(0.36, 0.12, DOOR2.z1 - DOOR2.z0 + 0.12, mat(NAVY2), wx, 3.25, (DOOR2.z0 + DOOR2.z1) / 2));
     L.add(box(0.4, 0.03, DOOR2.z1 - DOOR2.z0, mat(GREEN, GL), wx, 0.03, (DOOR2.z0 + DOOR2.z1) / 2, false));       // threshold
     L.add(box(0.05, 0.14, DD, mat(GREEN, GL), DRAW.x0 + 0.05, 5.3, DRAW.cz, false));
+    {   // plaque over the doorway, on the inside of the wall: click it to come through from the media office
+      const plaque = new THREE.Group();
+      plaque.add(box(0.08, 0.62, 3.0, mat(NAVY2), 0, 0, 0));
+      plaque.add(box(0.09, 0.05, 3.0, mat(GREEN, GL), 0, -0.3, 0, false));
+      const plText = this.#textPlane('DRAWING ROOM', 2.8, 0.42, { color: '#ffffff', size: 62, weight: '700', spacing: 4 }); plText.rotation.y = Math.PI / 2; plText.position.set(0.05, 0.02, 0); plaque.add(plText);
+      plaque.position.set(DRAW.x0 + 0.04, 3.9, (DOOR2.z0 + DOOR2.z1) / 2); L.add(plaque); this.doorPlaque = plaque;
+    }
     // sign + logo
     const logo = new THREE.Mesh(new THREE.PlaneGeometry(6, 6 * LOGO_AR), new THREE.MeshBasicMaterial({ map: this.logoWhiteTex, transparent: true, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }));
     logo.position.set(DRAW.cx + 4.2, 3.9, DRAW.z0 + 0.05); B.add(logo);
@@ -780,6 +886,23 @@ export class Office {
     this.clickRoots = [desk, group, chair];
   }
 
+  // Dot (documents) sits at her desk in the Documents room next to the Approvals and Issue-pack counters
+  #addDocsAgent(data) {
+    const colour = new THREE.Color(data.colour || '#b197fc'), dx = DOCS.x0 + 3.4, dz = DOCS.z0 + 6.0;
+    const desk = this.#desk(colour); desk.position.set(dx, 0, dz); desk.rotation.y = 0; this.scene.add(desk); desk.updateMatrixWorld(true);
+    const front = new THREE.Vector3(0, 0, 1).applyQuaternion(desk.quaternion);
+    const chair = this.#officeChair(colour); chair.position.set(dx, 0, dz).addScaledVector(front, 1.15); chair.rotation.y = Math.atan2(-front.x, -front.z); this.scene.add(chair);
+    const seat = new THREE.Vector3(dx, 0, dz).addScaledVector(front, 1.05), faceSeat = Math.atan2(-front.x, -front.z);
+    this.obstacles.push({ rect: true, x0: dx - 1.45, x1: dx + 1.45, z0: dz - 0.75, z1: dz + 0.75, desk: true });
+    const group = buildCharacter(data.colour, 'reviewer', data.gear);
+    group.position.copy(this.#randomIdlePoint('docs')); this.scene.add(group);
+    const el = document.createElement('div'); el.className = 'lbl';
+    el.innerHTML = `<b>${data.name}</b> · ${data.platform} <span class="st"></span>`;
+    const label = new CSS2DObject(el); label.position.set(0, 2.6, 0); group.add(label);
+    this.agents.set(data.id, { data, group, desk, chair, seat, faceSeat, zone: 'docs', state: 'idle', label, el, walkTarget: null, waypoint: null, faceTo: null, wait: Math.random() * 3, t: Math.random() * 10, blink: 2 + Math.random() * 3 });
+    this.docsAgentRoots = [desk, group, chair];
+  }
+
   // Dex sits on the stool at the drafting table, facing the board, all day
   #addDrafter(data) {
     const [sx, sz] = DRAFT_STOOL, [tx, tz] = DRAFT_TABLE;
@@ -813,7 +936,7 @@ export class Office {
 
   // ---------- modeling room (west of the drawing room) ----------
   #buildModelingRoom() {
-    this.modelRoom = buildModelingRoom({ scene: this.scene, bounds: MODEL, logoTex: this.logoWhiteTex, drawLeftWall: this.drawLeftWall, doorZ: (DOOR2.z0 + DOOR2.z1) / 2 });
+    this.modelRoom = buildModelingRoom({ scene: this.scene, bounds: MODEL, logoTex: this.logoWhiteTex, doorZ: (DOOR2.z0 + DOOR2.z1) / 2 });
   }
   // show a loaded glTF scene on the scan pedestal (null clears it)
   showModel(object3d) { if (this.modelRoom) this.modelRoom.setModel(object3d); }
@@ -850,8 +973,9 @@ export class Office {
     if (this.fp) this.exitFirstPerson(true);
     const [dx, dz] = DRAW_DESK;
     const spots = {
+      overview: { p: [52, 46, 68], t: [14, 0, 8] },
       media: { p: [26, 19, 32], t: [1, 0.5, 0.5] },
-      drawing: { p: [DRAW.cx + 9, 15, 24], t: [DRAW.cx + 1.5, 0.5, -3] },
+      drawing: { p: [DRAW.cx + 9, 17, 32], t: [DRAW.cx + 1.5, 0.5, 0] },
       desk: { p: [dx + 8.0, 4.8, dz + 8.0], t: [dx + 2.8, 1.0, dz + 0.6] },
       drafting: { p: [DRAFT_TABLE[0] + 7.5, 4.8, DRAFT_TABLE[1] + 7.5], t: [DRAFT_TABLE[0] + 2.6, 1.0, DRAFT_TABLE[1] + 0.4] },
       ...(this.projSpot ? { board: this.projSpot } : {}),
@@ -864,7 +988,8 @@ export class Office {
     if (this.deskHint) this.deskHint.visible = where === 'drawing';
     if (this.dexHint) this.dexHint.visible = where === 'drawing';
     if (this.modelRoom) { this.modelRoom.hint.visible = where === 'modeling'; for (const k of Object.values(this.modelRoom.stations)) k.hint.visible = where === 'modeling'; }
-    if (this.projHint) this.projHint.visible = where === 'media';
+    const wideNow = where === 'media' || where === 'overview';
+    if (this.projHint) this.projHint.visible = wideNow;
     this.canvas.style.cursor = '';
   }
 
@@ -874,8 +999,13 @@ export class Office {
     const visibleChain = (o) => { for (let n = o; n; n = n.parent) if (!n.visible) return false; return true; };
     const what = (e) => {
       this.ray.setFromCamera(ndc(e), this.camera);
-      if (this.room === 'media' && this.projBoard && this.ray.intersectObject(this.projBoard, true).length) return 'board';
-      if (this.room === 'media' && this.doorPlaque && visibleChain(this.doorPlaque) && this.ray.intersectObject(this.doorPlaque, true).length) return 'door';
+      const wide = this.room === 'media' || this.room === 'overview';
+      if (wide && this.projBoard && this.ray.intersectObject(this.projBoard, true).length) return 'board';
+      if (wide && this.docRoots && this.ray.intersectObjects(this.docRoots.approvals, true).length) return 'approvals';
+      if (wide && this.docRoots && this.ray.intersectObjects(this.docRoots.issue, true).length) return 'issue';
+      if (wide && this.nextRoots && this.ray.intersectObjects(this.nextRoots, true).length) return 'nextdesk';
+      if (wide && this.docsAgentRoots && this.docsAgentRoots.length && this.ray.intersectObjects(this.docsAgentRoots, true).some(h => visibleChain(h.object))) return 'docs';
+      if (wide && this.doorPlaque && visibleChain(this.doorPlaque) && this.ray.intersectObject(this.doorPlaque, true).length) return 'door';
       if (this.room === 'drawing' && this.clickRoots.length && this.ray.intersectObjects(this.clickRoots, true).some(h => visibleChain(h.object))) return 'desk';
       if (this.room === 'drawing' && this.dexRoots && this.dexRoots.length && this.ray.intersectObjects(this.dexRoots, true).some(h => visibleChain(h.object))) return 'drafting';
       if (this.room === 'drawing' && this.modelRoom && visibleChain(this.modelRoom.plaque) && this.ray.intersectObject(this.modelRoom.plaque, true).length) return 'modeldoor';
@@ -885,7 +1015,7 @@ export class Office {
       if (this.room === 'modeling' && this.modelRoom && this.ray.intersectObjects(this.modelRoom.clickRoots, true).some(h => visibleChain(h.object))) return 'scan';
       return null;
     };
-    this.canvas.addEventListener('pointerdown', (e) => { this.down = { x: e.clientX, y: e.clientY, t: performance.now() }; });
+    this.canvas.addEventListener('pointerdown', (e) => { this.down = { x: e.clientX, y: e.clientY, t: performance.now() }; if (this.tween && !this.fp) { this.tween = null; this.controls.enabled = true; } }, true);
     this.canvas.addEventListener('pointerup', (e) => {
       const d = this.down; this.down = null; if (!d || this.tween) return;
       if (Math.hypot(e.clientX - d.x, e.clientY - d.y) > 5 || performance.now() - d.t > 500) return;
@@ -953,16 +1083,23 @@ export class Office {
   }
 
 
-  get _dims() { return { DRAW, MODEL, DOOR, DOOR2, ROOM_W, ROOM_D }; }
+  get _dims() { return { DRAW, MODEL, DOOR2, ROOM_W, ROOM_D, CORR, RECEP, DOCS, MEET, LOUNGE, NEXT }; }
   // ---------- first person: walk through the rooms (W A S D / arrows, drag to look, Shift to hurry, Esc to leave) ----------
-  #fpAllowed(x, z) {
-    const m = 0.5, inR = (b, x0, x1, z0, z1) => x >= x0 && x <= x1 && z >= z0 && z <= z1;
-    return inR(0, -ROOM_W / 2 + m, ROOM_W / 2 - m, -ROOM_D / 2 + m, ROOM_D / 2 - m)
-      || inR(0, DRAW.x0 + m, DRAW.x1 - m, DRAW.z0 + m, DRAW.z1 - m)
-      || inR(0, MODEL.x0 + m, MODEL.x1 - m, MODEL.z0 + m, MODEL.z1 - m)
-      || inR(0, DRAW.x1 - 0.9, -ROOM_W / 2 + 0.6, DOOR.z0 + 0.4, DOOR.z1 - 0.4)
-      || inR(0, MODEL.x1 - 0.6, DRAW.x0 + 0.6, DOOR2.z0 + 0.4, DOOR2.z1 - 0.4);
+  // the walkable floor of the whole building (rooms, doorways, corridor), shared by first person and the agents' grid
+  #inBuilding(x, z, m = 0.5) {
+    const inR = (x0, x1, z0, z1) => x >= x0 && x <= x1 && z >= z0 && z <= z1;
+    const dz = (DOOR2.z0 + 0.3), dz1 = (DOOR2.z1 - 0.3);
+    return inR(-ROOM_W / 2 + m, ROOM_W / 2 - m, -ROOM_D / 2 + m, ROOM_D / 2)                    // media (front edge is open to the corridor)
+      || inR(DRAW.x0 + m, DRAW.x1 - m, DRAW.z0 + m, DRAW.z1)
+      || inR(MODEL.x0 + m, MODEL.x1 - m, MODEL.z0 + m, MODEL.z1)
+      || inR(ROOM_W / 2 - 0.6, DRAW.x0 + 0.6, dz, dz1)                                        // media <-> drawing doorway
+      || inR(DRAW.x1 - 0.6, MODEL.x0 + 0.6, dz, dz1)                                          // drawing <-> modelling doorway
+      || inR(NEXT.x0, NEXT.x1, NEXT.z0 + m, NEXT.z1) || inR(MODEL.x1 - 0.2, NEXT.x0 + 0.2, MODEL.z1 - 3, MODEL.z1)
+      || inR(-ROOM_W / 2 + m, NEXT.x1 - m, CORR.z0, CORR.z1)                                  // corridor
+      || [RECEP, DOCS, MEET, LOUNGE].some(R => inR(R.x0 + m, R.x1 - m, R.z0 + m, R.z1 - m) || inR(R.cx - 1.3, R.cx + 1.3, CORR.z1 - 0.2, R.z0 + m + 0.3))   // rooms + doorway from the corridor
+      || [DOCS, MEET, LOUNGE].some(R => inR(R.x0 - 0.6, R.x0 + 0.6, R.cz - 0.2, R.cz + 1.2));  // doorways between the bottom rooms
   }
+  #fpAllowed(x, z) { return this.#inBuilding(x, z); }
   #fpFree(x, z) {
     if (!this.#fpAllowed(x, z)) return false;
     const list = this.obstacles.concat(this.modelRoom ? this.modelRoom.obstacles : []);
@@ -972,7 +1109,7 @@ export class Office {
     }
     return true;
   }
-  #fpRoomName(x) { return x < MODEL.x1 ? 'modeling' : x < DRAW.x1 ? 'drawing' : 'media'; }
+  #fpRoomName(x, z = 0) { return z > CORR.z0 ? 'media' : x < DRAW.x0 ? 'media' : x < MODEL.x0 ? 'drawing' : 'modeling'; }
   enterFirstPerson() {
     if (this.fp) return; if (this.tween) { this.tween = null; }
     const t = this.controls.target, cp = this.camera.position;
@@ -996,7 +1133,7 @@ export class Office {
   exitFirstPerson(quiet = false) {
     const f = this.fp; if (!f) return 'media';
     f.off(); this.fp = null;
-    const room = this.#fpRoomName(f.x), cam = this.camera;
+    const room = this.#fpRoomName(f.x, f.z), cam = this.camera;
     cam.fov = f.saved.fov; cam.near = f.saved.near; cam.updateProjectionMatrix();
     // hand the orbit camera the current view so nothing jumps
     const fwd = new THREE.Vector3(-Math.sin(f.yaw), 0, -Math.cos(f.yaw));
@@ -1016,7 +1153,7 @@ export class Office {
       else if (this.#fpFree(f.x, f.z + dz)) f.z += dz;
       f.bob = (f.bob || 0) + sp * 2.4;
     }
-    this.room = this.#fpRoomName(f.x);
+    this.room = this.#fpRoomName(f.x, f.z);
     const cam = this.camera;
     cam.position.set(f.x, 1.65 + Math.sin(f.bob || 0) * 0.025, f.z); cam.rotation.set(f.pitch, f.yaw, 0);
   }
@@ -1033,10 +1170,11 @@ export class Office {
     this.#stepProps(dt);
     // hide walls the camera is behind, so you never look at the back of one
     const c = this.camera.position, fp = !!this.fp;
-    if (fp) { for (const w of [this.backWall, this.leftWall, this.drawBackWall, this.drawLeftWall]) if (w) w.visible = true; if (this.modelRoom) { this.modelRoom.backWall.visible = true; this.modelRoom.leftWall.visible = true; this.modelRoom.step(dt); } }
+    if (fp) { for (const r of (this.roomShells || [])) { r.B.visible = true; r.L.visible = true; } for (const w of [this.backWall, this.leftWall, this.drawBackWall, this.drawLeftWall]) if (w) w.visible = true; if (this.modelRoom) { this.modelRoom.backWall.visible = true; this.modelRoom.leftWall.visible = true; this.modelRoom.step(dt); } }
     else {
     if (this.backWall) this.backWall.visible = c.z > -ROOM_D / 2 + 1;
-    if (this.leftWall) this.leftWall.visible = c.x > -ROOM_W / 2 + 1 && !(this.room !== 'media' && (!this.tween || tweenK > 0.3));
+    if (this.leftWall) this.leftWall.visible = c.x > -ROOM_W / 2 + 1;
+    for (const r of (this.roomShells || [])) { r.B.visible = c.z > r.R.z0 + 1; r.L.visible = c.x > r.R.x0 + 1; }
     if (this.drawBackWall) this.drawBackWall.visible = c.z > DRAW.z0 + 1;
     if (this.drawLeftWall) this.drawLeftWall.visible = c.x > DRAW.x0 + 1;
     if (this.modelRoom) { this.modelRoom.backWall.visible = c.z > MODEL.z0 + 1; this.modelRoom.leftWall.visible = c.x > MODEL.x0 + 1; this.modelRoom.step(dt); }
@@ -1045,7 +1183,6 @@ export class Office {
     this.labelRenderer.render(this.scene, this.camera);
   }
 
-  #inMeeting(x, z) { const M = MEETING; return x > M.x0 && x < M.x1 && z > M.z0 && z < M.z1; }
   #clear(x, z) { return this.#walkable(x, z); }
 
   // ---- nav grid ----
@@ -1053,19 +1190,13 @@ export class Office {
     const CELL = 0.5; this.navCell = CELL;
     const cols = Math.ceil((NAV.x1 - NAV.x0) / CELL), rows = Math.ceil((NAV.z1 - NAV.z0) / CELL);
     const grid = new Uint8Array(cols * rows); // 1 = walkable
-    const M = MEETING;
     const blocked = (x, z) => {
-      const inMedia = x >= -ROOM_W / 2 + 0.7 && x <= ROOM_W / 2 - 0.7 && z >= -ROOM_D / 2 + 1.0 && z <= ROOM_D / 2 - 0.7;
-      const inDraw = x >= DRAW.x0 + 0.7 && x <= DRAW.x1 - 0.7 && z >= DRAW.z0 + 1.0 && z <= DRAW.z1 - 0.7;
-      const inDoor = x >= DRAW.x1 - 0.75 && x <= -ROOM_W / 2 + 0.8 && z >= DOOR.z0 + 0.25 && z <= DOOR.z1 - 0.25;
-      if (!inMedia && !inDraw && !inDoor) return true;
+      if (!this.#inBuilding(x, z, 0.7)) return true;
+      // behind the back wall of the top rooms the inBuilding margin keeps agents off the wall; the corridor edge is open
       for (const o of this.obstacles) {
         if (o.rect) { if (x > o.x0 && x < o.x1 && z > o.z0 && z < o.z1) return true; }
         else if (Math.hypot(o.x - x, o.z - z) < o.r) return true;
       }
-      // glass partitions: x = M.x0 line (door gap near z1), z = M.z0 line
-      if (Math.abs(x - M.x0) < 0.45 && z > M.z0 - 0.45 && z < M.z1 - 2.4) return true;
-      if (Math.abs(z - M.z0) < 0.45 && x > M.x0 - 0.45 && x < M.x1 + 0.45) return true;
       return false;
     };
     for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
@@ -1126,6 +1257,10 @@ export class Office {
   #lineClear(a, b) { const n = Math.ceil(a.distanceTo(b) / (this.navCell * 0.5)) + 1; for (let i = 0; i <= n; i++) { const t = i / n; if (!this.#walkable(a.x + (b.x - a.x) * t, a.z + (b.z - a.z) * t)) return false; } return true; }
 
   #randomIdlePoint(zone = 'media') {
+    if (zone === 'docs') {
+      for (let i = 0; i < 80; i++) { const x = DOCS.x0 + 1.5 + Math.random() * (DOCS.w - 3), z = DOCS.z0 + 2.5 + Math.random() * (DOCS.d - 4); if (this.#walkable(x, z)) return new THREE.Vector3(x, 0, z); }
+      return this.#nearestWalkable(DOCS.cx, DOCS.cz);
+    }
     if (zone === 'drawing') {
       for (let i = 0; i < 80; i++) {
         const x = DRAW.x0 + 1.5 + Math.random() * (DRAW.w - 3), z = DRAW.z0 + 2.5 + Math.random() * (DRAW.d - 4);
@@ -1136,13 +1271,24 @@ export class Office {
     for (let i = 0; i < 80; i++) {
       const x = -ROOM_W / 2 + 1.5 + Math.random() * (ROOM_W - 3);
       const z = -ROOM_D / 2 + 2.5 + Math.random() * (ROOM_D - 4);
-      if (this.#walkable(x, z) && !this.#inMeeting(x, z)) return new THREE.Vector3(x, 0, z);
+      if (this.#walkable(x, z)) return new THREE.Vector3(x, 0, z);
     }
     return this.#nearestWalkable(0, 4);
   }
 
   #pickWanderTarget(a) {
-    const zone = a.zone || 'media', pois = this.pois.filter(p => (p.zone || 'media') === zone);
+    const zone = a.zone || 'media', pois = this.pois.filter(p => (p.zone || 'media') === zone && !p.visit);
+    const st = a.el && a.el.querySelector('.st');
+    if (a.tripLabel && st) { st.textContent = ''; a.tripLabel = false; }
+    // now and then wander off to another room (reception, documents, meeting room, lounge, coffee) and say where
+    if (zone === 'media' && a.state !== 'working') {
+      const trips = this.pois.filter(p => p.visit);
+      if (trips.length && Math.random() < 0.3) {
+        const p = trips[Math.floor(Math.random() * trips.length)];
+        a.faceTo = p.face; a.tripLabel = true; a.tripName = p.visit; if (st) st.textContent = '— to ' + p.visit;
+        return this.#nearestWalkable(p.x + (Math.random() - 0.5) * 0.6, p.z + (Math.random() - 0.5) * 0.6);
+      }
+    }
     if (Math.random() < 0.45 && pois.length) {
       const p = pois[Math.floor(Math.random() * pois.length)];
       a.faceTo = p.face;
@@ -1213,7 +1359,7 @@ export class Office {
       if (a.wait <= 0) { a.walkTarget = this.#pickWanderTarget(a); a.path = null; }
       return;
     }
-    if (this.#goto(a, a.walkTarget, dt, ud)) { a.walkTarget = null; a.path = null; a.wait = 2 + Math.random() * 6; }
+    if (this.#goto(a, a.walkTarget, dt, ud)) { a.walkTarget = null; a.path = null; a.wait = 2 + Math.random() * 6; if (a.tripLabel) { const st = a.el.querySelector('.st'); if (st) st.textContent = '— at ' + a.tripName; } }
   }
 
   #blink(a, dt) {

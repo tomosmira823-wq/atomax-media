@@ -137,3 +137,12 @@ Settings → Connections. Each platform needs a developer app of your own; paste
 
 ## Theo (3D builder)
 Theo sits at his own desk in the modeling room and builds a model from scratch from a prompt plus context (folders, documents, drawings, photos); an existing model is optional. He can use boxes, cylinders, spheres, cones, pipes and extruded outlines, asks questions if needed, then Vera checks the result. Save and AutoCAD export work like Milo's. Milo and Theo can both drive the PC (same control panel, Test control first).
+
+## Office layout (v1.8)
+Top row: Media office, Drawing room, Modelling room and a dashed "Next department" plot (click its "+ desk" chip to add agents). A main corridor runs below. Bottom row: Reception, Documents (Approvals and Issue pack desks open the Business tab, plus Dot the documents agent), Meeting room and Lounge. Idle agents wander between rooms.
+
+## Jobs and the project whiteboard
+The whiteboard in the meeting room opens the project board: every job, its context notes, tasks set for different agents, and who has worked on what. "Work on this job" sets the job in hand; Milo, Theo and Vera get that job as background in their prompts (not the social writers, so client details never reach posts).
+
+## Camera
+Left-drag pans freely, right-drag rotates, wheel zooms. Clicking a room flies the camera there without locking it; dragging interrupts the flight. "Whole office" shows everything.

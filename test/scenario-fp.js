@@ -13,21 +13,31 @@
   quiet(true);
   const W = Math.PI / 2, E = -Math.PI / 2;
   await step('F key enters first person', async () => { document.dispatchEvent(new KeyboardEvent('keydown', { key: 'f' })); if (!o.fp || !document.body.classList.contains('fp')) throw new Error('not in first person'); return 'on'; });
-  await step('Walk drawing room -> modeling room through the new door', async () => {
-    const p = walk(D.DRAW.x0 + 2.5, (D.DOOR2.z0 + D.DOOR2.z1) / 2, W, 90);
-    if (!(p[0] < D.MODEL.x1 - 2)) throw new Error('did not get through, stopped at ' + p); return p;
+  const dz = (D.DOOR2.z0 + D.DOOR2.z1) / 2;
+  await step('Walk media office -> drawing room through the doorway', async () => {
+    const p = walk(D.ROOM_W / 2 - 2.5, dz, E, 90);
+    if (!(p[0] > D.DRAW.x0 + 2)) throw new Error('did not get through, stopped at ' + p); return p;
   });
   await step('Walls elsewhere stop you', async () => {
     const p = walk(D.DRAW.x0 + 2.5, D.DRAW.z0 + 3, W, 90);
     if (p[0] < D.DRAW.x0 + 0.4) throw new Error('walked through the wall at ' + p); return p;
   });
-  await step('Modeling room -> back through the door -> drawing room', async () => {
-    const p = walk(D.MODEL.x1 - 2.5, (D.DOOR2.z0 + D.DOOR2.z1) / 2, E, 70);
-    if (!(p[0] > D.DRAW.x0 + 2)) throw new Error('stuck at ' + p); return p;
+  await step('Drawing room -> modelling room through the doorway', async () => {
+    const p = walk(D.DRAW.x1 - 2.5, dz, E, 90);
+    if (!(p[0] > D.MODEL.x0 + 2)) throw new Error('stuck at ' + p); return p;
   });
-  await step('Drawing room -> media office through the original door', async () => {
-    const p = walk(D.DRAW.x1 - 2.5, (D.DOOR.z0 + D.DOOR.z1) / 2, E, 80);
-    if (!(p[0] > -D.ROOM_W / 2 + 1)) throw new Error('stuck at ' + p); return p;
+  await step('Modelling room -> back through the doorway -> drawing room', async () => {
+    const p = walk(D.MODEL.x0 + 2.5, dz, W, 70);
+    if (!(p[0] < D.DRAW.x1 - 2)) throw new Error('stuck at ' + p); return p;
+  });
+  await step('Drawing room -> media office through the doorway', async () => {
+    const p = walk(D.DRAW.x0 + 2.5, dz, W, 80);
+    if (!(p[0] < D.ROOM_W / 2 - 2)) throw new Error('stuck at ' + p); return p;
+  });
+  await step('Media office -> corridor -> lounge', async () => {
+    const S = Math.PI;   // yaw PI looks towards +z (south)
+    const p = walk(D.LOUNGE.cx, D.CORR.z0 + 1, S, 70);
+    if (!(p[1] > D.LOUNGE.z0 + 2)) throw new Error('stuck at ' + p); return p;
   });
   await step('Clicking Cal\'s desk in first person works', async () => {
     if (!o.fp) { document.dispatchEvent(new KeyboardEvent('keydown', { key: 'f' })); } o.step(0.1);

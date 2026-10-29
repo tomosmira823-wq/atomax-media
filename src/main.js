@@ -94,6 +94,11 @@ const DEFAULT_AGENTS = [
     rules: 'Build from scratch in metres with Y up and the floor at y = 0. Use sizes from the context. Name every part. Keep it simple and accurate rather than fancy.'
   },
   {
+    id: 'documents', role: 'documents', platform: 'Documents', name: 'Dot', colour: '#b197fc', enabled: true, gear: ['lanyard', 'clipboard'],
+    tone: 'Tidy and exact. Drafts Atomax-format documents and issue packs and queues them for approval; never issues anything on her own.',
+    rules: 'Follow the Atomax document format. Everything goes through Approvals before it is issued.'
+  },
+  {
     id: 'vera', role: 'modelchecker', platform: '3D Model Checker', name: 'Vera', colour: '#ff8787', enabled: true, gear: ['glasses', 'clipboard'],
     tone: 'Picky but fair. Checks the result against the request and the context, says what is good, and is honest about what she could not tell.',
     rules: 'Check it does what was asked, sizes match the context, nothing clashes or floats, nothing extra was changed. Below 6 out of 10 goes back to Milo.'
@@ -197,8 +202,8 @@ function createWindow() {
   if (process.env.AMO_SCREENSHOT) {
     win.webContents.on('console-message', (_e, level, msg, line, src) => console.error('[page]', level, msg, src + ':' + line));
     win.webContents.once('did-finish-load', () => setTimeout(async () => {
-      if (['run', 'drawing', 'dex', 'model', 'fp', 'biz', 'mo', 'pc', 'theo'].includes(process.env.AMO_SCENARIO)) {
-        const script = fs.readFileSync(path.join(__dirname, '..', 'test', ({ drawing: 'scenario-drawing.js', dex: 'scenario-dex.js', model: 'scenario-model.js', fp: 'scenario-fp.js', biz: 'scenario-biz.js', mo: 'scenario-mo.js', pc: 'scenario-pc.js', theo: 'scenario-theo.js' }[process.env.AMO_SCENARIO] || 'scenario-run.js')), 'utf8').replace(/__AMO_DIR__/g, (process.env.AMO_PICK_DIR || '').replace(/\\/g, '/'));
+      if (['run', 'drawing', 'dex', 'model', 'fp', 'biz', 'mo', 'pc', 'theo', 'layout'].includes(process.env.AMO_SCENARIO)) {
+        const script = fs.readFileSync(path.join(__dirname, '..', 'test', ({ drawing: 'scenario-drawing.js', dex: 'scenario-dex.js', model: 'scenario-model.js', fp: 'scenario-fp.js', biz: 'scenario-biz.js', mo: 'scenario-mo.js', pc: 'scenario-pc.js', theo: 'scenario-theo.js', layout: 'scenario-layout.js' }[process.env.AMO_SCENARIO] || 'scenario-run.js')), 'utf8').replace(/__AMO_DIR__/g, (process.env.AMO_PICK_DIR || '').replace(/\\/g, '/'));
         await win.webContents.executeJavaScript(`window.__variant = ${JSON.stringify(process.env.AMO_VARIANT || '')}`);
         const out = await win.webContents.executeJavaScript(script);
         console.error('[scenario]', JSON.stringify(out));
@@ -316,7 +321,7 @@ ipcMain.handle('social:canPost', (_e, platform) => {
 });
 // older saved teams predate the drawing checker: add Cal (once) so the drawing room has someone at the desk
 function withDrawingAgent(list) {
-  for (const role of ['drawing', 'drafter', 'modeller', 'builder', 'modelchecker']) {
+  for (const role of ['drawing', 'drafter', 'modeller', 'builder', 'modelchecker', 'documents']) {
     if (list.some(a => a.role === role)) continue;
     const d = DEFAULT_AGENTS.find(a => a.role === role);
     if (d) list = [...list, { ...d }];

@@ -23,12 +23,12 @@ function textPlane(text, w, h, { color = '#ffffff', size = 64, weight = '700', s
 }
 
 // Geometry of the room: same depth as the drawing room, 16 wide, directly west of it (with the same wall thickness gap).
-export function modelingBounds(drawX0, z0, z1, w = 16) {
-  const x1 = drawX0 - 0.3, x0 = x1 - w;
+export function modelingBounds(drawX1, z0, z1, w = 16) {
+  const x0 = drawX1 + 0.3, x1 = x0 + w;
   return { w, x0, x1, z0, z1, cx: (x0 + x1) / 2, cz: (z0 + z1) / 2, d: z1 - z0 };
 }
 
-export function buildModelingRoom({ scene, bounds: M, logoTex, drawLeftWall, doorZ = -0.5 }) {
+export function buildModelingRoom({ scene, bounds: M, logoTex, doorZ = -0.5 }) {
   const GL = { emissive: GREEN, emissiveIntensity: 0.5 };
   const backWall = new THREE.Group(), leftWall = new THREE.Group();
   scene.add(backWall); scene.add(leftWall);
@@ -49,7 +49,15 @@ export function buildModelingRoom({ scene, bounds: M, logoTex, drawLeftWall, doo
   // walls (back + west; the front stays open for the camera, the east side is the drawing room's own wall)
   backWall.add(box(M.w + 0.3, WALL_H, 0.3, mat(NAVY, { roughness: 0.9 }), M.cx, WALL_H / 2, M.z0 - 0.15));
   backWall.add(box(M.w, 0.14, 0.05, mat(GREEN, GL), M.cx, 5.3, M.z0 + 0.05, false));
-  leftWall.add(box(0.3, WALL_H, M.d, mat(0xeef0f3, { roughness: 0.95 }), M.x0 - 0.15, WALL_H / 2, M.cz));
+  {   // west wall = divider with the drawing room, with a doorway
+    const wallW = mat(0xeef0f3, { roughness: 0.95 }), wx = M.x0 - 0.15, d0 = doorZ - 1.0, d1 = doorZ + 1.0, fr = mat(NAVY2);
+    leftWall.add(box(0.3, WALL_H, d0 - M.z0, wallW, wx, WALL_H / 2, (M.z0 + d0) / 2));
+    leftWall.add(box(0.3, WALL_H, M.z1 - d1, wallW, wx, WALL_H / 2, (d1 + M.z1) / 2));
+    leftWall.add(box(0.3, WALL_H - 3.2, d1 - d0, wallW, wx, 3.2 + (WALL_H - 3.2) / 2, doorZ));
+    [d0, d1].forEach(z => leftWall.add(box(0.36, 3.25, 0.12, fr, wx, 1.62, z)));
+    leftWall.add(box(0.36, 0.12, d1 - d0 + 0.12, fr, wx, 3.25, doorZ));
+    leftWall.add(box(0.4, 0.03, d1 - d0, mat(GREEN, GL), wx, 0.03, doorZ, false));
+  }
   leftWall.add(box(0.05, 0.14, M.d, mat(GREEN, GL), M.x0 + 0.05, 5.3, M.cz, false));
 
   // sign + logo
@@ -127,7 +135,7 @@ export function buildModelingRoom({ scene, bounds: M, logoTex, drawLeftWall, doo
   shelf.add(box(0.5, 0.08, 4.4, mat(0xb98a55), 0, 0, 0)); shelf.add(box(0.5, 0.08, 4.4, mat(0xb98a55), 0, 1.3, 0));
   [-2.1, 2.1].forEach(z => shelf.add(box(0.5, 1.4, 0.08, dark, 0, 0.65, z)));
   [[-1.5, 0xe8eaee], [-0.5, GREEN], [0.6, 0xffd43b], [1.5, 0x3b6aa8]].forEach(([z, c], i) => { const m = new THREE.Mesh(i % 2 ? new THREE.IcosahedronGeometry(0.3, 0) : new THREE.CylinderGeometry(0.25, 0.3, 0.6, 12), mat(c, { roughness: 0.5 })); m.position.set(0, 0.4, z); m.castShadow = true; shelf.add(m); });
-  shelf.position.set(M.x0 + 0.5, 1.4, M.cz + 1.5); leftWall.add(shelf);
+  shelf.position.set(M.x0 + 0.5, 1.4, M.cz + 4.6); leftWall.add(shelf);
 
   // ---- dressing: workstation, track lights, wireframe posters, LED strips, plants ----
   const steel = mat(0x2a3042, { roughness: 0.35, metalness: 0.5 });
@@ -175,9 +183,9 @@ export function buildModelingRoom({ scene, bounds: M, logoTex, drawLeftWall, doo
   const plaque = new THREE.Group();
   plaque.add(box(0.08, 0.62, 3.0, mat(NAVY2), 0, 0, 0));
   plaque.add(box(0.09, 0.05, 3.0, mat(GREEN, GL), 0, -0.3, 0, false));
-  const plText = textPlane('‹  MODELING ROOM', 3.0, 0.42, { color: '#ffffff', size: 62, weight: '700', spacing: 4 }); plText.rotation.y = Math.PI / 2; plText.position.set(0.05, 0.02, 0); plaque.add(plText);
-  plaque.position.set(M.x1 + 0.3 + 0.04, 3.9, doorZ);
-  if (drawLeftWall) drawLeftWall.add(plaque); else scene.add(plaque);
+  const plText = textPlane('MODELING ROOM', 3.0, 0.42, { color: '#ffffff', size: 62, weight: '700', spacing: 4 }); plText.rotation.y = Math.PI / 2; plText.position.set(0.05, 0.02, 0); plaque.add(plText);
+  plaque.position.set(M.x0 + 0.04, 3.9, doorZ);
+  leftWall.add(plaque);
 
   // ---- Milo's drafting board and Vera's review table (seated agents are added by office.js) ----
   const stations = {}, holos = [];
