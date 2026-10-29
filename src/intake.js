@@ -8,6 +8,7 @@ const path = require('path');
 const biz = require('./business');
 const library = require('./library');
 const dxfmaker = require('./dxfmaker');
+const msgfile = require('./msgfile');
 
 const AGENTS = {
   dex: 'Dex — DXF maker and fixer: draws NEW electrical drawings as DXF from the project files and attached documents (single line diagrams, earthing schematics / earthing design drawings), and fixes text on existing DXFs',
@@ -38,8 +39,20 @@ Who does what (use these, do not send them to "none"):
 - Fault level, load flow, reactive power capability, protection co-ordination, harmonics (G5/5), flicker and unbalance (P28 / P29), G99 / G100 compliance studies, intertripping scheme design: "engineer" for a first-pass note (say in the detail that a full study needs PowerFactory if it does).
 - A quote or fee proposal: "documents".
 Only list real asks from the email. Do not invent work. Copy site names, job numbers, drawing numbers, ratings and dates exactly as written.
+Also work out, from the whole thread:
+- who is who: the client asking, anyone the quote or work is for or must go to, the Atomax person forwarding and what they want.
+- how urgent it is, in their words.
+- what each attachment is (read it) and which tasks can use it.
+- what Atomax still needs from the client before the work can be done properly (data, drawings, site info), as short questions.
+The suggested reply goes to the person who should get it (say who), answers what was asked (turnaround, quote to follow), and asks those questions. Plain British English, short, no promises on price or dates that Tom has not given.
 Reply with JSON only, no markdown:
-{"from":"name <address>","subject":"...","date":"...","summary":"two lines max: what they want","site":"site or project name, as written","jobNumber":"a job number if one is written (e.g. X11475), else empty","asks":[{"title":"short task title, e.g. Draw an SLD for the Test site LV board","detail":"everything the agent needs from the email for this task","agent":"dex|cal|documents|milo|theo|none","kind":"sld|dxf-fix|drawing-check|document|model|other","due":"deadline if given, else empty"}],"reply":"a short suggested reply Tom could send back, in plain British English"}`;
+{"from":"name <address>","subject":"...","date":"...","summary":"two or three lines: who wants what, for which site, and any instruction from the person forwarding","site":"site or project name, as written","jobNumber":"a job number if one is written (e.g. X11475), else empty",
+"people":[{"name":"...","company":"...","role":"e.g. client asking for the quote / the quote goes to / forwarded it at Atomax"}],
+"urgency":"urgent|normal","urgencyWhy":"their words, e.g. 'really urgent, ASAP'",
+"attachmentNotes":[{"name":"file name","what":"what it is, in a line","usefulFor":"which tasks can use it"}],
+"asks":[{"title":"short task title, e.g. Draw the earthing schematic for Gwrhyd PV Farm","detail":"everything the agent needs for this task: what to produce, which attachment to use and the key data from it, what is missing","agent":"dex|engineer|documents|cal|milo|theo|eli|none","kind":"sld|earthing|dxf-fix|drawing-check|document|study|model|admin|other","due":"deadline if given, else empty"}],
+"clientQuestions":["short question for the client"],
+"replyTo":"name <address> the reply should go to","reply":"the suggested reply"}`;
 
 // ---------- reading email files ----------
 const decodeWords = (s) => String(s || '').replace(/=\?([^?]+)\?([BbQq])\?([^?]*)\?=/g, (_m, cs, enc, txt) => {
@@ -69,13 +82,33 @@ function parseEml(buf) {
   parsePart(raw, out);
   return { from: decodeWords(h.from), to: decodeWords(h.to), cc: decodeWords(h.cc), subject: decodeWords(h.subject), date: h.date || '', body: (out.text.join('\n') || out.html.join('\n')).replace(/\n{3,}/g, '\n\n').trim(), attachments: out.attachments };
 }
-// Outlook .msg is a binary container; its text is stored as UTF-16. Pull out the readable runs (good enough for Claude to read the email).
+// Outlook .msg is a binary container. The full message (including anything forwarded) is usually stored as HTML; the transport headers carry From / To / Subject.
+const htmlToText = (h) => h.replace(/<head[\s\S]*?<\/head>/gi, '').replace(/<style[\s\S]*?<\/style>/gi, '').replace(/<!--[\s\S]*?-->/g, '')
+  .replace(/<br\s*\/?>|<\/p>|<\/div>|<\/tr>|<\/li>|<\/h\d>/gi, '\n').replace(/<[^>]+>/g, '')
+  .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#(\d+);/g, (_m, n) => String.fromCharCode(+n))
+  .replace(/[\x91\x92]/g, "'").replace(/[\x93\x94]/g, '"').replace(/\x96|\x97/g, '-')
+  .split('\n').map(l => l.replace(/[ \t]+/g, ' ').trim()).join('\n').replace(/\n{3,}/g, '\n\n').trim();
 function parseMsg(buf) {
-  const runs = (buf.toString('utf16le').match(/[\x20-\x7E -ſ\r\n\t]{12,}/g) || []).map(s => s.trim()).filter(s => s.length > 12 && !/^[A-Z0-9_]+$/.test(s));
-  const ascii = (buf.toString('latin1').match(/[\x20-\x7E\r\n\t]{24,}/g) || []).filter(s => /[a-z]{3,}/.test(s));
-  const seen = new Set(), keep = [];
-  for (const r of [...runs, ...ascii]) { const k = r.slice(0, 60); if (!seen.has(k)) { seen.add(k); keep.push(r); } }
-  return { from: '', to: '', subject: '', date: '', body: keep.join('\n').slice(0, 20000), attachments: [] };
+  // the proper reader first (body, headers and attachments); the text scrape below only if the file will not open as a compound file
+  try {
+    const m = msgfile.readMsg(buf);
+    const body = (m.html ? htmlToText(m.html) : '') || m.text;
+    if (body && body.length > 20) return { from: m.fromName + (m.fromEmail ? ' <' + m.fromEmail + '>' : ''), to: m.to, cc: m.cc, subject: m.subject, date: ((m.headers || '').match(/(?:^|\n)Date:[ \t]*([^\r\n]+)/i) || [])[1] || '', body: body.slice(0, 30000), attachments: m.attachments.filter(a => !a.inline) };
+  } catch {}
+  const lat = buf.toString('latin1');
+  const u16 = buf.toString('utf16le');   // the transport headers are stored as UTF-16
+  const hdr = (k) => (u16.match(new RegExp('(?:^|\n)' + k + ':[ \t]*([^\r\n]+(?:\r?\n[ \t]+[^\r\n]+)*)', 'i')) || lat.match(new RegExp('(?:^|\\n)' + k + ':[ \\t]*([^\\r\\n]+(?:\\r?\\n[ \\t]+[^\\r\\n]+)*)', 'i')) || [])[1] || '';
+  // the HTML body (Outlook keeps forwarded emails here); there can be more than one copy, take the longest
+  let html = '', at = 0;
+  for (;;) { const hs = lat.indexOf('<html', at); if (hs < 0) break; const he = lat.indexOf('</html>', hs); const chunk = lat.slice(hs, he > 0 ? he + 7 : Math.min(lat.length, hs + 400000)); if (chunk.length > html.length) html = chunk; at = hs + 5; }
+  let body = html ? htmlToText(html) : '';
+  if (body.length < 40) {   // no HTML: fall back to the readable UTF-16 text runs, without Outlook's internal names
+    const runs = (buf.toString('utf16le').match(/[\x20-\x7E\u00A0-\u017F\r\n\t]{12,}/g) || []).map(x => x.trim())
+      .filter(x => x.length > 12 && !/^__substg|^\/O=EXCHANGE|^[A-Za-z0-9+\/=]{40,}$|^[A-Z0-9_]+$/.test(x));
+    body = [...new Set(runs)].join('\n');
+  }
+  const clean = (v) => decodeWords(v.replace(/\r?\n[ \t]+/g, ' ').trim());
+  return { from: clean(hdr('From')), to: clean(hdr('To')), cc: clean(hdr('Cc')), subject: clean(hdr('Subject')), date: clean(hdr('Date')), body: body.slice(0, 30000), attachments: [] };
 }
 
 // Drawing work always reaches Dex, whatever Claude decided: if the email (or Eli's own tasks) mention a drawing Dex can make and no task is his, add one.
@@ -115,14 +148,15 @@ function register({ ipcMain, dialog, shell, getWin, userDir, claudeFull, checker
     return best ? best.id : '';
   }
 
-  const readEmail = async ({ files = [], text = '', reuseId = '' }) => {
+  const readEmail = async ({ files = [], text = '', reuseId = '', paths = [] }) => {
+    files = [...files, ...paths.filter(p => fs.existsSync(p)).map(p => ({ name: path.basename(p), mime: extMime(p), base64: fs.readFileSync(p).toString('base64') }))];
     const id = reuseId || uid(), dir = path.join(DIR(), id); fs.mkdirSync(dir, { recursive: true });
     const content = [], parts = [], originals = [], attach = [];
     for (const f of files) {
       const buf = Buffer.from(f.base64, 'base64'), ext = path.extname(f.name).toLowerCase(), mime = f.mime || extMime(f.name);
       fs.writeFileSync(path.join(dir, f.name.replace(/[\\/:*?"<>|]+/g, '_')), buf); originals.push(f.name);
       if (ext === '.eml') { const m = parseEml(buf); parts.push(`From: ${m.from}\nTo: ${m.to}${m.cc ? '\nCc: ' + m.cc : ''}\nDate: ${m.date}\nSubject: ${m.subject}\n\n${m.body}`); m.attachments.forEach(a => { const n = a.name.replace(/[\\/:*?"<>|]+/g, '_'); fs.writeFileSync(path.join(dir, n), a.data); attach.push({ name: n, mime: a.mime }); }); }
-      else if (ext === '.msg') parts.push(parseMsg(buf).body);
+      else if (ext === '.msg') { const m = parseMsg(buf); parts.push(`From: ${m.from}\nTo: ${m.to}${m.cc ? '\nCc: ' + m.cc : ''}\nDate: ${m.date}\nSubject: ${m.subject}\n\n${m.body}`); m.attachments.forEach(a => { const n = a.name.replace(/[\\/:*?"<>|]+/g, '_'); fs.writeFileSync(path.join(dir, n), a.data); attach.push({ name: n, mime: a.mime || extMime(n) }); }); }
       else if (IMG.test(mime)) { attach.push({ name: f.name, mime }); }
       else if (mime === 'application/pdf') { attach.push({ name: f.name, mime }); }
       else parts.push(buf.toString('utf8'));
@@ -132,9 +166,10 @@ function register({ ipcMain, dialog, shell, getWin, userDir, claudeFull, checker
     for (const a of attach.filter(a => IMG.test(a.mime) || a.mime === 'application/pdf').slice(0, 4)) content.push(checker.contentBlock(a.mime === 'application/pdf' ? 'pdf' : 'image', a.name, fs.readFileSync(path.join(dir, a.name))));
     if (!parts.length && !content.length) throw new Error('Drop an email (.eml, .msg), a screenshot of it, or paste its text');
     content.push({ type: 'text', text: `THE EMAIL:\n${parts.join('\n\n---\n\n').slice(0, 30000)}${attach.length ? '\n\nATTACHMENTS: ' + attach.map(a => a.name).join(', ') : ''}` });
-    const { text: reply } = await claudeFull({ system: EMAIL_SYSTEM, who: 'email', maxTokens: 3000, messages: [{ role: 'user', content }] });
+    const { text: reply } = await claudeFull({ system: EMAIL_SYSTEM, who: 'email', maxTokens: 6000, messages: [{ role: 'user', content }] });
     let e; try { e = dxfmaker.parseReply(reply); } catch { throw new Error('Eli could not read that email. Try a screenshot or paste the text.'); }
-    const email = { id, at: new Date().toISOString(), from: e.from || '', subject: e.subject || '', date: e.date || '', summary: e.summary || '', site: e.site || '', jobNumber: e.jobNumber || '', reply: e.reply || '',
+    const email = { id, at: new Date().toISOString(), from: e.from || '', subject: e.subject || '', date: e.date || '', summary: e.summary || '', site: e.site || '', jobNumber: e.jobNumber || '', reply: e.reply || '', replyTo: e.replyTo || '',
+      people: Array.isArray(e.people) ? e.people.slice(0, 8) : [], urgency: e.urgency === 'urgent' ? 'urgent' : 'normal', urgencyWhy: e.urgencyWhy || '', attachmentNotes: Array.isArray(e.attachmentNotes) ? e.attachmentNotes.slice(0, 10) : [], clientQuestions: Array.isArray(e.clientQuestions) ? e.clientQuestions.slice(0, 8).map(String) : [],
       asks: (e.asks || []).map((a, i) => ({ i, title: String(a.title || 'Task').slice(0, 160), detail: String(a.detail || ''), agent: AGENTS[a.agent] ? a.agent : 'none', kind: a.kind || 'other', due: a.due || '', status: 'proposed' })),
       originals, attachments: attach, pasted: text || '' };
     ensureDrafter(email, parts.join('\n'));
@@ -180,7 +215,7 @@ function register({ ipcMain, dialog, shell, getWin, userDir, claudeFull, checker
     BIZ.store.save();
     if (job.folder) {   // read the folder for context, and keep a copy of the email with the job
       try { BIZ.projects.gather(job.id, job.folder, { checker, dxffix: require('./dxffix') }); } catch {}
-      try { const out = BIZ.projects.outputDir(job.folder, 'email'); for (const n of e.originals) { const src = path.join(DIR(), e.id, n.replace(/[\\/:*?"<>|]+/g, '_')), dst = path.join(out, n.replace(/[\\/:*?"<>|]+/g, '_')); if (fs.existsSync(src) && !fs.existsSync(dst)) fs.copyFileSync(src, dst); } } catch {}
+      try { const out = BIZ.projects.outputDir(job.folder, 'email'); for (const n of [...e.originals, ...(e.attachments || []).map(x => x.name)]) { const src = path.join(DIR(), e.id, n.replace(/[\\/:*?"<>|]+/g, '_')), dst = path.join(out, n.replace(/[\\/:*?"<>|]+/g, '_')); if (fs.existsSync(src) && !fs.existsSync(dst)) fs.copyFileSync(src, dst); } } catch {}
     }
     a.status = 'started'; a.jobId = job.id; a.taskId = task.id; e.jobId = job.id;
     if (a.agent === 'eli') { a.status = 'done'; a.result = { summary: job.folder ? 'Job ' + job.number + ' set up, folder ready and the email filed in it.' : 'Job ' + job.number + ' set up (no folder).', path: job.folder || '' }; BIZ.log({ who: 'Eli', action: 'Set up job', jobId: job.id, detail: job.number + (job.folder ? ' · ' + job.folder : '') }); }

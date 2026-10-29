@@ -45,10 +45,14 @@ export function initMailUI({ api, office, getAgents, onStart, goBack }) {
     if (!cur) { m.innerHTML = '<div class="bhint">Drop an email on the left. Eli works out what it asks for and who should do it. Nothing starts until you say yes.</div>'; return; }
     const e = cur;
     m.innerHTML = `<div class="mlhead"><h3>${esc(e.subject || 'Email')}</h3><div class="bsub">${esc(e.from)}${e.date ? ' · ' + esc(e.date) : ''}${e.site ? ' · site: ' + esc(e.site) : ''}${e.jobNumber ? ' · job ' + esc(e.jobNumber) : ''}</div></div>
-      <div class="mlsum">${esc(e.summary)}</div><button id="mlReread" title="Run Eli over this email again with his latest rules">Read it again</button>
+      ${e.urgency === 'urgent' ? `<div class="mlurgent">URGENT${e.urgencyWhy ? ' · ' + esc(e.urgencyWhy) : ''}</div>` : ''}
+      <div class="mlsum">${esc(e.summary)}</div>
+      ${(e.people || []).length ? `<div class="mlpeople">${e.people.map(p => `<span><b>${esc(p.name)}</b>${p.company ? ' · ' + esc(p.company) : ''}<i>${esc(p.role || '')}</i></span>`).join('')}</div>` : ''}
+      ${(e.attachmentNotes || []).length ? `<div class="mlatt">${e.attachmentNotes.map(a => `<div>📎 <b>${esc(a.name)}</b> — ${esc(a.what || '')}${a.usefulFor ? `<i> · useful for: ${esc(a.usefulFor)}</i>` : ''}</div>`).join('')}</div>` : (e.attachments || []).length ? `<div class="mlatt">${e.attachments.map(a => `<div>📎 ${esc(a.name)}</div>`).join('')}</div>` : ''}<button id="mlReread" title="Run Eli over this email again with his latest rules">Read it again</button>
       <div style="font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;color:#868e96;margin-top:12px">What it asks for</div>
       ${e.asks.length ? e.asks.map((a, i) => askCard(a, i)).join('') : '<div class="bhint">Eli found nothing to do in this one.</div>'}
-      ${e.reply ? `<div class="mlreply"><b>Suggested reply</b><pre>${esc(e.reply)}</pre><button id="mlCopy">Copy reply</button> <button id="mlOpenE">Open the email files</button></div>` : ''}`;
+      ${(e.clientQuestions || []).length ? `<div class="mlqs"><b>Still needed from the client</b><ul>${e.clientQuestions.map(q => `<li>${esc(q)}</li>`).join('')}</ul></div>` : ''}
+      ${e.reply ? `<div class="mlreply"><b>Suggested reply${e.replyTo ? ' to ' + esc(e.replyTo) : ''}</b><pre>${esc(e.reply)}</pre><button id="mlCopy">Copy reply</button> <button id="mlOpenE">Open the email files</button></div>` : ''}`;
     m.querySelectorAll('[data-yes]').forEach(b => b.addEventListener('click', () => { startOpen = +b.dataset.yes; render(); fillStart(+b.dataset.yes); }));
     m.querySelectorAll('[data-give]').forEach(s => s.addEventListener('change', async () => { cur = await api.mail.reassign({ id: e.id, ask: +s.dataset.give, agent: s.value }); if (startOpen === +s.dataset.give) startOpen = -1; render(); }));
     m.querySelectorAll('[data-no]').forEach(b => b.addEventListener('click', async () => { cur = await api.mail.decline({ id: e.id, ask: +b.dataset.no }); refreshList(); render(); }));
