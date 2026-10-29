@@ -59,6 +59,7 @@ export function nodeList(root) {
 }
 
 export function describe(root) {
+  if (!root.children.length || boxOf(root).isEmpty()) return { up: 'Y is up. X runs left-right and Z runs toward the viewer.', bounds: { min: [0, 0, 0], max: [0, 0, 0], size: [0, 0, 0] }, unitGuess: 'probably metres', meshes: 0, triangles: 0, nodes: [], empty: true };
   const b = boxOf(root), size = b.getSize(new THREE.Vector3());
   let tris = 0, meshes = 0; root.traverse(o => { if (o.isMesh) { meshes++; const g = o.geometry; tris += (g.index ? g.index.count : g.attributes.position.count) / 3; } });
   const longest = Math.max(size.x, size.y, size.z);
@@ -67,6 +68,7 @@ export function describe(root) {
 }
 
 export function describeText(d) {
+  if (d.empty) return 'There is no existing model: the scene is empty. Build from scratch. Y is up (the floor is y = 0), X runs left-right, Z runs toward the viewer. Use metres unless the context says otherwise.';
   const lines = [`Overall box: min ${d.bounds.min.join(', ')} · max ${d.bounds.max.join(', ')} · size ${d.bounds.size.join(' × ')} (${d.unitGuess}). ${d.up}`, `${d.meshes} meshes, ${d.triangles} triangles.`, 'Named parts (name · min · max · colour):'];
   for (const n of d.nodes) lines.push(`${'  '.repeat(n.depth)}- ${n.name} · [${n.min.join(', ')}] · [${n.max.join(', ')}]${n.colour ? ' · ' + n.colour : ''}`);
   return lines.join('\n');
@@ -121,6 +123,21 @@ export function applyOps(root, ops) {
         const s = vec(op.size, [1, 1, 1]), m = new THREE.Mesh(new THREE.BoxGeometry(s.x, s.y, s.z), stdMat(op.colour));
         m.position.copy(vec(op.position)); m.rotation.set(THREE.MathUtils.degToRad(num(op.rotation_x_deg, 0)), THREE.MathUtils.degToRad(num(op.rotation_y_deg, 0)), THREE.MathUtils.degToRad(num(op.rotation_z_deg, 0)));
         addGroup.add(tag(m, name, 'box')); added.push(name); lines.push(`Added box "${name}" ${r3(s.x)} × ${r3(s.y)} × ${r3(s.z)}.`);
+      } else if (kind === 'add_sphere') {
+        const r = Math.max(1e-4, num(op.radius, 0.1)), m = new THREE.Mesh(new THREE.SphereGeometry(r, 32, 20), stdMat(op.colour));
+        if (Array.isArray(op.scale)) m.scale.copy(vec(op.scale, [1, 1, 1]));
+        m.position.copy(vec(op.position)); addGroup.add(tag(m, name, 'sphere')); added.push(name); lines.push(`Added sphere "${name}" radius ${r3(r)}.`);
+      } else if (kind === 'add_cone') {
+        const r = Math.max(1e-4, num(op.radius, 0.1)), h = Math.max(1e-4, num(op.height, 1)), m = new THREE.Mesh(new THREE.ConeGeometry(r, h, 28), stdMat(op.colour));
+        const axis = String(op.axis || 'y').toLowerCase(); if (axis === 'x') m.rotation.z = -Math.PI / 2; else if (axis === 'z') m.rotation.x = Math.PI / 2;
+        m.position.copy(vec(op.position)); addGroup.add(tag(m, name, 'cone')); added.push(name); lines.push(`Added cone "${name}" radius ${r3(r)}, height ${r3(h)}.`);
+      } else if (kind === 'add_extrusion') {
+        const prof = (op.profile || []).filter(p => Array.isArray(p) && p.length >= 2); if (prof.length < 3) throw new Error('an extrusion needs a profile of at least three [x, z] points');
+        const sh = new THREE.Shape(prof.map(p => new THREE.Vector2(num(p[0]), num(p[1])))), h = Math.max(1e-4, num(op.height, 1));
+        const geo = new THREE.ExtrudeGeometry(sh, { depth: h, bevelEnabled: false }); geo.rotateX(-Math.PI / 2);   // profile lies in the floor plane (x, z), grows up in Y
+        geo.scale(1, 1, -1); geo.computeVertexNormals();
+        const m = new THREE.Mesh(geo, stdMat(op.colour)); m.position.set(0, num(op.base_y, 0), 0); m.material.side = THREE.DoubleSide;
+        addGroup.add(tag(m, name, 'extrusion')); added.push(name); lines.push(`Added extrusion "${name}" (${prof.length} corners, height ${r3(h)}, base at ${r3(num(op.base_y, 0))}).`);
       } else if (kind === 'add_cylinder') {
         const r = Math.max(1e-4, num(op.radius, 0.1)), h = Math.max(1e-4, num(op.height, 1)), m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, h, 24), stdMat(op.colour));
         const axis = String(op.axis || 'y').toLowerCase(); if (axis === 'x') m.rotation.z = Math.PI / 2; else if (axis === 'z') m.rotation.x = Math.PI / 2;
@@ -183,13 +200,13 @@ export function clashCheck(root) {
 }
 
 // ---------- pictures for Claude ----------
-export function renderViews(root, w = 640, h = 440) {
+export function renderViews(root, w = 640, h = 440, { highlight = true } = {}) {
   const r = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true, alpha: false }); r.setSize(w, h, false); r.setClearColor(0xeef1f6);
   const sc = new THREE.Scene(); sc.add(new THREE.HemisphereLight(0xffffff, 0x8892a6, 1.6)); const dl = new THREE.DirectionalLight(0xffffff, 1.8); dl.position.set(3, 6, 4); sc.add(dl);
   const clone = root.clone(true); sc.add(clone);
   // added parts shown in red so Claude can tell old from new
   const add = clone.getObjectByName('MO_ADDED');
-  if (add) add.traverse(o => { if (o.isMesh) { o.material = new THREE.MeshStandardMaterial({ color: 0xd62d20, roughness: 0.5, metalness: 0.2 }); } });
+  if (add && highlight) add.traverse(o => { if (o.isMesh) { o.material = new THREE.MeshStandardMaterial({ color: 0xd62d20, roughness: 0.5, metalness: 0.2 }); } });
   const b = boxOf(clone), c = b.getCenter(new THREE.Vector3()), size = b.getSize(new THREE.Vector3()), R = Math.max(size.length() * 0.6, 1e-3);
   const cam = new THREE.PerspectiveCamera(35, w / h, R / 100, R * 40);
   const shot = (dir, label) => { cam.position.copy(c).addScaledVector(dir.clone().normalize(), R * 2.6); cam.up.set(0, 1, 0); if (Math.abs(dir.y) > 0.99) cam.up.set(0, 0, -1); cam.lookAt(c); r.render(sc, cam); return { label, base64: r.domElement.toDataURL('image/jpeg', 0.82).split(',')[1] }; };

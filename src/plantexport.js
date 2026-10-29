@@ -12,7 +12,7 @@ const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
 // only the edits that really made a new part (the applied list names them), in order
 function parts(ops, addedNames) {
   const ok = new Set(addedNames || []);
-  return (ops || []).filter(o => ['add_pipe', 'add_box', 'add_cylinder'].includes(String(o.op || '').toLowerCase()) && (!addedNames || ok.has(String(o.name || o.op).slice(0, 60))));
+  return (ops || []).filter(o => ['add_pipe', 'add_box', 'add_cylinder', 'add_sphere', 'add_cone', 'add_extrusion'].includes(String(o.op || '').toLowerCase()) && (!addedNames || ok.has(String(o.name || o.op).slice(0, 60))));
 }
 
 export function unitScale(unitGuess, choice = 'auto') {
@@ -47,8 +47,17 @@ export function toScript(ops, { scale = 1000, addedNames = null, title = 'Milo' 
       const s = op.size || [1, 1, 1], c = op.position || [0, 0, 0];
       layer('MILO-BOX', 3);
       L.push('BOX', 'C', pt(c, k), 'L', f(n(s[0], 1) * k), f(n(s[2], 1) * k), f(n(s[1], 1) * k));
-      const deg = n(op.rotation_y_deg, 0);
-      if (deg) L.push('ROTATE3D', 'L', '', 'Z', pt(c, k), f(deg));
+      // model rotation about X, Y, Z -> CAD rotation about X, Z, -Y (so Y by the same angle, Z by the opposite)
+      for (const [ax, deg] of [['X', n(op.rotation_x_deg, 0)], ['Z', n(op.rotation_y_deg, 0)], ['Y', -n(op.rotation_z_deg, 0)]]) if (deg) L.push('ROTATE3D', 'L', '', ax, pt(c, k), f(deg));
+    } else if (kind === 'add_sphere') {
+      layer('MILO-SPHERE', 6); L.push('SPHERE', pt(op.position || [0, 0, 0], k), f(Math.max(1e-6, n(op.radius, 0.1)) * k));
+    } else if (kind === 'add_cone') {
+      const r = Math.max(1e-6, n(op.radius, 0.1)) * k, h = Math.max(1e-6, n(op.height, 1)) * k, c = cad(op.position || [0, 0, 0], k), axis = String(op.axis || 'y').toLowerCase();
+      const d = axis === 'x' ? [h / 2, 0, 0] : axis === 'z' ? [0, -h / 2, 0] : [0, 0, h / 2];   // base to tip, cone axis through the position
+      layer('MILO-CONE', 2); L.push('CONE', [c[0] - d[0], c[1] - d[1], c[2] - d[2]].map(f).join(','), f(r), 'A', [c[0] + d[0], c[1] + d[1], c[2] + d[2]].map(f).join(','));
+    } else if (kind === 'add_extrusion') {
+      const prof = (op.profile || []).filter(p => Array.isArray(p) && p.length >= 2); if (prof.length < 3) continue;
+      layer('MILO-EXTRUDE', 30); L.push('PLINE', ...prof.map(p => pt([p[0], n(op.base_y, 0), p[1]], k)), 'C', 'EXTRUDE', 'L', '', f(Math.max(1e-6, n(op.height, 1)) * k));
     } else {
       const r = Math.max(1e-6, n(op.radius, 0.1)) * k, h = Math.max(1e-6, n(op.height, 1)) * k, c = cad(op.position || [0, 0, 0], k), axis = String(op.axis || 'y').toLowerCase();
       // model axis -> CAD axis: x -> x, y -> z, z -> -y
@@ -72,6 +81,9 @@ export function toCsv(ops, { scale = 1000, addedNames = null } = {}) {
       for (let i = 0; i < pts.length - 1; i++) { const a = cad(pts[i], scale), b = cad(pts[i + 1], scale); rows.push([`${name} run ${i + 1}`, 'pipe', ...a.map(f), ...b.map(f), f(dia), f(dist(a, b))]); }
     } else if (kind === 'add_box') {
       const c = cad(op.position || [0, 0, 0], scale); rows.push([name, 'box', ...c.map(f), '', '', '', '', '']);
+    } else if (kind === 'add_sphere' || kind === 'add_cone' || kind === 'add_extrusion') {
+      const c = kind === 'add_extrusion' ? cad([(op.profile || [[0, 0]])[0][0], n(op.base_y, 0), (op.profile || [[0, 0]])[0][1]], scale) : cad(op.position || [0, 0, 0], scale);
+      rows.push([name, kind.slice(4), ...c.map(f), '', '', '', kind === 'add_extrusion' ? '' : f(n(op.radius, 0.1) * 2 * scale), kind === 'add_sphere' ? '' : f(n(op.height, 1) * scale)]);
     } else {
       const c = cad(op.position || [0, 0, 0], scale); rows.push([name, 'cylinder', ...c.map(f), '', '', '', f(n(op.radius, 0.1) * 2 * scale), f(n(op.height, 1) * scale)]);
     }

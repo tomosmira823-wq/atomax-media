@@ -783,7 +783,7 @@ export class Office {
 
   // Milo (3D modeller) sits at his board and Vera (model checker) at her review table in the modeling room, working all day
   #addModelling(data) {
-    const st = this.modelRoom && this.modelRoom.stations[data.role === 'modeller' ? 'modeller' : 'checker']; if (!st) return;
+    const st = this.modelRoom && this.modelRoom.stations[data.role === 'modeller' ? 'modeller' : data.role === 'builder' ? 'builder' : 'checker']; if (!st) return;
     const [sx, sz] = st.stool, [tx, tz] = st.table;
     const group = buildCharacter(data.colour, 'writer', data.gear);
     const seat = new THREE.Vector3(sx, 0, sz), faceSeat = Math.atan2(tx - sx, tz - sz);
@@ -837,7 +837,7 @@ export class Office {
       if (this.room === 'drawing' && this.dexRoots && this.dexRoots.length && this.ray.intersectObjects(this.dexRoots, true).some(h => visibleChain(h.object))) return 'drafting';
       if (this.room === 'drawing' && this.modelRoom && visibleChain(this.modelRoom.plaque) && this.ray.intersectObject(this.modelRoom.plaque, true).length) return 'modeldoor';
       if ((this.room === 'modeling' || this.room === 'modeler') && this.modRoots) {
-        for (const [role, roots] of Object.entries(this.modRoots)) if (roots.length && this.ray.intersectObjects(roots, true).some(h => visibleChain(h.object))) return role === 'modeller' ? 'modeler' : 'modelcheck';
+        for (const [role, roots] of Object.entries(this.modRoots)) if (roots.length && this.ray.intersectObjects(roots, true).some(h => visibleChain(h.object))) return role === 'modeller' ? 'modeler' : role === 'builder' ? 'builder' : 'modelcheck';
       }
       if (this.room === 'modeling' && this.modelRoom && this.ray.intersectObjects(this.modelRoom.clickRoots, true).some(h => visibleChain(h.object))) return 'scan';
       return null;

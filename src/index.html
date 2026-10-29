@@ -403,14 +403,15 @@ body.fp canvas#scene{cursor:grab}
 
 <!-- Modeling room: Milo edits a 3D model, Vera checks it -->
 <div class="panel" id="modPanel">
-  <h2><span>Milo · 3D modeller</span><button class="collapse" id="modBack" title="Back to the room (Esc)">×</button></h2>
+  <h2><span id="moTitle">Milo · 3D modeller</span><button class="collapse" id="modBack" title="Back to the room (Esc)">×</button></h2>
   <div class="body">
+    <div class="row" id="moModeRow" style="gap:6px;margin-bottom:10px"><button class="btn small primary" id="moModeEdit" type="button">Milo · change a model</button><button class="btn small" id="moModeBuild" type="button">Theo · build from scratch</button></div>
     <div id="moSetup">
-      <label style="margin-top:0">1 · What should change?</label>
+      <label style="margin-top:0" id="moL1">1 · What should change?</label>
       <textarea id="moRequest" rows="4" placeholder="e.g. A new 150 mm pipe needs to run along the back of the rail, about 300 mm off the floor, from the left end to the tank."></textarea>
-      <label>2 · The 3D model(s) to change</label>
+      <label id="moL2">2 · The 3D model(s) to change</label>
       <div class="drop" id="moDropModel"><div class="dz-t">Drop the 3D model here</div><div class="dz-s">GLB, GLTF, OBJ or STL · or click to browse. Milo changes a copy, never your file.</div><div id="moModels"></div><input type="file" hidden multiple accept=".glb,.gltf,.obj,.stl" /></div>
-      <label>3 · Context <span class="hint">(optional: notes, drawings, photos, schedules)</span></label>
+      <label id="moL3">3 · Context <span class="hint">(optional: notes, drawings, photos, schedules)</span></label>
       <div class="drop" id="moDropCtx"><div class="dz-t">Drop a folder or files here</div><div class="dz-s">PDF, Word, Excel, text, photos · or click to browse</div><div id="moCtx"></div><input type="file" hidden multiple /></div>
       <div class="row" style="margin-top:6px"><button class="btn small" id="moFolder" type="button">Choose a context folder…</button></div>
       <label>Job <span class="hint">(optional, for the audit trail)</span></label><select id="moJob"><option value="">No job</option></select>
@@ -420,7 +421,7 @@ body.fp canvas#scene{cursor:grab}
     <div id="moRun" hidden><span class="spinner"></span><div id="moMsg" style="margin-top:10px;font-weight:600">Milo is reading the request</div></div>
     <div id="moQs" hidden></div>
     <div id="moResult" hidden></div>
-    <details id="moPcBox" style="margin-top:14px;border-top:1px solid var(--line);padding-top:10px"><summary style="cursor:pointer;font-weight:700">Let Milo drive Plant 3D / AutoCAD <span class="hint">(takes control of this PC)</span></summary>
+    <details id="moPcBox" style="margin-top:14px;border-top:1px solid var(--line);padding-top:10px"><summary style="cursor:pointer;font-weight:700"><span id="moPcSum">Let Milo drive Plant 3D / AutoCAD</span> <span class="hint">(takes control of this PC)</span></summary>
       <div class="warn-note">Milo looks at your screen and clicks and types, like a person at the keyboard. A small bar stays on top showing each step. <b>Stop</b> on the bar (or Ctrl+Alt+Q) ends it at once. Screenshots go to Claude. Do not leave anything private open. Windows only.</div>
       <div class="row" style="margin-top:8px;gap:6px;flex-wrap:wrap"><button class="btn small" id="moPcTest">Test control (10 s)</button></div>
       <div class="hint">Moves your mouse a little, presses Shift and reads the cursor back. Do this first.</div>

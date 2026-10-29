@@ -219,6 +219,16 @@ export function buildModelingRoom({ scene, bounds: M, logoTex, drawLeftWall, doo
     const lamp = new THREE.Group(); lamp.add(box(0.2, 0.04, 0.2, steel, 0, 0, 0)); lamp.add(box(0.03, 0.7, 0.03, steel, 0, 0.35, 0)); const hd = box(0.3, 0.06, 0.2, steel, 0.1, 0.72, 0); lamp.add(hd); lamp.position.set(-1.0, 1.05, -0.5); g.add(lamp);
     const pen = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.1, 12), mat(0xffd43b)); pen.position.set(-0.8, 1.1, 0.5); g.add(pen);
   }, 'Click to give Milo a 3D job');
+  const tx0 = M.cx + 5.4, tz0 = M.cz + 4.6;
+  station('builder', tx0, tz0, Math.PI / 2, (g) => {
+    // Theo's desk: a big monitor with a model on it, a stack of rolled drawings and a hard hat
+    const mon = new THREE.Group(); mon.add(box(1.5, 0.9, 0.06, mat(0x0b0e16), 0, 0, 0)); const scr = new THREE.Mesh(new THREE.PlaneGeometry(1.4, 0.8), new THREE.MeshBasicMaterial({ map: wireCanvas(2, 512, 290), toneMapped: false })); scr.position.z = 0.035; mon.add(scr);
+    mon.add(box(0.12, 0.3, 0.1, steel, 0, -0.55, -0.05)); mon.position.set(-0.2, 1.55, -0.45); g.add(mon);
+    for (let i = 0; i < 3; i++) { const roll = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.9, 14), mat(0xf4f5f7, { roughness: 0.8 })); roll.rotation.z = Math.PI / 2; roll.position.set(0.7, 1.12 + (i === 2 ? 0.1 : 0), -0.2 + (i % 2) * 0.14); g.add(roll); }
+    const hat = new THREE.Mesh(new THREE.SphereGeometry(0.17, 18, 10, 0, Math.PI * 2, 0, Math.PI / 2), mat(0xffd43b, { roughness: 0.5 })); hat.position.set(-1.0, 1.05, 0.45); g.add(hat);
+    g.add(box(0.5, 0.02, 0.38, mat(0xf4f5f7), 0.1, 1.07, 0.5, false)); g.add(box(0.8, 0.03, 0.26, mat(0x151a28), -0.3, 1.06, 0.35, false));
+    const h = holoCube(0.4); h.position.set(0.55, 1.9, -0.4); g.add(h);
+  }, 'Click to have Theo build something new');
   const vx = M.cx - 5.2, vz = M.cz + 3.9;
   station('checker', vx, vz, -Math.PI / 2, (g) => {
     g.add(box(2.2, 0.03, 1.3, new THREE.MeshStandardMaterial({ color: 0xf8fbff, emissive: 0xdfeeff, emissiveIntensity: 0.9, roughness: 0.6 }), 0, 1.07, -0.05, false));

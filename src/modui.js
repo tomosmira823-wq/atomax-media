@@ -7,11 +7,14 @@ const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const b64ToBuf = (b64) => { const bin = atob(b64), u = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); return u.buffer; };
 
-export function initModellerUI({ office, api, getAgent, getChecker, getSettings, openSettings, fillJobSelect, showModel }) {
+export function initModellerUI({ office, api, getAgent, getBuilder, getChecker, getSettings, openSettings, fillJobSelect, showModel }) {
   const panel = $('#modPanel');
   let models = [], ctx = [], skipped = [], busy = false;
   let answers = [], questions = null, state = null;   // state: { before, after, ops, summary, assumptions, res, clash, verdict, savedPath }
-  const milo = () => getAgent && getAgent(), vera = () => getChecker && getChecker();
+  let mode = 'edit';   // 'edit' = Milo changes models you give him; 'build' = Theo builds from scratch
+  const miloA = () => getAgent && getAgent(), theoA = () => getBuilder && getBuilder(), vera = () => getChecker && getChecker();
+  const milo = () => (mode === 'build' ? theoA() : miloA());
+  const who = () => (mode === 'build' ? 'Theo' : 'Milo');
   const say = (who, m) => { const a = who(); if (a) office.setState(a.id, 'working', m); };
   const nodeOf = (el, sel) => el.querySelector(sel);
 
@@ -21,7 +24,7 @@ export function initModellerUI({ office, api, getAgent, getChecker, getSettings,
     $('#moModels').innerHTML = models.map((m, i) => chip(m.name, 'm', i)).join('');
     $('#moCtx').innerHTML = ctx.map((c, i) => chip(c.name, 'c', i, c.kind)).join('') + (skipped.length ? `<div class="hint" style="margin-top:6px">Could not use ${skipped.length}: ${esc(skipped.slice(0, 3).map(s => s.name + ' (' + s.why + ')').join('; '))}${skipped.length > 3 ? '…' : ''}</div>` : '');
     $('#moDropModel').classList.toggle('has', models.length > 0); $('#moDropCtx').classList.toggle('has', ctx.length > 0);
-    $('#moGo').disabled = busy || !models.length || !$('#moRequest').value.trim();
+    $('#moGo').disabled = busy || (mode === 'edit' && !models.length) || !$('#moRequest').value.trim();
   }
   panel.addEventListener('click', (e) => {
     const b = e.target.closest('button[data-rm]'); if (!b) return;
@@ -85,7 +88,7 @@ export function initModellerUI({ office, api, getAgent, getChecker, getSettings,
   // ---------- running ----------
   const show = (which) => { $('#moSetup').hidden = which !== 'setup'; $('#moRun').hidden = which !== 'run'; $('#moQs').hidden = which !== 'qs'; $('#moResult').hidden = which !== 'result'; };
   function run(msg, who) { busy = true; show('run'); $('#moMsg').textContent = msg; say(who || milo, msg); }
-  function idle() { busy = false; const a = milo(), v = vera(); if (a) office.setState(a.id, 'idle', ''); if (v) office.setState(v.id, 'idle', ''); }
+  function idle() { busy = false; const a = miloA(), t = theoA(), v = vera(); if (a) office.setState(a.id, 'idle', ''); if (t) office.setState(t.id, 'idle', ''); if (v) office.setState(v.id, 'idle', ''); }
   const fail = (e, back) => { idle(); $('#moErr').textContent = e.message || String(e); show(back || 'setup'); render(); };
   api.mo.onProgress && api.mo.onProgress((p) => { if (busy && p && p.message) { $('#moMsg').textContent = p.message; } });
   const needKey = () => { if (!(getSettings() || {}).anthropicKey) { openSettings(); return true; } return false; };
@@ -95,12 +98,12 @@ export function initModellerUI({ office, api, getAgent, getChecker, getSettings,
   async function plan({ feedback = '', usePrevious = false } = {}) {
     if (needKey()) return;
     $('#moErr').textContent = '';
-    run('Milo is looking at the model');
+    run(who() + (mode === 'build' ? ' is reading the brief' : ' is looking at the model'));
     try {
       await new Promise(r => setTimeout(r, 30));
       const before = makeRoot(models.map(m => m.group));
-      const d = describe(before), modelText = describeText(d), views = renderViews(before);
-      const r = await api.mo.plan({ request: $('#moRequest').value, modelText, views, context: ctx, answers, previous: usePrevious && state ? { ops: state.ops } : null, feedback });
+      const d = describe(before), modelText = describeText(d), views = (mode === 'build' && !models.length) ? [] : renderViews(before);
+      const r = await api.mo.plan({ request: $('#moRequest').value, modelText, views, context: ctx, answers, previous: usePrevious && state ? { ops: state.ops } : null, feedback, mode });
       if (r.status === 'questions') { questions = r.questions; idle(); renderQuestions(); return; }
       const after = makeRoot(models.map(m => m.group));
       const res = applyOps(after, r.ops), clash = clashCheck(after);
@@ -112,8 +115,8 @@ export function initModellerUI({ office, api, getAgent, getChecker, getSettings,
 
   function renderQuestions() {
     const el = $('#moQs');
-    el.innerHTML = `<div class="warn-note" style="margin-top:0">Milo needs a few answers before he changes anything.</div>` + questions.map((q, i) => `<div class="q"><b>${esc(q)}</b><input type="text" data-q="${i}" /></div>`).join('')
-      + `<button class="btn primary" id="moAnswer" style="width:100%;margin-top:14px">Send answers to Milo</button><button class="btn small" id="moQBack" style="margin-top:8px">Back</button>`;
+    el.innerHTML = `<div class="warn-note" style="margin-top:0">${who()} needs a few answers before he ${mode === 'build' ? 'builds anything' : 'changes anything'}.</div>` + questions.map((q, i) => `<div class="q"><b>${esc(q)}</b><input type="text" data-q="${i}" /></div>`).join('')
+      + `<button class="btn primary" id="moAnswer" style="width:100%;margin-top:14px">Send answers to ${who()}</button><button class="btn small" id="moQBack" style="margin-top:8px">Back</button>`;
     show('qs');
     $('#moAnswer').addEventListener('click', () => {
       const given = [...el.querySelectorAll('input[data-q]')].map(i => ({ q: questions[+i.dataset.q], a: i.value.trim() })).filter(x => x.a);
@@ -128,8 +131,8 @@ export function initModellerUI({ office, api, getAgent, getChecker, getSettings,
     const clashRows = s.clash.clashes.map(c => `<div class="op">⚠ <b>${esc(c.added)}</b> overlaps <b>${esc(c.with)}</b> (by about ${c.overlap})</div>`).join('');
     const v = s.verdict;
     el.innerHTML = `
-      <div class="warn-note" style="margin-top:0"><b>${esc(s.summary || 'Milo has made the changes.')}</b></div>
-      ${s.assumptions.length ? `<label>Milo assumed</label>${s.assumptions.map(a => `<div class="op">• ${esc(a)}</div>`).join('')}` : ''}
+      <div class="warn-note" style="margin-top:0"><b>${esc(s.summary || (who() + (mode === 'build' ? ' has built it.' : ' has made the changes.')))}</b></div>
+      ${s.assumptions.length ? `<label>${who()} assumed</label>${s.assumptions.map(a => `<div class="op">• ${esc(a)}</div>`).join('')}` : ''}
       <label>What he did</label>${s.res.lines.map(l => `<div class="op">${esc(l)}</div>`).join('') || '<div class="op hint">No changes were made.</div>'}
       ${s.res.warnings.length ? `<label>Could not do</label>${s.res.warnings.map(w => `<div class="op" style="color:var(--amber)">${esc(w)}</div>`).join('')}` : ''}
       <label>Clash check <span class="hint">(boxes, done in code)</span></label>${clashRows || ''}${s.clash.notes.map(n => `<div class="op hint">${esc(n)}</div>`).join('')}
@@ -139,8 +142,8 @@ export function initModellerUI({ office, api, getAgent, getChecker, getSettings,
         ${v.good.length ? `<div class="hint" style="margin-top:6px">Right: ${esc(v.good.join(' · '))}</div>` : ''}</div>` : ''}
       <label>Change something?</label><textarea id="moRevise" rows="2" placeholder="e.g. Move it 100 mm further from the rail, and make it blue."></textarea>
       <div class="row" style="margin-top:8px;flex-wrap:wrap;gap:6px">
-        <button class="btn small" id="moReviseGo">Ask Milo to change it</button>
-        ${v && v.verdict === 'fix' ? '<button class="btn small primary" id="moFix">Send back to Milo to fix</button>' : ''}
+        <button class="btn small" id="moReviseGo">Ask ${who()} to change it</button>
+        ${v && v.verdict === 'fix' ? '<button class="btn small primary" id="moFix">Send back to ${who()} to fix</button>' : ''}
         ${!v ? '<button class="btn small primary" id="moToVera">Send to Vera to check</button>' : ''}
         <button class="btn small" id="moSave">Save copy</button><button class="btn small" id="moNew">New job</button>
       </div>
@@ -158,8 +161,8 @@ export function initModellerUI({ office, api, getAgent, getChecker, getSettings,
     $('#moSave').addEventListener('click', save);
     const exp = async (kind) => {
       try {
-        const o = { scale: unitScale(s.unitGuess, $('#moUnits').value), addedNames: s.res.added, title: models[0] ? models[0].name : 'Milo' };
-        if (!s.res.added.length) { $('#moErr2').textContent = 'Milo added nothing new, so there is nothing to export.'; return; }
+        const o = { scale: unitScale(s.unitGuess, $('#moUnits').value), addedNames: s.res.added, title: models[0] ? models[0].name : who() };
+        if (!s.res.added.length) { $('#moErr2').textContent = '' + who() + ' added nothing new, so there is nothing to export.'; return; }
         const text = kind === 'scr' ? toScript(s.ops, o).text : toCsv(s.ops, o);
         const r = await api.mo.saveText({ text, name: o.title, ext: kind });
         if (r) { $('#moSaved').textContent = 'Saved: ' + r.path; if (kind === 'scr') { s.scrPath = r.path; window.__moSetPcTask && window.__moSetPcTask(); } }
@@ -176,7 +179,7 @@ export function initModellerUI({ office, api, getAgent, getChecker, getSettings,
     try {
       await new Promise(r => setTimeout(r, 30));
       const views = renderViews(s.after), modelText = describeText(describe(s.after));
-      const v = await api.mo.check({ request: $('#moRequest').value, modelText, views, context: ctx, ops: s.ops, lines: s.res.lines, clashes: s.clash.clashes, notes: s.clash.notes, assumptions: s.assumptions, jobId: jobId() });
+      const v = await api.mo.check({ request: $('#moRequest').value, modelText, views, context: ctx, ops: s.ops, lines: s.res.lines, clashes: s.clash.clashes, notes: s.clash.notes, assumptions: s.assumptions, jobId: jobId(), mode });
       s.verdict = v; idle(); renderResult();
     } catch (e) { idle(); renderResult(); $('#moErr2').textContent = e.message; }
   }
@@ -185,7 +188,7 @@ export function initModellerUI({ office, api, getAgent, getChecker, getSettings,
     const s = state; if (!s) return;
     try {
       const b64 = await exportGlb(s.after);
-      const r = await api.mo.save({ base64: b64, name: models[0] ? models[0].name : 'model', jobId: jobId(), summary: s.summary });
+      const r = await api.mo.save({ base64: b64, name: models[0] ? models[0].name : (mode === 'build' ? 'built-model' : 'model'), jobId: jobId(), summary: s.summary, mode });
       s.savedPath = r.path; $('#moSaved').textContent = 'Saved: ' + r.path;
     } catch (e) { $('#moErr2').textContent = e.message; }
   }
@@ -201,13 +204,30 @@ export function initModellerUI({ office, api, getAgent, getChecker, getSettings,
     $('#moPcGo').addEventListener('click', async () => {
       if (needKey()) return;
       const task = $('#moPcTask').value.trim(); if (!task) return;
-      $('#moPcGo').disabled = true; $('#moPcOut').textContent = 'Milo is taking over. Look for the green bar at the top of your screen.'; say(milo, 'driving the PC');
+      $('#moPcGo').disabled = true; $('#moPcOut').textContent = who() + ' is taking over. Look for the green bar at the top of your screen.'; say(milo, 'driving the PC');
       try {
-        const r = await api.pc.run({ task, approveEach: $('#moPcApprove').checked, context: `Request: ${$('#moRequest').value}\nSummary of the model change: ${(state && state.summary) || ''}`, jobId: jobId() });
+        const r = await api.pc.run({ task, approveEach: $('#moPcApprove').checked, context: `Request: ${$('#moRequest').value}\nSummary of the model change: ${(state && state.summary) || ''}`, jobId: jobId(), who: who() });
         $('#moPcOut').textContent = (r.text || 'Done.') + (r.actions && r.actions.length ? `\n\n${r.actions.length} action${r.actions.length === 1 ? '' : 's'} taken.` : '');
       } catch (e) { $('#moPcOut').textContent = 'Stopped: ' + e.message; }
       $('#moPcGo').disabled = false; idle();
     });
+
+  function setMode(m) {
+    if (busy || (m !== 'edit' && m !== 'build') || m === mode) return;
+    mode = m; const b = m === 'build';
+    $('#moTitle').textContent = b ? 'Theo · 3D builder' : 'Milo · 3D modeller';
+    $('#moL1').textContent = b ? '1 · What should he build?' : '1 · What should change?';
+    $('#moRequest').placeholder = b ? 'e.g. A skid-mounted pump set 3 m x 1.5 m: base frame, two pumps with motors, 100 mm suction and discharge pipework, and a small control panel at one end. Use the datasheet in the folder for sizes.' : 'e.g. A new 150 mm pipe needs to run along the back of the rail, about 300 mm off the floor, from the left end to the tank.';
+    $('#moL2').innerHTML = b ? '2 · An existing 3D model to build around <span class="hint">(optional)</span>' : '2 · The 3D model(s) to change';
+    $('#moL3').innerHTML = b ? '3 · Context <span class="hint">(the more the better: drawings, datasheets, photos, notes, a folder)</span>' : '3 · Context <span class="hint">(optional: notes, drawings, photos, schedules)</span>';
+    $('#moPcSum').textContent = 'Let ' + (b ? 'Theo' : 'Milo') + ' drive Plant 3D / AutoCAD'; $('#moPcGo').textContent = 'Start (' + (b ? 'Theo' : 'Milo') + ' takes over)';
+    $('#moGo').textContent = b ? 'Ask Theo to build it' : 'Ask Milo to do it';
+    $('#moModeEdit').classList.toggle('primary', !b); $('#moModeBuild').classList.toggle('primary', b);
+    if (!busy) { questions = null; answers = []; state = null; showModel(null); show('setup'); }
+    render();
+  }
+  $('#moModeEdit').addEventListener('click', () => setMode('edit'));
+  $('#moModeBuild').addEventListener('click', () => setMode('build'));
 
   window.__moSetPcTask = setPcTask; setPcTask();
   $('#moGo').addEventListener('click', () => { if (busy) return; answers = []; state = null; plan(); });
@@ -216,7 +236,8 @@ export function initModellerUI({ office, api, getAgent, getChecker, getSettings,
   return {
     show() { fillJobSelect($('#moJob')); panel.classList.add('open'); },
     hide() { panel.classList.remove('open'); },
+    setMode,
     // used by the tests
-    _state: () => ({ models: models.length, ctx: ctx.length, skipped: skipped.length, state, questions })
+    _state: () => ({ mode, models: models.length, ctx: ctx.length, skipped: skipped.length, state, questions })
   };
 }

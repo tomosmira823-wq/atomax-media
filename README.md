@@ -134,3 +134,6 @@ Settings → Connections. Each platform needs a developer app of your own; paste
 
 - Image edits use OpenAI's image edit endpoint. Claude can look at images and describe edits but can't change pixels.
 - Higgsfield model endpoint can be changed in Settings (default `higgsfield-ai/soul/standard`).
+
+## Theo (3D builder)
+Theo sits at his own desk in the modeling room and builds a model from scratch from a prompt plus context (folders, documents, drawings, photos); an existing model is optional. He can use boxes, cylinders, spheres, cones, pipes and extruded outlines, asks questions if needed, then Vera checks the result. Save and AutoCAD export work like Milo's. Milo and Theo can both drive the PC (same control panel, Test control first).

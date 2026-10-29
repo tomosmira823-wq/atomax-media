@@ -102,8 +102,9 @@ function register({ ipcMain, BrowserWindow, desktopCapturer, screen, globalShort
     }
   }
 
-  async function runTask({ task, approveEach = true, maxSteps = 40, context = '', jobId = '' }) {
-    if (run) throw new Error('Milo is already driving.');
+  async function runTask({ task, approveEach = true, maxSteps = 40, context = '', jobId = '', who = 'Milo' }) {
+    who = who === 'Theo' ? 'Theo' : 'Milo';
+    if (run) throw new Error(who + ' is already driving.');
     const win = getWin(); const s = loadSettings();
     const model = s.pcModel || s.claudeModel, legacy = !TOOLSET_MODEL.test(String(model));
     const tools = [legacy ? { type: 'computer_20251124', name: 'computer', display_width_px: 1280, display_height_px: 720 } : { type: 'computer_toolset_20260801' }, ASK_TOOL];
@@ -122,7 +123,7 @@ function register({ ipcMain, BrowserWindow, desktopCapturer, screen, globalShort
         const data = await callClaude({ system: PC_SYSTEM, messages, tools, model, legacy });
         const content = data.content || []; messages.push({ role: 'assistant', content });
         const say = content.filter(c => c.type === 'text').map(c => c.text).join('\n').trim();
-        if (say) { finalText = say; overlayState({ action: 'Milo', message: say.slice(0, 400) }); }
+        if (say) { finalText = say; overlayState({ action: who, message: say.slice(0, 400) }); }
         const uses = content.filter(c => c.type === 'tool_use');
         if (!uses.length) break;
         const results = [];
@@ -171,7 +172,7 @@ function register({ ipcMain, BrowserWindow, desktopCapturer, screen, globalShort
       try { globalShortcut.unregister('CommandOrControl+Alt+Q'); } catch {}
       try { if (was && was.overlay && !was.overlay.isDestroyed()) was.overlay.destroy(); } catch {}
       try { if (!mock && win && !win.isDestroyed()) { win.restore(); win.focus(); } } catch {}
-      if (log) log({ who: 'Milo', action: 'Drove the PC', jobId: jobId || '', detail: `${steps.length} action${steps.length === 1 ? '' : 's'} · ${String(task).slice(0, 120)}${err ? ' · error: ' + String(err.message || err).slice(0, 80) : ''}` });
+      if (log) log({ who, action: 'Drove the PC', jobId: jobId || '', detail: `${steps.length} action${steps.length === 1 ? '' : 's'} · ${String(task).slice(0, 120)}${err ? ' · error: ' + String(err.message || err).slice(0, 80) : ''}` });
     }
     if (err) throw err;
     return { text: finalText, actions: steps, stopped: false };

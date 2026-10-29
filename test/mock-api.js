@@ -21,7 +21,13 @@ function claudeReply(body) {
     if (fixing) ops.push({ op: 'add_box', name: 'Pipe support', size: [0.2, 0.3, 0.2], position: [5, 0.15, -0.6], colour: '#444444' });
     return JSON.stringify({ status: 'ready', summary: fixing ? 'Added a support under the pipe.' : 'Ran a 150 mm pipe behind the rail.', assumptions: ['Back of the rail is the -Z side', 'Pipe centre 350 mm above the floor'], ops });
   }
+  if (/You are Theo/.test(sys)) {
+    if (/pump/i.test(userText) && !/Your earlier questions/.test(userText)) return JSON.stringify({ status: 'questions', questions: ['How many pumps are on the skid?'] });
+    const ops = [{ op: 'add_extrusion', name: 'Skid base', profile: [[0, 0], [3, 0], [3, 1.5], [0, 1.5]], base_y: 0, height: 0.15, colour: '#555555' }, { op: 'add_cylinder', name: 'Pump 1 body', radius: 0.2, height: 0.6, axis: 'x', position: [1, 0.45, 0.5], colour: '#2f6fb5' }, { op: 'add_sphere', name: 'Dome', radius: 0.3, position: [2.2, 0.45, 0.75], scale: [1, 0.6, 1], colour: '#cc3333' }, { op: 'add_cone', name: 'Cone', radius: 0.15, height: 0.3, axis: 'y', position: [2.7, 0.3, 1.2], colour: '#ddaa00' }, { op: 'add_pipe', name: 'Discharge pipe', points: [[1.3, 0.45, 0.5], [2.5, 0.45, 0.5]], radius: 0.05, colour: '#999999', flanges: true }];
+    return JSON.stringify({ status: 'ready', summary: 'Built a skid with a base, a pump, a dome, a cone and a pipe.', assumptions: ['One pump', 'Sizes in metres'], ops });
+  }
   if (/You are Vera/.test(sys)) {
+    if (/NO existing model/.test(userText)) return JSON.stringify({ verdict: 'pass', score: 8, summary: 'The skid is complete against the brief.', findings: [], good: ['Base present'] });
     const hasSupport = /Pipe support/.test(userText);
     return JSON.stringify(hasSupport ? { verdict: 'pass', score: 9, summary: 'Pipe is in the right place and supported.', findings: [], good: ['Pipe size matches the notes', 'No clashes'] } : { verdict: 'fix', score: 5, summary: 'The pipe has no support.', findings: [{ severity: 'fix', text: 'A pipe this long needs a support under it.' }], good: ['Route is right'] });
   }

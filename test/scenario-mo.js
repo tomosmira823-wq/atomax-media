@@ -11,9 +11,9 @@
   window.FileReader = class { readAsArrayBuffer(b) { b.arrayBuffer().then(r => { this.result = r; this.onloadend && this.onloadend(); }); } readAsDataURL(b) { b.arrayBuffer().then(r => { let s = ''; const u = new Uint8Array(r); for (let i = 0; i < u.length; i++) s += String.fromCharCode(u[i]); this.result = 'data:application/octet-stream;base64,' + btoa(s); this.onloadend && this.onloadend(); }); } };
   await wait(1500);
   document.querySelectorAll('.modal').forEach(m => m.classList.remove('open'));
-  await step('Modeling room has Milo and Vera seated', async () => {
+  await step('Modeling room has Milo, Theo and Vera seated', async () => {
     window.__goRoom('modeling'); await wait(100); window.__office.step(0.1);
-    const ag = [...window.__office.agents.values()].filter(a => a.zone === 'modeling'); if (ag.length !== 2) throw new Error('expected 2 seated agents, got ' + ag.length);
+    const ag = [...window.__office.agents.values()].filter(a => a.zone === 'modeling'); if (ag.length !== 3) throw new Error('expected 3 seated agents, got ' + ag.length);
     return ag.map(a => a.data.name).join(', ');
   });
   await step('Clicking Milo opens his panel', async () => {

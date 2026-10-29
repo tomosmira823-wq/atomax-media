@@ -32,9 +32,30 @@ Edit operations (all numbers are plain numbers, colours are hex like "#2f6fb5"):
 - {"op":"recolour","node":"...","colour":"#..."}
 Use the exact part names you were given. Give every new part a clear descriptive name. Only do what was asked. Never invent dimensions when they are given in the context: use the given ones. If the engineer later answers your questions, use the answers. If you are given checker findings to fix, fix those and keep everything else the same by returning the full corrected edit list.`;
 
+const THEO_SYSTEM = `You are Theo, a practical 3D builder at an engineering company. You build a 3D model FROM SCRATCH out of simple shapes, from the engineer's prompt and the context (notes, drawings, schedules, photos, datasheets). If existing 3D models are given, build around them. You are given pictures of any existing models, the context, and the request.
+
+You never build by hand: you reply with JSON only, in one of two shapes.
+
+1. Questions, only when you genuinely cannot build it right without an answer (key sizes, quantities, layout, which standard). At most 4, short, specific, answerable in a few words. Do not ask for things you can read from the context, and do not ask about minor details (state an assumption instead).
+{"status":"questions","questions":["..."]}
+
+2. A build list:
+{"status":"ready","summary":"one or two plain sentences of what you built","assumptions":["each assumption, short"],"ops":[ ... ]}
+
+Use METRES, Y up, the floor at y = 0, X left-right, Z toward the viewer, unless the context clearly uses other units (then still convert to metres and say so in assumptions). Use the real sizes from the context. Lay the model out sensibly and build it in the order a person would: main bodies first, then connections, supports and details. Parts must sit on the floor or on each other, touching where they should, not floating and not overlapping each other by accident. Stay simple and accurate: real proportions matter more than detail.
+
+Shapes (numbers are plain numbers, colours are hex like "#2f6fb5"; positions are the CENTRE of the shape unless stated):
+- {"op":"add_box","name":"...","size":[x,y,z],"position":[x,y,z],"rotation_x_deg":n,"rotation_y_deg":n,"rotation_z_deg":n,"colour":"#..."}
+- {"op":"add_cylinder","name":"...","radius":n,"height":n,"axis":"x"|"y"|"z","position":[x,y,z],"colour":"#..."}
+- {"op":"add_sphere","name":"...","radius":n,"position":[x,y,z],"scale":[x,y,z] (optional, squashes it into a dome or ellipsoid),"colour":"#..."}
+- {"op":"add_cone","name":"...","radius":n (base),"height":n,"axis":"x"|"y"|"z","position":[x,y,z],"colour":"#..."}
+- {"op":"add_pipe","name":"...","points":[[x,y,z],[x,y,z],...],"radius":n,"colour":"#...","flanges":true|false}  straight runs joined at each point; use several points for bends
+- {"op":"add_extrusion","name":"...","profile":[[x,z],[x,z],...] (corners of a flat outline on the floor plane, in order),"base_y":n (height of the bottom),"height":n,"colour":"#..."}  for plates, bases, walls, L-shapes, slabs
+Give every part a clear descriptive name (for example "Tank T-101 shell"). Only build what was asked. If you are given checker findings to fix, return the FULL corrected build list that fixes them.`;
+
 const VERA_SYSTEM = `You are Vera, a picky but fair 3D model checker at an engineering company. Another modeller (Milo) changed a copy of a 3D model to match the engineer's request. You check the result against the request and the context. You get the request, the context, the list of edits Milo made, results of a computed clash test (boxes overlapping), and pictures (new parts are shown in red).
 
-Check: does the result do what was asked, in the right place and size; do the numbers match the context (sizes, heights, clearances); do new parts clash with existing parts or float in the air; are the units sensible; did Milo state sensible assumptions; is anything asked for missing; did he change anything that was not asked. Say honestly when you cannot tell from what you were given. Never invent facts.
+Check: does the result do what was asked, in the right place and size; do the numbers match the context (sizes, heights, clearances); do new parts clash with existing parts or float in the air; are the units sensible; did Milo state sensible assumptions; is anything asked for missing; did he change anything that was not asked. If there was no existing model, the whole model was built from scratch: check it is complete against the request and context (every part asked for, real sizes, parts sitting on the floor or on each other, supports present, nothing floating or sunk into something else). Say honestly when you cannot tell from what you were given. Never invent facts.
 
 Reply with JSON only: {"verdict":"pass"|"fix","score":1-10,"summary":"one plain sentence","findings":[{"severity":"fix"|"look","text":"short and specific"}],"good":["short things that are right"]}
 "fix" = something must change before it goes out; "look" = worth a human glance. Below 6 is a fix. Keep findings short and specific.`;
@@ -107,9 +128,10 @@ function register({ ipcMain, dialog, getWin, userDir, claudeFull, checker, log }
   const viewBlocks = (views) => (views || []).slice(0, 4).flatMap(v => [{ type: 'text', text: 'View: ' + v.label }, { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: v.base64 } }]);
   const parse = (t) => { const r = checker.parseJson(t); return r && r.value ? r.value : null; };
 
-  ipcMain.handle('mo:plan', wrap(async ({ request, modelText, views, context, answers, previous, feedback, model }) => {
+  ipcMain.handle('mo:plan', wrap(async ({ request, modelText, views, context, answers, previous, feedback, model, mode }) => {
+    const build = mode === 'build';
     if (!String(request || '').trim() && !feedback) throw new Error('Tell Milo what you want changed first.');
-    send({ message: 'Milo is reading the request and the context' });
+    send({ message: (build ? 'Theo' : 'Milo') + ' is reading the request and the context' });
     const content = [...contextBlocks(context), { type: 'text', text: '3D model as it is now:\n' + String(modelText || '(no model)') }, ...viewBlocks(views)];
     let t = `The engineer's request:\n<request>${String(request || '').slice(0, 6000)}</request>`;
     if (Array.isArray(answers) && answers.length) t += '\n\nYour earlier questions and the engineer\'s answers:\n' + answers.map(a => `Q: ${a.q}\nA: ${a.a}`).join('\n');
@@ -117,22 +139,22 @@ function register({ ipcMain, dialog, getWin, userDir, claudeFull, checker, log }
     if (feedback) t += `\n\nFix these before it goes out. Return the FULL corrected edit list (the previous edits that were fine, plus the corrections). The model shown above is the ORIGINAL, before your edits.\n<feedback>${String(feedback).slice(0, 4000)}</feedback>`;
     t += '\n\nReply with JSON only.';
     content.push({ type: 'text', text: t });
-    send({ message: 'Milo is working out the changes' });
+    send({ message: build ? 'Theo is working out how to build it' : 'Milo is working out the changes' });
     let j = null;
     for (let i = 0; i < 2 && !j; i++) {
-      const r = await claudeFull({ system: MO_SYSTEM, model: model || undefined, maxTokens: 8000, messages: [{ role: 'user', content }] });
+      const r = await claudeFull({ system: build ? THEO_SYSTEM : MO_SYSTEM, model: model || undefined, maxTokens: build ? 12000 : 8000, messages: [{ role: 'user', content }] });
       j = parse(r.text);
       if (j && j.status !== 'questions' && !Array.isArray(j.ops)) j = null;
     }
-    if (!j) throw new Error('Milo did not give a usable answer. Try again.');
+    if (!j) throw new Error((build ? 'Theo' : 'Milo') + ' did not give a usable answer. Try again.');
     if (j.status === 'questions') return { status: 'questions', questions: (j.questions || []).map(String).slice(0, 4) };
     return { status: 'ready', summary: String(j.summary || ''), assumptions: (j.assumptions || []).map(String).slice(0, 12), ops: j.ops.slice(0, 200) };
   }));
 
-  ipcMain.handle('mo:check', wrap(async ({ request, modelText, views, context, ops, lines, clashes, notes, assumptions, jobId, model }) => {
+  ipcMain.handle('mo:check', wrap(async ({ request, modelText, views, context, ops, lines, clashes, notes, assumptions, jobId, model, mode }) => {
     send({ message: 'Vera is checking the model' });
     const content = [...contextBlocks(context), { type: 'text', text: 'Model after the edits (as it is now):\n' + String(modelText || '') }, ...viewBlocks(views)];
-    content.push({ type: 'text', text: `The engineer's request:\n<request>${String(request || '').slice(0, 6000)}</request>\n\nEdits Milo made:\n${(lines || []).join('\n')}\n\nMilo's assumptions:\n${(assumptions || []).map(a => '- ' + a).join('\n') || '(none)'}\n\nComputed clash test (boxes overlapping, depth in model units):\n${JSON.stringify(clashes || [])}\nComputed notes: ${(notes || []).join(' ')}\n\nReply with JSON only.` });
+    content.push({ type: 'text', text: `The engineer's request:\n<request>${String(request || '').slice(0, 6000)}</request>\n\n${mode === 'build' ? 'There was NO existing model. This model was built from scratch by Theo.\n\n' : ''}${mode === 'build' ? 'What Theo built' : 'Edits Milo made'}:\n${(lines || []).join('\n')}\n\n${mode === 'build' ? "Theo's" : "Milo's"} assumptions:\n${(assumptions || []).map(a => '- ' + a).join('\n') || '(none)'}\n\nComputed clash test (boxes overlapping, depth in model units):\n${JSON.stringify(clashes || [])}\nComputed notes: ${(notes || []).join(' ')}\n\nReply with JSON only.` });
     let j = null;
     for (let i = 0; i < 2 && !j; i++) {
       const r = await claudeFull({ system: VERA_SYSTEM, model: model || undefined, maxTokens: 3000, messages: [{ role: 'user', content }] });
@@ -147,14 +169,14 @@ function register({ ipcMain, dialog, getWin, userDir, claudeFull, checker, log }
   }));
 
   // the finished model goes beside the other models; a copy can also go into a folder the person picks
-  ipcMain.handle('mo:save', wrap(async ({ base64, name, jobId, summary }) => {
+  ipcMain.handle('mo:save', wrap(async ({ base64, name, jobId, summary, mode }) => {
     const buf = Buffer.from(String(base64 || ''), 'base64');
     if (buf.length < 20 || buf.toString('ascii', 0, 4) !== 'glTF') throw new Error('Not a GLB file.');
     const dir = path.join(userDir(), 'models'); fs.mkdirSync(dir, { recursive: true });
     const safe = String(name || 'model').replace(/\.[^.]+$/, '').replace(/[^\w.-]+/g, '-').slice(0, 40) || 'model';
-    const file = path.join(dir, `${safe}-MILO-${new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14)}.glb`);
+    const file = path.join(dir, `${safe}-${mode === 'build' ? 'THEO' : 'MILO'}-${new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14)}.glb`);
     fs.writeFileSync(file, buf);
-    if (log) log({ who: 'Milo', action: 'Modelled', jobId: jobId || '', detail: `${path.basename(file)} · ${String(summary || '').slice(0, 200)}` });
+    if (log) log({ who: mode === 'build' ? 'Theo' : 'Milo', action: mode === 'build' ? 'Built' : 'Modelled', jobId: jobId || '', detail: `${path.basename(file)} · ${String(summary || '').slice(0, 200)}` });
     return { path: file, bytes: buf.length };
   }));
   ipcMain.handle('mo:saveAs', wrap(async ({ from }) => {
@@ -174,4 +196,4 @@ function register({ ipcMain, dialog, getWin, userDir, claudeFull, checker, log }
   }));
   return { readFolder };
 }
-module.exports = { register, MO_SYSTEM, VERA_SYSTEM };
+module.exports = { register, MO_SYSTEM, THEO_SYSTEM, VERA_SYSTEM };
