@@ -139,22 +139,36 @@ function outputDir(folder, kind) {
   return dir;
 }
 
-// the folder that holds the job folders (the parent most folders named like a job number sit in), and the numbers already used
-function jobParent() {
-  const t0 = Date.now(), parents = {}, numbers = [];
+// what a job folder name looks like: built from Tom's real job numbers (e.g. X11475 -> one letter X + 5 digits); default one letter + 5 digits
+function jobPattern(known = []) {
+  const parts = known.map(n => String(n).trim().match(/^([A-Za-z]{0,3})(\d{4,6})$/)).filter(Boolean);
+  if (!parts.length) return /^([A-Za-z])(\d{5})\b/;
+  const prefixes = [...new Set(parts.map(m => m[1].toUpperCase()))].map(x => x.replace(/[^A-Z]/g, '')), lens = [...new Set(parts.map(m => m[2].length))];
+  return new RegExp('^(' + prefixes.map(x => x || '').join('|') + ')(\\d{' + Math.min(...lens) + ',' + Math.max(...lens) + '})\\b', 'i');
+}
+const NOT_JOBS = /receipt|invoice|expense|finance|account|payroll|personal|photo|picture|music|video|download|backup|archive|tax|bank/i;
+// best guess at the folder that holds the job folders: the parent with the most folders named like a job number (needs at least 2)
+function jobParent(known = []) {
+  const re = jobPattern(known), t0 = Date.now(), parents = {};
   const walk = (dir, depth) => {
     if (depth > 4 || Date.now() - t0 > 3000) return;
     let ents; try { ents = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
     for (const e of ents) {
-      if (!e.isDirectory() || SKIP.test(e.name)) continue;
-      const m = e.name.match(/^([A-Za-z]{0,3})(\d{4,6})\b/);
-      if (m) { parents[dir] = (parents[dir] || 0) + 1; numbers.push({ prefix: m[1], n: m[2] }); }
-      else walk(path.join(dir, e.name), depth + 1);
+      if (!e.isDirectory() || SKIP.test(e.name) || NOT_JOBS.test(e.name)) continue;
+      if (re.test(e.name)) parents[dir] = (parents[dir] || 0) + 1; else walk(path.join(dir, e.name), depth + 1);
     }
   };
   for (const r of searchRoots()) walk(r, 0);
-  const best = Object.entries(parents).sort((a, b) => b[1] - a[1])[0];
-  return { parent: best ? best[0] : (searchRoots()[0] || os.homedir()), numbers };
+  const best = Object.entries(parents).filter(([, n]) => n >= 2).sort((a, b) => b[1] - a[1])[0];
+  return best ? best[0] : '';
+}
+// the next free job number: highest of Tom's jobs and the job folders in the jobs folder, plus one
+function nextJobNumber(known = [], jobsFolder = '') {
+  const re = jobPattern(known), all = [];
+  for (const n of known) { const m = String(n).trim().match(re); if (m) all.push({ prefix: m[1], n: m[2] }); }
+  if (jobsFolder) { try { for (const e of fs.readdirSync(jobsFolder, { withFileTypes: true })) { const m = e.isDirectory() && e.name.match(re); if (m) all.push({ prefix: m[1], n: m[2] }); } } catch {} }
+  const top = all.sort((a, b) => Number(b.n) - Number(a.n))[0];
+  return top ? top.prefix.toUpperCase() + String(Number(top.n) + 1).padStart(top.n.length, '0') : '';
 }
 // make a project folder for a new job, with the usual subfolders
 function createJobFolder(parent, number, name) {
@@ -165,4 +179,4 @@ function createJobFolder(parent, number, name) {
   return dir;
 }
 
-module.exports = { jobParent, createJobFolder, init, suggest, gather, load, contextBlock, relevantFiles, outputDir, searchRoots, extract };
+module.exports = { jobParent, nextJobNumber, jobPattern, createJobFolder, init, suggest, gather, load, contextBlock, relevantFiles, outputDir, searchRoots, extract };

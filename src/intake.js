@@ -78,7 +78,7 @@ function parseMsg(buf) {
   return { from: '', to: '', subject: '', date: '', body: keep.join('\n').slice(0, 20000), attachments: [] };
 }
 
-function register({ ipcMain, dialog, shell, getWin, userDir, claudeFull, checker, BIZ }) {
+function register({ ipcMain, dialog, shell, getWin, userDir, claudeFull, checker, BIZ, loadSettings, saveSettings }) {
   const DIR = () => { const d = path.join(userDir(), 'emails'); fs.mkdirSync(d, { recursive: true }); return d; };
   const FILE = () => path.join(DIR(), 'emails.json');
   const load = () => { try { return JSON.parse(fs.readFileSync(FILE(), 'utf8')); } catch { return []; } };
@@ -142,11 +142,13 @@ function register({ ipcMain, dialog, shell, getWin, userDir, claudeFull, checker
   // Tom says yes: job (existing or new), folder, task on the board, email filed in the job folder
   // where a new job folder would go, and the next free job number
   ipcMain.handle('mail:defaults', wrap(() => {
-    const { parent, numbers } = BIZ.projects.jobParent();
-    const all = [...numbers, ...BIZ.data().jobs.map(j => { const m = String(j.number).match(/^([A-Za-z]{0,3})(\d{4,6})$/); return m ? { prefix: m[1], n: m[2] } : null; }).filter(Boolean)];
-    const top = all.sort((a, b) => Number(b.n) - Number(a.n))[0];
-    return { parent, nextNumber: top ? top.prefix + String(Number(top.n) + 1).padStart(top.n.length, '0') : '' };
+    const known = BIZ.data().jobs.map(j => j.number), s = loadSettings ? loadSettings() : {};
+    const saved = s.jobsFolder && fs.existsSync(s.jobsFolder) ? s.jobsFolder : '';
+    const guess = saved ? '' : BIZ.projects.jobParent(known);
+    return { saved, guess, nextNumber: BIZ.projects.nextJobNumber(known, saved || guess) };
   }));
+  // Tom says where his job folders live; remembered for next time
+  ipcMain.handle('mail:setJobsFolder', wrap(({ folder }) => { if (!folder || !fs.existsSync(folder)) throw new Error('That folder does not exist'); if (saveSettings && loadSettings) saveSettings({ ...loadSettings(), jobsFolder: folder }); return { saved: folder, nextNumber: BIZ.projects.nextJobNumber(BIZ.data().jobs.map(j => j.number), folder) }; }));
   ipcMain.handle('mail:pickParent', wrap(async () => { const r = await dialog.showOpenDialog(getWin(), { properties: ['openDirectory', 'createDirectory'], title: 'Where should the new job folder go?' }); return r.canceled ? null : r.filePaths[0]; }));
   ipcMain.handle('mail:start', wrap(({ id, ask, jobId, newJob, folder, createIn }) => {
     const list = load(), e = list.find(x => x.id === id); if (!e) throw new Error('That email is gone');
@@ -154,7 +156,7 @@ function register({ ipcMain, dialog, shell, getWin, userDir, claudeFull, checker
     const d = BIZ.data();
     let job = jobId && d.jobs.find(j => j.id === jobId);
     if (!job) { if (!newJob || !String(newJob.number || '').trim()) throw new Error('Pick a job or give the new job a number'); job = biz.saveJob(d, { number: newJob.number, name: newJob.name || e.site || e.subject, client: newJob.client || '', notes: `From email: ${e.subject}\n${e.summary}` }, 'Eli'); }
-    if (createIn) folder = BIZ.projects.createJobFolder(createIn, job.number, job.name);   // a new folder for the job, next to the other job folders
+    if (createIn) { const s = loadSettings ? loadSettings() : {}; if (!s.jobsFolder || s.jobsFolder !== createIn) throw new Error('Confirm where your job folders live first'); folder = BIZ.projects.createJobFolder(createIn, job.number, job.name); }   // a new folder for the job, next to the other job folders
     if (folder && fs.existsSync(folder) && job.folder !== folder) { job.folder = folder; biz.audit(d, { who: 'Tom', action: 'Project folder linked', jobId: job.id, detail: folder }); }
     const task = biz.saveTask(d, { jobId: job.id, title: a.title, detail: `${a.detail}${a.due ? '\nDue: ' + a.due : ''}\n(From email: ${e.subject || e.from})`, agentId: a.agent === 'none' ? '' : a.agent, agentName: AGENT_NAME[a.agent] || '', status: a.agent === 'none' ? 'todo' : a.agent === 'eli' ? 'done' : 'doing' }, 'Tom');
     BIZ.store.save();

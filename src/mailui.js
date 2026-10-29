@@ -70,8 +70,8 @@ export function initMailUI({ api, office, getAgents, onStart, goBack }) {
   async function fillStart(i) {
     const box = $('#mlStart'), e = cur, a = e.asks[i];
     const v = await api.biz.get(); jobs = v.jobs;
-    const def = await api.mail.defaults().catch(() => ({ parent: '', nextNumber: '' }));
-    let parent = def.parent;
+    const def = await api.mail.defaults().catch(() => ({ saved: '', guess: '', nextNumber: '' }));
+    let parent = def.saved;
     box.innerHTML = `<label><b>Job</b></label><select id="mlJob">${jobs.map(j => `<option value="${j.id}">${esc(j.number)} ${esc(j.name || '')}</option>`).join('')}<option value="__new">+ New job from this email</option></select>
       <div id="mlNew" hidden class="mlrow"><input id="mlNum" placeholder="Job number" value="${esc(e.jobNumber && !jobs.some(j => j.number.toLowerCase() === String(e.jobNumber).toLowerCase()) ? e.jobNumber : def.nextNumber)}" style="width:130px"><input id="mlName" placeholder="Job name / site" value="${esc(e.site || e.subject)}" style="flex:1"></div>
       <label><b>Project folder</b> <span class="bsub">(${a.agent === 'none' ? 'where the email is filed' : esc((NAMES[a.agent] || '').split(' ·')[0]) + ' reads from it and saves into it'})</span></label><div id="mlFolders" class="bsub">…</div>
@@ -79,8 +79,10 @@ export function initMailUI({ api, office, getAgents, onStart, goBack }) {
     const sel = $('#mlJob'); sel.value = e.jobId && jobs.some(j => j.id === e.jobId) ? e.jobId : (jobs.length ? jobs[0].id : '__new');
     if (!jobs.length || (!e.jobId && e.jobNumber)) sel.value = jobs.some(j => j.number.toLowerCase() === String(e.jobNumber).toLowerCase()) ? jobs.find(j => j.number.toLowerCase() === String(e.jobNumber).toLowerCase()).id : '__new';
     let folder = '', create = false;
-    const createRow = () => `<div class="mlsug"><input type="radio" name="mlf" value="create" ${create ? 'checked' : ''}><span><b>Create a new folder for this job</b><br>in ${esc(parent || '(pick where)')} <button id="mlParent" type="button">Change…</button></span></div>`;
-    const wireCreate = (fb, list) => { fb.querySelectorAll('input[name=mlf]').forEach(r => r.addEventListener('change', () => { create = r.value === 'create'; if (!create && list && list[+r.value]) folder = list[+r.value].path; })); const pp = fb.querySelector('#mlParent'); if (pp) pp.onclick = async () => { const p = await api.mail.pickParent(); if (p) { parent = p; create = true; showFolders(); } }; };
+    const createRow = () => `<div class="mlsug"><input type="radio" name="mlf" value="create" ${create ? 'checked' : ''}><span><b>Create a new folder for this job</b><br>${parent ? `in ${esc(parent)} <button id="mlParent" type="button">Change…</button>` : `First say where your job folders live (asked once): ${def.guess ? `<button id="mlGuess" type="button">Use ${esc(def.guess)}</button> ` : ''}<button id="mlParent" type="button">Pick the folder…</button>`}</span></div>`;
+    const wireCreate = (fb, list) => { fb.querySelectorAll('input[name=mlf]').forEach(r => r.addEventListener('change', () => { create = r.value === 'create'; if (!create && list && list[+r.value]) folder = list[+r.value].path; })); const useParent = async (p) => { try { const r = await api.mail.setJobsFolder({ folder: p }); parent = r.saved; if (r.nextNumber && $('#mlNum') && !jobs.some(j => j.number === $('#mlNum').value) ) $('#mlNum').value = r.nextNumber; create = true; showFolders(); } catch (err) { $('#mlStartErr').textContent = clean(err); } };
+      const pp = fb.querySelector('#mlParent'); if (pp) pp.onclick = async () => { const p = await api.mail.pickParent(); if (p) useParent(p); };
+      const pg = fb.querySelector('#mlGuess'); if (pg) pg.onclick = () => useParent(def.guess); };
     const showFolders = async () => {
       const fb = $('#mlFolders'), isNew = sel.value === '__new'; $('#mlNew').hidden = !isNew;
       const job = jobs.find(j => j.id === sel.value);
@@ -101,6 +103,7 @@ export function initMailUI({ api, office, getAgents, onStart, goBack }) {
       $('#mlStartErr').textContent = ''; $('#mlGo').disabled = true;
       try {
         const isNew = sel.value === '__new';
+        if (create && isNew && !parent) { $('#mlStartErr').textContent = 'Say where your job folders live first (Pick the folder…).'; $('#mlGo').disabled = false; return; }
         const r = await api.mail.start({ id: e.id, ask: i, jobId: isNew ? '' : sel.value, newJob: isNew ? { number: $('#mlNum').value, name: $('#mlName').value } : null, folder: create ? '' : folder, createIn: create && isNew ? parent : '' });
         cur = r.email; startOpen = -1; await refreshList(); render();
         if (a.agent === 'engineer') {   // Ada works it straight away; the note lands in the job folder

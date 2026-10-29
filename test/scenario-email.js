@@ -92,6 +92,11 @@
     $('#mlJob').value = '__new'; $('#mlJob').dispatchEvent(new Event('change'));
     await until(() => document.querySelector('#mlFolders input[value=create]'), 60000, 'create option');
     if (!document.querySelector('#mlFolders input[value=create]').checked) throw new Error('create not chosen by default');
+    // the first time, Eli asks where job folders live: use his guess (the folder holding X22001 / X22002)
+    await until(() => $('#mlGuess'), 30000, 'guess button');
+    if (!/Clients/.test($('#mlGuess').textContent)) throw new Error('bad guess: ' + $('#mlGuess').textContent);
+    $('#mlGuess').click();
+    await until(() => $('#mlParent') && /Change/.test($('#mlParent').textContent), 30000, 'jobs folder saved');
     if ($('#mlNum').value !== 'X22003') throw new Error('next number ' + $('#mlNum').value);
     $('#mlGo').click();
     await until(async () => false, 10).catch(() => {});

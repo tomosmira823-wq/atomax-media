@@ -375,7 +375,7 @@ const withJob = (a) => { let c = ''; try { c = BIZ ? BIZ.contextFor(undefined, (
 roomsmain.register({ ipcMain, dialog, getWin: () => win, loadSettings, saveSettings, userDir: USER_DIR, version: () => app.getVersion(), getAgents: () => readJson(AGENTS_FILE(), DEFAULT_AGENTS) });
 const updSend = (u) => { roomsmain.setUpdate(u); win?.webContents.send('update:status', u); };
 BIZ = bizmain.register({ ipcMain, dialog, shell, Notification, getWin: () => win, userDir: USER_DIR, claudeFull: (a) => claudeFull(a), checker, getSettings: () => loadSettings() });
-require('./intake').register({ ipcMain, dialog, shell, getWin: () => win, userDir: USER_DIR, claudeFull: (a) => claudeFull(a), checker, BIZ });
+require('./intake').register({ ipcMain, dialog, shell, getWin: () => win, userDir: USER_DIR, claudeFull: (a) => claudeFull(a), checker, BIZ, loadSettings, saveSettings });
 modmain.register({ ipcMain, dialog, getWin: () => win, userDir: USER_DIR, claudeFull: (a) => claudeFull(withJob(a)), checker, log: (e) => BIZ.log(e), outputDirFor: (id, k) => BIZ.outputDirFor(id, k) });
 require('./pcmain.js').register({ ipcMain, BrowserWindow, desktopCapturer, screen, globalShortcut, getWin: () => win, loadSettings, anthropicBase: ANTHROPIC, log: (e) => BIZ.log(e), jobContext: (who) => { try { return BIZ.contextFor(undefined, who); } catch { return ''; } }, mock: process.env.AMO_PC_MOCK === '1' });
 
