@@ -119,7 +119,8 @@ function unzipText(buf) {
 }
 
 // a skill whose name hints at its job is ticked for the agent that does that job (Tom can change it after)
-const AUTO_TICK = [[/drawing.?check|schedule.?check/i, ['cal']], [/dxf|sld|cad/i, ['dex']], [/document|transmittal|register|doc.?number|deliverable|word|docx/i, ['documents']], [/model|3d|plant/i, ['milo', 'theo']], [/excel|xlsx|spreadsheet/i, ['cal', 'dex']], [/email|inbox|mail/i, ['email']]];
+// what a skill is for, from its name and description; Tom can change the ticks in the File Room
+const AUTO_TICK = [[/drawing.?check|schedule.?check/i, ['cal']], [/dxf|sld|cad|earthing/i, ['dex']], [/transmittal|register|doc.?number|deliverable|issue/i, ['documents']], [/document.?format|word|docx|report|letter/i, ['word', 'documents']], [/model|3d|plant/i, ['milo', 'theo']], [/excel|xlsx|spreadsheet|schedule/i, ['excel']], [/email|inbox|mail/i, ['email']], [/fault|load.?flow|protection|study|calc|earthing.?design/i, ['engineer']]];
 
 // add or update one skill from SKILL.md text; a skill with the same name is updated, not duplicated
 function upsertSkill(text, fallbackName) {
@@ -194,6 +195,16 @@ function skillsFor(agentId) {
   return enabledFor('skills', agentId).map(i => ({ name: i.name, file: i.file, text: readText('skills', i.file).trim() })).filter(x => x.text);
 }
 
+// the skills block added to an agent's prompt. files: the skills Tom ticked for this run (any skill, even one not normally his); undefined: the skills ticked for the agent
+function skillsBlock(agentId, files, limit = 30000) {
+  if (!ROOT) return '';
+  const all = list('skills');
+  const chosen = Array.isArray(files) ? files.map(f => all.find(i => i.file === f)).filter(Boolean) : all.filter(i => i.on && i.agents.includes(agentId));
+  let room = limit, out = '';
+  for (const i of chosen) { if (room <= 0) break; const t = readText('skills', i.file).trim().slice(0, room); if (!t) continue; room -= t.length; out += `\n--- SKILL: ${i.name} ---\n${t}\n`; }
+  return out ? `\nYOUR SKILLS (house rules from the File Room; follow them where they fit this task):${out}` : '';
+}
+
 function rulebookFor(agentId) {
   if (!ROOT) return '';
   return readText('rulebooks', `${agentId}.md`).trim();
@@ -233,4 +244,4 @@ function addCorrection(agentId, text) {
   return rulebookFor(agentId);
 }
 
-module.exports = { skillsFor, CABINETS, init, list, readText, save, remove, addFiles, importSkill, importSkills, unzipText, newSkill, skillFor, rulebookFor, promptBlock, addCorrection, setRulebook, _root: () => ROOT };
+module.exports = { skillsBlock, skillsFor, CABINETS, init, list, readText, save, remove, addFiles, importSkill, importSkills, unzipText, newSkill, skillFor, rulebookFor, promptBlock, addCorrection, setRulebook, _root: () => ROOT };

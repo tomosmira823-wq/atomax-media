@@ -175,7 +175,7 @@ dead is true only if the sheet itself carries a cancelled / superseded / void / 
     if (!rev) { const last = history[history.length - 1]; const m = last && last.rev.match(/^([A-Z]*)(\d+)$/i); rev = m ? m[1].toUpperCase() + String(+m[2] + 1).padStart(m[2].length, '0') : 'P01'; }
     progress({ message: 'Doc is writing the ' + biz.DOC_KINDS[kind].label, pct: 30 });
     const ctx = `Job: ${job.number} ${job.name}\nClient: ${job.client}\nDrawings on this job:\n${job.drawings.map(x => `${x.no} ${x.title} rev ${x.rev}`).join('\n') || '(none listed)'}\n\nEngineer's details:\n${String(details).slice(0, 12000)}`;
-    const r = await claudeFull({ system: biz.DOC_SYSTEM(kind), maxTokens: 12000, messages: [{ role: 'user', content: ctx }] });
+    const r = await claudeFull({ system: biz.DOC_SYSTEM(kind), docKind: kind, maxTokens: 12000, messages: [{ role: 'user', content: ctx }] });
     const drafted = checker.parseJson(r.text).value;
     if (!drafted || !Array.isArray(drafted.sections)) throw new Error('Claude did not return a document. Try again with a little more detail.');
     const cfg = biz.docConfig({ kind, job, docNumber: num, revision: rev, drafted, prepared, checked, approved, description: description || (history.length ? 'Revised' : 'Issued for review'), history });

@@ -37,6 +37,7 @@ const RECEP = mkRoom(-ROOM_W / 2, -2.3, BR_Z0, BR_Z1);
 const DOCS = mkRoom(-2.0, 11.2, BR_Z0, BR_Z1);
 const MEET = mkRoom(11.5, 26.0, BR_Z0, BR_Z1);
 const LOUNGE = mkRoom(26.3, 39.5, BR_Z0, BR_Z1);
+const O365 = mkRoom(NEXT.x0, NEXT.x1, NEXT.z0, NEXT.z1);   // the 365 room (Excel and Word agents) on what was the next-department plot
 // the bottom row runs on east of the lounge: the File Room, then the Server Room
 const FILE = mkRoom(LOUNGE.x1 + 0.3, LOUNGE.x1 + 13.3, BR_Z0, BR_Z1);
 const SERVER = mkRoom(FILE.x1 + 0.3, FILE.x1 + 13.3, BR_Z0, BR_Z1);
@@ -407,20 +408,16 @@ export class Office {
     kerb(-ROOM_W / 2, BUILD_X1, BR_Z1 + 0.05);
     s.add(box(0.14, 0.1, BR_Z1 - CORR.z0, mat(GREEN, { emissive: GREEN, emissiveIntensity: 0.5 }), BUILD_X1 + 0.05, 0.05, (CORR.z0 + BR_Z1) / 2, false));
 
-    // ---- next department: dashed plot, click "+ desk" ----
-    const pc = document.createElement('canvas'); pc.width = 1024; pc.height = Math.round(1024 * NEXT.d / (NEXT.x1 - NEXT.x0)) || 900;
-    const px = pc.getContext('2d'); px.fillStyle = 'rgba(20,26,40,0.55)'; px.fillRect(0, 0, pc.width, pc.height);
-    px.strokeStyle = 'rgba(142,151,171,0.85)'; px.lineWidth = 6; px.setLineDash([26, 18]); px.strokeRect(8, 8, pc.width - 16, pc.height - 16);
-    px.setLineDash([]); px.fillStyle = 'rgba(142,151,171,0.9)'; px.font = '700 44px system-ui, sans-serif'; px.textAlign = 'center'; px.fillText('NEXT DEPARTMENT', pc.width / 2, 70);
-    const ptex = new THREE.CanvasTexture(pc); ptex.colorSpace = THREE.SRGBColorSpace;
-    const plot = new THREE.Mesh(new THREE.PlaneGeometry(NEXT.x1 - NEXT.x0, NEXT.d), new THREE.MeshBasicMaterial({ map: ptex, transparent: true, depthWrite: false }));
-    plot.rotation.x = -Math.PI / 2; plot.position.set((NEXT.x0 + NEXT.x1) / 2, 0.02, (NEXT.z0 + NEXT.z1) / 2); s.add(plot); this.nextPlot = plot;
-    const dd = new THREE.Group();   // dashed ghost desk
-    const dm = new THREE.LineBasicMaterial({ color: 0x8e97ab });
-    const edges = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(3, 1.1, 1.5)), dm); edges.position.y = 0.55; dd.add(edges);
-    dd.position.set((NEXT.x0 + NEXT.x1) / 2, 0, (NEXT.z0 + NEXT.z1) / 2); s.add(dd);
-    this.nextChip = this.#chip('+ desk', dd.position.x, 2.2, dd.position.z, 'lbl hint');
-    this.nextRoots = [plot, edges];
+    // ---- the 365 room: Lex (Excel) and Wren (Word); doorway from the modelling room, open to the corridor ----
+    const o365Floor = new THREE.MeshStandardMaterial({ color: 0xe3e8ef, roughness: 0.3, metalness: 0.1 });
+    const o365 = this.#roomShell(O365, { name: '365 ROOM', floor: o365Floor, wallDoorZ: [O365.z1 - 3, O365.z1 - 0.2], accent: 0x2b7cd3 });
+    for (const [k, col, word] of [[-1, 0x21a366, 'EXCEL'], [1, 0x2b7cd3, 'WORD']]) {   // a coloured board above each desk
+      const g = new THREE.Group();
+      g.add(box(3.2, 1.3, 0.08, mat(col, { roughness: 0.5 }), 0, 0, 0, false));
+      const t = this.#textPlane(word, 2.8, 0.8, { color: '#ffffff', size: 72, weight: '800', spacing: 10 }); t.position.set(0, 0, 0.05); g.add(t);
+      g.position.set(O365.cx + k * 2.8, 2.9, O365.z0 + 0.12); o365.B.add(g);
+    }
+    this.nextRoots = [];
   }
 
   #furnishBuilding() {
@@ -568,7 +565,7 @@ export class Office {
     this.#furnishBuilding();
     this.#buildNav();
     // if agents were requested before the models arrived, place them now
-    if (this.pendingAgents) { const l = this.pendingAgents; this.pendingAgents = null; this.setAgents(l.list, l.drawing, l.modelling, l.docs, l.email); }
+    if (this.pendingAgents) { const l = this.pendingAgents; this.pendingAgents = null; this.setAgents(l.list, l.drawing, l.modelling, l.docs, l.email, l.o365); }
     this.setBoard(this.boardLines);
   }
 
@@ -639,11 +636,11 @@ export class Office {
   }
 
   // ---------- public API ----------
-  setAgents(list, drawing = null, modelling = null, docs = null, email = null) {
-    if (!this.models['desk-teacher']) { this.pendingAgents = { list, drawing, modelling, docs, email }; return; }
+  setAgents(list, drawing = null, modelling = null, docs = null, email = null, o365 = null) {
+    if (!this.models['desk-teacher']) { this.pendingAgents = { list, drawing, modelling, docs, email, o365 }; return; }
     (this.drawExtras || []).forEach(o => { this.scene.remove(o); if (o.element) o.element.remove(); }); this.drawExtras = [];
     for (const a of this.agents.values()) { this.scene.remove(a.group); if (a.desk) this.scene.remove(a.desk); if (a.chair) this.scene.remove(a.chair); a.label.element.remove(); }
-    this.agents.clear(); this.dexRoots = []; this.modRoots = {}; this.docsAgentRoots = []; (this.emailExtras || []).forEach(o => this.scene.remove(o)); this.emailExtras = []; this.emailAgentRoots = [];
+    this.agents.clear(); this.dexRoots = []; this.modRoots = {}; this.docsAgentRoots = []; (this.emailExtras || []).forEach(o => this.scene.remove(o)); this.emailExtras = []; this.emailAgentRoots = []; this.o365Roots = {};
     this.obstacles = this.obstacles.filter(o => !o.desk);
     (this.podRugs || []).forEach(r => this.scene.remove(r)); const a_rugs = []; this.podRugs = a_rugs;
     list.forEach((data, i) => {
@@ -690,6 +687,7 @@ export class Office {
     for (const d of (Array.isArray(modelling) ? modelling : [])) this.#addModelling(d);
     (Array.isArray(docs) ? docs : []).forEach((d, i) => this.#addDocsAgent(d, i));
     for (const d of (Array.isArray(email) ? email : [])) this.#addEmailAgent(d);
+    for (const d of (Array.isArray(o365) ? o365 : [])) this.#add365Agent(d, d.role === 'word' ? 1 : 0);
     this.#buildNav();
     for (const a of this.agents.values()) a.path = null;
     this.setBoard(this.boardLines);
@@ -935,6 +933,23 @@ export class Office {
     this.docsAgentRoots = [...(this.docsAgentRoots || []), desk, group, chair];
   }
 
+  // Lex and Wren work at two desks in the 365 room, under their boards, facing the corridor
+  #add365Agent(data, slot) {
+    const colour = new THREE.Color(data.colour || '#21a366'), dx = O365.cx + (slot ? 2.8 : -2.8), dz = O365.z0 + 4.2;
+    const desk = this.#desk(colour); desk.position.set(dx, 0, dz); desk.rotation.y = 0; this.scene.add(desk); desk.updateMatrixWorld(true);
+    const front = new THREE.Vector3(0, 0, 1).applyQuaternion(desk.quaternion);
+    const chair = this.#officeChair(colour); chair.position.set(dx, 0, dz).addScaledVector(front, 1.15); chair.rotation.y = Math.atan2(-front.x, -front.z); this.scene.add(chair);
+    const seat = new THREE.Vector3(dx, 0, dz).addScaledVector(front, 1.05), faceSeat = Math.atan2(-front.x, -front.z);
+    this.obstacles.push({ rect: true, x0: dx - 1.45, x1: dx + 1.45, z0: dz - 0.75, z1: dz + 0.75, desk: true });
+    const group = buildCharacter(data.colour, 'reviewer', data.gear);
+    group.position.copy(this.#randomIdlePoint('o365')); this.scene.add(group);
+    const el = document.createElement('div'); el.className = 'lbl';
+    el.innerHTML = `<b>${data.name}</b> · ${data.platform} <span class="st"></span>`;
+    const label = new CSS2DObject(el); label.position.set(0, 2.6, 0); group.add(label);
+    this.agents.set(data.id, { data, group, desk, chair, seat, faceSeat, zone: 'o365', state: 'idle', label, el, walkTarget: null, waypoint: null, faceTo: null, wait: Math.random() * 3, t: Math.random() * 10, blink: 2 + Math.random() * 3 });
+    this.o365Roots[data.role] = [desk, group, chair];
+  }
+
   // the email checker works behind the reception counter: a monitor on the counter, his chair behind it, facing the room
   #addEmailAgent(data) {
     const colour = new THREE.Color(data.colour || '#ffa94d'), R = RECEP, dx = R.cx + 1.0, dz = R.z0 + 4.2;
@@ -1033,6 +1048,7 @@ export class Office {
       drafting: { p: [DRAFT_TABLE[0] + 7.5, 4.8, DRAFT_TABLE[1] + 7.5], t: [DRAFT_TABLE[0] + 2.6, 1.0, DRAFT_TABLE[1] + 0.4] },
       ...(this.projSpot ? { board: this.projSpot } : {}),
       email: { p: [RECEP.cx + 6, 6.5, RECEP.z1 + 6], t: [RECEP.cx + 0.5, 1.2, RECEP.z0 + 4] },
+      o365: { p: [O365.cx + 13, 9, O365.z1 + 10], t: [O365.cx + 6, 1.2, O365.cz - 1] },   // looking from the right so the room sits left of the panel
       ...(this.modelRoom ? this.modelRoom.spots : {})
     };
     const sp = spots[where]; if (!sp) return;
@@ -1059,7 +1075,7 @@ export class Office {
       if (wide && this.projBoard && this.ray.intersectObject(this.projBoard, true).length) return 'board';
       if (wide && this.docRoots && this.ray.intersectObjects(this.docRoots.approvals, true).length) return 'approvals';
       if (wide && this.docRoots && this.ray.intersectObjects(this.docRoots.issue, true).length) return 'issue';
-      if (wide && this.nextRoots && this.ray.intersectObjects(this.nextRoots, true).length) return 'nextdesk';
+      if ((wide || this.room === 'o365') && this.o365Roots) for (const [role, roots] of Object.entries(this.o365Roots)) if (roots.length && this.ray.intersectObjects(roots, true).some(h => visibleChain(h.object))) return 'o365:' + role;
       if (wide && this.docsAgentRoots && this.docsAgentRoots.length && this.ray.intersectObjects(this.docsAgentRoots, true).some(h => visibleChain(h.object))) return 'docs';
       if (wide && this.emailAgentRoots && this.emailAgentRoots.length && this.ray.intersectObjects(this.emailAgentRoots, true).some(h => visibleChain(h.object))) return 'email';
       if (wide && this.doorPlaque && visibleChain(this.doorPlaque) && this.ray.intersectObject(this.doorPlaque, true).length) return 'door';
@@ -1155,7 +1171,7 @@ export class Office {
   }
 
 
-  get _dims() { return { DRAW, MODEL, DOOR2, ROOM_W, ROOM_D, CORR, RECEP, DOCS, MEET, LOUNGE, FILE, SERVER, BUILD_X1, NEXT }; }
+  get _dims() { return { DRAW, MODEL, DOOR2, ROOM_W, ROOM_D, CORR, RECEP, DOCS, MEET, LOUNGE, FILE, SERVER, BUILD_X1, NEXT, O365 }; }
   // ---------- first person: walk through the rooms (W A S D / arrows, drag to look, Shift to hurry, Esc to leave) ----------
   // the walkable floor of the whole building (rooms, doorways, corridor), shared by first person and the agents' grid
   #inBuilding(x, z, m = 0.5) {
@@ -1166,7 +1182,7 @@ export class Office {
       || inR(MODEL.x0 + m, MODEL.x1 - m, MODEL.z0 + m, MODEL.z1)
       || inR(ROOM_W / 2 - 0.6, DRAW.x0 + 0.6, dz, dz1)                                        // media <-> drawing doorway
       || inR(DRAW.x1 - 0.6, MODEL.x0 + 0.6, dz, dz1)                                          // drawing <-> modelling doorway
-      || inR(NEXT.x0, NEXT.x1, NEXT.z0 + m, NEXT.z1) || inR(MODEL.x1 - 0.2, NEXT.x0 + 0.2, MODEL.z1 - 3, MODEL.z1)
+      || inR(NEXT.x0 + m, NEXT.x1 - m, NEXT.z0 + m, NEXT.z1) || inR(MODEL.x1 - 0.2, NEXT.x0 + 0.2, MODEL.z1 - 3, MODEL.z1)
       || inR(-ROOM_W / 2 + m, BUILD_X1 - m, CORR.z0, CORR.z1)                                 // corridor
       || [RECEP, DOCS, MEET, LOUNGE, FILE, SERVER].some(R => inR(R.x0 + m, R.x1 - m, R.z0 + m, R.z1 - m) || inR(R.cx - 1.3, R.cx + 1.3, CORR.z1 - 0.2, R.z0 + m + 0.3))   // rooms + doorway from the corridor
       || [DOCS, MEET, LOUNGE].some(R => inR(R.x0 - 0.6, R.x0 + 0.6, R.cz - 0.2, R.cz + 1.2));  // doorways between the bottom rooms
@@ -1181,7 +1197,7 @@ export class Office {
     }
     return true;
   }
-  #fpRoomName(x, z = 0) { if (z > CORR.z0 && x > LOUNGE.x1) return x > FILE.x1 ? 'server' : 'file'; return z > CORR.z0 ? 'media' : x < DRAW.x0 ? 'media' : x < MODEL.x0 ? 'drawing' : 'modeling'; }
+  #fpRoomName(x, z = 0) { if (z > CORR.z0 && x > LOUNGE.x1) return x > FILE.x1 ? 'server' : 'file'; if (z <= CORR.z0 && x >= NEXT.x0) return 'o365'; return z > CORR.z0 ? 'media' : x < DRAW.x0 ? 'media' : x < MODEL.x0 ? 'drawing' : 'modeling'; }
   enterFirstPerson() {
     if (this.fp) return; if (this.tween) { this.tween = null; }
     const t = this.controls.target, cp = this.camera.position;
@@ -1329,6 +1345,10 @@ export class Office {
   #lineClear(a, b) { const n = Math.ceil(a.distanceTo(b) / (this.navCell * 0.5)) + 1; for (let i = 0; i <= n; i++) { const t = i / n; if (!this.#walkable(a.x + (b.x - a.x) * t, a.z + (b.z - a.z) * t)) return false; } return true; }
 
   #randomIdlePoint(zone = 'media') {
+    if (zone === 'o365') {
+      for (let i = 0; i < 80; i++) { const x = O365.x0 + 1.5 + Math.random() * (O365.w - 3), z = O365.z0 + 6.5 + Math.random() * (O365.d - 8); if (this.#walkable(x, z)) return new THREE.Vector3(x, 0, z); }
+      return this.#nearestWalkable(O365.cx, O365.cz + 3);
+    }
     if (zone === 'reception') {
       for (let i = 0; i < 80; i++) { const x = RECEP.x0 + 1.5 + Math.random() * (RECEP.w - 3), z = RECEP.z0 + 5.5 + Math.random() * (RECEP.d - 7); if (this.#walkable(x, z)) return new THREE.Vector3(x, 0, z); }
       return this.#nearestWalkable(RECEP.cx, RECEP.cz + 2);

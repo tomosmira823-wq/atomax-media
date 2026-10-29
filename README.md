@@ -180,3 +180,11 @@ Dex's panel has "Make a new DXF" and "Fix a DXF". Make: pick the job, say what t
 
 ## Eli reads Outlook emails properly (v1.12)
 Outlook .msg files are now opened properly (they are a small compound file): Eli gets the sender, date, the full body including everything forwarded below, and every real attachment (signature logos are skipped). He reads the attachments, and for each email he lists who is who in the thread, how urgent it is, what each attachment is and which tasks can use it, the tasks per agent, the questions still to ask the client, and a reply to the right person. Attachments are filed with the email in the job's Correspondence folder.
+
+## Skills for every agent, picked per run (v1.13)
+- Every agent now reads its skills (Eli, Ada, Dot, Milo, Theo and Vera did not before). Skills are added to the agent's prompt in one place: the skills ticked for that agent in the File Room, or the ones ticked for this run.
+- Before Dex, Eli, Ada, Lex or Wren run, a "Skills for this run" list shows the agent's skills ticked; untick any that do not fit, or add another skill just for this run.
+- Importing skills ticks them by what they are for: drawing skills to Dex, Excel and schedule skills to Lex, Word and document-format skills to Wren and Dot, study and calculation skills to Ada.
+
+## The 365 room (v1.13)
+On the old next-department plot. Lex makes and edits Excel workbooks (bold wrapped headers, columns wide enough, formulas for totals, no frozen panes) and Wren writes Atomax-format Word documents, from a request, dropped files and the job's project folder. Files are saved in the job's Documents folder and never overwrite. Eli can give email tasks to them too.

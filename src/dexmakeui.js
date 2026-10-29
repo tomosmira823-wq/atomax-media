@@ -1,10 +1,12 @@
 // Dex's "Make a new DXF" mode: pick the job (its project folder is where he reads and writes), say what to draw, answer his questions, get a DRAFT DXF.
+import { renderSkillPicker } from './skillpicker.js';
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 export function initDexMakeUI({ api, office, bizUI, getDex }) {
   const panel = $('#dexPanel');
-  let questions = [], emailId = '', busy = false;
+  let questions = [], emailId = '', busy = false, picker = null;
+  const pickSkills = async () => { picker = await renderSkillPicker(api, $('#dmSkills'), 'dex', { uncheck: (i) => /fix/i.test(i.name) || /excel|xlsx|spreadsheet/i.test(i.name + ' ' + i.file) }); };
   const setMode = (m) => { panel.classList.toggle('make-mode', m === 'make'); document.querySelectorAll('#dexMode button').forEach(b => b.classList.toggle('on', b.dataset.mode === m)); };
   setMode('make');
   document.querySelectorAll('#dexMode button').forEach(b => b.addEventListener('click', () => setMode(b.dataset.mode)));
@@ -35,7 +37,7 @@ export function initDexMakeUI({ api, office, bizUI, getDex }) {
     $('#dmMsg').textContent = answers.length ? 'Dex is drawing it' : 'Dex is reading the project files';
     const dex = getDex(); if (dex) office.setState(dex.id, 'working', 'drawing an SLD');
     try {
-      const r = await api.dexMake({ jobId: $('#dmJob').value, request, answers, emailId });
+      const r = await api.dexMake({ jobId: $('#dmJob').value, request, answers, emailId, skills: picker ? picker.selected() : undefined });
       if (r.questions) { questions = r.questions; renderQuestions(); if (dex) office.setState(dex.id, 'idle'); return; }
       questions = []; renderQuestions();
       $('#dmOut').innerHTML = `<div class="headline good" style="margin-top:12px">Saved ${esc(r.path.split(/[\\/]/).pop())}</div>
@@ -61,10 +63,10 @@ export function initDexMakeUI({ api, office, bizUI, getDex }) {
       await bizUI.fillJobSelect($('#dmJob'));
       if (jobId) $('#dmJob').value = jobId;
       if (request) $('#dmReq').value = request;
-      await showFolder();
+      await showFolder(); await pickSkills();
       if (auto && request) go();
     },
-    async refresh() { await bizUI.fillJobSelect($('#dmJob')); showFolder(); },
+    async refresh() { await bizUI.fillJobSelect($('#dmJob')); showFolder(); pickSkills(); },
     _state: () => ({ questions, emailId, busy })
   };
 }

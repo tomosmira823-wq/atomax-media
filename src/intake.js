@@ -17,10 +17,12 @@ const AGENTS = {
   milo: 'Milo — 3D modeller: changes an existing 3D model (adds a pipe, a rail, moves equipment)',
   theo: 'Theo — 3D builder: builds a new 3D model from scratch',
   eli: 'Eli himself — admin: sets up a new job number and its project folder (with Drawings, Documents and Correspondence folders) and files the email and attachments in it',
+  excel: 'Lex — Excel: builds and edits workbooks (cable schedules, registers, trackers, calculation sheets) from the email, attachments and project files',
+  word: 'Wren — Word: writes Atomax-format Word documents (reports, technical notes, letters, specifications) from the email, attachments and project files',
   engineer: 'Ada — general engineer: works through calculations, studies, feasibility checks and technical questions with Claude from the email, attachments and project files (e.g. a first-pass fault level check, cable sizing, an earthing estimate, can this be done without PowerFactory) and writes a technical note into the job folder, saying plainly what still needs proper study software or data',
   none: 'Tom himself: anything the agents cannot do (pricing, meetings, phone calls, site visits, replies that need a decision)'
 };
-const AGENT_NAME = { dex: 'Dex', cal: 'Cal', documents: 'Dot', milo: 'Milo', theo: 'Theo', eli: 'Eli', engineer: 'Ada', none: '' };
+const AGENT_NAME = { excel: 'Lex', word: 'Wren', dex: 'Dex', cal: 'Cal', documents: 'Dot', milo: 'Milo', theo: 'Theo', eli: 'Eli', engineer: 'Ada', none: '' };
 
 const EMAIL_SYSTEM = `You are Eli, the email checker at the Atomax-UK reception. Atomax-UK is an electrical engineering consultancy (electrical CAD, drawings, schedules, document control).
 Read the email (and any screenshots or attachments) and work out exactly what the sender is asking Atomax to do. Split it into separate tasks and give each one to the agent who can do it:
@@ -148,7 +150,7 @@ function register({ ipcMain, dialog, shell, getWin, userDir, claudeFull, checker
     return best ? best.id : '';
   }
 
-  const readEmail = async ({ files = [], text = '', reuseId = '', paths = [] }) => {
+  const readEmail = async ({ files = [], text = '', reuseId = '', paths = [], skills }) => {
     files = [...files, ...paths.filter(p => fs.existsSync(p)).map(p => ({ name: path.basename(p), mime: extMime(p), base64: fs.readFileSync(p).toString('base64') }))];
     const id = reuseId || uid(), dir = path.join(DIR(), id); fs.mkdirSync(dir, { recursive: true });
     const content = [], parts = [], originals = [], attach = [];
@@ -168,8 +170,8 @@ function register({ ipcMain, dialog, shell, getWin, userDir, claudeFull, checker
     for (const a of attach.filter(a => IMG.test(a.mime) || a.mime === 'application/pdf').slice(0, 4)) content.push(checker.contentBlock(a.mime === 'application/pdf' ? 'pdf' : 'image', a.name, fs.readFileSync(path.join(dir, a.name))));
     if (!parts.length && !content.length) throw new Error('Drop an email (.eml, .msg), a screenshot of it, or paste its text');
     content.push({ type: 'text', text: `THE EMAIL:\n${parts.join('\n\n---\n\n').slice(0, 30000)}${attach.length ? '\n\nATTACHMENTS: ' + attach.map(a => a.name).join(', ') : ''}` });
-    let r = await claudeFull({ system: EMAIL_SYSTEM, who: 'email', maxTokens: 8000, messages: [{ role: 'user', content }] });
-    if (r.stop === 'max_tokens') r = await claudeFull({ system: EMAIL_SYSTEM + '\nKeep every field short: details under 60 words, the reply under 150 words.', who: 'email', maxTokens: 16000, messages: [{ role: 'user', content }] });
+    let r = await claudeFull({ system: EMAIL_SYSTEM, who: 'email', skills, maxTokens: 8000, messages: [{ role: 'user', content }] });
+    if (r.stop === 'max_tokens') r = await claudeFull({ system: EMAIL_SYSTEM + '\nKeep every field short: details under 60 words, the reply under 150 words.', who: 'email', skills, maxTokens: 16000, messages: [{ role: 'user', content }] });
     const reply = r.text;
     try { fs.writeFileSync(path.join(dir, 'eli-reply.txt'), String(reply || '')); } catch {}   // kept next to the email so a bad reply can be looked at
     let e; try { e = dxfmaker.parseReply(reply); } catch (err) { throw new Error(`Eli got a reply he could not read (${r.stop === 'max_tokens' ? 'it was cut off' : String(err.message || err).slice(0, 80)}). It is saved as eli-reply.txt with the email. Press Read it again.`); }
@@ -236,7 +238,7 @@ function register({ ipcMain, dialog, shell, getWin, userDir, claudeFull, checker
 Show where every input came from (document and table). Do the arithmetic step by step and check it. Never invent data: if something is missing, say what and why it matters.
 Be honest about limits: a first-pass hand calculation is not a full study. Say plainly what can be relied on, what needs PowerFactory / ETAP, and what data is still needed.
 Write in plain British English as Markdown: "# title", "## Summary" (3 lines max, the answer first), "## Inputs used", "## Method and working", "## Results" (tables), "## Limits and what is still needed".`;
-  ipcMain.handle('eng:run', wrap(async ({ id, ask }) => {
+  ipcMain.handle('eng:run', wrap(async ({ id, ask, skills }) => {
     const list = load(), e = list.find(x => x.id === id); if (!e || !e.asks[ask]) throw new Error('No such task');
     const a = e.asks[ask], job = a.jobId && BIZ.data().jobs.find(j => j.id === a.jobId);
     const content = [];
@@ -246,9 +248,9 @@ Write in plain British English as Markdown: "# title", "## Summary" (3 lines max
     content.push({ type: 'text', text: `THE TASK: ${a.title}\n${a.detail}\n\nFROM THE EMAIL (${e.from}, "${e.subject}"): ${e.summary}` });
     const system = ENG_SYSTEM + (job ? '\n\n' + BIZ.contextFor(job.id, 'Ada') : '');
     // a long study can use up the reply before any text comes out: give her room, try once more with more, never save an empty note
-    let r = await claudeFull({ system, who: 'engineer', maxTokens: 16000, messages: [{ role: 'user', content }] });
+    let r = await claudeFull({ system, who: 'engineer', skills, maxTokens: 16000, messages: [{ role: 'user', content }] });
     let text = String(r.text || '').trim();
-    if (!text || r.stop === 'max_tokens' && text.length < 400) { r = await claudeFull({ system: system + '\nKeep the note under 2500 words: summary and results first, the full working only for the key nodes.', who: 'engineer', maxTokens: 32000, messages: [{ role: 'user', content }] }); text = String(r.text || '').trim(); }
+    if (!text || r.stop === 'max_tokens' && text.length < 400) { r = await claudeFull({ system: system + '\nKeep the note under 2500 words: summary and results first, the full working only for the key nodes.', who: 'engineer', skills, maxTokens: 32000, messages: [{ role: 'user', content }] }); text = String(r.text || '').trim(); }
     if (!text) throw new Error(`Ada got an empty reply from Claude (stop reason: ${r.stop || 'unknown'}). Press "Ask Ada again", or pick another Claude model in Settings.`);
     if (r.stop === 'max_tokens') text += '\n\n_(Ada ran out of room here: the note is cut short. Ask her again for the rest.)_';
     const outDir = (job && BIZ.outputDirFor(job.id, 'documents')) || path.join(userDir(), 'engineering');
@@ -264,14 +266,16 @@ Write in plain British English as Markdown: "# title", "## Summary" (3 lines max
   }));
 
   // ---------- Dex makes a DXF ----------
-  ipcMain.handle('dex:make', wrap(async ({ jobId = '', request = '', answers = [], emailId = '' }) => {
+  ipcMain.handle('dex:make', wrap(async ({ jobId = '', request = '', answers = [], emailId = '', skills }) => {
     if (!String(request).trim()) throw new Error('Say what Dex should draw');
     const d = BIZ.data(), job = jobId && d.jobs.find(j => j.id === jobId);
     // his skills for MAKING a drawing: drawing skills first, fixer-only rules and spreadsheet skills only when the request needs them
     const all = library.skillsFor('dex');
     const wantsSheets = /excel|xlsx|schedule|spreadsheet/i.test(request), wantsFix = /\b(fix|correct|redline|markup)\b/i.test(request);
     const rank = (sk) => /sld|single.?line|dxf|cad|earth|drawing|schematic/i.test(sk.name + ' ' + sk.file) ? 0 : 1;
-    const picked = all.filter(sk => (wantsFix || !/fix/i.test(sk.name)) && (wantsSheets || !/excel|xlsx|spreadsheet/i.test(sk.name + ' ' + sk.file))).sort((a, b) => rank(a) - rank(b));
+    // the skills Tom ticked for this run win; otherwise his drawing skills (fixer-only and spreadsheet skills only when the request needs them)
+    const lib = library.list('skills');
+    const picked = (Array.isArray(skills) ? skills.map(f => { const i = lib.find(x => x.file === f); return i ? { name: i.name, file: i.file, text: library.readText('skills', i.file).trim() } : null; }).filter(x => x && x.text) : all.filter(sk => (wantsFix || !/fix/i.test(sk.name)) && (wantsSheets || !/excel|xlsx|spreadsheet/i.test(sk.name + ' ' + sk.file)))).sort((a, b) => rank(a) - rank(b));
     let room = 30000; const used = [];
     const skillText = picked.map(sk => { if (room <= 0) return ''; const t = sk.text.slice(0, room); room -= t.length; used.push(sk.name + (t.length < sk.text.length ? ' (cut short)' : '')); return `--- SKILL: ${sk.name} ---\n${t}`; }).filter(Boolean).join('\n\n');
     const system = dxfmaker.SYSTEM + (skillText ? `\n\nYOUR SKILLS (house rules from the File Room; follow them where they fit this drawing):\n${skillText}` : '') + (job ? '\n\n' + BIZ.contextFor(job.id, 'Dex') : '');
@@ -283,8 +287,8 @@ Write in plain British English as Markdown: "# title", "## Summary" (3 lines max
     if (em) for (const a of em.attachments.slice(0, 3)) { try { const buf = fs.readFileSync(path.join(DIR(), em.id, a.name)); content.push({ type: 'text', text: 'From the email: ' + a.name }); content.push(checker.contentBlock(a.mime === 'application/pdf' ? 'pdf' : 'image', a.name, buf)); } catch {} }
     content.push({ type: 'text', text: `REQUEST: ${request}${answers.length ? '\n\nANSWERS FROM THE ENGINEER:\n' + answers.map(x => `Q: ${x.q}\nA: ${x.a}`).join('\n') : ''}` });
     // a big site needs a long spec: give room, retry with more if it is cut off, and never pass off a cut-off spec as complete
-    let r = await claudeFull({ system, who: 'dex', maxTokens: 12000, messages: [{ role: 'user', content }] });
-    if (r.stop === 'max_tokens') r = await claudeFull({ system: system + '\nKeep labels short (four lines at most) and give a feeder label only when it adds something the end item label does not say.', who: 'dex', maxTokens: 24000, messages: [{ role: 'user', content }] });
+    let r = await claudeFull({ system, who: 'dex', skills: false, maxTokens: 12000, messages: [{ role: 'user', content }] });
+    if (r.stop === 'max_tokens') r = await claudeFull({ system: system + '\nKeep labels short (four lines at most) and give a feeder label only when it adds something the end item label does not say.', who: 'dex', skills: false, maxTokens: 24000, messages: [{ role: 'user', content }] });
     const text = r.text, cutOff = r.stop === 'max_tokens';
     const spec = dxfmaker.parseReply(text);
     if (spec.questions && spec.questions.length && !answers.length) return { questions: spec.questions.slice(0, 4).map(String), read: pdfs.map(p => path.basename(p)), skills: used };

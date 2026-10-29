@@ -23,6 +23,15 @@ function claudeReply(body) {
              { title: 'Check the fault level at the 33kV board', detail: 'First-pass IEC 60909 check from the attached study.', agent: 'engineer', kind: 'other', due: '' }],
       reply: 'Hi Sam, thanks. We will send the SLD by Friday. Tom' });
   }
+  // ---- Lex (Excel) and Wren (Word) ----
+  if (/You are Lex, the Excel agent/.test(sys)) {
+    calls.push({ lex: true, skill: /--- SKILL: Cable schedule house style/.test(sys) });
+    return JSON.stringify({ filename: 'Cable schedule', summary: 'Two cables, lengths from the request, total by formula.', sheets: [{ name: 'Cable Schedule', columns: [{ header: 'Cable No' }, { header: 'From' }, { header: 'To' }, { header: 'Length (m)' }], rows: [['C-101', 'JB-1', 'RIO1', 45], ['C-102', 'JB-2', 'RIO1', 30], ['Total', '', '', '=SUM(D2:D3)']] }] });
+  }
+  if (/You are Wren, the Word agent/.test(sys)) {
+    calls.push({ wren: true });
+    return JSON.stringify({ documentTitle: 'Fault Level Check Note', projectDetails: [{ label: 'Site', value: 'Gwrhyd PV Farm' }], sections: [{ content: [{ type: 'heading1', text: 'Summary' }, { type: 'paragraph', text: 'First-pass check agrees with the study.' }, { type: 'heading1', text: 'Results' }, { type: 'heading2', text: '33kV boards' }, { type: 'paragraph', text: 'MV SWB 3.203 kA.' }] }] });
+  }
   // ---- Ada (general engineer) ----
   if (/You are Ada, the general engineer/.test(sys)) {
     calls.push({ ada: true, pdfs: (userText.match(/"type":"document"/g) || []).length, jobCtx: /JOB CONTEXT/.test(sys) });

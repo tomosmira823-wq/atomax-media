@@ -108,6 +108,16 @@ const DEFAULT_AGENTS = [
     rules: 'Check it does what was asked, sizes match the context, nothing clashes or floats, nothing extra was changed. Below 6 out of 10 goes back to Milo.'
   },
   {
+    id: 'excel', role: 'excel', platform: 'Excel', name: 'Lex', colour: '#21a366', enabled: true, gear: ['glasses', 'lanyard'],
+    tone: 'Tidy and exact. Copies data exactly, uses formulas for totals, never invents values.',
+    rules: 'Headers wrapped, columns wide enough for their text, no frozen panes. Never overwrite an existing workbook.'
+  },
+  {
+    id: 'word', role: 'word', platform: 'Word', name: 'Wren', colour: '#2b7cd3', enabled: true, gear: ['lanyard', 'clipboard'],
+    tone: 'Clear, plain British English. Uses the Atomax document format.',
+    rules: 'Atomax house format: numbered headings, approval and revision tables, TBC for anything not given.'
+  },
+  {
     id: 'engineer', role: 'engineer', platform: 'Engineer', name: 'Ada', colour: '#63e6be', enabled: true, gear: ['glasses', 'hardhat'],
     tone: 'Careful and plain. Shows her working, says where every number came from, and is honest about what a hand calculation cannot replace.',
     rules: 'Use only the email, attachments and project files. Never invent data. Say what needs PowerFactory / ETAP or more data.'
@@ -218,8 +228,8 @@ function createWindow() {
   if (process.env.AMO_SCREENSHOT) {
     win.webContents.on('console-message', (_e, level, msg, line, src) => console.error('[page]', level, msg, src + ':' + line));
     win.webContents.once('did-finish-load', () => setTimeout(async () => {
-      if (['run', 'drawing', 'dex', 'model', 'fp', 'biz', 'mo', 'pc', 'theo', 'layout', 'rooms', 'email', 'msg'].includes(process.env.AMO_SCENARIO)) {
-        const script = fs.readFileSync(path.join(__dirname, '..', 'test', ({ drawing: 'scenario-drawing.js', dex: 'scenario-dex.js', model: 'scenario-model.js', fp: 'scenario-fp.js', biz: 'scenario-biz.js', mo: 'scenario-mo.js', pc: 'scenario-pc.js', theo: 'scenario-theo.js', layout: 'scenario-layout.js', rooms: 'scenario-rooms.js', email: 'scenario-email.js', msg: 'scenario-msg.js' }[process.env.AMO_SCENARIO] || 'scenario-run.js')), 'utf8').replace(/__AMO_DIR__/g, (process.env.AMO_PICK_DIR || '').replace(/\\/g, '/'));
+      if (['run', 'drawing', 'dex', 'model', 'fp', 'biz', 'mo', 'pc', 'theo', 'layout', 'rooms', 'email', 'msg', 'o365'].includes(process.env.AMO_SCENARIO)) {
+        const script = fs.readFileSync(path.join(__dirname, '..', 'test', ({ drawing: 'scenario-drawing.js', dex: 'scenario-dex.js', model: 'scenario-model.js', fp: 'scenario-fp.js', biz: 'scenario-biz.js', mo: 'scenario-mo.js', pc: 'scenario-pc.js', theo: 'scenario-theo.js', layout: 'scenario-layout.js', rooms: 'scenario-rooms.js', email: 'scenario-email.js', msg: 'scenario-msg.js', o365: 'scenario-o365.js' }[process.env.AMO_SCENARIO] || 'scenario-run.js')), 'utf8').replace(/__AMO_DIR__/g, (process.env.AMO_PICK_DIR || '').replace(/\\/g, '/'));
         await win.webContents.executeJavaScript(`window.__variant = ${JSON.stringify(process.env.AMO_VARIANT || '')}`);
         const out = await win.webContents.executeJavaScript(script);
         console.error('[scenario]', JSON.stringify(out));
@@ -338,7 +348,7 @@ ipcMain.handle('social:canPost', (_e, platform) => {
 });
 // older saved teams predate the drawing checker: add Cal (once) so the drawing room has someone at the desk
 function withDrawingAgent(list) {
-  for (const role of ['drawing', 'drafter', 'modeller', 'builder', 'modelchecker', 'documents', 'email', 'engineer']) {
+  for (const role of ['drawing', 'drafter', 'modeller', 'builder', 'modelchecker', 'documents', 'email', 'engineer', 'excel', 'word']) {
     if (list.some(a => a.role === role)) continue;
     const d = DEFAULT_AGENTS.find(a => a.role === role);
     if (d) list = [...list, { ...d }];
@@ -371,10 +381,12 @@ ipcMain.handle('history:remove', (_e, { id }) => { writeJson(HISTORY_FILE(), rea
 const modmain = require('./modmain.js');
 // the job picked on the project whiteboard (or in an agent's panel) goes to the engineering agents as background; never to the social writers (client details must not leak into posts)
 let BIZ;
-const withJob = (a) => { let c = ''; try { c = BIZ ? BIZ.contextFor(undefined, (String(a && a.system || '').match(/You are (Milo|Theo|Vera|Dex|Cal)\b/) || [])[1] || '') : ''; } catch {} return c ? { ...a, system: String(a.system || '') + '\n\n' + c } : a; };
+const AGENT_OF = { Milo: 'milo', Theo: 'theo', Vera: 'vera', Dex: 'dex', Cal: 'cal' };
+const withJob = (a) => { const name = (String(a && a.system || '').match(/You are (Milo|Theo|Vera|Dex|Cal)\b/) || [])[1] || ''; let c = ''; try { c = BIZ ? BIZ.contextFor(undefined, name) : ''; } catch {} const out = c ? { ...a, system: String(a.system || '') + '\n\n' + c } : { ...a }; if (name && !out.who) out.who = AGENT_OF[name]; return out; };
 roomsmain.register({ ipcMain, dialog, getWin: () => win, loadSettings, saveSettings, userDir: USER_DIR, version: () => app.getVersion(), getAgents: () => readJson(AGENTS_FILE(), DEFAULT_AGENTS) });
 const updSend = (u) => { roomsmain.setUpdate(u); win?.webContents.send('update:status', u); };
-BIZ = bizmain.register({ ipcMain, dialog, shell, Notification, getWin: () => win, userDir: USER_DIR, claudeFull: (a) => claudeFull(a), checker, getSettings: () => loadSettings() });
+BIZ = bizmain.register({ ipcMain, dialog, shell, Notification, getWin: () => win, userDir: USER_DIR, claudeFull: (a) => claudeFull(a.docKind ? { ...a, who: 'documents' } : a), checker, getSettings: () => loadSettings() });
+require('./o365main').register({ ipcMain, claudeFull: (a) => claudeFull(a), BIZ, checker, userDir: USER_DIR, projects: require('./projects') });
 require('./intake').register({ ipcMain, dialog, shell, getWin: () => win, userDir: USER_DIR, claudeFull: (a) => claudeFull(a), checker, BIZ, loadSettings, saveSettings });
 modmain.register({ ipcMain, dialog, getWin: () => win, userDir: USER_DIR, claudeFull: (a) => claudeFull(withJob(a)), checker, log: (e) => BIZ.log(e), outputDirFor: (id, k) => BIZ.outputDirFor(id, k) });
 require('./pcmain.js').register({ ipcMain, BrowserWindow, desktopCapturer, screen, globalShortcut, getWin: () => win, loadSettings, anthropicBase: ANTHROPIC, log: (e) => BIZ.log(e), jobContext: (who) => { try { return BIZ.contextFor(undefined, who); } catch { return ''; } }, mock: process.env.AMO_PC_MOCK === '1' });
@@ -389,7 +401,7 @@ ipcMain.handle('check:run', async (_e, { agent, schedule, drawings, note, jobId 
     const report = await checker.runCheck({
       schedule, drawings, note: note || '',
       skill: library.skillFor(agent && agent.id, (agent && agent.rules && agent.rules.trim()) || STANDARD_SKILL),
-      claude: (a) => claudeFull({ ...a, who: 'cal' }), progress
+      claude: (a) => claudeFull({ ...a, who: 'cal', skills: false }), progress
     });
     // marked-up copies of the drawings that have findings; originals are never touched
     progress({ message: 'marking up the drawings', stage: 'markup' });
@@ -611,14 +623,15 @@ ipcMain.handle('file:saveText', async (_e, { text, name }) => {
 
 // ---------- Claude (Anthropic) ----------
 // every Claude call goes through here: the monthly cap check, the library (rulebook + ticked files for `who`), and the usage log
-async function claudeFull({ system, messages, maxTokens = 4000, model, tools, who = '', test = false }) {
+async function claudeFull({ system, messages, maxTokens = 4000, model, tools, who = '', test = false, skills }) {
   const s = loadSettings();
   const useModel = model || s.claudeModel;
   let tIn = 0, tOut = 0;
   try {
     if (!s.anthropicKey) throw new Error('No Claude API key. Add it in Settings.');
     if (!test) usage.guard('claude', s);
-    const sys = who ? `${system || ''}\n${library.promptBlock(who)}` : system;
+    // the agent's skills (or the ones ticked for this run; false when the caller already put them in), its rulebook and ticked files
+    const sys = who ? `${system || ''}${skills === false ? '' : library.skillsBlock(who, skills)}\n${library.promptBlock(who)}` : system;
     let msgs = messages, text = '', stop = '', searches = 0;
     for (let turn = 0; turn < 4; turn++) {   // server-side tools (web search) can pause a long turn: carry on where it stopped
       const res = await fetch(ANTHROPIC + '/v1/messages', {
@@ -794,7 +807,7 @@ Reply with JSON only, no markdown fences, exactly this shape:
 }`;
 
   const content = buildContent({ images, refText, refImages, text: `BRIEF:\n${brief}\n${extra ? '\nEXTRA INSTRUCTIONS:\n' + extra : ''}` });
-  const text = await claudeMessage({ system, who: agent.id, messages: [{ role: 'user', content }] });
+  const text = await claudeMessage({ system, who: agent.id, skills: false, messages: [{ role: 'user', content }] });
   return extractJson(text);
 });
 
@@ -810,6 +823,7 @@ Revise the post as instructed. Reply with JSON only in the same shape as the ori
   const text = await claudeMessage({
     system,
     who: agent.id,
+    skills: false,
     messages: [{ role: 'user', content: `CURRENT POST JSON:\n${JSON.stringify(post, null, 2)}\n\nINSTRUCTION: ${instruction}` }]
   });
   return extractJson(text);
@@ -839,7 +853,7 @@ Reply with JSON only, no markdown fences, exactly this shape:
   "fixedCaption": "the full improved post text ready to paste, or empty string if no changes needed"
 }`;
   const content = buildContent({ images, refText, refImages, text: `ORIGINAL BRIEF:\n${brief}\n\nPOST TO REVIEW (${agent.platform}):\n${post.caption}\n\nALT TEXT: ${post.altText || ''}` });
-  const text = await claudeMessage({ system, who: reviewer.id, messages: [{ role: 'user', content }], maxTokens: 1500 });
+  const text = await claudeMessage({ system, who: reviewer.id, skills: false, messages: [{ role: 'user', content }], maxTokens: 1500 });
   return extractJson(text);
 });
 

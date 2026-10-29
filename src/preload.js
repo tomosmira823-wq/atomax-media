@@ -19,6 +19,7 @@ contextBridge.exposeInMainWorld('office', {
   check: { run: call('check:run'), skill: call('check:skill'), last: call('check:last'), onProgress: (fn) => ipcRenderer.on('check:progress', (_e, p) => fn(p)) },
   mail: { read: call('mail:read'), list: call('mail:list'), folders: call('mail:folders'), start: call('mail:start'), decline: call('mail:decline'), reassign: call('mail:reassign'), reread: call('mail:reread'), defaults: call('mail:defaults'), setJobsFolder: call('mail:setJobsFolder'), pickParent: call('mail:pickParent'), engRun: call('eng:run'), open: call('mail:open') },
   dexMake: call('dex:make'),
+  o365: { excel: call('o365:excel'), word: call('o365:word') },
   proj: { info: call('proj:info'), suggest: call('proj:suggest'), pick: call('proj:pick'), setFolder: call('proj:setFolder'), gather: call('proj:gather'), open: call('proj:open') },
   biz: {
     get: call('biz:get'), jobs: call('biz:jobs'), taskSave: call('biz:taskSave'), taskDelete: call('biz:taskDelete'), setCurrent: call('biz:setCurrent'), current: call('biz:current'), jobSave: call('biz:jobSave'), jobDelete: call('biz:jobDelete'), parseDrawings: call('biz:parseDrawings'),

@@ -1,12 +1,13 @@
 // Eli's panel at reception: drop an email, see what it asks for, say "Yes, start" per task (job + project folder), and the right agent gets going.
+import { renderSkillPicker } from './skillpicker.js';
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-const NAMES = { dex: 'Dex · DXF maker', engineer: 'Ada · engineer', documents: 'Dot · documents', cal: 'Cal · drawing checker', milo: 'Milo · 3D modeller', theo: 'Theo · 3D builder', eli: 'Eli · job + folder setup', none: 'You (Tom)' };
+const NAMES = { dex: 'Dex · DXF maker', engineer: 'Ada · engineer', excel: 'Lex · Excel', word: 'Wren · Word', documents: 'Dot · documents', cal: 'Cal · drawing checker', milo: 'Milo · 3D modeller', theo: 'Theo · 3D builder', eli: 'Eli · job + folder setup', none: 'You (Tom)' };
 const clean = (e) => String(e && e.message || e).replace(/^Error invoking remote method '[^']+': (Error: )?/, '');
 
 export function initMailUI({ api, office, getAgents, onStart, goBack }) {
   const panel = $('#mailPanel');
-  let emails = [], cur = null, staged = [], startOpen = -1, jobs = [];
+  let emails = [], cur = null, staged = [], startOpen = -1, jobs = [], eliPicker = null, adaPicker = null;
   const eli = () => (getAgents() || []).find(a => a.role === 'email' && a.enabled);
   const colourOf = (id) => ((getAgents() || []).find(a => a.id === id) || {}).colour || '#868e96';
 
@@ -25,7 +26,7 @@ export function initMailUI({ api, office, getAgents, onStart, goBack }) {
     const a = eli(); if (a) office.setState(a.id, 'working', 'reading an email');
     try {
       const files = await Promise.all(staged.map(readFile));
-      cur = await api.mail.read({ files, text });
+      cur = await api.mail.read({ files, text, skills: eliPicker ? eliPicker.selected() : undefined });
       staged = []; $('#mlPaste').value = ''; $('#mlDrop').querySelector('b').textContent = 'Drop an email here';
       startOpen = -1; await refreshList(); render();
       if (a) office.setState(a.id, 'done', cur.asks.length + ' task' + (cur.asks.length === 1 ? '' : 's') + ' found');
@@ -78,6 +79,7 @@ export function initMailUI({ api, office, getAgents, onStart, goBack }) {
     let parent = def.saved;
     box.innerHTML = `<label><b>Job</b></label><select id="mlJob">${jobs.map(j => `<option value="${j.id}">${esc(j.number)} ${esc(j.name || '')}</option>`).join('')}<option value="__new">+ New job from this email</option></select>
       <div id="mlNew" hidden class="mlrow"><input id="mlNum" placeholder="Job number" value="${esc(e.jobNumber && !jobs.some(j => j.number.toLowerCase() === String(e.jobNumber).toLowerCase()) ? e.jobNumber : def.nextNumber)}" style="width:130px"><input id="mlName" placeholder="Job name / site" value="${esc(e.site || e.subject)}" style="flex:1"></div>
+      ${a.agent === 'engineer' ? '<div id="mlAdaSkills"></div>' : ''}
       <label><b>Project folder</b> <span class="bsub">(${a.agent === 'none' ? 'where the email is filed' : esc((NAMES[a.agent] || '').split(' ·')[0]) + ' reads from it and saves into it'})</span></label><div id="mlFolders" class="bsub">…</div>
       <div class="mlrow" style="margin-top:4px"><button class="bprim" id="mlGo">${a.agent === 'none' ? 'Add to the board' : 'Start ' + esc((NAMES[a.agent] || '').split(' ·')[0])}</button><button id="mlCancel">Cancel</button></div><div class="err" id="mlStartErr" style="color:#e03131;font-size:12.5px"></div>`;
     const sel = $('#mlJob'); sel.value = e.jobId && jobs.some(j => j.id === e.jobId) ? e.jobId : (jobs.length ? jobs[0].id : '__new');
@@ -102,6 +104,7 @@ export function initMailUI({ api, office, getAgents, onStart, goBack }) {
       $('#mlPick').onclick = async () => { const p = await api.proj.pick(); if (p) { folder = p; fb.innerHTML = `<div class="mlsug"><input type="radio" checked><span>${esc(p)}</span></div><button id="mlPick">Choose another…</button>`; $('#mlPick').onclick = () => showFolders(); } };
     };
     sel.addEventListener('change', showFolders); await showFolders();
+    adaPicker = a.agent === 'engineer' ? await renderSkillPicker(api, $('#mlAdaSkills'), 'engineer') : null;
     $('#mlCancel').onclick = () => { startOpen = -1; render(); };
     $('#mlGo').onclick = async () => {
       $('#mlStartErr').textContent = ''; $('#mlGo').disabled = true;
@@ -112,7 +115,7 @@ export function initMailUI({ api, office, getAgents, onStart, goBack }) {
         cur = r.email; startOpen = -1; await refreshList(); render();
         if (a.agent === 'engineer') {   // Ada works it straight away; the note lands in the job folder
           cur.asks[i].status = 'running'; render();
-          try { cur = (await api.mail.engRun({ id: e.id, ask: i })).email; } catch (err) { cur.asks[i].status = 'started'; cur.asks[i].error = clean(err); }
+          try { cur = (await api.mail.engRun({ id: e.id, ask: i, skills: adaPicker ? adaPicker.selected() : undefined })).email; } catch (err) { cur.asks[i].status = 'started'; cur.asks[i].error = clean(err); }
           render();
         }
         onStart && onStart({ ask: a, email: cur, task: r.task, job: r.job });
@@ -122,7 +125,7 @@ export function initMailUI({ api, office, getAgents, onStart, goBack }) {
   $('#mailBack').addEventListener('click', () => goBack());
 
   return {
-    async show() { panel.classList.add('open'); await refreshList().catch(() => {}); if (!cur && emails[0]) cur = emails[0]; render(); },
+    async show() { panel.classList.add('open'); eliPicker = await renderSkillPicker(api, $('#mlSkills'), 'email'); await refreshList().catch(() => {}); if (!cur && emails[0]) cur = emails[0]; render(); },
     hide() { panel.classList.remove('open'); },
     _state: () => ({ cur, staged: staged.length })
   };
