@@ -40,6 +40,7 @@
   /* panels */
   .panel { position: fixed; top: 70px; bottom: 16px; width: 360px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); backdrop-filter: blur(14px) saturate(1.2); z-index: 10; display: flex; flex-direction: column; overflow: hidden; box-shadow: var(--shadow); }
   #brief { left: 16px; width: 340px; }
+  body:not(.room-media) #brief, body:not(.room-media) #board { display: none; }
   #board { right: 16px; width: 420px; }
   .panel h2 { margin: 0; padding: 14px 18px; font-size: 11px; text-transform: uppercase; letter-spacing: 1.4px; color: var(--muted); border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 8px; font-weight: 700; }
   .panel .body { padding: 14px 18px 18px; overflow: auto; flex: 1; }
@@ -158,6 +159,7 @@
   .mlask .mt { display: flex; justify-content: space-between; gap: 8px; align-items: flex-start; } .mlask .md { font-size: 12.5px; color: #495057; margin-top: 4px; white-space: pre-wrap; }
   .mlstart { margin-top: 10px; padding: 10px; background: #f8f9fb; border-radius: 6px; display: flex; flex-direction: column; gap: 6px; } .mlstart select, .mlstart input { font: inherit; font-size: 13px; padding: 6px; border: 1px solid #cbd2dc; border-radius: 5px; background: #fff; color: #212529; }
   .mlsug { display: flex; gap: 8px; align-items: flex-start; font-size: 12.5px; padding: 4px 0; } .mlsug span { word-break: break-all; } .mlrow { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+  .mlgive { font-size: 12.5px; color: #495057; } .mlgive select { font: inherit; font-size: 12.5px; padding: 3px 6px; border: 1px solid #cbd2dc; border-radius: 5px; background: #fff; color: #212529; margin-left: 4px; }
   .mlreply { margin-top: 10px; font-size: 12.5px; } .mlreply pre { white-space: pre-wrap; font: inherit; background: #fff; border: 1px solid #dde1e8; border-radius: 6px; padding: 8px; margin: 4px 0; }
   #filePanel, #serverPanel { display: none; right: 16px; left: auto; width: min(980px, 64vw); background: #f8f9fb; color: #212529; border-color: #cbd2dc; }
   #filePanel.open, #serverPanel.open { display: flex; } body.room-side #brief, body.room-side #board { display: none; }

@@ -382,11 +382,11 @@ export class Office {
     // ---- bottom row ----
     const doorBack = (R) => [R.cx - 1.6, R.cx + 1.6];
     const woodTex = (R, hue) => new THREE.MeshStandardMaterial({ map: this.#woodFloor(R.w, R.d, { hue }), roughness: 0.55, metalness: 0.02 });
-    this.#roomShell(RECEP, { name: 'RECEPTION', floor: woodTex(RECEP, 30), wallDoorZ: null, backDoorX: doorBack(RECEP), lowBack: true });
+    this.#roomShell(RECEP, { name: 'RECEPTION', floor: woodTex(RECEP, 30), wallDoorZ: null, backDoorX: doorBack(RECEP) });
     const docsFloor = new THREE.MeshStandardMaterial({ color: 0xdfe3ea, roughness: 0.3, metalness: 0.1 });
-    this.#roomShell(DOCS, { name: 'JOBS · APPROVALS', floor: docsFloor, wallDoorZ: [DOCS.cz - 0.5, DOCS.cz + 1.5], backDoorX: doorBack(DOCS), accent: 0xb197fc, lowBack: true });
-    this.#roomShell(MEET, { name: 'MEETING ROOM', floor: woodTex(MEET, 28), wallDoorZ: [MEET.cz - 0.5, MEET.cz + 1.5], backDoorX: doorBack(MEET), lowBack: true });
-    this.#roomShell(LOUNGE, { name: 'LOUNGE', floor: woodTex(LOUNGE, 32), wallDoorZ: [LOUNGE.cz - 0.5, LOUNGE.cz + 1.5], backDoorX: doorBack(LOUNGE), lowBack: true });
+    this.#roomShell(DOCS, { name: 'JOBS · APPROVALS', floor: docsFloor, wallDoorZ: [DOCS.cz - 0.5, DOCS.cz + 1.5], backDoorX: doorBack(DOCS), accent: 0xb197fc });
+    this.#roomShell(MEET, { name: 'MEETING ROOM', floor: woodTex(MEET, 28), wallDoorZ: [MEET.cz - 0.5, MEET.cz + 1.5], backDoorX: doorBack(MEET) });
+    this.#roomShell(LOUNGE, { name: 'LOUNGE', floor: woodTex(LOUNGE, 32), wallDoorZ: [LOUNGE.cz - 0.5, LOUNGE.cz + 1.5], backDoorX: doorBack(LOUNGE) });
     // File Room (light floor, cabinets on the west wall) and Server Room (dark floor, racks), both opening onto the corridor
     const fileFloor = new THREE.MeshStandardMaterial({ color: 0xdfe3ea, roughness: 0.3, metalness: 0.1 });
     const serverFloor = new THREE.MeshStandardMaterial({ color: 0x1d2433, roughness: 0.4, metalness: 0.2 });
@@ -1025,7 +1025,7 @@ export class Office {
     if (this.fp) this.exitFirstPerson(true);
     const [dx, dz] = DRAW_DESK;
     const spots = {
-      overview: { p: [92, 84, 116], t: [30, 0, 6] },
+      overview: { p: [76, 70, 98], t: [27, 0, 6] },
       ...(this.newRooms ? { file: { p: [FILE.cx + 8, 6.4, FILE.z1 + 8], t: [FILE.cx - 1.5, 1.0, FILE.cz] }, server: { p: [SERVER.cx + 8, 6.4, SERVER.z1 + 8], t: [SERVER.cx - 1.5, 1.2, SERVER.cz] } } : {}),
       media: { p: [26, 19, 32], t: [1, 0.5, 0.5] },
       drawing: { p: [DRAW.cx + 9, 17, 32], t: [DRAW.cx + 1.5, 0.5, 0] },

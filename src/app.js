@@ -96,7 +96,7 @@ function closeModals() {
 document.querySelectorAll('[data-close]').forEach(b => b.addEventListener('click', closeModals));
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeModals(); });
 document.querySelectorAll('.modal').forEach(m => m.addEventListener('mousedown', (e) => { if (e.target === m) closeModals(); }));
-document.querySelectorAll('.panel .collapse').forEach(b => { if (['deskBack', 'dexBack', 'modelBack'].includes(b.id)) return; b.addEventListener('click', () => b.closest('.panel').classList.toggle('collapsed')); }); // the room panels' x closes them (own handler), it must not also shrink them
+document.querySelectorAll('.panel .collapse').forEach(b => { if (['deskBack', 'dexBack', 'modelBack', 'fileBack', 'srvBack', 'mailBack', 'bdBack'].includes(b.id)) return; b.addEventListener('click', () => b.closest('.panel').classList.toggle('collapsed')); }); // the room panels' x closes them (own handler), it must not also shrink them
 ['#checkPanel', '#dexPanel', '#modelPanel'].forEach(sel => $(sel).classList.remove('collapsed'));
 
 // ---------- settings ----------
@@ -591,7 +591,8 @@ function goRoom(where) {
   if (where === 'file') roomsUI.showFile(); else roomsUI.hideFile();
   if (where === 'server') roomsUI.showServer(); else roomsUI.hideServer();
   if (where === 'email') mailUI.show(); else mailUI.hide();
-  ['#checkPanel', '#dexPanel', '#modelPanel', '#modPanel'].forEach(sel => $(sel).classList.remove('collapsed'));
+  ['#checkPanel', '#dexPanel', '#modelPanel', '#modPanel', '#filePanel', '#serverPanel', '#mailPanel', '#boardPanel'].forEach(sel => { const p = $(sel); if (p) p.classList.remove('collapsed'); });
+  document.body.classList.toggle('room-media', where === 'media');   // the brief and the posts board belong to the media office only
   if (where === 'modeler') modellerUI.show(); else modellerUI.hide();
   if (where === 'desk') { checkUI.show(); bizUI.fillJobSelect($('#checkJob')); } else checkUI.hide();
   if (where === 'drafting') { dexUI.show(); bizUI.fillJobSelect($('#dexJob')); dexMake.refresh(); } else dexUI.hide();

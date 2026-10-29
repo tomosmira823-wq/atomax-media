@@ -50,12 +50,15 @@ export function initMailUI({ api, office, getAgents, onStart, goBack }) {
       ${e.asks.length ? e.asks.map((a, i) => askCard(a, i)).join('') : '<div class="bhint">Eli found nothing to do in this one.</div>'}
       ${e.reply ? `<div class="mlreply"><b>Suggested reply</b><pre>${esc(e.reply)}</pre><button id="mlCopy">Copy reply</button> <button id="mlOpenE">Open the email files</button></div>` : ''}`;
     m.querySelectorAll('[data-yes]').forEach(b => b.addEventListener('click', () => { startOpen = +b.dataset.yes; render(); fillStart(+b.dataset.yes); }));
+    m.querySelectorAll('[data-give]').forEach(s => s.addEventListener('change', async () => { cur = await api.mail.reassign({ id: e.id, ask: +s.dataset.give, agent: s.value }); if (startOpen === +s.dataset.give) startOpen = -1; render(); }));
     m.querySelectorAll('[data-no]').forEach(b => b.addEventListener('click', async () => { cur = await api.mail.decline({ id: e.id, ask: +b.dataset.no }); refreshList(); render(); }));
     const cp = $('#mlCopy'); if (cp) cp.onclick = () => { navigator.clipboard.writeText(e.reply).catch(() => {}); cp.textContent = 'Copied'; };
     const oe = $('#mlOpenE'); if (oe) oe.onclick = () => api.mail.open({ id: e.id });
   }
   function askCard(a, i) {
-    const who = `<span class="chipA"><i style="background:${colourOf(a.agent)}"></i>${esc(NAMES[a.agent] || a.agent)}</span>`;
+    const who = a.status === 'proposed'
+      ? `<label class="mlgive">Give to <select data-give="${i}">${Object.entries(NAMES).map(([k, v]) => `<option value="${k}" ${k === a.agent ? 'selected' : ''}>${esc(v)}</option>`).join('')}</select></label>`
+      : `<span class="chipA"><i style="background:${colourOf(a.agent)}"></i>${esc(NAMES[a.agent] || a.agent)}</span>`;
     const state = a.status === 'started' ? '<span class="bsub">✓ Started</span>' : a.status === 'declined' ? '<span class="bsub">Not now</span>' : `<div class="mlrow"><button class="bprim" data-yes="${i}">Yes, start</button><button data-no="${i}">Not now</button></div>`;
     return `<div class="mlask ${a.status}"><div class="mt"><div><b>${esc(a.title)}</b><div style="margin-top:4px">${who}${a.due ? ' <span class="bsub">due ' + esc(a.due) + '</span>' : ''}</div></div>${state}</div><div class="md">${esc(a.detail)}</div>${startOpen === i && a.status === 'proposed' ? `<div class="mlstart" id="mlStart"></div>` : ''}</div>`;
   }

@@ -119,5 +119,23 @@
     return 'both panels closed';
   });
 
+  await step('Closing and reopening the rooms shows the panels again (not collapsed)', async () => {
+    for (const [room, sel] of [['file', '#filePanel'], ['server', '#serverPanel'], ['email', '#mailPanel']]) {
+      window.__goRoom(room);
+      await until(() => $(sel).classList.contains('open'), 60000, room + ' open');
+      const back = $(sel).querySelector('.collapse'); back.click();
+      await until(() => !$(sel).classList.contains('open'), 30000, room + ' closed');
+      window.__goRoom(room);
+      await until(() => $(sel).classList.contains('open'), 60000, room + ' reopened');
+      if ($(sel).classList.contains('collapsed')) throw new Error(room + ' panel came back collapsed');
+      window.__goRoom('overview');
+    }
+    if (getComputedStyle($('#brief')).display !== 'none') throw new Error('media brief shows in the whole office view');
+    window.__goRoom('media'); await wait(500);
+    if (getComputedStyle($('#brief')).display === 'none') throw new Error('media brief missing in the media office');
+    window.__goRoom('overview');
+    return 'file, server and email panels reopen full size; brief only in the media office';
+  });
+
   return { steps: report.steps.map(s => ({ name: s.name, ok: s.ok, info: s.info, err: s.err })), errors: report.errors };
 })()

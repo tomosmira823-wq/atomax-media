@@ -32,9 +32,13 @@ const SYMBOLS = {
   board: () => ({ len: 10, w: 10, end: true, inside: true, prims: [L(0, 0, 0, -2), P([[-9, -2], [9, -2], [9, -10], [-9, -10]], true)] }),
   earth: () => ({ len: 6, w: 3.5, end: true, prims: [L(0, 0, 0, -3), L(-3, -3, 3, -3), L(-2, -4.3, 2, -4.3), L(-1, -5.6, 1, -5.6)] }),
   spare: () => ({ len: 6, w: 1.5, end: true, prims: [L(0, 0, 0, -6)] }),
+  // earthing: an earth rod (electrode), a disconnecting / test link, an earth mesh (grid)
+  electrode: () => ({ len: 13.5, w: 2, end: true, prims: [L(0, 0, 0, -4), P([[-0.6, -4], [0.6, -4], [0.6, -12], [-0.6, -12]], true), P([[-0.6, -12], [0.6, -12], [0, -13.5]], true)] }),
+  link: () => ({ len: 12, w: 2, prims: [L(0, 0, 0, -3), C(0, -3.8, 0.8), C(0, -8.2, 0.8), L(0.8, -3.8, 0.8, -8.2), L(0, -9, 0, -12)] }),
+  grid: () => ({ len: 10, w: 5.5, end: true, prims: [L(0, 0, 0, -2), P([[-5, -2], [5, -2], [5, -10], [-5, -10]], true), L(-1.67, -2, -1.67, -10), L(1.67, -2, 1.67, -10), L(-5, -4.67, 5, -4.67), L(-5, -7.33, 5, -7.33)] }),
   line: () => ({ len: 8, w: 1, prims: [L(0, 0, 0, -8)] }),
 };
-const ALIASES = { mcb: 'breaker', mccb: 'breaker', acb: 'breaker', cb: 'breaker', vcb: 'breaker', rcbo: 'breaker', 'circuit breaker': 'breaker', switch: 'isolator', disconnector: 'isolator', 'switch disconnector': 'isolator', 'fuse switch': 'switchfuse', 'fused switch': 'switchfuse', tx: 'transformer', 'current transformer': 'ct', kwh: 'meter', 'distribution board': 'board', db: 'board', panel: 'board', mcc: 'board', dno: 'supply', incomer: 'supply', 'mains supply': 'supply', gen: 'generator', genset: 'generator', 'diesel generator': 'generator', conductor: 'line' };
+const ALIASES = { mcb: 'breaker', mccb: 'breaker', acb: 'breaker', cb: 'breaker', vcb: 'breaker', rcbo: 'breaker', 'circuit breaker': 'breaker', switch: 'isolator', disconnector: 'isolator', 'switch disconnector': 'isolator', 'fuse switch': 'switchfuse', 'fused switch': 'switchfuse', tx: 'transformer', 'current transformer': 'ct', kwh: 'meter', 'distribution board': 'board', db: 'board', panel: 'board', mcc: 'board', dno: 'supply', incomer: 'supply', 'mains supply': 'supply', gen: 'generator', genset: 'generator', 'diesel generator': 'generator', conductor: 'line', rod: 'electrode', 'earth rod': 'electrode', 'earth electrode': 'electrode', 'test link': 'link', 'disconnecting link': 'link', 'earth link': 'link', mesh: 'grid', 'earth mesh': 'grid', 'earth mat': 'grid', 'earth grid': 'grid', equipment: 'board', inverter: 'board', switchgear: 'board', 'earth conductor': 'cable', bond: 'cable' };
 const symbolOf = (name) => { const n = String(name || '').toLowerCase().trim(); return SYMBOLS[n] ? n : ALIASES[n] || (SYMBOLS[n.replace(/s$/, '')] ? n.replace(/s$/, '') : 'line'); };
 
 const moved = (p, dx, dy) => {
@@ -109,7 +113,7 @@ function layoutSld(spec) {
   const tbW = 130, tbH = 32, tbx = Math.max(right - tbW, 160), tby = y - tbH;
   prims.push(P([[tbx, tby], [tbx + tbW, tby], [tbx + tbW, tby + tbH], [tbx, tby + tbH]], true, 'SLD-BORDER'));
   prims.push(L(tbx, tby + 14, tbx + tbW, tby + 14, 'SLD-BORDER'));
-  prims.push({ t: 'mtext', x: tbx + 3, y: tby + tbH - 3, w: tbW - 6, h: 3.5, text: wrap(spec.title || 'SINGLE LINE DIAGRAM', 70).join('\n'), attach: 1, layer: 'SLD-TEXT' });
+  prims.push({ t: 'mtext', x: tbx + 3, y: tby + tbH - 3, w: tbW - 6, h: 3.5, text: wrap(spec.title || (spec.kind === 'earthing' ? 'EARTHING SCHEMATIC' : 'SINGLE LINE DIAGRAM'), 70).join('\n'), attach: 1, layer: 'SLD-TEXT' });
   prims.push({ t: 'mtext', x: tbx + 3, y: tby + 11, w: tbW - 6, h: TH, text: [`DWG No: ${spec.drawingNumber || 'TBC'}   REV: ${spec.revision || 'P01'}`, `DRAWN: Dex (Atomax Media Office) · ${new Date().toISOString().slice(0, 10)}`, 'DRAFT FOR CHECKING'].join('\n'), attach: 1, layer: 'SLD-TEXT' });
   const m = 15, bx = -m - 10, bxr = Math.max(right, tbx + tbW) + m, byb = tby - m, byt = maxY + m + 10;
   prims.push(P([[bx, byb], [bxr, byb], [bxr, byt], [bx, byt]], true, 'SLD-BORDER'));
@@ -165,11 +169,14 @@ function toSvg(prims, b) {
 // ---------- the Claude side ----------
 const SYSTEM = `You are Dex, the DXF maker in the Atomax-UK drawing room. You turn an engineer's request plus the project's files into a drawing spec. The app lays the drawing out and writes the DXF, so you never give coordinates.
 
-Today you can make SINGLE LINE DIAGRAMS. Describe them as boards (busbars). Each board has incomers (chains drawn above the busbar, ending on it) and feeders (chains drawn below it). A chain is a list of items from top to bottom, each { "symbol": one of supply, generator, transformer, breaker, isolator, switchfuse, fuse, contactor, ct, meter, ups, cable, line, and as the LAST item of a feeder only: board, load, motor, earth, spare; "label": the text beside it }.
+You can make two kinds of drawing, both described the same way:
+- "sld": single line diagrams.
+- "earthing": earthing schematics / earthing design drawings. The "board" is the main earth bar (MET) or an earth bar, its feeders are the earth conductors and bonds (use "cable" for the conductor, labelled with its size and type) ending at what they earth: the equipment ("board", e.g. transformer, inverter, BESS, switchgear, fence), an earth rod ("electrode") or the earth mesh ("grid"); use "link" for disconnecting / test links. Put fault levels and earth fault currents from the documents in the notes. Conductor sizes come from the documents or the engineer; if they are not given, write TBC and say in the notes that they need sizing against the earth fault current (adiabatic check) and that soil resistivity is needed for the electrode / mesh design.
+Describe them as boards (busbars). Each board has incomers (chains drawn above the busbar, ending on it) and feeders (chains drawn below it). A chain is a list of items from top to bottom, each { "symbol": one of supply, generator, transformer, breaker, isolator, switchfuse, fuse, contactor, ct, meter, ups, cable, line, link, and as the LAST item of a feeder only: board, load, motor, earth, electrode, grid, spare; "label": the text beside it }.
 Labels: short, exactly as an engineer would write them, using what the project files say (ratings, cable sizes, tags, board names). Use a new line (\\n) between parts of a label, e.g. "Q1\\n630A TP MCCB". Do not invent ratings, cable sizes or tags that are not in the request or the files: if one is unknown write "TBC" in the label and list it in "notes".
 If something essential is missing (which boards, how many feeders, what the supply is) and the files do not say, ask: reply with {"questions": ["...", "..."]} (max 4 short questions) and nothing else.
 Otherwise reply with JSON only, no markdown:
-{"kind":"sld","title":"...","drawingNumber":"... or TBC","revision":"P01","boards":[{"label":"MAIN LV BOARD\\n400V 3PH 4W 50Hz","incomers":[{"label":"optional text above","chain":[...]}],"feeders":[{"label":"optional text under the feeder","chain":[...]}]}],"notes":["..."],"summary":"one line for the engineer: what you drew and what is TBC"}`;
+{"kind":"sld or earthing","title":"...","drawingNumber":"... or TBC","revision":"P01","boards":[{"label":"MAIN LV BOARD\\n400V 3PH 4W 50Hz","incomers":[{"label":"optional text above","chain":[...]}],"feeders":[{"label":"optional text under the feeder","chain":[...]}]}],"notes":["..."],"summary":"one line for the engineer: what you drew and what is TBC"}`;
 
 function parseReply(text) {
   const s = String(text || '').trim().replace(/^```(?:json)?/i, '').replace(/```$/, '').trim();
@@ -190,4 +197,4 @@ function make(spec, outDir, baseName) {
   return { path: file, svg, entities: prims.length };
 }
 
-module.exports = { SYSTEM, SYMBOLS, symbolOf, layoutSld, writeDxf, toSvg, parseReply, make };
+module.exports = { SYSTEM, ALIASES, SYMBOLS, symbolOf, layoutSld, writeDxf, toSvg, parseReply, make };

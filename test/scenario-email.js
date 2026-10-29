@@ -64,5 +64,14 @@
     return 'started, ' + e.asks.filter(a => a.status === 'proposed').length + ' still waiting';
   });
 
+  await step('Give to: Tom moves a task Eli gave to nobody onto Dot', async () => {
+    window.__goRoom('email');
+    await until(() => document.querySelector('#mlMain [data-give="1"]'), 60000, 'Give to on the second task');
+    const sel = document.querySelector('#mlMain [data-give="1"]'); sel.value = 'documents'; sel.dispatchEvent(new Event('change'));
+    let e; for (let i = 0; i < 100; i++) { await wait(150); e = (await api.mail.list())[0]; if (e.asks[1].agent === 'documents') break; }
+    if (e.asks[1].agent !== 'documents') throw new Error('still ' + e.asks[1].agent);
+    return 'task 2 now for Dot';
+  });
+
   return { steps: report.steps, errors: report.errors };
 })()

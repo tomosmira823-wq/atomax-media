@@ -10,9 +10,9 @@ const library = require('./library');
 const dxfmaker = require('./dxfmaker');
 
 const AGENTS = {
-  dex: 'Dex — DXF maker and fixer: draws NEW single line diagrams (SLDs) as DXF from the project files, and fixes text on existing DXFs',
+  dex: 'Dex — DXF maker and fixer: draws NEW electrical drawings as DXF from the project files and attached documents (single line diagrams, earthing schematics / earthing design drawings), and fixes text on existing DXFs',
   cal: 'Cal — drawing checker: checks drawings against cable schedules and makes red markups',
-  documents: 'Dot — documents: drafts Atomax-format Word documents (reports, transmittals, RAMS, method statements, letters)',
+  documents: 'Dot — documents: drafts Atomax-format Word documents (reports, study reports, quotations and fee proposals, transmittals, RAMS, method statements, letters)',
   milo: 'Milo — 3D modeller: changes an existing 3D model (adds a pipe, a rail, moves equipment)',
   theo: 'Theo — 3D builder: builds a new 3D model from scratch',
   none: 'Tom himself: anything the agents cannot do (pricing, meetings, phone calls, site visits, replies that need a decision)'
@@ -22,6 +22,11 @@ const AGENT_NAME = { dex: 'Dex', cal: 'Cal', documents: 'Dot', milo: 'Milo', the
 const EMAIL_SYSTEM = `You are Eli, the email checker at the Atomax-UK reception. Atomax-UK is an electrical engineering consultancy (electrical CAD, drawings, schedules, document control).
 Read the email (and any screenshots or attachments) and work out exactly what the sender is asking Atomax to do. Split it into separate tasks and give each one to the agent who can do it:
 ${Object.entries(AGENTS).map(([k, v]) => `- "${k}": ${v}`).join('\n')}
+Rules for splitting and giving out work:
+- Every separate piece of work the email names is its own task, even when the email lists them as one block or only asks for a price.
+- Give a task to an agent whenever that agent can produce the drawing or document for it, or a first draft of it, even if engineering calculations or data are also needed (say what is needed in "detail", e.g. "draft earthing schematic from the fault level study; soil resistivity still needed for the design"). Use "none" only when no agent can produce any part of it (a pure power-system study run in other software, a phone call, a site visit, a price).
+- If the email asks for a quote or fee proposal, add one task for "documents" to draft the quotation letter listing every item.
+- Read attached PDFs and drawings: they tell you what an agent can work from (an SLD, a fault level study, cable data).
 Only list real asks from the email. Do not invent work. Copy site names, job numbers, drawing numbers, ratings and dates exactly as written.
 Reply with JSON only, no markdown:
 {"from":"name <address>","subject":"...","date":"...","summary":"two lines max: what they want","site":"site or project name, as written","jobNumber":"a job number if one is written (e.g. X11475), else empty","asks":[{"title":"short task title, e.g. Draw an SLD for the Test site LV board","detail":"everything the agent needs from the email for this task","agent":"dex|cal|documents|milo|theo|none","kind":"sld|dxf-fix|drawing-check|document|model|other","due":"deadline if given, else empty"}],"reply":"a short suggested reply Tom could send back, in plain British English"}`;
@@ -130,6 +135,7 @@ function register({ ipcMain, dialog, shell, getWin, userDir, claudeFull, checker
     a.status = 'started'; a.jobId = job.id; a.taskId = task.id; e.jobId = job.id; save(list);
     return { email: e, task, job: { id: job.id, number: job.number, name: job.name, folder: job.folder || '' } };
   }));
+  ipcMain.handle('mail:reassign', wrap(({ id, ask, agent }) => { const list = load(), e = list.find(x => x.id === id); if (!e || !e.asks[ask] || !AGENTS[agent]) throw new Error('Cannot change that task'); e.asks[ask].agent = agent; save(list); return e; }));
   ipcMain.handle('mail:decline', wrap(({ id, ask }) => { const list = load(), e = list.find(x => x.id === id); if (e && e.asks[ask]) { e.asks[ask].status = 'declined'; save(list); } return e; }));
   ipcMain.handle('mail:open', wrap(({ id }) => { shell.openPath(path.join(DIR(), id)); return true; }));
 

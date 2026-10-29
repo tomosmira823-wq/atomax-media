@@ -17,7 +17,7 @@ contextBridge.exposeInMainWorld('office', {
     test: call('ai:test')
   },
   check: { run: call('check:run'), skill: call('check:skill'), last: call('check:last'), onProgress: (fn) => ipcRenderer.on('check:progress', (_e, p) => fn(p)) },
-  mail: { read: call('mail:read'), list: call('mail:list'), folders: call('mail:folders'), start: call('mail:start'), decline: call('mail:decline'), open: call('mail:open') },
+  mail: { read: call('mail:read'), list: call('mail:list'), folders: call('mail:folders'), start: call('mail:start'), decline: call('mail:decline'), reassign: call('mail:reassign'), open: call('mail:open') },
   dexMake: call('dex:make'),
   proj: { info: call('proj:info'), suggest: call('proj:suggest'), pick: call('proj:pick'), setFolder: call('proj:setFolder'), gather: call('proj:gather'), open: call('proj:open') },
   biz: {
