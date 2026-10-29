@@ -18,8 +18,15 @@ function claudeReply(body) {
     calls.push({ eli: true, images: (userText.match(/"type":"image"/g) || []).length, hasBody: /SLD|single line/i.test(userText) });
     return JSON.stringify({ from: 'Sam Client <sam@client.co.uk>', subject: 'Test site SLD', date: '29 Oct 2026', summary: 'Sam needs a single line diagram for the LV board at the Test site by Friday.', site: 'Test site', jobNumber: 'X22001',
       asks: [{ title: 'Draw an SLD for the Test site LV board', detail: '1000kVA transformer, 1600A ACB incomer, three outgoing ways (DB-01 250A, pump 160A, spare 63A).', agent: 'dex', kind: 'sld', due: 'Friday' },
-             { title: 'Confirm the price for the SLD', detail: 'Sam asks what it will cost.', agent: 'none', kind: 'other', due: '' }],
+             { title: 'Confirm the price for the SLD', detail: 'Sam asks what it will cost.', agent: 'none', kind: 'other', due: '' },
+             { title: 'Set up a new job and project folder', detail: 'No job number given; allocate one and file the email.', agent: 'eli', kind: 'other', due: '' },
+             { title: 'Check the fault level at the 33kV board', detail: 'First-pass IEC 60909 check from the attached study.', agent: 'engineer', kind: 'other', due: '' }],
       reply: 'Hi Sam, thanks. We will send the SLD by Friday. Tom' });
+  }
+  // ---- Ada (general engineer) ----
+  if (/You are Ada, the general engineer/.test(sys)) {
+    calls.push({ ada: true, pdfs: (userText.match(/"type":"document"/g) || []).length, jobCtx: /JOB CONTEXT/.test(sys) });
+    return '# Fault level check, 33kV board\n\n## Summary\nFirst-pass max 3-phase fault level about 3.9 kA at 33kV, in line with the study (3.85 kA). A full PowerFactory study is still needed for the minimum case.\n\n## Inputs used\n- Grid 3.85 kA, X/R 4.14 (study table 1)\n\n## Method and working\nIEC 60909 c = 1.1 ...\n\n## Results\n| Node | Ik3 max |\n|---|---|\n| 33kV SWB | 3.9 kA |\n\n## Limits and what is still needed\nMinimum case needs the full network model.';
   }
   // ---- Dex (DXF maker) ----
   if (/You are Dex, the DXF maker/.test(sys)) {

@@ -688,7 +688,7 @@ export class Office {
     }
     for (const d of (Array.isArray(drawing) ? drawing : (drawing ? [drawing] : []))) { if (d.role === 'drafter') this.#addDrafter(d); else this.#addDrawingAgent(d, a_rugs); }
     for (const d of (Array.isArray(modelling) ? modelling : [])) this.#addModelling(d);
-    for (const d of (Array.isArray(docs) ? docs : [])) this.#addDocsAgent(d);
+    (Array.isArray(docs) ? docs : []).forEach((d, i) => this.#addDocsAgent(d, i));
     for (const d of (Array.isArray(email) ? email : [])) this.#addEmailAgent(d);
     this.#buildNav();
     for (const a of this.agents.values()) a.path = null;
@@ -919,8 +919,8 @@ export class Office {
   }
 
   // Dot (documents) sits at her desk in the Documents room next to the Approvals and Issue-pack counters
-  #addDocsAgent(data) {
-    const colour = new THREE.Color(data.colour || '#b197fc'), dx = DOCS.x0 + 3.4, dz = DOCS.z0 + 6.0;
+  #addDocsAgent(data, slot = 0) {
+    const colour = new THREE.Color(data.colour || '#b197fc'), dx = DOCS.x0 + 3.4, dz = slot ? DOCS.z0 + 2.4 : DOCS.z0 + 6.0;   // Dot at the front desk, Ada behind her
     const desk = this.#desk(colour); desk.position.set(dx, 0, dz); desk.rotation.y = 0; this.scene.add(desk); desk.updateMatrixWorld(true);
     const front = new THREE.Vector3(0, 0, 1).applyQuaternion(desk.quaternion);
     const chair = this.#officeChair(colour); chair.position.set(dx, 0, dz).addScaledVector(front, 1.15); chair.rotation.y = Math.atan2(-front.x, -front.z); this.scene.add(chair);
@@ -932,7 +932,7 @@ export class Office {
     el.innerHTML = `<b>${data.name}</b> · ${data.platform} <span class="st"></span>`;
     const label = new CSS2DObject(el); label.position.set(0, 2.6, 0); group.add(label);
     this.agents.set(data.id, { data, group, desk, chair, seat, faceSeat, zone: 'docs', state: 'idle', label, el, walkTarget: null, waypoint: null, faceTo: null, wait: Math.random() * 3, t: Math.random() * 10, blink: 2 + Math.random() * 3 });
-    this.docsAgentRoots = [desk, group, chair];
+    this.docsAgentRoots = [...(this.docsAgentRoots || []), desk, group, chair];
   }
 
   // the email checker works behind the reception counter: a monitor on the counter, his chair behind it, facing the room

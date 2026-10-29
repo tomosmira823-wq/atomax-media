@@ -15,16 +15,20 @@ const AGENTS = {
   documents: 'Dot — documents: drafts Atomax-format Word documents (reports, study reports, quotations and fee proposals, transmittals, RAMS, method statements, letters)',
   milo: 'Milo — 3D modeller: changes an existing 3D model (adds a pipe, a rail, moves equipment)',
   theo: 'Theo — 3D builder: builds a new 3D model from scratch',
+  eli: 'Eli himself — admin: sets up a new job number and its project folder (with Drawings, Documents and Correspondence folders) and files the email and attachments in it',
+  engineer: 'Ada — general engineer: works through calculations, studies, feasibility checks and technical questions with Claude from the email, attachments and project files (e.g. a first-pass fault level check, cable sizing, an earthing estimate, can this be done without PowerFactory) and writes a technical note into the job folder, saying plainly what still needs proper study software or data',
   none: 'Tom himself: anything the agents cannot do (pricing, meetings, phone calls, site visits, replies that need a decision)'
 };
-const AGENT_NAME = { dex: 'Dex', cal: 'Cal', documents: 'Dot', milo: 'Milo', theo: 'Theo', none: '' };
+const AGENT_NAME = { dex: 'Dex', cal: 'Cal', documents: 'Dot', milo: 'Milo', theo: 'Theo', eli: 'Eli', engineer: 'Ada', none: '' };
 
 const EMAIL_SYSTEM = `You are Eli, the email checker at the Atomax-UK reception. Atomax-UK is an electrical engineering consultancy (electrical CAD, drawings, schedules, document control).
 Read the email (and any screenshots or attachments) and work out exactly what the sender is asking Atomax to do. Split it into separate tasks and give each one to the agent who can do it:
 ${Object.entries(AGENTS).map(([k, v]) => `- "${k}": ${v}`).join('\n')}
 Rules for splitting and giving out work:
 - Every separate piece of work the email names is its own task, even when the email lists them as one block or only asks for a price.
-- Give a task to an agent whenever that agent can produce the drawing or document for it, or a first draft of it, even if engineering calculations or data are also needed (say what is needed in "detail", e.g. "draft earthing schematic from the fault level study; soil resistivity still needed for the design"). Use "none" only when no agent can produce any part of it (a pure power-system study run in other software, a phone call, a site visit, a price).
+- Give a task to an agent whenever that agent can produce the drawing or document for it, or a first draft of it, even if engineering calculations or data are also needed (say what is needed in "detail", e.g. "draft earthing schematic from the fault level study; soil resistivity still needed for the design").
+- Setting up a job, a job number or a project folder, and filing the email, is "eli". Calculations, studies, feasibility tests and technical questions are "engineer" (Ada does a first pass and says what needs PowerFactory / ETAP).
+- Use "none" only for things that need a person: a decision, a price, a phone call or meeting, a site visit.
 - If the email asks for a quote or fee proposal, add one task for "documents" to draft the quotation letter listing every item.
 - Read attached PDFs and drawings: they tell you what an agent can work from (an SLD, a fault level study, cable data).
 Only list real asks from the email. Do not invent work. Copy site names, job numbers, drawing numbers, ratings and dates exactly as written.
@@ -119,25 +123,63 @@ function register({ ipcMain, dialog, shell, getWin, userDir, claudeFull, checker
   ipcMain.handle('mail:folders', wrap(({ id, jobId }) => { const e = load().find(x => x.id === id); const j = jobId && BIZ.data().jobs.find(x => x.id === jobId); return BIZ.projects.suggest({ number: j ? j.number : e && e.jobNumber, name: j ? j.name : '', text: e ? `${e.site} ${e.subject}` : '' }); }));
 
   // Tom says yes: job (existing or new), folder, task on the board, email filed in the job folder
-  ipcMain.handle('mail:start', wrap(({ id, ask, jobId, newJob, folder }) => {
+  // where a new job folder would go, and the next free job number
+  ipcMain.handle('mail:defaults', wrap(() => {
+    const { parent, numbers } = BIZ.projects.jobParent();
+    const all = [...numbers, ...BIZ.data().jobs.map(j => { const m = String(j.number).match(/^([A-Za-z]{0,3})(\d{4,6})$/); return m ? { prefix: m[1], n: m[2] } : null; }).filter(Boolean)];
+    const top = all.sort((a, b) => Number(b.n) - Number(a.n))[0];
+    return { parent, nextNumber: top ? top.prefix + String(Number(top.n) + 1).padStart(top.n.length, '0') : '' };
+  }));
+  ipcMain.handle('mail:pickParent', wrap(async () => { const r = await dialog.showOpenDialog(getWin(), { properties: ['openDirectory', 'createDirectory'], title: 'Where should the new job folder go?' }); return r.canceled ? null : r.filePaths[0]; }));
+  ipcMain.handle('mail:start', wrap(({ id, ask, jobId, newJob, folder, createIn }) => {
     const list = load(), e = list.find(x => x.id === id); if (!e) throw new Error('That email is gone');
     const a = e.asks[ask]; if (!a) throw new Error('No such task');
     const d = BIZ.data();
     let job = jobId && d.jobs.find(j => j.id === jobId);
     if (!job) { if (!newJob || !String(newJob.number || '').trim()) throw new Error('Pick a job or give the new job a number'); job = biz.saveJob(d, { number: newJob.number, name: newJob.name || e.site || e.subject, client: newJob.client || '', notes: `From email: ${e.subject}\n${e.summary}` }, 'Eli'); }
+    if (createIn) folder = BIZ.projects.createJobFolder(createIn, job.number, job.name);   // a new folder for the job, next to the other job folders
     if (folder && fs.existsSync(folder) && job.folder !== folder) { job.folder = folder; biz.audit(d, { who: 'Tom', action: 'Project folder linked', jobId: job.id, detail: folder }); }
-    const task = biz.saveTask(d, { jobId: job.id, title: a.title, detail: `${a.detail}${a.due ? '\nDue: ' + a.due : ''}\n(From email: ${e.subject || e.from})`, agentId: a.agent === 'none' ? '' : a.agent, agentName: AGENT_NAME[a.agent] || '', status: a.agent === 'none' ? 'todo' : 'doing' }, 'Tom');
+    const task = biz.saveTask(d, { jobId: job.id, title: a.title, detail: `${a.detail}${a.due ? '\nDue: ' + a.due : ''}\n(From email: ${e.subject || e.from})`, agentId: a.agent === 'none' ? '' : a.agent, agentName: AGENT_NAME[a.agent] || '', status: a.agent === 'none' ? 'todo' : a.agent === 'eli' ? 'done' : 'doing' }, 'Tom');
     BIZ.store.save();
     if (job.folder) {   // read the folder for context, and keep a copy of the email with the job
       try { BIZ.projects.gather(job.id, job.folder, { checker, dxffix: require('./dxffix') }); } catch {}
       try { const out = BIZ.projects.outputDir(job.folder, 'email'); for (const n of e.originals) { const src = path.join(DIR(), e.id, n.replace(/[\\/:*?"<>|]+/g, '_')), dst = path.join(out, n.replace(/[\\/:*?"<>|]+/g, '_')); if (fs.existsSync(src) && !fs.existsSync(dst)) fs.copyFileSync(src, dst); } } catch {}
     }
-    a.status = 'started'; a.jobId = job.id; a.taskId = task.id; e.jobId = job.id; save(list);
+    a.status = 'started'; a.jobId = job.id; a.taskId = task.id; e.jobId = job.id;
+    if (a.agent === 'eli') { a.status = 'done'; a.result = { summary: job.folder ? 'Job ' + job.number + ' set up, folder ready and the email filed in it.' : 'Job ' + job.number + ' set up (no folder).', path: job.folder || '' }; BIZ.log({ who: 'Eli', action: 'Set up job', jobId: job.id, detail: job.number + (job.folder ? ' · ' + job.folder : '') }); }
+    save(list);
     return { email: e, task, job: { id: job.id, number: job.number, name: job.name, folder: job.folder || '' } };
   }));
   ipcMain.handle('mail:reassign', wrap(({ id, ask, agent }) => { const list = load(), e = list.find(x => x.id === id); if (!e || !e.asks[ask] || !AGENTS[agent]) throw new Error('Cannot change that task'); e.asks[ask].agent = agent; save(list); return e; }));
   ipcMain.handle('mail:decline', wrap(({ id, ask }) => { const list = load(), e = list.find(x => x.id === id); if (e && e.asks[ask]) { e.asks[ask].status = 'declined'; save(list); } return e; }));
   ipcMain.handle('mail:open', wrap(({ id }) => { shell.openPath(path.join(DIR(), id)); return true; }));
+
+  // ---------- Ada works a technical task ----------
+  const ENG_SYSTEM = `You are Ada, the general engineer at Atomax-UK (electrical engineering consultancy, UK). Work through the task using only the email, its attachments and the project files given. Use standard methods: IEC 60909 for fault levels, BS 7671 / IEC 60364 for cable sizing, ENA TS 41-24 / IEEE 80 for earthing, G99 / G5/5 / P28 / P29 for grid code questions.
+Show where every input came from (document and table). Do the arithmetic step by step and check it. Never invent data: if something is missing, say what and why it matters.
+Be honest about limits: a first-pass hand calculation is not a full study. Say plainly what can be relied on, what needs PowerFactory / ETAP, and what data is still needed.
+Write in plain British English as Markdown: "# title", "## Summary" (3 lines max, the answer first), "## Inputs used", "## Method and working", "## Results" (tables), "## Limits and what is still needed".`;
+  ipcMain.handle('eng:run', wrap(async ({ id, ask }) => {
+    const list = load(), e = list.find(x => x.id === id); if (!e || !e.asks[ask]) throw new Error('No such task');
+    const a = e.asks[ask], job = a.jobId && BIZ.data().jobs.find(j => j.id === a.jobId);
+    const content = [];
+    for (const at of e.attachments.slice(0, 4)) { try { const buf = fs.readFileSync(path.join(DIR(), e.id, at.name)); content.push({ type: 'text', text: 'Attachment: ' + at.name }); content.push(checker.contentBlock(at.mime === 'application/pdf' ? 'pdf' : 'image', at.name, buf)); } catch {} }
+    const pdfs = job ? BIZ.projects.relevantFiles(job.id, a.title + ' ' + a.detail, { exts: ['.pdf'], max: 2 }).filter(p => !e.attachments.some(x => x.name === path.basename(p))) : [];
+    for (const p of pdfs) { try { content.push({ type: 'text', text: 'Project file: ' + path.basename(p) }); content.push(checker.contentBlock('pdf', p, fs.readFileSync(p))); } catch {} }
+    content.push({ type: 'text', text: `THE TASK: ${a.title}\n${a.detail}\n\nFROM THE EMAIL (${e.from}, "${e.subject}"): ${e.summary}` });
+    const system = ENG_SYSTEM + (job ? '\n\n' + BIZ.contextFor(job.id, 'Ada') : '');
+    const { text } = await claudeFull({ system, who: 'engineer', maxTokens: 8000, messages: [{ role: 'user', content }] });
+    const outDir = (job && BIZ.outputDirFor(job.id, 'documents')) || path.join(userDir(), 'engineering');
+    fs.mkdirSync(outDir, { recursive: true });
+    const safe = a.title.replace(/[\\/:*?"<>|]+/g, '-').replace(/\s+/g, ' ').slice(0, 70);
+    let file = path.join(outDir, `Technical note - ${safe}.md`), k = 2; while (fs.existsSync(file)) file = path.join(outDir, `Technical note - ${safe} (${k++}).md`);
+    fs.writeFileSync(file, text, 'utf8');
+    const summary = ((text.match(/## Summary\s*\n([\s\S]*?)(\n## |$)/) || [])[1] || text.slice(0, 400)).trim();
+    a.status = 'done'; a.result = { summary, path: file, text: text.slice(0, 20000) }; save(list);
+    if (a.taskId) { try { const d = BIZ.data(); const t = d.tasks.find(x => x.id === a.taskId); if (t) { biz.saveTask(d, { ...t, status: 'done', note: 'Note: ' + path.basename(file) }, 'Ada'); BIZ.store.save(); } } catch {} }
+    BIZ.log({ who: 'Ada', action: 'Wrote a technical note', jobId: a.jobId || '', detail: path.basename(file) + ' · ' + summary.slice(0, 160) });
+    return { email: e, result: a.result };
+  }));
 
   // ---------- Dex makes a DXF ----------
   ipcMain.handle('dex:make', wrap(async ({ jobId = '', request = '', answers = [], emailId = '' }) => {

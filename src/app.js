@@ -30,7 +30,7 @@ async function boot() {
 boot();
 function syncOffice() {
   const on = agents.filter(a => a.enabled);
-  office.setAgents(on.filter(a => !isDrawing(a)), on.filter(a => !isModelling(a) && !isDocs(a) && !isEmail(a) && isDrawing(a)).slice(0, 2), on.filter(isModelling).slice(0, 3), on.filter(isDocs).slice(0, 1), on.filter(isEmail).slice(0, 1));
+  office.setAgents(on.filter(a => !isDrawing(a)), on.filter(a => !isModelling(a) && !isDocs(a) && !isEmail(a) && isDrawing(a)).slice(0, 2), on.filter(isModelling).slice(0, 3), on.filter(isDocs).slice(0, 2), on.filter(isEmail).slice(0, 1));
 }
 
 // ---------- updates ----------
@@ -192,7 +192,7 @@ document.querySelectorAll('[data-test]').forEach(b => b.addEventListener('click'
 // ---------- agents ----------
 const isReviewer = (a) => a.role === 'reviewer';
 const isModelling = (a) => a.role === 'modeller' || a.role === 'builder' || a.role === 'modelchecker';
-const isDocs = (a) => a.role === 'documents';
+const isDocs = (a) => a.role === 'documents' || a.role === 'engineer';
 const isEmail = (a) => a.role === 'email';
 function isDrawing(a) { return a.role === 'drawing' || a.role === 'drafter' || isModelling(a) || isDocs(a) || isEmail(a); }
 const isDrafter = (a) => a.role === 'drafter';
@@ -233,7 +233,7 @@ function openLoadout(i) {
 function fillLoadout() {
   const a = loDraft, rev = isReviewer(a);
   $('#loName').textContent = a.name; $('#loRole').textContent = isDrawing(a) ? (isModelling(a) ? (a.role === 'modeller' ? '3D modeller' : a.role === 'builder' ? '3D builder' : '3D model checker') : isDrafter(a) ? 'DXF fixer' : 'drawing checker') : (rev ? 'reviewer' : a.platform);
-  $('#lo_name').value = a.name; $('#lo_platform').value = a.platform; $('#lo_role').innerHTML = isDrawing(a) ? (isModelling(a) ? `<option value="${a.role}">${a.role === 'modeller' ? '3D modeller — sits at the board in the modeling room' : a.role === 'builder' ? '3D builder — builds from scratch at his desk' : '3D model checker — sits at the review table'}</option>` : isDrafter(a) ? '<option value="drafter">DXF maker and fixer — sits at the drafting table</option>' : isEmail(a) ? '<option value="email">Email checker — works at reception</option>' : isDocs(a) ? '<option value="documents">Documents — works in the Documents room</option>' : '<option value="drawing">Drawing checker — works in the drawing room</option>') : '<option value="writer">Writer — posts to one account</option><option value="reviewer">Reviewer — checks every post</option>'; $('#lo_role').value = isDrawing(a) ? a.role : (rev ? 'reviewer' : 'writer');
+  $('#lo_name').value = a.name; $('#lo_platform').value = a.platform; $('#lo_role').innerHTML = isDrawing(a) ? (isModelling(a) ? `<option value="${a.role}">${a.role === 'modeller' ? '3D modeller — sits at the board in the modeling room' : a.role === 'builder' ? '3D builder — builds from scratch at his desk' : '3D model checker — sits at the review table'}</option>` : isDrafter(a) ? '<option value="drafter">DXF maker and fixer — sits at the drafting table</option>' : isEmail(a) ? '<option value="email">Email checker — works at reception</option>' : a.role === 'engineer' ? '<option value="engineer">Engineer — calculations and technical notes, Documents room</option>' : isDocs(a) ? '<option value="documents">Documents — works in the Documents room</option>' : '<option value="drawing">Drawing checker — works in the drawing room</option>') : '<option value="writer">Writer — posts to one account</option><option value="reviewer">Reviewer — checks every post</option>'; $('#lo_role').value = isDrawing(a) ? a.role : (rev ? 'reviewer' : 'writer');
   $('#lo_enabled').checked = !!a.enabled; $('#lo_colour').value = a.colour;
   $('#lo_tone').value = a.tone || ''; $('#lo_rules').value = a.rules || ''; $('#lo_examples').value = a.examples || '';
   const dr = isDrawing(a);
@@ -640,7 +640,7 @@ window.__roomsUI = roomsUI;
 const dexMake = initDexMakeUI({ api, office, bizUI, getDex: () => dexAgent() });
 const mailUI = initMailUI({ api, office, getAgents: () => agents, goBack: () => goRoom('overview'),
   onStart: ({ ask, email, task, job }) => {
-    if (ask.agent === 'none') return;                                             // Tom's own task: it is on the board
+    if (ask.agent === 'none' || ask.agent === 'eli' || ask.agent === 'engineer') return;   // Tom's own, Eli's admin and Ada's notes are done in the panel                                             // Tom's own task: it is on the board
     if (ask.agent === 'dex') { goRoom('drafting'); dexMake.preset({ jobId: job.id, request: ask.title + '\n' + ask.detail, email: email.id, auto: true }); return; }
     openAgentForTask(task, job);
   } });

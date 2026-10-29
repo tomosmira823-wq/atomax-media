@@ -108,6 +108,11 @@ const DEFAULT_AGENTS = [
     rules: 'Check it does what was asked, sizes match the context, nothing clashes or floats, nothing extra was changed. Below 6 out of 10 goes back to Milo.'
   },
   {
+    id: 'engineer', role: 'engineer', platform: 'Engineer', name: 'Ada', colour: '#63e6be', enabled: true, gear: ['glasses', 'hardhat'],
+    tone: 'Careful and plain. Shows her working, says where every number came from, and is honest about what a hand calculation cannot replace.',
+    rules: 'Use only the email, attachments and project files. Never invent data. Say what needs PowerFactory / ETAP or more data.'
+  },
+  {
     id: 'email', role: 'email', platform: 'Email Checker', name: 'Eli', colour: '#ffa94d', enabled: true, gear: ['headset', 'lanyard'],
     tone: 'Calm and exact. Reads every line of an email, copies names and numbers exactly, never invents work.',
     rules: 'Split the email into separate asks. Give each to the agent who can do it, or to Tom. Keep site names, job numbers and dates exactly as written.'
@@ -333,7 +338,7 @@ ipcMain.handle('social:canPost', (_e, platform) => {
 });
 // older saved teams predate the drawing checker: add Cal (once) so the drawing room has someone at the desk
 function withDrawingAgent(list) {
-  for (const role of ['drawing', 'drafter', 'modeller', 'builder', 'modelchecker', 'documents', 'email']) {
+  for (const role of ['drawing', 'drafter', 'modeller', 'builder', 'modelchecker', 'documents', 'email', 'engineer']) {
     if (list.some(a => a.role === role)) continue;
     const d = DEFAULT_AGENTS.find(a => a.role === role);
     if (d) list = [...list, { ...d }];

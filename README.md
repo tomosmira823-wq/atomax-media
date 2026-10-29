@@ -172,3 +172,8 @@ Dex's panel has "Make a new DXF" and "Fix a DXF". Make: pick the job, say what t
 
 ## Skills import
 "Import from Claude" now takes your skills folder of .skill packages (or a folder with SKILL.md). A skill with the same name is updated, not duplicated, and skills with obvious names are ticked for the right agent.
+
+## Ada the engineer, and Eli's admin (v1.11)
+- Ada sits in the Documents room. Calculation and study tasks from emails go to her: she works through them with Claude from the email, its attachments and the project files (IEC 60909 fault levels, cable sizing, earthing estimates, feasibility questions), shows her working and sources, and saves a technical note (Markdown) in the job's Documents folder. She says plainly what still needs PowerFactory / ETAP or more data.
+- Eli now does admin himself: "Yes, start" on a setup task makes the new job with the next free job number and creates its project folder (Drawings, Documents, Correspondence) next to your other job folders, then files the email in it.
+- "You" is only used for decisions, prices, calls and site visits. Every task can be given to someone else with "Give to".

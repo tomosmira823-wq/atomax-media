@@ -139,4 +139,30 @@ function outputDir(folder, kind) {
   return dir;
 }
 
-module.exports = { init, suggest, gather, load, contextBlock, relevantFiles, outputDir, searchRoots, extract };
+// the folder that holds the job folders (the parent most folders named like a job number sit in), and the numbers already used
+function jobParent() {
+  const t0 = Date.now(), parents = {}, numbers = [];
+  const walk = (dir, depth) => {
+    if (depth > 4 || Date.now() - t0 > 3000) return;
+    let ents; try { ents = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+    for (const e of ents) {
+      if (!e.isDirectory() || SKIP.test(e.name)) continue;
+      const m = e.name.match(/^([A-Za-z]{0,3})(\d{4,6})\b/);
+      if (m) { parents[dir] = (parents[dir] || 0) + 1; numbers.push({ prefix: m[1], n: m[2] }); }
+      else walk(path.join(dir, e.name), depth + 1);
+    }
+  };
+  for (const r of searchRoots()) walk(r, 0);
+  const best = Object.entries(parents).sort((a, b) => b[1] - a[1])[0];
+  return { parent: best ? best[0] : (searchRoots()[0] || os.homedir()), numbers };
+}
+// make a project folder for a new job, with the usual subfolders
+function createJobFolder(parent, number, name) {
+  if (!parent || !fs.existsSync(parent)) throw new Error('The folder to create it in does not exist');
+  const base = (String(number || '').trim() + ' ' + String(name || '').trim()).trim().replace(/[\\/:*?"<>|]+/g, '-').replace(/\s+/g, ' ').slice(0, 80) || 'New job';
+  let dir = path.join(parent, base), i = 2; while (fs.existsSync(dir)) dir = path.join(parent, base + ' (' + i++ + ')');
+  for (const sub of ['Drawings', 'Documents', 'Correspondence']) fs.mkdirSync(path.join(dir, sub), { recursive: true });
+  return dir;
+}
+
+module.exports = { jobParent, createJobFolder, init, suggest, gather, load, contextBlock, relevantFiles, outputDir, searchRoots, extract };

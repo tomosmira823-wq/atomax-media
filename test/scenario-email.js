@@ -30,7 +30,7 @@
     $('#mlDrop').dispatchEvent(new DragEvent('drop', { dataTransfer: dt, bubbles: true, cancelable: true }));
     await until(() => $('#mlDrop b').textContent.includes('.eml'), 10000, 'file staged');
     $('#mlRead').click();
-    await until(() => document.querySelectorAll('#mlMain .mlask').length === 2, 90000, 'two tasks');
+    await until(() => document.querySelectorAll('#mlMain .mlask').length === 4, 90000, 'four tasks');
     return [...document.querySelectorAll('#mlMain .mlask b')].map(b => b.textContent).join(' | ');
   });
 
@@ -71,6 +71,33 @@
     let e; for (let i = 0; i < 100; i++) { await wait(150); e = (await api.mail.list())[0]; if (e.asks[1].agent === 'documents') break; }
     if (e.asks[1].agent !== 'documents') throw new Error('still ' + e.asks[1].agent);
     return 'task 2 now for Dot';
+  });
+
+  await step('Ada works the calculation task and files a technical note', async () => {
+    document.querySelector('#mlMain [data-yes="3"]').click();
+    await until(() => $('#mlStart') && $('#mlGo'), 60000, 'start form');
+    await until(() => !/Looking/.test($('#mlFolders').textContent), 60000, 'folders');
+    $('#mlJob').value = jobId; $('#mlJob').dispatchEvent(new Event('change'));
+    await wait(1500);
+    $('#mlGo').click();
+    await until(() => /Ada's note/.test($('#mlMain').textContent), 90000, 'Ada note');
+    const e = (await api.mail.list())[0];
+    if (e.asks[3].status !== 'done' || !/Technical note/.test(e.asks[3].result.path)) throw new Error(JSON.stringify(e.asks[3]).slice(0, 200));
+    return e.asks[3].result.path.split(/[\\/]/).slice(-2).join('/');
+  });
+
+  await step('Eli sets up a new job with a new folder and the next job number', async () => {
+    document.querySelector('#mlMain [data-yes="2"]').click();
+    await until(() => $('#mlStart') && $('#mlJob'), 60000, 'start form');
+    $('#mlJob').value = '__new'; $('#mlJob').dispatchEvent(new Event('change'));
+    await until(() => document.querySelector('#mlFolders input[value=create]'), 60000, 'create option');
+    if (!document.querySelector('#mlFolders input[value=create]').checked) throw new Error('create not chosen by default');
+    if ($('#mlNum').value !== 'X22003') throw new Error('next number ' + $('#mlNum').value);
+    $('#mlGo').click();
+    await until(async () => false, 10).catch(() => {});
+    let e; for (let k = 0; k < 200; k++) { await wait(150); e = (await api.mail.list())[0]; if (e.asks[2].status === 'done') break; }
+    if (e.asks[2].status !== 'done') throw new Error('status ' + e.asks[2].status + ' ' + ($('#mlStartErr') || {}).textContent);
+    return e.asks[2].result.path;
   });
 
   return { steps: report.steps, errors: report.errors };

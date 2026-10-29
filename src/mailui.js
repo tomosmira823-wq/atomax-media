@@ -1,7 +1,7 @@
 // Eli's panel at reception: drop an email, see what it asks for, say "Yes, start" per task (job + project folder), and the right agent gets going.
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-const NAMES = { dex: 'Dex · DXF maker', cal: 'Cal · drawing checker', documents: 'Dot · documents', milo: 'Milo · 3D modeller', theo: 'Theo · 3D builder', none: 'You (Tom)' };
+const NAMES = { dex: 'Dex · DXF maker', engineer: 'Ada · engineer', documents: 'Dot · documents', cal: 'Cal · drawing checker', milo: 'Milo · 3D modeller', theo: 'Theo · 3D builder', eli: 'Eli · job + folder setup', none: 'You (Tom)' };
 const clean = (e) => String(e && e.message || e).replace(/^Error invoking remote method '[^']+': (Error: )?/, '');
 
 export function initMailUI({ api, office, getAgents, onStart, goBack }) {
@@ -52,6 +52,7 @@ export function initMailUI({ api, office, getAgents, onStart, goBack }) {
     m.querySelectorAll('[data-yes]').forEach(b => b.addEventListener('click', () => { startOpen = +b.dataset.yes; render(); fillStart(+b.dataset.yes); }));
     m.querySelectorAll('[data-give]').forEach(s => s.addEventListener('change', async () => { cur = await api.mail.reassign({ id: e.id, ask: +s.dataset.give, agent: s.value }); if (startOpen === +s.dataset.give) startOpen = -1; render(); }));
     m.querySelectorAll('[data-no]').forEach(b => b.addEventListener('click', async () => { cur = await api.mail.decline({ id: e.id, ask: +b.dataset.no }); refreshList(); render(); }));
+    m.querySelectorAll('[data-show]').forEach(b => b.addEventListener('click', () => api.showItem(b.dataset.show)));
     const cp = $('#mlCopy'); if (cp) cp.onclick = () => { navigator.clipboard.writeText(e.reply).catch(() => {}); cp.textContent = 'Copied'; };
     const oe = $('#mlOpenE'); if (oe) oe.onclick = () => api.mail.open({ id: e.id });
   }
@@ -59,31 +60,36 @@ export function initMailUI({ api, office, getAgents, onStart, goBack }) {
     const who = a.status === 'proposed'
       ? `<label class="mlgive">Give to <select data-give="${i}">${Object.entries(NAMES).map(([k, v]) => `<option value="${k}" ${k === a.agent ? 'selected' : ''}>${esc(v)}</option>`).join('')}</select></label>`
       : `<span class="chipA"><i style="background:${colourOf(a.agent)}"></i>${esc(NAMES[a.agent] || a.agent)}</span>`;
-    const state = a.status === 'started' ? '<span class="bsub">✓ Started</span>' : a.status === 'declined' ? '<span class="bsub">Not now</span>' : `<div class="mlrow"><button class="bprim" data-yes="${i}">Yes, start</button><button data-no="${i}">Not now</button></div>`;
-    return `<div class="mlask ${a.status}"><div class="mt"><div><b>${esc(a.title)}</b><div style="margin-top:4px">${who}${a.due ? ' <span class="bsub">due ' + esc(a.due) + '</span>' : ''}</div></div>${state}</div><div class="md">${esc(a.detail)}</div>${startOpen === i && a.status === 'proposed' ? `<div class="mlstart" id="mlStart"></div>` : ''}</div>`;
+    const state = a.status === 'done' ? '<span class="bsub">✓ Done</span>' : a.status === 'running' ? '<span class="bsub">Working on it…</span>' : a.status === 'started' ? '<span class="bsub">✓ Started</span>' : a.status === 'declined' ? '<span class="bsub">Not now</span>' : `<div class="mlrow"><button class="bprim" data-yes="${i}">Yes, start</button><button data-no="${i}">Not now</button></div>`;
+    return `<div class="mlask ${a.status}"><div class="mt"><div><b>${esc(a.title)}</b><div style="margin-top:4px">${who}${a.due ? ' <span class="bsub">due ' + esc(a.due) + '</span>' : ''}</div></div>${state}</div><div class="md">${esc(a.detail)}</div>${a.result ? `<div class="mlres"><b>${a.agent === 'engineer' ? 'Ada\'s note' : 'Result'}</b><div>${esc(a.result.summary)}</div>${a.result.path ? `<button data-show="${esc(a.result.path)}">${a.agent === 'engineer' ? 'Show the note' : 'Open the folder'}</button>` : ''}${a.result.text ? `<details><summary>Read it here</summary><pre>${esc(a.result.text)}</pre></details>` : ''}</div>` : ''}${a.error ? `<div class="err" style="color:#e03131;font-size:12.5px">${esc(a.error)}</div>` : ''}${startOpen === i && a.status === 'proposed' ? `<div class="mlstart" id="mlStart"></div>` : ''}</div>`;
   }
 
   // Yes, start: pick the job (Eli's best match first, or a new one), find its folder, then go
   async function fillStart(i) {
     const box = $('#mlStart'), e = cur, a = e.asks[i];
     const v = await api.biz.get(); jobs = v.jobs;
+    const def = await api.mail.defaults().catch(() => ({ parent: '', nextNumber: '' }));
+    let parent = def.parent;
     box.innerHTML = `<label><b>Job</b></label><select id="mlJob">${jobs.map(j => `<option value="${j.id}">${esc(j.number)} ${esc(j.name || '')}</option>`).join('')}<option value="__new">+ New job from this email</option></select>
-      <div id="mlNew" hidden class="mlrow"><input id="mlNum" placeholder="Job number" value="${esc(e.jobNumber)}" style="width:130px"><input id="mlName" placeholder="Job name / site" value="${esc(e.site || e.subject)}" style="flex:1"></div>
+      <div id="mlNew" hidden class="mlrow"><input id="mlNum" placeholder="Job number" value="${esc(e.jobNumber && !jobs.some(j => j.number.toLowerCase() === String(e.jobNumber).toLowerCase()) ? e.jobNumber : def.nextNumber)}" style="width:130px"><input id="mlName" placeholder="Job name / site" value="${esc(e.site || e.subject)}" style="flex:1"></div>
       <label><b>Project folder</b> <span class="bsub">(${a.agent === 'none' ? 'where the email is filed' : esc((NAMES[a.agent] || '').split(' ·')[0]) + ' reads from it and saves into it'})</span></label><div id="mlFolders" class="bsub">…</div>
       <div class="mlrow" style="margin-top:4px"><button class="bprim" id="mlGo">${a.agent === 'none' ? 'Add to the board' : 'Start ' + esc((NAMES[a.agent] || '').split(' ·')[0])}</button><button id="mlCancel">Cancel</button></div><div class="err" id="mlStartErr" style="color:#e03131;font-size:12.5px"></div>`;
     const sel = $('#mlJob'); sel.value = e.jobId && jobs.some(j => j.id === e.jobId) ? e.jobId : (jobs.length ? jobs[0].id : '__new');
     if (!jobs.length || (!e.jobId && e.jobNumber)) sel.value = jobs.some(j => j.number.toLowerCase() === String(e.jobNumber).toLowerCase()) ? jobs.find(j => j.number.toLowerCase() === String(e.jobNumber).toLowerCase()).id : '__new';
-    let folder = '';
+    let folder = '', create = false;
+    const createRow = () => `<div class="mlsug"><input type="radio" name="mlf" value="create" ${create ? 'checked' : ''}><span><b>Create a new folder for this job</b><br>in ${esc(parent || '(pick where)')} <button id="mlParent" type="button">Change…</button></span></div>`;
+    const wireCreate = (fb, list) => { fb.querySelectorAll('input[name=mlf]').forEach(r => r.addEventListener('change', () => { create = r.value === 'create'; if (!create && list && list[+r.value]) folder = list[+r.value].path; })); const pp = fb.querySelector('#mlParent'); if (pp) pp.onclick = async () => { const p = await api.mail.pickParent(); if (p) { parent = p; create = true; showFolders(); } }; };
     const showFolders = async () => {
       const fb = $('#mlFolders'), isNew = sel.value === '__new'; $('#mlNew').hidden = !isNew;
       const job = jobs.find(j => j.id === sel.value);
-      if (job && job.folder) { folder = job.folder; fb.innerHTML = `<div class="mlsug"><input type="radio" name="mlf" checked><span>${esc(job.folder)} <i>(linked to this job)</i></span></div><button id="mlPick">Choose another…</button>`; }
+      if (job && job.folder) { folder = job.folder; create = false; fb.innerHTML = `<div class="mlsug"><input type="radio" name="mlf" checked><span>${esc(job.folder)} <i>(linked to this job)</i></span></div><button id="mlPick">Choose another…</button>`; }
       else {
         fb.textContent = 'Looking through your folders…';
         const list = await api.mail.folders({ id: e.id, jobId: isNew ? '' : sel.value }).catch(() => []);
-        folder = list[0] ? list[0].path : '';
-        fb.innerHTML = (list.length ? list.map((x, k) => `<div class="mlsug"><input type="radio" name="mlf" value="${k}" ${k === 0 ? 'checked' : ''}><span><b>${esc(x.name)}</b><br>${esc(x.path)} · matched ${esc(x.why)}</span></div>`).join('') : 'No folder found by job number or site name.') + '<button id="mlPick">Choose…</button>';
-        fb.querySelectorAll('input[name=mlf]').forEach(r => r.addEventListener('change', () => { folder = list[+r.value].path; }));
+        create = create || a.agent === 'eli' || !list.length;   // setting up a job, or nothing found: make a new folder
+        folder = !create && list[0] ? list[0].path : '';
+        fb.innerHTML = list.map((x, k) => `<div class="mlsug"><input type="radio" name="mlf" value="${k}" ${!create && k === 0 ? 'checked' : ''}><span><b>${esc(x.name)}</b><br>${esc(x.path)} · matched ${esc(x.why)}</span></div>`).join('') + (isNew ? createRow() : '') + '<button id="mlPick">Choose…</button>';
+        wireCreate(fb, list);
       }
       $('#mlPick').onclick = async () => { const p = await api.proj.pick(); if (p) { folder = p; fb.innerHTML = `<div class="mlsug"><input type="radio" checked><span>${esc(p)}</span></div><button id="mlPick">Choose another…</button>`; $('#mlPick').onclick = () => showFolders(); } };
     };
@@ -93,8 +99,13 @@ export function initMailUI({ api, office, getAgents, onStart, goBack }) {
       $('#mlStartErr').textContent = ''; $('#mlGo').disabled = true;
       try {
         const isNew = sel.value === '__new';
-        const r = await api.mail.start({ id: e.id, ask: i, jobId: isNew ? '' : sel.value, newJob: isNew ? { number: $('#mlNum').value, name: $('#mlName').value } : null, folder });
+        const r = await api.mail.start({ id: e.id, ask: i, jobId: isNew ? '' : sel.value, newJob: isNew ? { number: $('#mlNum').value, name: $('#mlName').value } : null, folder: create ? '' : folder, createIn: create && isNew ? parent : '' });
         cur = r.email; startOpen = -1; await refreshList(); render();
+        if (a.agent === 'engineer') {   // Ada works it straight away; the note lands in the job folder
+          cur.asks[i].status = 'running'; render();
+          try { cur = (await api.mail.engRun({ id: e.id, ask: i })).email; } catch (err) { cur.asks[i].status = 'started'; cur.asks[i].error = clean(err); }
+          render();
+        }
         onStart && onStart({ ask: a, email: cur, task: r.task, job: r.job });
       } catch (err) { $('#mlStartErr').textContent = clean(err); $('#mlGo').disabled = false; }
     };
