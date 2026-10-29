@@ -188,6 +188,12 @@ function skillFor(agentId, fallback = '') {
   return parts.length ? parts.join('\n\n') : fallback;
 }
 
+// the enabled skills for an agent, each with its name and text (so callers can pick and say which they used)
+function skillsFor(agentId) {
+  if (!ROOT) return [];
+  return enabledFor('skills', agentId).map(i => ({ name: i.name, file: i.file, text: readText('skills', i.file).trim() })).filter(x => x.text);
+}
+
 function rulebookFor(agentId) {
   if (!ROOT) return '';
   return readText('rulebooks', `${agentId}.md`).trim();
@@ -227,4 +233,4 @@ function addCorrection(agentId, text) {
   return rulebookFor(agentId);
 }
 
-module.exports = { CABINETS, init, list, readText, save, remove, addFiles, importSkill, importSkills, unzipText, newSkill, skillFor, rulebookFor, promptBlock, addCorrection, setRulebook, _root: () => ROOT };
+module.exports = { skillsFor, CABINETS, init, list, readText, save, remove, addFiles, importSkill, importSkills, unzipText, newSkill, skillFor, rulebookFor, promptBlock, addCorrection, setRulebook, _root: () => ROOT };

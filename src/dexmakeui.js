@@ -41,6 +41,8 @@ export function initDexMakeUI({ api, office, bizUI, getDex }) {
       $('#dmOut').innerHTML = `<div class="headline good" style="margin-top:12px">Saved ${esc(r.path.split(/[\\/]/).pop())}</div>
         <div class="hint">${esc(r.summary || r.title)}${r.inJobFolder ? '' : ' · saved in the app folder because the job has no project folder'}</div>
         ${r.read && r.read.length ? `<div class="hint">Read from the project: ${esc(r.read.join(', '))}</div>` : ''}
+        <div class="hint">${r.skills && r.skills.length ? 'Skills used: ' + esc(r.skills.join(', ')) : 'No skills used: tick Dex on a skill in the File Room (Skills cabinet)'}</div>
+        ${r.incomplete ? '<div class="err" style="margin-top:6px">Dex ran out of room: this drawing is incomplete. Press Make the DXF again.</div>' : ''}
         ${r.notes && r.notes.length ? `<div class="hint">To confirm: ${esc(r.notes.join(' · '))}</div>` : ''}
         <div class="dmsvg">${r.svg}</div>
         <button id="dmShow">Show in folder</button><button id="dmAgain">Change something</button>`;

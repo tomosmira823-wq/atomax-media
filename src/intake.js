@@ -267,8 +267,14 @@ Write in plain British English as Markdown: "# title", "## Summary" (3 lines max
   ipcMain.handle('dex:make', wrap(async ({ jobId = '', request = '', answers = [], emailId = '' }) => {
     if (!String(request).trim()) throw new Error('Say what Dex should draw');
     const d = BIZ.data(), job = jobId && d.jobs.find(j => j.id === jobId);
-    const skill = library.skillFor('dex', '');
-    const system = dxfmaker.SYSTEM + (skill ? `\n\nYOUR SKILLS (house rules from the File Room):\n${skill.slice(0, 12000)}` : '') + (job ? '\n\n' + BIZ.contextFor(job.id, 'Dex') : '');
+    // his skills for MAKING a drawing: drawing skills first, fixer-only rules and spreadsheet skills only when the request needs them
+    const all = library.skillsFor('dex');
+    const wantsSheets = /excel|xlsx|schedule|spreadsheet/i.test(request), wantsFix = /\b(fix|correct|redline|markup)\b/i.test(request);
+    const rank = (sk) => /sld|single.?line|dxf|cad|earth|drawing|schematic/i.test(sk.name + ' ' + sk.file) ? 0 : 1;
+    const picked = all.filter(sk => (wantsFix || !/fix/i.test(sk.name)) && (wantsSheets || !/excel|xlsx|spreadsheet/i.test(sk.name + ' ' + sk.file))).sort((a, b) => rank(a) - rank(b));
+    let room = 30000; const used = [];
+    const skillText = picked.map(sk => { if (room <= 0) return ''; const t = sk.text.slice(0, room); room -= t.length; used.push(sk.name + (t.length < sk.text.length ? ' (cut short)' : '')); return `--- SKILL: ${sk.name} ---\n${t}`; }).filter(Boolean).join('\n\n');
+    const system = dxfmaker.SYSTEM + (skillText ? `\n\nYOUR SKILLS (house rules from the File Room; follow them where they fit this drawing):\n${skillText}` : '') + (job ? '\n\n' + BIZ.contextFor(job.id, 'Dex') : '');
     const content = [];
     // the PDFs in the project folder that look relevant (an existing SLD, a schedule), and the email's screenshots / PDFs
     const pdfs = job ? BIZ.projects.relevantFiles(job.id, request, { exts: ['.pdf'], max: 3 }) : [];
@@ -276,14 +282,19 @@ Write in plain British English as Markdown: "# title", "## Summary" (3 lines max
     const em = emailId && load().find(x => x.id === emailId);
     if (em) for (const a of em.attachments.slice(0, 3)) { try { const buf = fs.readFileSync(path.join(DIR(), em.id, a.name)); content.push({ type: 'text', text: 'From the email: ' + a.name }); content.push(checker.contentBlock(a.mime === 'application/pdf' ? 'pdf' : 'image', a.name, buf)); } catch {} }
     content.push({ type: 'text', text: `REQUEST: ${request}${answers.length ? '\n\nANSWERS FROM THE ENGINEER:\n' + answers.map(x => `Q: ${x.q}\nA: ${x.a}`).join('\n') : ''}` });
-    const { text } = await claudeFull({ system, who: 'dex', maxTokens: 6000, messages: [{ role: 'user', content }] });
+    // a big site needs a long spec: give room, retry with more if it is cut off, and never pass off a cut-off spec as complete
+    let r = await claudeFull({ system, who: 'dex', maxTokens: 12000, messages: [{ role: 'user', content }] });
+    if (r.stop === 'max_tokens') r = await claudeFull({ system: system + '\nKeep labels short (four lines at most) and give a feeder label only when it adds something the end item label does not say.', who: 'dex', maxTokens: 24000, messages: [{ role: 'user', content }] });
+    const text = r.text, cutOff = r.stop === 'max_tokens';
     const spec = dxfmaker.parseReply(text);
-    if (spec.questions && spec.questions.length && !answers.length) return { questions: spec.questions.slice(0, 4).map(String), read: pdfs.map(p => path.basename(p)) };
+    if (spec.questions && spec.questions.length && !answers.length) return { questions: spec.questions.slice(0, 4).map(String), read: pdfs.map(p => path.basename(p)), skills: used };
     if (!spec.boards && !spec.busbars) throw new Error('Dex did not produce a drawing: ' + String(text).slice(0, 200));
     const outDir = (job && BIZ.outputDirFor(job.id, 'dxf')) || path.join(userDir(), 'dxf-made');
-    const r = dxfmaker.make(spec, outDir, spec.drawingNumber && spec.drawingNumber !== 'TBC' ? spec.drawingNumber : (job ? job.number + '_SLD' : 'SLD'));
-    BIZ.log({ who: 'Dex', action: 'Drew', jobId: job ? job.id : '', detail: `${path.basename(r.path)} · ${spec.summary || spec.title || 'SLD'}` });
-    return { path: r.path, folder: outDir, svg: r.svg, summary: spec.summary || '', title: spec.title || '', notes: spec.notes || [], read: pdfs.map(p => path.basename(p)), inJobFolder: !!(job && job.folder) };
+    if (cutOff) spec.notes = [...(spec.notes || []), 'INCOMPLETE: Dex ran out of room before the end of the drawing. Parts after the last board shown are missing. Ask him again.'];
+    const kindName = spec.kind === 'earthing' ? 'EARTHING' : 'SLD';
+    const res = dxfmaker.make(spec, outDir, spec.drawingNumber && spec.drawingNumber !== 'TBC' ? spec.drawingNumber + '_' + kindName : (job ? job.number + '_' + kindName : kindName));
+    BIZ.log({ who: 'Dex', action: 'Drew', jobId: job ? job.id : '', detail: `${path.basename(res.path)} · ${spec.summary || spec.title || 'SLD'}${used.length ? ' · skills: ' + used.join(', ') : ' · no skills'}` });
+    return { skills: used, incomplete: cutOff, path: res.path, folder: outDir, svg: res.svg, summary: spec.summary || '', title: spec.title || '', notes: spec.notes || [], read: pdfs.map(p => path.basename(p)), inJobFolder: !!(job && job.folder) };
   }));
 }
 
