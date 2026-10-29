@@ -78,6 +78,7 @@ Both sit in the modeling room: Milo at his drafting board, Vera at a review tabl
 2. Milo reads the model (named parts with their boxes, plus four pictures) and the context. If something matters and is not given he asks up to four short questions first. Otherwise he returns an edit list: add pipe/box/cylinder, move, rotate, scale, delete, recolour. The edits are applied to a copy and shown on the pedestal (new parts red in the pictures Claude sees). Before/After toggle.
 3. A clash test runs in code (boxes overlapping, parts sticking out, tiny parts). Then "Send to Vera": she checks the result against the request and context and passes it or sends it back with findings; "Send back to Milo" redoes it with her findings.
 4. Save copy writes a GLB to the models folder (never over the original). Milo and Vera log to the audit trail.
+5. Take it into AutoCAD / Plant 3D: "AutoCAD script (.scr)" draws what Milo added (3D centreline plus plain 3D solids, model Y-up converted to CAD Z-up, units scaled to mm) and "Route list (.csv)" gives start/end coordinates, diameter and length per pipe run. These are ordinary AutoCAD objects, not Plant 3D pipe objects: snap Plant 3D pipe to the centreline. Unit test: node test/plantexport-test.js.
 Limits: STEP, IFC, DWG and DXF models are not opened (export a GLB). Clash test is box-based, so diagonal pipes can report false overlaps.
 Test: AMO_SCENARIO=mo AMO_MO_DIR=<folder with an .obj and notes> AMO_MOCK=1 with test/mock-api.js running.
 

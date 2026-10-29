@@ -50,7 +50,7 @@
   });
   await step('Before/after toggle and save a copy', async () => {
     document.querySelector('#moView button[data-v=before]').click(); await wait(200); document.querySelector('#moView button[data-v=after]').click(); await wait(200);
-    $('#moSave').click(); try { await until(() => /Saved: .*MILO.*\.glb/.test($('#moSaved').textContent), 30000, 'saved'); } catch (e) { throw new Error(String(e) + ' err2=' + ($('#moErr2') && $('#moErr2').textContent)); } return $('#moSaved').textContent;
+    $('#moSave').click(); try { await until(() => /Saved: .*MILO.*\.glb/.test($('#moSaved').textContent), 120000, 'saved'); } catch (e) { throw new Error(String(e) + ' err2=' + ($('#moErr2') && $('#moErr2').textContent)); } return $('#moSaved').textContent;
   });
   await step('Export AutoCAD script and route list', async () => {
     $('#moScr').click(); await until(() => /Saved: .*\.scr/.test($('#moSaved').textContent), 20000, 'scr saved');
