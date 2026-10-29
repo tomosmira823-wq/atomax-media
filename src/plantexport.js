@@ -67,7 +67,7 @@ export function toScript(ops, { scale = 1000, addedNames = null, title = 'Milo' 
     }
     count++;
   }
-  L.push('ZOOM', 'E', '-OSNAP', 'ENDPOINT');
+  L.push('-VIEW', 'SW', 'ZOOM', 'E', '-OSNAP', 'ENDPOINT');   // finish in a south-west isometric view so the 3D shows
   return { text: L.join('\r\n') + '\r\n', count };
 }
 
