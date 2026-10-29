@@ -368,7 +368,7 @@ const modmain = require('./modmain.js');
 let BIZ;
 const withJob = (a) => { let c = ''; try { c = BIZ ? BIZ.contextFor(undefined, (String(a && a.system || '').match(/You are (Milo|Theo|Vera|Dex|Cal)\b/) || [])[1] || '') : ''; } catch {} return c ? { ...a, system: String(a.system || '') + '\n\n' + c } : a; };
 roomsmain.register({ ipcMain, dialog, getWin: () => win, loadSettings, saveSettings, userDir: USER_DIR, version: () => app.getVersion(), getAgents: () => readJson(AGENTS_FILE(), DEFAULT_AGENTS) });
-const updSend = (u) => { roomsmain.setUpdate(u); updSend(u); };
+const updSend = (u) => { roomsmain.setUpdate(u); win?.webContents.send('update:status', u); };
 BIZ = bizmain.register({ ipcMain, dialog, shell, Notification, getWin: () => win, userDir: USER_DIR, claudeFull: (a) => claudeFull(a), checker, getSettings: () => loadSettings() });
 require('./intake').register({ ipcMain, dialog, shell, getWin: () => win, userDir: USER_DIR, claudeFull: (a) => claudeFull(a), checker, BIZ });
 modmain.register({ ipcMain, dialog, getWin: () => win, userDir: USER_DIR, claudeFull: (a) => claudeFull(withJob(a)), checker, log: (e) => BIZ.log(e), outputDirFor: (id, k) => BIZ.outputDirFor(id, k) });
