@@ -148,6 +148,13 @@ export function initModellerUI({ office, api, getAgent, getChecker, getSettings,
       <div class="row" style="gap:6px;flex-wrap:wrap"><select id="moUnits" style="width:auto"><option value="auto">Units: auto (${esc(s.unitGuess || '')})</option><option value="m">Model is in metres</option><option value="mm">Model is in mm</option></select>
         <button class="btn small" id="moScr">AutoCAD script (.scr)</button><button class="btn small" id="moCsv">Route list (.csv)</button></div>
       <div class="hint" style="margin-top:4px">Draws the pipe centreline and plain 3D solids, with Z up. They are normal AutoCAD objects, not Plant 3D pipe objects: snap Plant 3D pipe to the centreline.</div>
+      <details id="moPcBox" style="margin-top:12px"><summary style="cursor:pointer;font-weight:700">Let Milo drive Plant 3D / AutoCAD <span class="hint">(takes control of this PC)</span></summary>
+        <div class="warn-note">Milo looks at your screen and clicks and types, like a person at the keyboard. A small bar stays on top showing each step. <b>Stop</b> on the bar (or Ctrl+Alt+Q) ends it at once. Screenshots go to Claude. Do not leave anything private open. Windows only.</div>
+        <label>What should he do?</label><textarea id="moPcTask" rows="3"></textarea>
+        <label style="display:flex;align-items:center;gap:8px;color:var(--text)"><input type="checkbox" id="moPcApprove" checked /> Ask me before every action</label>
+        <div class="row" style="margin-top:8px;gap:6px;flex-wrap:wrap"><button class="btn small primary" id="moPcGo">Start (Milo takes over)</button><button class="btn small" id="moPcTest">Test control (10 s)</button></div>
+        <div class="hint" id="moPcOut" style="margin-top:8px;white-space:pre-wrap"></div>
+      </details>
       <div class="hint" id="moSaved" style="margin-top:8px">${s.savedPath ? 'Saved: ' + esc(s.savedPath) : ''}</div>
       <div class="err" id="moErr2" style="margin-top:8px"></div>`;
     show('result');
@@ -162,9 +169,22 @@ export function initModellerUI({ office, api, getAgent, getChecker, getSettings,
         if (!s.res.added.length) { $('#moErr2').textContent = 'Milo added nothing new, so there is nothing to export.'; return; }
         const text = kind === 'scr' ? toScript(s.ops, o).text : toCsv(s.ops, o);
         const r = await api.mo.saveText({ text, name: o.title, ext: kind });
-        if (r) $('#moSaved').textContent = 'Saved: ' + r.path;
+        if (r) { $('#moSaved').textContent = 'Saved: ' + r.path; if (kind === 'scr') { s.scrPath = r.path; setPcTask(); } }
       } catch (e) { $('#moErr2').textContent = e.message; }
     };
+    const setPcTask = () => { const t = $('#moPcTask'); if (!t) return; t.value = s.scrPath ? `In AutoCAD / Plant 3D (the right drawing is already open), run the script file "${s.scrPath}" with the SCRIPT command, then zoom to extents and tell me what appeared. Do not save the drawing.` : 'Export the AutoCAD script above first, then Milo can run it. Or type the job here.'; };
+    setPcTask();
+    $('#moPcTest').addEventListener('click', async () => { $('#moPcOut').textContent = 'Testing…'; try { const r = await api.pc.selftest(); $('#moPcOut').textContent = (r.ok ? '✓ ' : '✗ ') + r.detail; } catch (e) { $('#moPcOut').textContent = '✗ ' + e.message; } });
+    $('#moPcGo').addEventListener('click', async () => {
+      if (needKey()) return;
+      const task = $('#moPcTask').value.trim(); if (!task) return;
+      $('#moPcGo').disabled = true; $('#moPcOut').textContent = 'Milo is taking over. Look for the green bar at the top of your screen.'; say(milo, 'driving the PC');
+      try {
+        const r = await api.pc.run({ task, approveEach: $('#moPcApprove').checked, context: `Request: ${$('#moRequest').value}\nSummary of the model change: ${s.summary || ''}`, jobId: jobId() });
+        $('#moPcOut').textContent = (r.text || 'Done.') + (r.actions && r.actions.length ? `\n\n${r.actions.length} action${r.actions.length === 1 ? '' : 's'} taken.` : '');
+      } catch (e) { $('#moPcOut').textContent = 'Stopped: ' + e.message; }
+      $('#moPcGo').disabled = false; idle();
+    });
     $('#moScr').addEventListener('click', () => exp('scr')); $('#moCsv').addEventListener('click', () => exp('csv'));
     $('#moNew').addEventListener('click', reset);
   }

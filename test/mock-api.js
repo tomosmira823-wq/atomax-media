@@ -88,6 +88,15 @@ http.createServer(async (req, res) => {
     if (u === '/__reset') { calls = []; meshyPolls = 0; return json({ ok: true }); }
     if (u.startsWith('/anthropic/v1/messages')) {
       const body = JSON.parse(raw.toString());
+      if (body.tools && body.tools.some(t => t.type === 'computer_toolset_20260801' || t.type === 'computer_20251124')) {   // Milo driving the PC
+        const done = (body.messages || []).reduce((n, mm) => n + (Array.isArray(mm.content) ? mm.content.filter(b => b.type === 'tool_result').length : 0), 0);
+        const lastRes = JSON.stringify(((body.messages || []).slice(-1)[0] || {}).content || '');
+        const tu = (name, input, tool) => ({ type: 'tool_use', id: 'toolu_' + done, name, input, ...(tool === false ? {} : { toolset_name: 'computer' }) });
+        const seq = [() => tu('screenshot', {}), () => tu('left_click', { coordinate: [640, 360] }), () => tu('type', { text: 'SCRIPT' }), () => tu('key', { text: 'Return' }), () => tu('key', { text: 'super+r' }), () => tu('ask_user', { question: 'Shall I continue?' }, false)];
+        const content = done < seq.length ? [{ type: 'text', text: 'Step ' + done }, seq[done]()] : [{ type: 'text', text: 'Done in mock. Last result: ' + lastRes.slice(0, 80) }];
+        calls.push({ pc: true, tools: body.tools.map(t => t.type), beta: req.headers['anthropic-beta'] || '' });
+        return json({ content, stop_reason: content.some(c => c.type === 'tool_use') ? 'tool_use' : 'end_turn' });
+      }
       const text = claudeReply(body);
       // simulate an occasional cut-off reply on the Facebook writer to exercise the JSON repair
       const cut = /YOUR PLATFORM: Facebook/.test(body.system) && !/Revise/.test(body.system) && !/reviewer/.test(body.system);

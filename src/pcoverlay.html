@@ -1,0 +1,26 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Milo is driving</title>
+<style>
+  html,body{margin:0;height:100%;background:#0e121d;color:#e8ecf4;font:13px/1.35 "Segoe UI",system-ui,sans-serif;overflow:hidden}
+  .bar{border:2px solid #40bd00;border-radius:12px;height:calc(100% - 4px);padding:10px 12px;box-sizing:border-box;display:flex;flex-direction:column;gap:8px}
+  .top{display:flex;align-items:center;gap:8px;font-weight:700}.dot{width:10px;height:10px;border-radius:50%;background:#40bd00;animation:p 1s infinite}@keyframes p{50%{opacity:.25}}
+  #msg{color:#b8c1d6;flex:1;overflow:auto;white-space:pre-wrap}#act{font-weight:600}
+  .row{display:flex;gap:8px}button{font:inherit;font-weight:700;border:0;border-radius:8px;padding:7px 12px;cursor:pointer}
+  #ok{background:#40bd00;color:#06210a}#no{background:#2a3347;color:#e8ecf4}#stop{background:#d9480f;color:#fff;margin-left:auto}
+  input{flex:1;font:inherit;padding:7px 9px;border-radius:8px;border:1px solid #39435a;background:#0a0e18;color:#e8ecf4}
+  [hidden]{display:none!important}
+</style></head><body><div class="bar">
+  <div class="top"><span class="dot"></span><span id="who">Milo is driving this PC</span><button id="stop" title="Ctrl+Alt+Q also stops">Stop</button></div>
+  <div id="act"></div><div id="msg"></div>
+  <div class="row" id="appr" hidden><button id="ok">Allow</button><button id="no">Don't</button></div>
+  <div class="row" id="ask" hidden><input id="ans" placeholder="Your answer"/><button id="send">Send</button></div>
+</div>
+<script>
+  const $=(s)=>document.querySelector(s);
+  window.pcOverlay.onState((s)=>{
+    $('#who').textContent=s.who||'Milo is driving this PC'; $('#act').textContent=s.action||''; $('#msg').textContent=s.message||'';
+    $('#appr').hidden=!s.needApprove; $('#ask').hidden=!s.question; if(s.question){$('#act').textContent=s.question;$('#ans').value='';$('#ans').focus();}
+  });
+  $('#ok').onclick=()=>window.pcOverlay.send({type:'approve'}); $('#no').onclick=()=>window.pcOverlay.send({type:'deny'});
+  $('#stop').onclick=()=>window.pcOverlay.send({type:'stop'});
+  $('#send').onclick=()=>window.pcOverlay.send({type:'answer',text:$('#ans').value}); $('#ans').addEventListener('keydown',(e)=>{if(e.key==='Enter')$('#send').click();});
+</script></body></html>

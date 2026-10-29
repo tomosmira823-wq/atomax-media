@@ -2,7 +2,7 @@
 // All API keys live here (encrypted on disk) and every outside call is made from here,
 // so the 3D page never sees a key.
 
-const { app, BrowserWindow, ipcMain, dialog, safeStorage, shell, protocol, net, Notification } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, safeStorage, shell, protocol, net, Notification, desktopCapturer, screen, globalShortcut } = require('electron');
 const { pathToFileURL } = require('url');
 const { autoUpdater } = require('electron-updater');
 const social = require('./social');
@@ -192,8 +192,8 @@ function createWindow() {
   if (process.env.AMO_SCREENSHOT) {
     win.webContents.on('console-message', (_e, level, msg, line, src) => console.error('[page]', level, msg, src + ':' + line));
     win.webContents.once('did-finish-load', () => setTimeout(async () => {
-      if (['run', 'drawing', 'dex', 'model', 'fp', 'biz', 'mo'].includes(process.env.AMO_SCENARIO)) {
-        const script = fs.readFileSync(path.join(__dirname, '..', 'test', ({ drawing: 'scenario-drawing.js', dex: 'scenario-dex.js', model: 'scenario-model.js', fp: 'scenario-fp.js', biz: 'scenario-biz.js', mo: 'scenario-mo.js' }[process.env.AMO_SCENARIO] || 'scenario-run.js')), 'utf8').replace(/__AMO_DIR__/g, (process.env.AMO_PICK_DIR || '').replace(/\\/g, '/'));
+      if (['run', 'drawing', 'dex', 'model', 'fp', 'biz', 'mo', 'pc'].includes(process.env.AMO_SCENARIO)) {
+        const script = fs.readFileSync(path.join(__dirname, '..', 'test', ({ drawing: 'scenario-drawing.js', dex: 'scenario-dex.js', model: 'scenario-model.js', fp: 'scenario-fp.js', biz: 'scenario-biz.js', mo: 'scenario-mo.js', pc: 'scenario-pc.js' }[process.env.AMO_SCENARIO] || 'scenario-run.js')), 'utf8').replace(/__AMO_DIR__/g, (process.env.AMO_PICK_DIR || '').replace(/\\/g, '/'));
         await win.webContents.executeJavaScript(`window.__variant = ${JSON.stringify(process.env.AMO_VARIANT || '')}`);
         const out = await win.webContents.executeJavaScript(script);
         console.error('[scenario]', JSON.stringify(out));
@@ -344,6 +344,7 @@ ipcMain.handle('history:remove', (_e, { id }) => { writeJson(HISTORY_FILE(), rea
 const modmain = require('./modmain.js');
 const BIZ = bizmain.register({ ipcMain, dialog, shell, Notification, getWin: () => win, userDir: USER_DIR, claudeFull: (a) => claudeFull(a), checker });
 modmain.register({ ipcMain, dialog, getWin: () => win, userDir: USER_DIR, claudeFull: (a) => claudeFull(a), checker, log: (e) => BIZ.log(e) });
+require('./pcmain.js').register({ ipcMain, BrowserWindow, desktopCapturer, screen, globalShortcut, getWin: () => win, loadSettings, anthropicBase: ANTHROPIC, log: (e) => BIZ.log(e), mock: process.env.AMO_PC_MOCK === '1' });
 
 // ---------- the drawing room: cable schedule vs drawings ----------
 let checkRunning = false;

@@ -24,6 +24,7 @@ contextBridge.exposeInMainWorld('office', {
   },
   history: { list: call('history:list'), get: call('history:get'), remove: call('history:remove') },
   dxf: { propose: call('dxf:propose'), apply: call('dxf:apply') },
+  pc: { run: call('pc:run'), stop: call('pc:stop'), selftest: call('pc:selftest'), mockLog: call('pc:mockLog'), decide: (m) => ipcRenderer.send('pc:decision', m) },
   mo: { pickFolder: call('mo:pickFolder'), readFolder: call('mo:readFolder'), readFiles: call('mo:readFiles'), plan: call('mo:plan'), check: call('mo:check'), save: call('mo:save'), saveAs: call('mo:saveAs'), saveText: call('mo:saveText'), onProgress: (fn) => ipcRenderer.on('mo:progress', (_e, p) => fn(p)) },
   model: { generate: call('model:generate'), list: call('model:list'), load: call('model:load'), claude: call('model:claude'), saveGlb: call('model:saveGlb'), open: call('model:open'), saveAs: call('model:saveAs'), folder: call('model:folder'), onProgress: (fn) => ipcRenderer.on('model:progress', (_e, p) => fn(p)) },
   image: { generate: call('image:generate'), edit: call('image:edit'), openaiModels: call('openai:imageModels') },

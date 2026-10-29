@@ -82,6 +82,12 @@ Both sit in the modeling room: Milo at his drafting board, Vera at a review tabl
 Limits: STEP, IFC, DWG and DXF models are not opened (export a GLB). Clash test is box-based, so diagonal pipes can report false overlaps.
 Test: AMO_SCENARIO=mo AMO_MO_DIR=<folder with an .obj and notes> AMO_MOCK=1 with test/mock-api.js running.
 
+## Computer control (Milo drives Plant 3D / AutoCAD)
+In Milo's result panel, "Let Milo drive Plant 3D / AutoCAD": Milo takes screenshots of the main screen and Claude's computer tool says what to click or type (default model uses the `computer_toolset_20260801` tool, no beta header; older models fall back to `computer_20251124`). Clicks, keys and typing are done on Windows with small PowerShell scripts calling user32 (`src/pcinput.js`, no native modules). The main window minimises while he works.
+Safety: it only starts from the button; a small always-on-top bar (`src/pcoverlay.html`) shows each action; "Ask me before every action" is on by default (Allow / Don't); Stop on the bar or Ctrl+Alt+Q ends it; risky keys (Windows key combos, Alt+F4, Delete) always ask; 40-step limit; Milo has an `ask_user` tool and the rules not to save over originals or touch passwords; runs go in the audit trail. Screenshots go to the Claude API.
+Check it works on a PC with "Test control (10 s)" (moves the mouse, presses Shift, reads the cursor back). Unit test: `node test/pcinput-test.js`. Loop test: `AMO_SCENARIO=pc AMO_PC_MOCK=1 AMO_MOCK=1` with test/mock-api.js running.
+Not verified on a real Windows PC from the build environment: the PowerShell input, DPI scaling on scaled or multi-monitor setups, and real Plant 3D behaviour.
+
 ## Furniture and look
 
 v1.1: the floor is laid out in pods of two facing workstations (slim white desks, dual monitors on an arm, keyboard, mouse, pedestal, desk plant, coloured mug and chair) with a pendant over each pod; spare pods are furnished and waiting for new agents, so adding a team (a CAD department, say) just fills them in. Windows look out on a soft skyline; the boardroom has a proper long table and pendant row; the open sides have a slim ceiling edge. Agents blink, walk with a distance-driven cycle (no sliding), lean into turns, and sit and type at their desks.
