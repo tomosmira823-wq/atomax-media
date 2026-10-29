@@ -78,6 +78,23 @@ function parseMsg(buf) {
   return { from: '', to: '', subject: '', date: '', body: keep.join('\n').slice(0, 20000), attachments: [] };
 }
 
+// Drawing work always reaches Dex, whatever Claude decided: if the email (or Eli's own tasks) mention a drawing Dex can make and no task is his, add one.
+const DRAWINGS = [
+  { re: /earthing\s*(design|layout|schematic|drawing|arrangement|system|study)?|earth(ing)?\s*(grid|mat|mesh)/i, kind: 'earthing', title: (site) => `Draw the earthing schematic${site ? ' for ' + site : ''}` },
+  { re: /\b(sld|slds|single[\s-]*line(\s*diagram)?s?)\b/i, kind: 'sld', title: (site) => `Draw the single line diagram${site ? ' for ' + site : ''}` },
+];
+function ensureDrafter(email, emailText = '') {
+  const asksText = (a) => a.title + ' ' + a.detail;
+  for (const d of DRAWINGS) {
+    const inEmail = d.re.test(emailText) || d.re.test(email.summary || '') || email.asks.some(a => d.re.test(asksText(a)));
+    if (!inEmail) continue;
+    if (email.asks.some(a => a.agent === 'dex' && (d.re.test(asksText(a)) || a.kind === d.kind))) continue;
+    const related = email.asks.filter(a => d.re.test(asksText(a)));
+    email.asks.push({ i: email.asks.length, title: d.title(email.site), detail: `Dex draws a first draft from the email and its attachments${related.length ? ': ' + related.map(a => a.title).join('; ') : ''}. Anything not in the documents is marked TBC.`, agent: 'dex', kind: d.kind, due: (related[0] || {}).due || '', status: 'proposed', auto: true });
+  }
+  return email;
+}
+
 function register({ ipcMain, dialog, shell, getWin, userDir, claudeFull, checker, BIZ, loadSettings, saveSettings }) {
   const DIR = () => { const d = path.join(userDir(), 'emails'); fs.mkdirSync(d, { recursive: true }); return d; };
   const FILE = () => path.join(DIR(), 'emails.json');
@@ -120,6 +137,7 @@ function register({ ipcMain, dialog, shell, getWin, userDir, claudeFull, checker
     const email = { id, at: new Date().toISOString(), from: e.from || '', subject: e.subject || '', date: e.date || '', summary: e.summary || '', site: e.site || '', jobNumber: e.jobNumber || '', reply: e.reply || '',
       asks: (e.asks || []).map((a, i) => ({ i, title: String(a.title || 'Task').slice(0, 160), detail: String(a.detail || ''), agent: AGENTS[a.agent] ? a.agent : 'none', kind: a.kind || 'other', due: a.due || '', status: 'proposed' })),
       originals, attachments: attach, pasted: text || '' };
+    ensureDrafter(email, parts.join('\n'));
     email.jobId = matchJob(email);
     const list = load(), at = reuseId ? list.findIndex(x => x.id === reuseId) : -1;
     if (at >= 0) list[at] = email; else list.unshift(email); save(list);
@@ -229,4 +247,4 @@ Write in plain British English as Markdown: "# title", "## Summary" (3 lines max
   }));
 }
 
-module.exports = { register, parseEml, parseMsg, EMAIL_SYSTEM, AGENTS };
+module.exports = { register, ensureDrafter, parseEml, parseMsg, EMAIL_SYSTEM, AGENTS };
