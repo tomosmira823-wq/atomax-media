@@ -568,7 +568,7 @@ export class Office {
     this.#furnishBuilding();
     this.#buildNav();
     // if agents were requested before the models arrived, place them now
-    if (this.pendingAgents) { const l = this.pendingAgents; this.pendingAgents = null; this.setAgents(l.list, l.drawing, l.modelling, l.docs); }
+    if (this.pendingAgents) { const l = this.pendingAgents; this.pendingAgents = null; this.setAgents(l.list, l.drawing, l.modelling, l.docs, l.email); }
     this.setBoard(this.boardLines);
   }
 
@@ -639,11 +639,11 @@ export class Office {
   }
 
   // ---------- public API ----------
-  setAgents(list, drawing = null, modelling = null, docs = null) {
-    if (!this.models['desk-teacher']) { this.pendingAgents = { list, drawing, modelling, docs }; return; }
+  setAgents(list, drawing = null, modelling = null, docs = null, email = null) {
+    if (!this.models['desk-teacher']) { this.pendingAgents = { list, drawing, modelling, docs, email }; return; }
     (this.drawExtras || []).forEach(o => { this.scene.remove(o); if (o.element) o.element.remove(); }); this.drawExtras = [];
     for (const a of this.agents.values()) { this.scene.remove(a.group); if (a.desk) this.scene.remove(a.desk); if (a.chair) this.scene.remove(a.chair); a.label.element.remove(); }
-    this.agents.clear(); this.dexRoots = []; this.modRoots = {}; this.docsAgentRoots = [];
+    this.agents.clear(); this.dexRoots = []; this.modRoots = {}; this.docsAgentRoots = []; (this.emailExtras || []).forEach(o => this.scene.remove(o)); this.emailExtras = []; this.emailAgentRoots = [];
     this.obstacles = this.obstacles.filter(o => !o.desk);
     (this.podRugs || []).forEach(r => this.scene.remove(r)); const a_rugs = []; this.podRugs = a_rugs;
     list.forEach((data, i) => {
@@ -689,6 +689,7 @@ export class Office {
     for (const d of (Array.isArray(drawing) ? drawing : (drawing ? [drawing] : []))) { if (d.role === 'drafter') this.#addDrafter(d); else this.#addDrawingAgent(d, a_rugs); }
     for (const d of (Array.isArray(modelling) ? modelling : [])) this.#addModelling(d);
     for (const d of (Array.isArray(docs) ? docs : [])) this.#addDocsAgent(d);
+    for (const d of (Array.isArray(email) ? email : [])) this.#addEmailAgent(d);
     this.#buildNav();
     for (const a of this.agents.values()) a.path = null;
     this.setBoard(this.boardLines);
@@ -934,6 +935,26 @@ export class Office {
     this.docsAgentRoots = [desk, group, chair];
   }
 
+  // the email checker works behind the reception counter: a monitor on the counter, his chair behind it, facing the room
+  #addEmailAgent(data) {
+    const colour = new THREE.Color(data.colour || '#ffa94d'), R = RECEP, dx = R.cx + 1.0, dz = R.z0 + 4.2;
+    const desk = new THREE.Group(), screenMat = mat(0x16233a, { emissive: 0x1c3a6b, emissiveIntensity: 0.8 });
+    desk.add(box(0.9, 0.55, 0.06, mat(0x0b0e16), 0, 1.5, -0.3)); const scr = box(0.8, 0.45, 0.02, screenMat, 0, 1.5, -0.33, false); desk.add(scr);
+    desk.add(box(0.08, 0.3, 0.08, mat(0x0b0e16), 0, 1.25, -0.25)); desk.add(box(0.5, 0.04, 0.3, mat(0xf4f5f7), 0, 1.13, -0.4, false));   // keyboard and a tray of letters
+    desk.position.set(dx, 0, dz); desk.rotation.y = Math.PI; desk.userData.screenMat = screenMat; this.scene.add(desk);
+    const chair = this.#officeChair(colour); chair.position.set(dx, 0, dz - 1.35); chair.rotation.y = Math.PI; this.scene.add(chair);
+    const seat = new THREE.Vector3(dx, 0, dz - 1.25), faceSeat = 0;
+    const group = buildCharacter(data.colour, 'reviewer', data.gear);
+    group.position.copy(this.#randomIdlePoint('reception')); this.scene.add(group);
+    const el = document.createElement('div'); el.className = 'lbl';
+    el.innerHTML = `<b>${data.name}</b> · ${data.platform} <span class="st"></span>`;
+    const label = new CSS2DObject(el); label.position.set(0, 2.6, 0); group.add(label);
+    this.agents.set(data.id, { data, group, desk, chair, seat, faceSeat, zone: 'reception', state: 'idle', label, el, walkTarget: null, waypoint: null, faceTo: null, wait: Math.random() * 3, t: Math.random() * 10, blink: 2 + Math.random() * 3 });
+    this.emailHint = this.#chip('Drop an email on Eli', dx, 2.9, dz + 0.2); this.emailHint.visible = this.room === 'overview' || this.room === 'media';
+    this.emailExtras = [desk, chair, this.emailHint];
+    this.emailAgentRoots = [desk, group, chair];
+  }
+
   // Dex sits on the stool at the drafting table, facing the board, all day
   #addDrafter(data) {
     const [sx, sz] = DRAFT_STOOL, [tx, tz] = DRAFT_TABLE;
@@ -1011,6 +1032,7 @@ export class Office {
       desk: { p: [dx + 8.0, 4.8, dz + 8.0], t: [dx + 2.8, 1.0, dz + 0.6] },
       drafting: { p: [DRAFT_TABLE[0] + 7.5, 4.8, DRAFT_TABLE[1] + 7.5], t: [DRAFT_TABLE[0] + 2.6, 1.0, DRAFT_TABLE[1] + 0.4] },
       ...(this.projSpot ? { board: this.projSpot } : {}),
+      email: { p: [RECEP.cx + 6, 6.5, RECEP.z1 + 6], t: [RECEP.cx + 0.5, 1.2, RECEP.z0 + 4] },
       ...(this.modelRoom ? this.modelRoom.spots : {})
     };
     const sp = spots[where]; if (!sp) return;
@@ -1022,6 +1044,7 @@ export class Office {
     if (this.modelRoom) { this.modelRoom.hint.visible = where === 'modeling'; for (const k of Object.values(this.modelRoom.stations)) k.hint.visible = where === 'modeling'; }
     const wideNow = where === 'media' || where === 'overview';
     if (this.projHint) this.projHint.visible = wideNow;
+    if (this.emailHint) this.emailHint.visible = wideNow;
     if (this.newRooms) { for (const c of this.newRooms.file.chips) c.visible = where === 'file'; for (const c of this.newRooms.server.chips) c.visible = where === 'server'; }
     this.canvas.style.cursor = '';
   }
@@ -1038,6 +1061,7 @@ export class Office {
       if (wide && this.docRoots && this.ray.intersectObjects(this.docRoots.issue, true).length) return 'issue';
       if (wide && this.nextRoots && this.ray.intersectObjects(this.nextRoots, true).length) return 'nextdesk';
       if (wide && this.docsAgentRoots && this.docsAgentRoots.length && this.ray.intersectObjects(this.docsAgentRoots, true).some(h => visibleChain(h.object))) return 'docs';
+      if (wide && this.emailAgentRoots && this.emailAgentRoots.length && this.ray.intersectObjects(this.emailAgentRoots, true).some(h => visibleChain(h.object))) return 'email';
       if (wide && this.doorPlaque && visibleChain(this.doorPlaque) && this.ray.intersectObject(this.doorPlaque, true).length) return 'door';
       if (wide && this.roomPlaques) for (const [k, g] of Object.entries(this.roomPlaques)) if (visibleChain(g) && this.ray.intersectObject(g, true).length) return k === 'file' ? 'fileroom' : 'serverroom';
       if (this.room === 'file' && this.newRooms) { const h = this.ray.intersectObjects(this.newRooms.file.roots, true).find(h => visibleChain(h.object)); if (h) { const c = this.newRooms.file.cabs.find(c => this.#within(h.object, c.group)); if (c) return 'cabinet:' + c.key; } }
@@ -1305,6 +1329,10 @@ export class Office {
   #lineClear(a, b) { const n = Math.ceil(a.distanceTo(b) / (this.navCell * 0.5)) + 1; for (let i = 0; i <= n; i++) { const t = i / n; if (!this.#walkable(a.x + (b.x - a.x) * t, a.z + (b.z - a.z) * t)) return false; } return true; }
 
   #randomIdlePoint(zone = 'media') {
+    if (zone === 'reception') {
+      for (let i = 0; i < 80; i++) { const x = RECEP.x0 + 1.5 + Math.random() * (RECEP.w - 3), z = RECEP.z0 + 5.5 + Math.random() * (RECEP.d - 7); if (this.#walkable(x, z)) return new THREE.Vector3(x, 0, z); }
+      return this.#nearestWalkable(RECEP.cx, RECEP.cz + 2);
+    }
     if (zone === 'docs') {
       for (let i = 0; i < 80; i++) { const x = DOCS.x0 + 1.5 + Math.random() * (DOCS.w - 3), z = DOCS.z0 + 2.5 + Math.random() * (DOCS.d - 4); if (this.#walkable(x, z)) return new THREE.Vector3(x, 0, z); }
       return this.#nearestWalkable(DOCS.cx, DOCS.cz);

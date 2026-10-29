@@ -25,9 +25,10 @@ function register({ ipcMain, dialog, getWin, loadSettings, saveSettings, userDir
   ipcMain.handle('library:remove', ok((_e, { key, file }) => library.remove(key, file)));
   ipcMain.handle('library:drop', ok((_e, { key, files }) => library.addFiles(key, (files || []).map(f => ({ name: f.name, data: Buffer.from(f.base64, 'base64') })))));
   ipcMain.handle('library:importSkill', ok(async () => {
-    const r = await dialog.showOpenDialog(getWin(), { properties: ['openDirectory'], title: 'Pick a folder that contains SKILL.md' });
+    const r = await dialog.showOpenDialog(getWin(), { properties: ['openDirectory'], title: 'Pick your skills folder (.skill files, or a folder with SKILL.md)' });
     if (r.canceled || !r.filePaths[0]) return null;
-    return library.importSkill(r.filePaths[0]);
+    const out = library.importSkills([r.filePaths[0]]);
+    return { done: out.done, skipped: out.skipped };
   }));
   ipcMain.handle('library:newSkill', ok((_e, a) => library.newSkill(a || {})));
   ipcMain.handle('library:setRulebook', ok((_e, { agentId, text }) => library.setRulebook(agentId, text)));

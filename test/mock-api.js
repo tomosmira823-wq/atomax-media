@@ -13,6 +13,23 @@ function readBody(req) { return new Promise(r => { const c = []; req.on('data', 
 function claudeReply(body) {
   const sys = body.system || '';
   const userText = JSON.stringify(body.messages || []);
+  // ---- Eli (email checker) ----
+  if (/You are Eli, the email checker/.test(sys)) {
+    calls.push({ eli: true, images: (userText.match(/"type":"image"/g) || []).length, hasBody: /SLD|single line/i.test(userText) });
+    return JSON.stringify({ from: 'Sam Client <sam@client.co.uk>', subject: 'Test site SLD', date: '29 Oct 2026', summary: 'Sam needs a single line diagram for the LV board at the Test site by Friday.', site: 'Test site', jobNumber: 'X22001',
+      asks: [{ title: 'Draw an SLD for the Test site LV board', detail: '1000kVA transformer, 1600A ACB incomer, three outgoing ways (DB-01 250A, pump 160A, spare 63A).', agent: 'dex', kind: 'sld', due: 'Friday' },
+             { title: 'Confirm the price for the SLD', detail: 'Sam asks what it will cost.', agent: 'none', kind: 'other', due: '' }],
+      reply: 'Hi Sam, thanks. We will send the SLD by Friday. Tom' });
+  }
+  // ---- Dex (DXF maker) ----
+  if (/You are Dex, the DXF maker/.test(sys)) {
+    calls.push({ dexMake: true, pdfs: (userText.match(/"type":"document"/g) || []).length, folderCtx: /PROJECT FOLDER:/.test(sys), skill: /YOUR SKILLS/.test(sys), answered: /ANSWERS FROM THE ENGINEER/.test(userText) });
+    if (!/ANSWERS FROM THE ENGINEER/.test(userText)) return JSON.stringify({ questions: ['What is the cable size to DB-01?'] });
+    return JSON.stringify({ kind: 'sld', title: 'TEST SITE LV SINGLE LINE DIAGRAM', drawingNumber: 'X22001-01-01-0001', revision: 'P01', summary: 'Main LV board with three ways; cable lengths TBC.',
+      boards: [{ label: 'MAIN LV BOARD\n400V 3PH 4W', incomers: [{ label: '11kV DNO', chain: [{ symbol: 'supply', label: 'DNO 11kV' }, { symbol: 'transformer', label: 'TX1\n1000kVA' }, { symbol: 'breaker', label: 'Q0\n1600A ACB' }] }],
+        feeders: [{ chain: [{ symbol: 'breaker', label: 'Q1 250A' }, { symbol: 'cable', label: '4C 95mm² SWA' }, { symbol: 'board', label: 'DB-01' }] }, { chain: [{ symbol: 'breaker', label: 'Q2 160A' }, { symbol: 'motor', label: 'PUMP' }] }, { chain: [{ symbol: 'switchfuse', label: 'Q3 63A' }, { symbol: 'spare', label: 'SPARE' }] }] }],
+      notes: ['Cable lengths TBC'] });
+  }
   // ---- Milo (3D modeller) and Vera (model checker) ----
   if (/You are Milo/.test(sys)) {
     if (/pipe/i.test(userText) && !/Your earlier questions/.test(userText)) return JSON.stringify({ status: 'questions', questions: ['What diameter should the pipe be?', 'Which side of the rail is the back?'] });

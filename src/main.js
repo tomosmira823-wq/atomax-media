@@ -83,7 +83,7 @@ const DEFAULT_AGENTS = [
     rules: STANDARD_SKILL
   },
   {
-    id: 'dex', role: 'drafter', platform: 'DXF Fixer', name: 'Dex', colour: '#4dabf7', enabled: true, gear: ['glasses', 'lanyard'],
+    id: 'dex', role: 'drafter', platform: 'DXF Maker', name: 'Dex', colour: '#4dabf7', enabled: true, gear: ['glasses', 'lanyard'],
     tone: 'Quiet, exact and careful. Changes only what he is told to change, says what he did, and leaves the originals alone.',
     rules: 'Fix only the text changes ticked by the person. Never touch geometry. Never overwrite the original DXF.'
   },
@@ -106,6 +106,11 @@ const DEFAULT_AGENTS = [
     id: 'vera', role: 'modelchecker', platform: '3D Model Checker', name: 'Vera', colour: '#ff8787', enabled: true, gear: ['glasses', 'clipboard'],
     tone: 'Picky but fair. Checks the result against the request and the context, says what is good, and is honest about what she could not tell.',
     rules: 'Check it does what was asked, sizes match the context, nothing clashes or floats, nothing extra was changed. Below 6 out of 10 goes back to Milo.'
+  },
+  {
+    id: 'email', role: 'email', platform: 'Email Checker', name: 'Eli', colour: '#ffa94d', enabled: true, gear: ['headset', 'lanyard'],
+    tone: 'Calm and exact. Reads every line of an email, copies names and numbers exactly, never invents work.',
+    rules: 'Split the email into separate asks. Give each to the agent who can do it, or to Tom. Keep site names, job numbers and dates exactly as written.'
   },
   {
     id: 'x', platform: 'X / Twitter', name: 'Xander', colour: '#111111', enabled: false,
@@ -208,8 +213,8 @@ function createWindow() {
   if (process.env.AMO_SCREENSHOT) {
     win.webContents.on('console-message', (_e, level, msg, line, src) => console.error('[page]', level, msg, src + ':' + line));
     win.webContents.once('did-finish-load', () => setTimeout(async () => {
-      if (['run', 'drawing', 'dex', 'model', 'fp', 'biz', 'mo', 'pc', 'theo', 'layout', 'rooms'].includes(process.env.AMO_SCENARIO)) {
-        const script = fs.readFileSync(path.join(__dirname, '..', 'test', ({ drawing: 'scenario-drawing.js', dex: 'scenario-dex.js', model: 'scenario-model.js', fp: 'scenario-fp.js', biz: 'scenario-biz.js', mo: 'scenario-mo.js', pc: 'scenario-pc.js', theo: 'scenario-theo.js', layout: 'scenario-layout.js', rooms: 'scenario-rooms.js' }[process.env.AMO_SCENARIO] || 'scenario-run.js')), 'utf8').replace(/__AMO_DIR__/g, (process.env.AMO_PICK_DIR || '').replace(/\\/g, '/'));
+      if (['run', 'drawing', 'dex', 'model', 'fp', 'biz', 'mo', 'pc', 'theo', 'layout', 'rooms', 'email'].includes(process.env.AMO_SCENARIO)) {
+        const script = fs.readFileSync(path.join(__dirname, '..', 'test', ({ drawing: 'scenario-drawing.js', dex: 'scenario-dex.js', model: 'scenario-model.js', fp: 'scenario-fp.js', biz: 'scenario-biz.js', mo: 'scenario-mo.js', pc: 'scenario-pc.js', theo: 'scenario-theo.js', layout: 'scenario-layout.js', rooms: 'scenario-rooms.js', email: 'scenario-email.js' }[process.env.AMO_SCENARIO] || 'scenario-run.js')), 'utf8').replace(/__AMO_DIR__/g, (process.env.AMO_PICK_DIR || '').replace(/\\/g, '/'));
         await win.webContents.executeJavaScript(`window.__variant = ${JSON.stringify(process.env.AMO_VARIANT || '')}`);
         const out = await win.webContents.executeJavaScript(script);
         console.error('[scenario]', JSON.stringify(out));
@@ -328,7 +333,7 @@ ipcMain.handle('social:canPost', (_e, platform) => {
 });
 // older saved teams predate the drawing checker: add Cal (once) so the drawing room has someone at the desk
 function withDrawingAgent(list) {
-  for (const role of ['drawing', 'drafter', 'modeller', 'builder', 'modelchecker', 'documents']) {
+  for (const role of ['drawing', 'drafter', 'modeller', 'builder', 'modelchecker', 'documents', 'email']) {
     if (list.some(a => a.role === role)) continue;
     const d = DEFAULT_AGENTS.find(a => a.role === role);
     if (d) list = [...list, { ...d }];
@@ -364,8 +369,9 @@ let BIZ;
 const withJob = (a) => { let c = ''; try { c = BIZ ? BIZ.contextFor(undefined, (String(a && a.system || '').match(/You are (Milo|Theo|Vera|Dex|Cal)\b/) || [])[1] || '') : ''; } catch {} return c ? { ...a, system: String(a.system || '') + '\n\n' + c } : a; };
 roomsmain.register({ ipcMain, dialog, getWin: () => win, loadSettings, saveSettings, userDir: USER_DIR, version: () => app.getVersion(), getAgents: () => readJson(AGENTS_FILE(), DEFAULT_AGENTS) });
 const updSend = (u) => { roomsmain.setUpdate(u); updSend(u); };
-BIZ = bizmain.register({ ipcMain, dialog, shell, Notification, getWin: () => win, userDir: USER_DIR, claudeFull: (a) => claudeFull(a), checker });
-modmain.register({ ipcMain, dialog, getWin: () => win, userDir: USER_DIR, claudeFull: (a) => claudeFull(withJob(a)), checker, log: (e) => BIZ.log(e) });
+BIZ = bizmain.register({ ipcMain, dialog, shell, Notification, getWin: () => win, userDir: USER_DIR, claudeFull: (a) => claudeFull(a), checker, getSettings: () => loadSettings() });
+require('./intake').register({ ipcMain, dialog, shell, getWin: () => win, userDir: USER_DIR, claudeFull: (a) => claudeFull(a), checker, BIZ });
+modmain.register({ ipcMain, dialog, getWin: () => win, userDir: USER_DIR, claudeFull: (a) => claudeFull(withJob(a)), checker, log: (e) => BIZ.log(e), outputDirFor: (id, k) => BIZ.outputDirFor(id, k) });
 require('./pcmain.js').register({ ipcMain, BrowserWindow, desktopCapturer, screen, globalShortcut, getWin: () => win, loadSettings, anthropicBase: ANTHROPIC, log: (e) => BIZ.log(e), jobContext: (who) => { try { return BIZ.contextFor(undefined, who); } catch { return ''; } }, mock: process.env.AMO_PC_MOCK === '1' });
 
 // ---------- the drawing room: cable schedule vs drawings ----------
@@ -382,7 +388,7 @@ ipcMain.handle('check:run', async (_e, { agent, schedule, drawings, note, jobId 
     });
     // marked-up copies of the drawings that have findings; originals are never touched
     progress({ message: 'marking up the drawings', stage: 'markup' });
-    try { report.markups = await markup.makeMarkups({ report, drawings, fallbackDir: path.join(USER_DIR(), 'drawing-checks') }); }
+    try { report.markups = await markup.makeMarkups({ report, drawings, fallbackDir: (jobId && BIZ.outputDirFor(jobId, 'markups')) || path.join(USER_DIR(), 'drawing-checks') }); }
     catch (e) { report.markups = { dir: '', made: [], failed: [{ name: '(all)', reason: String(e.message || e).slice(0, 160) }], untouched: 0 }; }
     const mk = report.markups;
     report.text += '\n\nMARKED-UP COPIES (originals untouched)\n' + ((mk.made.length || mk.notes) ? `  - Saved ${mk.made.length + (mk.notes ? 1 : 0)} file${mk.made.length + (mk.notes ? 1 : 0) === 1 ? '' : 's'} in ${mk.dir}\n` + mk.made.map(m => `  - ${path.basename(m.out)} (${m.notes} note${m.notes === 1 ? '' : 's'})`).join('\n') + (mk.notes ? `\n  - ${path.basename(mk.notes.out)} (${mk.notes.count} schedule-level note${mk.notes.count === 1 ? '' : 's'} that cannot sit on a drawing)` : '') : '  - None made (nothing to mark on the drawings, or they could not be marked up).') + (mk.failed.length ? '\n' + mk.failed.map(f => `  - Could not mark up ${f.name}: ${f.reason}`).join('\n') : '') + `\n  - ${mk.untouched} file${mk.untouched === 1 ? ' has' : 's have'} nothing to mark.`;

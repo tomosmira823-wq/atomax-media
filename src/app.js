@@ -2,6 +2,8 @@ import { Office, AgentPreview, GEAR } from './office.js';
 import { initDexUI } from './dexui.js';
 import { initBoardUI } from './boardui.js';
 import { initRoomsUI } from './roomui.js';
+import { initDexMakeUI } from './dexmakeui.js';
+import { initMailUI } from './mailui.js';
 import { initModellerUI } from './modui.js';
 import { initCheckUI } from './checkui.js';
 import { initBizUI } from './bizui.js';
@@ -28,7 +30,7 @@ async function boot() {
 boot();
 function syncOffice() {
   const on = agents.filter(a => a.enabled);
-  office.setAgents(on.filter(a => !isDrawing(a)), on.filter(a => !isModelling(a) && !isDocs(a) && isDrawing(a)).slice(0, 2), on.filter(isModelling).slice(0, 3), on.filter(isDocs).slice(0, 1));
+  office.setAgents(on.filter(a => !isDrawing(a)), on.filter(a => !isModelling(a) && !isDocs(a) && !isEmail(a) && isDrawing(a)).slice(0, 2), on.filter(isModelling).slice(0, 3), on.filter(isDocs).slice(0, 1), on.filter(isEmail).slice(0, 1));
 }
 
 // ---------- updates ----------
@@ -191,7 +193,8 @@ document.querySelectorAll('[data-test]').forEach(b => b.addEventListener('click'
 const isReviewer = (a) => a.role === 'reviewer';
 const isModelling = (a) => a.role === 'modeller' || a.role === 'builder' || a.role === 'modelchecker';
 const isDocs = (a) => a.role === 'documents';
-function isDrawing(a) { return a.role === 'drawing' || a.role === 'drafter' || isModelling(a) || isDocs(a); }
+const isEmail = (a) => a.role === 'email';
+function isDrawing(a) { return a.role === 'drawing' || a.role === 'drafter' || isModelling(a) || isDocs(a) || isEmail(a); }
 const isDrafter = (a) => a.role === 'drafter';
 function renderAgentPick() {
   const writers = agents.filter(a => a.enabled && !isReviewer(a) && !isDrawing(a));
@@ -230,7 +233,7 @@ function openLoadout(i) {
 function fillLoadout() {
   const a = loDraft, rev = isReviewer(a);
   $('#loName').textContent = a.name; $('#loRole').textContent = isDrawing(a) ? (isModelling(a) ? (a.role === 'modeller' ? '3D modeller' : a.role === 'builder' ? '3D builder' : '3D model checker') : isDrafter(a) ? 'DXF fixer' : 'drawing checker') : (rev ? 'reviewer' : a.platform);
-  $('#lo_name').value = a.name; $('#lo_platform').value = a.platform; $('#lo_role').innerHTML = isDrawing(a) ? (isModelling(a) ? `<option value="${a.role}">${a.role === 'modeller' ? '3D modeller — sits at the board in the modeling room' : a.role === 'builder' ? '3D builder — builds from scratch at his desk' : '3D model checker — sits at the review table'}</option>` : isDrafter(a) ? '<option value="drafter">DXF fixer — sits at the drafting table</option>' : '<option value="drawing">Drawing checker — works in the drawing room</option>') : '<option value="writer">Writer — posts to one account</option><option value="reviewer">Reviewer — checks every post</option>'; $('#lo_role').value = isDrawing(a) ? a.role : (rev ? 'reviewer' : 'writer');
+  $('#lo_name').value = a.name; $('#lo_platform').value = a.platform; $('#lo_role').innerHTML = isDrawing(a) ? (isModelling(a) ? `<option value="${a.role}">${a.role === 'modeller' ? '3D modeller — sits at the board in the modeling room' : a.role === 'builder' ? '3D builder — builds from scratch at his desk' : '3D model checker — sits at the review table'}</option>` : isDrafter(a) ? '<option value="drafter">DXF maker and fixer — sits at the drafting table</option>' : isEmail(a) ? '<option value="email">Email checker — works at reception</option>' : isDocs(a) ? '<option value="documents">Documents — works in the Documents room</option>' : '<option value="drawing">Drawing checker — works in the drawing room</option>') : '<option value="writer">Writer — posts to one account</option><option value="reviewer">Reviewer — checks every post</option>'; $('#lo_role').value = isDrawing(a) ? a.role : (rev ? 'reviewer' : 'writer');
   $('#lo_enabled').checked = !!a.enabled; $('#lo_colour').value = a.colour;
   $('#lo_tone').value = a.tone || ''; $('#lo_rules').value = a.rules || ''; $('#lo_examples').value = a.examples || '';
   const dr = isDrawing(a);
@@ -568,14 +571,15 @@ function openAgentForTask(task, job) {
   else if (role === 'builder') { modellerUI.setMode('build'); goRoom('modeler'); $('#moRequest').value = text; $('#moRequest').dispatchEvent(new Event('input')); }
   else if (role === 'modelchecker') { modellerUI.setMode('edit'); goRoom('modeler'); }
   else if (role === 'drawing') { goRoom('desk'); const n = $('#checkNote'); if (n) { n.style.display = 'block'; n.value = text; } }
-  else if (role === 'drafter') { goRoom('drafting'); const box = $('#dexNoteBox'), n = $('#dexNote'); if (box && n) { box.style.display = 'block'; n.value = text; } }
+  else if (role === 'drafter' && !/\b(fix|correct|change|delete|markup|mark-up|redline)\b/i.test(text)) { goRoom('drafting'); dexMake.preset({ jobId: (job && job.id) || task.jobId || '', request: text }); }
+  else if (role === 'drafter') { goRoom('drafting'); document.querySelector('#dexMode [data-mode=fix]').click(); const box = $('#dexNoteBox'), n = $('#dexNote'); if (box && n) { box.style.display = 'block'; n.value = text; } }
   else if (role === 'documents') { bizUI.open('docs').then(() => openModal('bizModal')); }
   else goRoom('overview');
 }
 const modelUI = initModelingUI({ office, api, getSettings: () => settings, openSettings: () => { fillSettings(); openModal('settingsModal'); } });
 function goRoom(where) {
   const inModel = where === 'modeling' || where === 'scan' || where === 'modeler';
-  const inSide = where === 'file' || where === 'server';   // the File Room and the Server Room: their own panels
+  const inSide = where === 'file' || where === 'server' || where === 'email';   // the File Room and the Server Room: their own panels
   const wideView = where === 'media' || where === 'overview' || where === 'board';
   const inDraw = !wideView && !inSide;
   document.body.classList.toggle('room-side', inSide);
@@ -586,10 +590,11 @@ function goRoom(where) {
   document.querySelectorAll('#rooms button').forEach(b => b.classList.toggle('active', b.dataset.room === navKey));
   if (where === 'file') roomsUI.showFile(); else roomsUI.hideFile();
   if (where === 'server') roomsUI.showServer(); else roomsUI.hideServer();
+  if (where === 'email') mailUI.show(); else mailUI.hide();
   ['#checkPanel', '#dexPanel', '#modelPanel', '#modPanel'].forEach(sel => $(sel).classList.remove('collapsed'));
   if (where === 'modeler') modellerUI.show(); else modellerUI.hide();
   if (where === 'desk') { checkUI.show(); bizUI.fillJobSelect($('#checkJob')); } else checkUI.hide();
-  if (where === 'drafting') { dexUI.show(); bizUI.fillJobSelect($('#dexJob')); } else dexUI.hide();
+  if (where === 'drafting') { dexUI.show(); bizUI.fillJobSelect($('#dexJob')); dexMake.refresh(); } else dexUI.hide();
   if (where === 'scan') modelUI.show(); else modelUI.hide();
   if (where === 'board') boardUI.show(); else boardUI.hide();
   office.focus(where);
@@ -600,13 +605,14 @@ $('#dexBack').addEventListener('click', () => goRoom('drawing'));
 $('#modelBack').addEventListener('click', () => goRoom('modeling'));
 function routeRoomPick(what) {
   if (what === 'fileroom') { goRoom('file'); return true; }
+  if (what === 'email') { goRoom('email'); return true; }
   if (what === 'serverroom') { goRoom('server'); return true; }
   if (what.startsWith('cabinet:')) { const k = what.slice(8); goRoom('file'); roomsUI.showFile(k); office.openCabinet(k); return true; }
   if (what.startsWith('rack:')) { goRoom('server'); return true; }
   return false;
 }
 office.onPick = (what) => { if (routeRoomPick(what)) return; if (what === 'door') goRoom('drawing'); else if (what === 'desk') { if (calAgent()) goRoom('desk'); } else if (what === 'drafting') { if (dexAgent()) goRoom('drafting'); } else if (what === 'modeldoor') goRoom('modeling'); else if (what === 'scan') goRoom('scan'); else if (what === 'board') goRoom('board'); else if (what === 'approvals') { bizUI.open('approvals').then(() => openModal('bizModal')); } else if (what === 'issue') { bizUI.open('issue').then(() => openModal('bizModal')); } else if (what === 'docs') { bizUI.open('docs').then(() => openModal('bizModal')); } else if (what === 'nextdesk') { const t = document.querySelector('[data-tab=agents]'); if (t) t.click(); } else if (what === 'modeler' || what === 'modelcheck') { if (modellerAgent()) { modellerUI.setMode('edit'); goRoom('modeler'); } } else if (what === 'builder') { if (theo()) { modellerUI.setMode('build'); goRoom('modeler'); } } };
-document.addEventListener('keydown', (e) => { if (e.key !== 'Escape' || document.querySelector('.modal.open')) return; if (office.room === 'desk' || office.room === 'drafting') goRoom('drawing'); else if (office.room === 'scan' || office.room === 'modeler') goRoom('modeling'); else if (office.room === 'board' || office.room === 'file' || office.room === 'server') goRoom('overview'); });
+document.addEventListener('keydown', (e) => { if (e.key !== 'Escape' || document.querySelector('.modal.open')) return; if (office.room === 'desk' || office.room === 'drafting') goRoom('drawing'); else if (office.room === 'scan' || office.room === 'modeler') goRoom('modeling'); else if (office.room === 'board' || office.room === 'file' || office.room === 'server' || office.room === 'email') goRoom('overview'); });
 // ---- first person ----
 office.onFirstPerson = (on, room) => {
   document.body.classList.toggle('fp', on);
@@ -629,6 +635,15 @@ window.__boardUI = boardUI;
 // the File Room and Server Room panels
 const roomsUI = initRoomsUI({ api, getAgents: () => agents, openSettings: () => { fillSettings(); openModal('settingsModal'); }, goBack: () => goRoom('overview') });
 window.__roomsUI = roomsUI;
+// Dex's make mode, and Eli at reception
+const dexMake = initDexMakeUI({ api, office, bizUI, getDex: () => dexAgent() });
+const mailUI = initMailUI({ api, office, getAgents: () => agents, goBack: () => goRoom('overview'),
+  onStart: ({ ask, email, task, job }) => {
+    if (ask.agent === 'none') return;                                             // Tom's own task: it is on the board
+    if (ask.agent === 'dex') { goRoom('drafting'); dexMake.preset({ jobId: job.id, request: ask.title + '\n' + ask.detail, email: email.id, auto: true }); return; }
+    openAgentForTask(task, job);
+  } });
+window.__dexMake = dexMake; window.__mailUI = mailUI;
 // the Server Room's spend screen and racks follow the usage log every 15 seconds
 async function pushServerStatus() { try { const st = await api.server.status(); office.setServerStatus(st); await roomsUI.refreshServer(); } catch {} }
 setTimeout(pushServerStatus, 1500); setInterval(pushServerStatus, 15000);

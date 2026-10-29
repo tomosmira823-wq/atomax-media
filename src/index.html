@@ -138,6 +138,27 @@
 
 
   /* project whiteboard (meeting room) */
+  #dexPanel.make-mode #dexSetup, #dexPanel.make-mode #dexRun, #dexPanel.make-mode #dexList, #dexPanel.make-mode #dexResult { display: none !important; } #dexPanel:not(.make-mode) #dexMake { display: none; }
+  .dmfolder { margin-top: 6px; font-size: 12.5px; color: var(--muted); } .dmfolder b { color: var(--text); } .dmfolder .bp { font-family: Consolas, monospace; font-size: 11.5px; word-break: break-all; color: var(--text); }
+  .dmfolder button, #dmOut button, .dmq button { font: inherit; font-size: 12px; padding: 5px 9px; border-radius: 7px; border: 1px solid var(--line); background: #1b2131; color: var(--text); cursor: pointer; margin: 4px 4px 0 0; }
+  .dmq { margin-top: 10px; padding: 10px; border: 1px solid #ffa94d55; background: #2a2010; border-radius: 8px; } .dmq label { margin-top: 6px; font-weight: 600; font-size: 12.5px; text-transform: none; letter-spacing: 0; color: var(--text); } .dmq input { width: 100%; }
+  .dmsvg { margin-top: 10px; background: #fff; border-radius: 6px; overflow: auto; max-height: 340px; } .dmsvg svg { width: 100%; height: auto; display: block; }
+  #mailPanel { display: none; right: 16px; left: auto; width: min(1000px, 66vw); background: #f8f9fb; color: #212529; border-color: #cbd2dc; }
+  #mailPanel.open { display: flex; } body.room-side #brief, body.room-side #board { display: none; } #mailPanel h2 { background: #7a4a12; color: #fff; }
+  #mailPanel .body { padding: 0; display: grid; grid-template-columns: 300px 1fr; overflow: hidden; }
+  #mlLeft { padding: 12px; background: #eef1f5; border-right: 1px solid #dde1e8; overflow: auto; } #mlMain { padding: 14px 16px; overflow: auto; max-height: 74vh; }
+  #mlDrop { border: 2px dashed #f08c00; border-radius: 10px; padding: 18px 10px; text-align: center; background: #fff8ee; cursor: pointer; } #mlDrop.over { background: #ffe8cc; }
+  #mlDrop b { display: block; color: #7a4a12; } #mlDrop span { font-size: 12px; color: #868e96; }
+  #mlPaste { width: 100%; margin-top: 8px; font: inherit; font-size: 12.5px; padding: 6px; border: 1px solid #cbd2dc; border-radius: 6px; resize: vertical; background: #fff; color: #212529; }
+  #mailPanel button { font: inherit; font-size: 12.5px; padding: 6px 10px; border-radius: 6px; border: 1px solid #cbd2dc; background: #fff; color: #212529; cursor: pointer; }
+  #mailPanel button.bprim { background: #40bd00; border-color: #40bd00; color: #fff; } #mailPanel button:disabled { opacity: .5; cursor: default; }
+  .mlitem { display: block; width: 100%; text-align: left; margin-top: 6px; background: #fff; } .mlitem.on { outline: 2px solid #7a4a12; } .mlitem b { display: block; font-size: 13px; } .mlitem i { font-style: normal; font-size: 11.5px; color: #868e96; }
+  .mlhead h3 { margin: 0 0 2px; } .mlsum { margin: 8px 0; padding: 10px 12px; background: #fff; border: 1px solid #dde1e8; border-radius: 6px; font-size: 13.5px; }
+  .mlask { margin-top: 8px; background: #fff; border: 1px solid #dde1e8; border-left: 4px solid #f08c00; border-radius: 6px; padding: 10px 12px; } .mlask.started { border-left-color: #40bd00; } .mlask.declined { opacity: .55; border-left-color: #adb5bd; }
+  .mlask .mt { display: flex; justify-content: space-between; gap: 8px; align-items: flex-start; } .mlask .md { font-size: 12.5px; color: #495057; margin-top: 4px; white-space: pre-wrap; }
+  .mlstart { margin-top: 10px; padding: 10px; background: #f8f9fb; border-radius: 6px; display: flex; flex-direction: column; gap: 6px; } .mlstart select, .mlstart input { font: inherit; font-size: 13px; padding: 6px; border: 1px solid #cbd2dc; border-radius: 5px; background: #fff; color: #212529; }
+  .mlsug { display: flex; gap: 8px; align-items: flex-start; font-size: 12.5px; padding: 4px 0; } .mlsug span { word-break: break-all; } .mlrow { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+  .mlreply { margin-top: 10px; font-size: 12.5px; } .mlreply pre { white-space: pre-wrap; font: inherit; background: #fff; border: 1px solid #dde1e8; border-radius: 6px; padding: 8px; margin: 4px 0; }
   #filePanel, #serverPanel { display: none; right: 16px; left: auto; width: min(980px, 64vw); background: #f8f9fb; color: #212529; border-color: #cbd2dc; }
   #filePanel.open, #serverPanel.open { display: flex; } body.room-side #brief, body.room-side #board { display: none; }
   #filePanel h2, #serverPanel h2 { background: #1b2a41; color: #fff; } #filePanel .body, #serverPanel .body { padding: 0; display: grid; overflow: hidden; }
@@ -177,6 +198,8 @@
   #bdJobs { overflow: auto; padding: 12px; border-right: 1px solid #dde1e8; background: #eef1f5; display: flex; flex-direction: column; gap: 10px; }
   #bdMain { overflow: auto; padding: 16px 18px 24px; }
   #boardPanel button { font: inherit; cursor: pointer; }
+  .bfolder { margin: 10px 0; padding: 10px 12px; background: #fff; border: 1px solid #dde1e8; border-radius: 6px; } .bpath { font-family: Consolas, monospace; font-size: 12px; color: #1b2a41; word-break: break-all; margin: 2px 0 4px; }
+  .bsugg { display: flex; justify-content: space-between; gap: 10px; align-items: center; padding: 6px 0; border-top: 1px solid #eef1f5; } .bsugg .bsub { word-break: break-all; }
   .bj { text-align: left; border: 0; border-radius: 4px; padding: 10px 12px; background: var(--c); color: #212529; box-shadow: 0 3px 8px rgba(0,0,0,.15); display: flex; flex-direction: column; gap: 2px; transform: rotate(-.6deg); }
   .bj.on { outline: 3px solid #1b2a41; transform: none; } .bj b { font-size: 14px; } .bj span { font-size: 13px; } .bj i { font-size: 11.5px; color: #495057; font-style: normal; }
   .bcur { align-self: flex-start; font-size: 10px; font-weight: 800; background: #1b2a41; color: #fff; border-radius: 3px; padding: 1px 5px; }
@@ -441,8 +464,21 @@ body.fp canvas#scene{cursor:grab}
 
 <!-- Dex's panel (drawing room, drafting table) -->
 <div class="panel" id="dexPanel">
-  <h2><span>Dex · DXF fixer</span><button class="collapse" id="dexBack" title="Back to the room (Esc)">×</button></h2>
+  <h2><span>Dex · DXF maker and fixer</span><button class="collapse" id="dexBack" title="Back to the room (Esc)">×</button></h2>
   <div class="body">
+    <div class="seg" id="dexMode" style="margin-bottom:12px"><button class="on" data-mode="make">Make a new DXF</button><button data-mode="fix">Fix a DXF</button></div>
+    <div id="dexMake">
+      <label style="margin-top:0">Job</label><select id="dmJob"><option value="">No job</option></select>
+      <div id="dmFolder" class="dmfolder"></div>
+      <label>What should Dex draw?</label>
+      <textarea id="dmReq" rows="4" placeholder="e.g. An SLD for the Test site LV board: 1000kVA transformer, 1600A ACB incomer, six outgoing ways"></textarea>
+      <div class="hint" style="margin-top:6px">Dex makes single line diagrams today. He reads the job's project folder (and any SLD or schedule PDFs in it), asks if something essential is missing, and saves a DRAFT DXF into the job folder. Nothing is overwritten.</div>
+      <div id="dmQs"></div>
+      <div class="err" id="dmErr" style="margin-top:8px"></div>
+      <button class="btn primary" id="dmGo" style="width:100%;margin-top:10px">Make the DXF</button>
+      <div id="dmRun" hidden style="margin-top:12px"><span class="spinner"></span><div style="margin-top:8px;font-weight:600" id="dmMsg">Dex is reading the project files</div></div>
+      <div id="dmOut"></div>
+    </div>
     <div id="dexSetup">
       <label style="margin-top:0">1 · DXF drawings to fix</label>
       <div class="drop" id="dropDxf"><div class="dz-t">Drop the DXFs here</div><div class="dz-s">ASCII .dxf only · as many as you like, or click to browse</div><div id="dxfFiles"></div><input type="file" hidden accept=".dxf" /></div>
@@ -471,6 +507,22 @@ body.fp canvas#scene{cursor:grab}
     <div id="bdMain"></div>
   </div>
   <div style="padding:8px 12px;border-top:1px solid #dde1e8;background:#eef1f5;display:flex;justify-content:space-between;align-items:center"><span class="bsub">Pick a job and press "Work on this job": every engineering bot then gets its notes, drawings and open tasks as background. Posts never see it.</span><button id="bdNew" style="border:1px solid #ced4da;background:#fff;border-radius:6px;padding:6px 10px;font-size:12.5px">+ New job (Business tab)</button></div>
+</div>
+
+<!-- Reception: Eli the email checker -->
+<div class="panel" id="mailPanel">
+  <h2><span>Eli · email checker</span><button class="collapse" id="mailBack" title="Back to the office (Esc)">×</button></h2>
+  <div class="body">
+    <div id="mlLeft">
+      <div id="mlDrop"><b>Drop an email here</b><span>.eml or .msg from Outlook, a screenshot of it, or a PDF · or click to browse</span><input type="file" id="mlFile" multiple hidden accept=".eml,.msg,.txt,.pdf,image/*"></div>
+      <textarea id="mlPaste" rows="4" placeholder="…or paste the email text here"></textarea>
+      <button class="bprim" id="mlRead" style="width:100%;margin-top:6px">Read it</button>
+      <div class="err" id="mlErr" style="margin-top:6px;color:#e03131;font-size:12.5px"></div>
+      <div style="margin-top:14px;font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;color:#868e96">Recent emails</div>
+      <div id="mlList"></div>
+    </div>
+    <div id="mlMain"></div>
+  </div>
 </div>
 
 <!-- File room: the library (skills, templates, company knowledge, jobs, brand, agent rulebooks) -->

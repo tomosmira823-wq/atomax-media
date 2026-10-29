@@ -60,7 +60,7 @@ Check: does the result do what was asked, in the right place and size; do the nu
 Reply with JSON only: {"verdict":"pass"|"fix","score":1-10,"summary":"one plain sentence","findings":[{"severity":"fix"|"look","text":"short and specific"}],"good":["short things that are right"]}
 "fix" = something must change before it goes out; "look" = worth a human glance. Below 6 is a fix. Keep findings short and specific.`;
 
-function register({ ipcMain, dialog, getWin, userDir, claudeFull, checker, log }) {
+function register({ ipcMain, dialog, getWin, userDir, claudeFull, checker, log, outputDirFor }) {
   const wrap = (fn) => async (_e, a) => fn(a || {});
   const send = (p) => { try { const w = getWin(); w && w.webContents.send('mo:progress', p); } catch {} };
 
@@ -172,7 +172,7 @@ function register({ ipcMain, dialog, getWin, userDir, claudeFull, checker, log }
   ipcMain.handle('mo:save', wrap(async ({ base64, name, jobId, summary, mode }) => {
     const buf = Buffer.from(String(base64 || ''), 'base64');
     if (buf.length < 20 || buf.toString('ascii', 0, 4) !== 'glTF') throw new Error('Not a GLB file.');
-    const dir = path.join(userDir(), 'models'); fs.mkdirSync(dir, { recursive: true });
+    const dir = (jobId && outputDirFor && outputDirFor(jobId, 'models')) || path.join(userDir(), 'models'); fs.mkdirSync(dir, { recursive: true });   // the job's 3D Models folder when the job has one
     const safe = String(name || 'model').replace(/\.[^.]+$/, '').replace(/[^\w.-]+/g, '-').slice(0, 40) || 'model';
     const file = path.join(dir, `${safe}-${mode === 'build' ? 'THEO' : 'MILO'}-${new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14)}.glb`);
     fs.writeFileSync(file, buf);

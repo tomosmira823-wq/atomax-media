@@ -7,7 +7,11 @@ const biz = require('./business');
 const { buildAtomaxDoc } = require('./docgen/atomax-doc-builder');
 const LOGO = path.join(__dirname, 'docgen', 'atomax-logo.png');
 
-function register({ ipcMain, dialog, shell, Notification, getWin, userDir, claudeFull, checker }) {
+const projects = require('./projects');
+const dxffix = require('./dxffix');
+
+function register({ ipcMain, dialog, shell, Notification, getWin, userDir, claudeFull, checker, getSettings }) {
+  projects.init(userDir(), getSettings);
   const store = biz.makeStore(path.join(userDir(), 'business.json'));
   const data = () => { const d = store.load(); return d; };
   const send = (ch, p) => { try { const w = getWin(); w && w.webContents.send(ch, p); } catch {} };
@@ -57,7 +61,7 @@ function register({ ipcMain, dialog, shell, Notification, getWin, userDir, claud
 
   function finishDocument(d, a) {
     const p = a.payload; const job = d.jobs.find(j => j.id === a.jobId);
-    const dir = bizDir('documents', safe(job ? job.number : 'general'));
+    const dir = (job && job.folder && projects.outputDir(job.folder, 'documents')) || bizDir('documents', safe(job ? job.number : 'general'));   // the job's own folder when linked
     const out = path.join(dir, path.basename(p.draftPath));
     fs.copyFileSync(p.draftPath, out); try { fs.unlinkSync(p.draftPath); } catch {}
     d.docs.unshift({ id: biz.audit(d, { action: 'Document made', jobId: a.jobId, who: 'Doc', detail: `${p.docNumber} ${p.revision} ${p.kindLabel}` }).id, jobId: a.jobId, docNumber: p.docNumber, revision: p.revision, kind: p.kind, kindLabel: p.kindLabel, description: p.description, date: new Date().toLocaleDateString('en-GB'), prepared: p.prepared, checked: p.checked, approved: p.approved, path: out });
@@ -199,8 +203,26 @@ dead is true only if the sheet itself carries a cancelled / superseded / void / 
   setInterval(tick, 60 * 1000); setTimeout(tick, 15 * 1000);
 
   // the context block for the job in hand (the one picked on the whiteboard or in the agent's panel); '' when no job is set
-  const contextFor = (jobId, who) => { try { const d = data(); return biz.jobContext(d, jobId === undefined ? d.currentJobId : jobId, who); } catch { return ''; } };
-  return { log, store, data, view, contextFor };
+  // job context = the job card plus what is in its project folder (when one is linked and has been read)
+  const contextFor = (jobId, who) => { try { const d = data(), id = jobId === undefined ? d.currentJobId : jobId; const c = biz.jobContext(d, id, who); if (!c) return ''; const p = projects.contextBlock(id); return p ? c + '\n\n' + p : c; } catch { return ''; } };
+
+  // ---- project folders ----
+  const jobOf = (id) => { const j = data().jobs.find(x => x.id === id); if (!j) throw new Error('No such job'); return j; };
+  const folderInfo = (j) => { const p = projects.load(j.id); return { folder: j.folder || '', read: p && p.folder === j.folder ? { at: p.at, files: p.files.length, extracts: p.extracts.length, counts: p.counts } : null }; };
+  ipcMain.handle('proj:info', wrap(({ jobId }) => folderInfo(jobOf(jobId))));
+  ipcMain.handle('proj:suggest', wrap(({ jobId, text }) => { const j = jobId ? jobOf(jobId) : {}; return projects.suggest({ number: j.number, name: j.name, client: j.client, text }); }));
+  ipcMain.handle('proj:pick', wrap(async () => { if (process.env.AMO_PICK_DIR) return process.env.AMO_PICK_DIR; const r = await dialog.showOpenDialog(getWin(), { properties: ['openDirectory'], title: 'Pick the project folder' }); return r.canceled ? null : r.filePaths[0]; }));
+  ipcMain.handle('proj:setFolder', wrap(({ jobId, folder }) => {
+    const d = data(), j = d.jobs.find(x => x.id === jobId); if (!j) throw new Error('No such job');
+    if (!fs.existsSync(folder)) throw new Error('That folder does not exist on this computer');
+    j.folder = folder; biz.audit(d, { who: 'Tom', action: 'Project folder linked', jobId, detail: folder }); store.save();
+    projects.gather(jobId, folder, { checker, dxffix });
+    return folderInfo(j);
+  }));
+  ipcMain.handle('proj:gather', wrap(({ jobId }) => { const j = jobOf(jobId); if (!j.folder) throw new Error('Link a project folder first'); projects.gather(jobId, j.folder, { checker, dxffix }); return folderInfo(j); }));
+  ipcMain.handle('proj:open', wrap(({ jobId }) => { const j = jobOf(jobId); if (j.folder) shell.openPath(j.folder); return true; }));
+  const outputDirFor = (jobId, kind) => { try { const j = data().jobs.find(x => x.id === jobId); return j && j.folder ? projects.outputDir(j.folder, kind) : null; } catch { return null; } };
+  return { log, store, data, view, contextFor, outputDirFor, projects, folderOf: (id) => { const j = data().jobs.find(x => x.id === id); return j ? j.folder || '' : ''; } };
 }
 
 module.exports = { register };

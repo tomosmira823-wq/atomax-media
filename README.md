@@ -160,3 +160,15 @@ One rack per service (Claude, OpenAI, Higgsfield, LinkedIn, Meta, X). The light 
 - Key test runs a cheap ping. The key itself is never shown.
 - Social logins show days left. Within 7 days the panel shows a red banner and the rack goes red, with a Reconnect button.
 - Bottom bar: app version and update status. Backups show "not set up yet" until a backup job exists.
+
+## Project folders (v1.10)
+Every job can point at its real folder (OneDrive, SharePoint sync or a drive). On the whiteboard's job page, "Find the folder" searches your OneDrive / SharePoint / Documents / Desktop folders by job number and name (or the folders in settings `projectRoots`), or use Choose…. The folder is read into the job's context: every file name, plus short extracts of text, Word, Excel and DXF files. Every agent that gets the job context also gets this. Output goes into the folder: Dex's DXFs into the drawings folder, approved documents into Documents, Milo and Theo's models into 3D Models, Cal's markups into MARKUPS (when the drawings were not dropped from a folder), emails into Correspondence. An existing subfolder is used if one fits; nothing is overwritten.
+
+## Eli, the email checker (v1.10)
+Eli works at the reception counter. Click him, drop an email (.eml or .msg from Outlook, a screenshot, or a PDF) or paste its text. He lists what it asks for and who should do it (Dex, Cal, Dot, Milo, Theo, or you). Nothing starts until you press "Yes, start": pick the job (his best match first, or a new job from the email), confirm the project folder he found, and the task goes on the board, the email is filed in the job's Correspondence folder, and the agent opens with the request. He also suggests a short reply.
+
+## Dex makes DXFs (v1.10)
+Dex's panel has "Make a new DXF" and "Fix a DXF". Make: pick the job, say what to draw. He reads the project folder and any SLD or schedule PDFs that match the request, asks up to four questions if something essential is missing, then saves a DRAFT R2010 DXF into the job folder with a preview. Today he makes single line diagrams: the app lays them out (symbols joined, text height 2, MTEXT labels, nothing overlapping) and anything unknown is marked TBC.
+
+## Skills import
+"Import from Claude" now takes your skills folder of .skill packages (or a folder with SKILL.md). A skill with the same name is updated, not duplicated, and skills with obvious names are ticked for the right agent.

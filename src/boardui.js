@@ -67,6 +67,7 @@ export function initBoardUI({ office, api, getAgents, openAgent, openBusiness, g
     const who = {}; V.audit.filter(a => a.jobId === j.id && !/^Task /.test(a.action)).forEach(a => { who[a.who] = (who[a.who] || 0) + 1; });
     return `<div class="bhead"><div><h2>${esc(j.number)} ${esc(j.name || '')}</h2><div class="bsub">${esc(j.client || 'No client')} · ${esc(j.status)}${j.dueDate ? ' · due ' + esc(j.dueDate) : ''}${s.budget ? ` · hours ${s.used} of ${s.budget}` : ''} · ${s.live ?? 0} live drawing${s.live === 1 ? '' : 's'}</div></div>
       <div class="brow"><button class="${j.id === cur ? 'bon' : 'bprim'}" id="bdCur">${j.id === cur ? '✓ Job in hand (all bots know it)' : 'Work on this job'}</button><button id="bdEdit">Edit details</button></div></div>
+      <div class="bfolder"><label>Project folder <span class="bsub">(the agents read this folder and write their files into it)</span></label><div id="bdFolderBody" class="bsub">Checking…</div></div>
       <label>Context for the bots <span class="bsub">(what they should know: scope, client wishes, standards, anything unusual)</span></label>
       <textarea id="bdNotes" rows="4" placeholder="e.g. Existing substation, metric, 275 kV. The new rail is the one behind the tank. Client wants everything in grey.">${esc(j.notes || '')}</textarea>
       <div class="brow"><button id="bdSaveNotes">Save context</button><span class="bsub" id="bdMsg">${esc(msg)}</span></div>
@@ -79,9 +80,33 @@ export function initBoardUI({ office, api, getAgents, openAgent, openBusiness, g
       ${acts.map(a => actRow(a, false)).join('')}`;
   }
 
+  // the job's real folder: show it, find it, choose it, read it again
+  async function renderFolder(j) {
+    const box = $('#bdFolderBody'); if (!box) return;
+    let info; try { info = await api.proj.info({ jobId: j.id }); } catch (e) { box.textContent = e.message; return; }
+    const counts = info.read ? Object.entries(info.read.counts).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([k, n]) => n + ' ' + k).join(', ') : '';
+    box.innerHTML = info.folder
+      ? `<div class="bpath">${esc(info.folder)}</div><div>${info.read ? `${info.read.files} files (${esc(counts)}), ${info.read.extracts} read for context · read ${ago(info.read.at)}` : 'Not read yet'}</div>
+         <div class="brow"><button id="bdRead">Read folder again</button><button id="bdOpenF">Open folder</button><button id="bdFind">Find another</button><button id="bdPick">Choose…</button></div><div id="bdSug"></div>`
+      : `<div>Not linked yet. The agents will read this folder for context and save their work into it.</div><div class="brow"><button class="bprim" id="bdFind">Find the folder</button><button id="bdPick">Choose…</button></div><div id="bdSug"></div>`;
+    const set = async (folder) => { box.querySelector('#bdSug').textContent = 'Reading the folder…'; try { await api.proj.setFolder({ jobId: j.id, folder }); msg = 'Folder linked and read.'; await renderFolder(j); } catch (e) { box.querySelector('#bdSug').textContent = e.message; } };
+    box.querySelector('#bdFind').addEventListener('click', async () => {
+      const sug = box.querySelector('#bdSug'); sug.textContent = 'Looking through your folders…';
+      try {
+        const list = await api.proj.suggest({ jobId: j.id });
+        sug.innerHTML = list.length ? list.map((x, i) => `<div class="bsugg"><span><b>${esc(x.name)}</b><br><span class="bsub">${esc(x.path)} · matched ${esc(x.why)}</span></span><button data-use="${i}">Use this</button></div>`).join('') : 'Nothing found by job number or name. Use Choose… to pick it.';
+        sug.querySelectorAll('[data-use]').forEach(b => b.addEventListener('click', () => set(list[+b.dataset.use].path)));
+      } catch (e) { sug.textContent = e.message; }
+    });
+    box.querySelector('#bdPick').addEventListener('click', async () => { const p = await api.proj.pick(); if (p) set(p); });
+    const rd = box.querySelector('#bdRead'); if (rd) rd.addEventListener('click', async () => { box.querySelector('#bdSug').textContent = 'Reading…'; try { await api.proj.gather({ jobId: j.id }); await renderFolder(j); } catch (e) { box.querySelector('#bdSug').textContent = e.message; } });
+    const op = box.querySelector('#bdOpenF'); if (op) op.addEventListener('click', () => api.proj.open({ jobId: j.id }));
+  }
+
   function wireMain(j) {
     const m = $('#bdMain');
     if (!j) return;
+    renderFolder(j);
     $('#bdCur').addEventListener('click', async () => { cur = j.id; await api.biz.setCurrent({ id: j.id }); render(); pushToBoard(); });
     $('#bdEdit').addEventListener('click', () => openBusiness());
     $('#bdSaveNotes').addEventListener('click', async () => {
@@ -115,6 +140,7 @@ export function initBoardUI({ office, api, getAgents, openAgent, openBusiness, g
     hide() { panel.classList.remove('open'); },
     refresh, pushToBoard,
     selectJob(id) { sel = id; render(); },
+    renderFolder,
     _state: () => ({ sel, cur, tasks: V ? V.tasks.length : 0, jobs: V ? V.jobs.length : 0 })
   };
 }

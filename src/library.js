@@ -4,6 +4,7 @@
 'use strict';
 const fs = require('fs');
 const path = require('path');
+const zlib = require('zlib');
 
 const CABINETS = [
   { key: 'skills', label: 'Skills', colour: '#40c057' },
@@ -78,6 +79,14 @@ function remove(key, file) {
 // Files dropped on a cabinet. Text files become items straight away; other files are filed and listed, but not read by agents.
 function addFiles(key, files) {
   if (!ROOT) throw new Error('Library not ready');
+  if (key === 'skills') {   // .skill packages and SKILL.md files become skills
+    for (const f of files) {
+      const ext = path.extname(f.name).toLowerCase();
+      if (ext === '.skill' || ext === '.zip') { const t = skillMdFromZip(f.data); if (t) upsertSkill(t, path.basename(f.name, ext)); }
+      else if (ext === '.md' || ext === '.txt') upsertSkill(f.data.toString('utf8'), path.basename(f.name, ext));
+    }
+    return list('skills');
+  }
   const idx = readIndex(key);
   for (const f of files) {
     const ext = path.extname(f.name).toLowerCase(), base = slug(path.basename(f.name, ext)) + ext;
@@ -91,20 +100,76 @@ function addFiles(key, files) {
   return list(key);
 }
 
-// "Import from Claude": a folder with a SKILL.md. Its instructions become a skill in the Skills cabinet.
-function importSkill(folder) {
-  const md = path.join(folder, 'SKILL.md');
-  if (!fs.existsSync(md)) throw new Error('No SKILL.md in that folder');
-  const text = fs.readFileSync(md, 'utf8');
-  const fm = (text.match(/^---\n([\s\S]*?)\n---/) || [])[1] || '';
-  const field = (k) => ((fm.match(new RegExp('^' + k + ':\\s*(.*)$', 'm')) || [])[1] || '').replace(/^["']|["']$/g, '').trim();
-  const name = field('name') || path.basename(folder);
-  const description = field('description');
-  const file = uniqueFile('skills', slug(name) + '.md');
-  fs.writeFileSync(path.join(dirOf('skills'), file), text.replace(/^---\n[\s\S]*?\n---\n?/, ''), 'utf8');
-  const idx = readIndex('skills'); idx[file] = { name, description, agents: [], on: true }; writeIndex('skills', idx);
-  return list('skills');
+// read every entry of a zip (a Claude .skill package is a zip with a folder holding SKILL.md)
+function unzipText(buf) {
+  let eocd = -1;
+  for (let i = buf.length - 22; i >= Math.max(0, buf.length - 65557); i--) if (buf.readUInt32LE(i) === 0x06054b50) { eocd = i; break; }
+  if (eocd < 0) throw new Error('not a zip / .skill package');
+  const count = buf.readUInt16LE(eocd + 10); let p = buf.readUInt32LE(eocd + 16); const files = {};
+  for (let i = 0; i < count; i++) {
+    if (buf.readUInt32LE(p) !== 0x02014b50) break;
+    const method = buf.readUInt16LE(p + 10), csize = buf.readUInt32LE(p + 20), nlen = buf.readUInt16LE(p + 28), elen = buf.readUInt16LE(p + 30), clen = buf.readUInt16LE(p + 32), loff = buf.readUInt32LE(p + 42);
+    const name = buf.toString('utf8', p + 46, p + 46 + nlen); p += 46 + nlen + elen + clen;
+    if (name.endsWith('/') || !/\.(md|txt)$/i.test(name)) continue;
+    const ln = buf.readUInt16LE(loff + 26), le = buf.readUInt16LE(loff + 28), st = loff + 30 + ln + le;
+    const data = buf.subarray(st, st + csize);
+    try { files[name] = (method === 0 ? data : zlib.inflateRawSync(data)).toString('utf8'); } catch {}
+  }
+  return files;
 }
+
+// a skill whose name hints at its job is ticked for the agent that does that job (Tom can change it after)
+const AUTO_TICK = [[/drawing.?check|schedule.?check/i, ['cal']], [/dxf|sld|cad/i, ['dex']], [/document|transmittal|register|doc.?number|deliverable|word|docx/i, ['documents']], [/model|3d|plant/i, ['milo', 'theo']], [/excel|xlsx|spreadsheet/i, ['cal', 'dex']], [/email|inbox|mail/i, ['email']]];
+
+// add or update one skill from SKILL.md text; a skill with the same name is updated, not duplicated
+function upsertSkill(text, fallbackName) {
+  const fm = (text.match(/^---\r?\n([\s\S]*?)\r?\n---/) || [])[1] || '';
+  const field = (k) => ((fm.match(new RegExp('^' + k + ':\\s*(.*)$', 'm')) || [])[1] || '').replace(/^["']|["']$/g, '').trim();
+  const name = field('name') || fallbackName;
+  const description = field('description');
+  const body = text.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, '');
+  const idx = readIndex('skills');
+  const same = Object.entries(idx).find(([f, m]) => slug(m.name || f) === slug(name) || f === slug(name) + '.md');
+  let file, agents;
+  if (same) { file = same[0]; agents = same[1].agents || []; }
+  else { file = uniqueFile('skills', slug(name) + '.md'); agents = [...new Set(AUTO_TICK.filter(([re]) => re.test(name + ' ' + description)).flatMap(([, a]) => a))]; }
+  fs.writeFileSync(path.join(dirOf('skills'), file), body, 'utf8');
+  idx[file] = { ...(idx[file] || {}), name, description: description.slice(0, 300), agents, on: idx[file] ? idx[file].on !== false : true };
+  writeIndex('skills', idx);
+  return { name, updated: !!same, agents };
+}
+
+function skillMdFromZip(buf) {
+  const files = unzipText(buf);
+  const names = Object.keys(files).filter(n => /(^|\/)SKILL\.md$/i.test(n)).sort((a, b) => a.length - b.length);
+  return names.length ? files[names[0]] : null;
+}
+
+// "Import from Claude": a folder with SKILL.md, a folder of .skill packages, subfolders that hold SKILL.md, or .skill files themselves
+function importSkills(paths) {
+  const done = [], skipped = [];
+  const fromFile = (f) => {
+    const ext = path.extname(f).toLowerCase();
+    try {
+      if (ext === '.skill' || ext === '.zip') { const t = skillMdFromZip(fs.readFileSync(f)); if (t) done.push(upsertSkill(t, path.basename(f, ext))); else skipped.push(path.basename(f) + ' (no SKILL.md inside)'); }
+      else if (/^skill\.md$/i.test(path.basename(f))) done.push(upsertSkill(fs.readFileSync(f, 'utf8'), path.basename(path.dirname(f))));
+    } catch (e) { skipped.push(path.basename(f) + ' (' + e.message + ')'); }
+  };
+  const walk = (dir, depth) => {
+    let ents = []; try { ents = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+    const md = ents.find(e => e.isFile() && /^skill\.md$/i.test(e.name));
+    if (md) { fromFile(path.join(dir, md.name)); return; }
+    for (const e of ents) {
+      const full = path.join(dir, e.name);
+      if (e.isFile() && /\.(skill|zip)$/i.test(e.name)) fromFile(full);
+      else if (e.isDirectory() && depth < 2 && !e.name.startsWith('.')) walk(full, depth + 1);
+    }
+  };
+  for (const p of [].concat(paths || [])) { let st; try { st = fs.statSync(p); } catch { continue; } if (st.isDirectory()) walk(p, 0); else fromFile(p); }
+  if (!done.length) throw new Error('No skills found there. Pick a folder with .skill files or a SKILL.md' + (skipped.length ? ' (' + skipped.slice(0, 3).join(', ') + ')' : ''));
+  return { done, skipped, items: list('skills') };
+}
+const importSkill = (folder) => importSkills([folder]).items;
 
 function newSkill({ name, description, text }) {
   const file = uniqueFile('skills', slug(name) + '.md');
@@ -162,4 +227,4 @@ function addCorrection(agentId, text) {
   return rulebookFor(agentId);
 }
 
-module.exports = { CABINETS, init, list, readText, save, remove, addFiles, importSkill, newSkill, skillFor, rulebookFor, promptBlock, addCorrection, setRulebook, _root: () => ROOT };
+module.exports = { CABINETS, init, list, readText, save, remove, addFiles, importSkill, importSkills, unzipText, newSkill, skillFor, rulebookFor, promptBlock, addCorrection, setRulebook, _root: () => ROOT };
