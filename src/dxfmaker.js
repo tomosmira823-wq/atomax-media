@@ -178,11 +178,40 @@ If something essential is missing (which boards, how many feeders, what the supp
 Otherwise reply with JSON only, no markdown:
 {"kind":"sld or earthing","title":"...","drawingNumber":"... or TBC","revision":"P01","boards":[{"label":"MAIN LV BOARD\\n400V 3PH 4W 50Hz","incomers":[{"label":"optional text above","chain":[...]}],"feeders":[{"label":"optional text under the feeder","chain":[...]}]}],"notes":["..."],"summary":"one line for the engineer: what you drew and what is TBC"}`;
 
+// Claude's JSON is not always strict: real line breaks inside strings (a multi-line reply), a trailing comma, or a reply cut off at the length limit.
+// Repair those, then parse.
+function repairJson(raw) {
+  let s = String(raw || '').replace(/^\uFEFF/, '');
+  const a = s.indexOf('{'); if (a < 0) throw new Error('no JSON in the reply');
+  s = s.slice(a);
+  let out = '', inStr = false, esc = false; const stack = [];
+  for (const ch of s) {
+    if (inStr) {
+      if (esc) { out += ch; esc = false; continue; }
+      if (ch === '\\') { out += ch; esc = true; continue; }
+      if (ch === '"') { inStr = false; out += ch; continue; }
+      if (ch === '\n') { out += '\\n'; continue; }
+      if (ch === '\r') continue;
+      if (ch === '\t') { out += '\\t'; continue; }
+      if (ch < ' ') continue;
+      out += ch; continue;
+    }
+    if (ch === '"') { inStr = true; out += ch; continue; }
+    if (ch === '{' || ch === '[') stack.push(ch === '{' ? '}' : ']');
+    else if (ch === '}' || ch === ']') { stack.pop(); out += ch; if (!stack.length) break; continue; }
+    out += ch;
+  }
+  if (inStr) out += '"';                                   // cut off inside a string
+  out = out.replace(/,\s*$/, '').replace(/:\s*$/, ': null');
+  while (stack.length) out += stack.pop();                 // cut off: close what is open
+  out = out.replace(/,(\s*[}\]])/g, '$1');                 // trailing commas
+  return JSON.parse(out);
+}
 function parseReply(text) {
-  const s = String(text || '').trim().replace(/^```(?:json)?/i, '').replace(/```$/, '').trim();
+  const s = String(text || '').trim().replace(/^```(?:json)?/i, '').replace(/```\s*$/, '').trim();
   const a = s.indexOf('{'), b = s.lastIndexOf('}');
-  if (a < 0 || b < a) throw new Error('Dex did not reply with a drawing spec');
-  return JSON.parse(s.slice(a, b + 1));
+  if (a >= 0 && b > a) { try { return JSON.parse(s.slice(a, b + 1)); } catch {} }
+  return repairJson(s);
 }
 
 // spec -> files on disk; returns paths and a preview

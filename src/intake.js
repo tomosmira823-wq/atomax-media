@@ -168,8 +168,11 @@ function register({ ipcMain, dialog, shell, getWin, userDir, claudeFull, checker
     for (const a of attach.filter(a => IMG.test(a.mime) || a.mime === 'application/pdf').slice(0, 4)) content.push(checker.contentBlock(a.mime === 'application/pdf' ? 'pdf' : 'image', a.name, fs.readFileSync(path.join(dir, a.name))));
     if (!parts.length && !content.length) throw new Error('Drop an email (.eml, .msg), a screenshot of it, or paste its text');
     content.push({ type: 'text', text: `THE EMAIL:\n${parts.join('\n\n---\n\n').slice(0, 30000)}${attach.length ? '\n\nATTACHMENTS: ' + attach.map(a => a.name).join(', ') : ''}` });
-    const { text: reply } = await claudeFull({ system: EMAIL_SYSTEM, who: 'email', maxTokens: 6000, messages: [{ role: 'user', content }] });
-    let e; try { e = dxfmaker.parseReply(reply); } catch { throw new Error('Eli could not read that email. Try a screenshot or paste the text.'); }
+    let r = await claudeFull({ system: EMAIL_SYSTEM, who: 'email', maxTokens: 8000, messages: [{ role: 'user', content }] });
+    if (r.stop === 'max_tokens') r = await claudeFull({ system: EMAIL_SYSTEM + '\nKeep every field short: details under 60 words, the reply under 150 words.', who: 'email', maxTokens: 16000, messages: [{ role: 'user', content }] });
+    const reply = r.text;
+    try { fs.writeFileSync(path.join(dir, 'eli-reply.txt'), String(reply || '')); } catch {}   // kept next to the email so a bad reply can be looked at
+    let e; try { e = dxfmaker.parseReply(reply); } catch (err) { throw new Error(`Eli got a reply he could not read (${r.stop === 'max_tokens' ? 'it was cut off' : String(err.message || err).slice(0, 80)}). It is saved as eli-reply.txt with the email. Press Read it again.`); }
     const email = { id, at: new Date().toISOString(), from: e.from || '', subject: e.subject || '', date: e.date || '', summary: e.summary || '', site: e.site || '', jobNumber: e.jobNumber || '', reply: e.reply || '', replyTo: e.replyTo || '',
       people: Array.isArray(e.people) ? e.people.slice(0, 8) : [], urgency: e.urgency === 'urgent' ? 'urgent' : 'normal', urgencyWhy: e.urgencyWhy || '', attachmentNotes: Array.isArray(e.attachmentNotes) ? e.attachmentNotes.slice(0, 10) : [], clientQuestions: Array.isArray(e.clientQuestions) ? e.clientQuestions.slice(0, 8).map(String) : [],
       asks: (e.asks || []).map((a, i) => ({ i, title: String(a.title || 'Task').slice(0, 160), detail: String(a.detail || ''), agent: AGENTS[a.agent] ? a.agent : 'none', kind: a.kind || 'other', due: a.due || '', status: 'proposed' })),
