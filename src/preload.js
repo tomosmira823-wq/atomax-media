@@ -2,7 +2,10 @@ const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
 const call = (ch) => (payload) => ipcRenderer.invoke(ch, payload);
 
+const DK = require('./drawkinds');
+
 contextBridge.exposeInMainWorld('office', {
+  drawKinds: { kindOf: (t) => DK.kindOf(t), kindName: (k) => DK.kindName(k), skillFit: (sk, k) => DK.skillFit(sk, k) },
   settings: { get: call('settings:get'), set: call('settings:set') },
   agents: { get: call('agents:get'), set: call('agents:set'), reset: call('agents:reset') },
   posts: { get: call('posts:get'), set: call('posts:set') },

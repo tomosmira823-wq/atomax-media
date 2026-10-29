@@ -6,7 +6,35 @@ const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<'
 export function initDexMakeUI({ api, office, bizUI, getDex }) {
   const panel = $('#dexPanel');
   let questions = [], emailId = '', busy = false, picker = null;
-  const pickSkills = async () => { picker = await renderSkillPicker(api, $('#dmSkills'), 'dex', { uncheck: (i) => /fix/i.test(i.name) || /excel|xlsx|spreadsheet/i.test(i.name + ' ' + i.file) }); };
+  // the skills that fit THIS kind of drawing are ticked; an SLD skill is not ticked for earthing. If none is made for it, say so and offer to make one.
+  const DK = api.drawKinds; let shownKind = '';
+  const starter = (kind) => kind === 'earthing'
+    ? '# Earthing drawings\n\n## What to show\n- MET and every earth bar, transformer tank and neutral links, cable screen bonds, test links, rods and mesh\n\n## Sizes\n- Take conductor sizes from the engineer\'s technical note, otherwise TBC\n\n## Symbols and labels\n- \n\n## Notes to always add\n- '
+    : '# ' + DK.kindName(kind) + ' drawings\n\n## What to show\n- \n\n## Symbols and labels\n- \n\n## Notes to always add\n- ';
+  const pickSkills = async () => {
+    const kind = DK.kindOf($('#dmReq').value), name = DK.kindName(kind); shownKind = kind;
+    picker = await renderSkillPicker(api, $('#dmSkills'), 'dex', { uncheck: (i) => !DK.skillFit(i, kind) });
+    let items = []; try { items = await api.library.items({ key: 'skills' }); } catch {}
+    if (items.some(i => i.on && DK.skillFit(i, kind) === 'match')) return;
+    const box = document.createElement('div'); box.className = 'dmnoskill';
+    box.innerHTML = `<div class="hint">No ${esc(name)} skill in the File Room, so Dex draws this without one (only general CAD rules, if any are ticked).</div><button id="dmNewSkill">Create a ${esc(name)} skill</button><div id="dmNewForm"></div>`;
+    $('#dmSkills').appendChild(box);
+    $('#dmNewSkill').onclick = () => {
+      $('#dmNewForm').innerHTML = `<label>Skill name</label><input id="dmNsName" value="${esc(name.replace(/^./, c => c.toUpperCase()))} drawings (DXF)">
+        <label>Your rules for ${esc(name)} drawings</label><textarea id="dmNsText" rows="9">${esc(starter(kind))}</textarea>
+        <button class="btn primary" id="dmNsSave">Save skill and tick it for Dex</button>`;
+      $('#dmNsSave').onclick = async () => {
+        const nm = $('#dmNsName').value.trim() || name + ' drawings';
+        try {
+          const list = await api.library.newSkill({ name: nm, description: 'Dex: rules for ' + name + ' drawings', text: $('#dmNsText').value });
+          const it = list.find(x => x.name === nm) || list[list.length - 1];
+          await api.library.save({ key: 'skills', file: it.file, agents: [...new Set([...(it.agents || []), 'dex'])], on: true });
+        } catch (e) { $('#dmErr').textContent = e.message; return; }
+        pickSkills();
+      };
+    };
+  };
+  let kt; $('#dmReq').addEventListener('input', () => { clearTimeout(kt); kt = setTimeout(() => { if (DK.kindOf($('#dmReq').value) !== shownKind) pickSkills(); }, 400); });
   const setMode = (m) => { panel.classList.toggle('make-mode', m === 'make'); document.querySelectorAll('#dexMode button').forEach(b => b.classList.toggle('on', b.dataset.mode === m)); };
   setMode('make');
   document.querySelectorAll('#dexMode button').forEach(b => b.addEventListener('click', () => setMode(b.dataset.mode)));
