@@ -10,8 +10,8 @@
   const api = window.office;
   let e;
   await step('Eli reads the .msg: forwarded request, the PDF, sender', async () => {
-    e = await api.mail.read({ paths: [window.__variant] });
-    if (!e.attachments.some(a => /\.pdf$/i.test(a.name))) throw new Error('no PDF: ' + JSON.stringify(e.attachments));
+    e = await api.mail.read({ paths: window.__variant.split('|') });
+    if (e.attachments.filter(a => /\.pdf$/i.test(a.name)).length !== 1) throw new Error('PDF count wrong: ' + JSON.stringify(e.attachments));
     if (e.attachments.some(a => /^image\d+/i.test(a.name) && a.name !== 'image002.png')) throw new Error('logos kept: ' + e.attachments.map(a => a.name));
     return e.attachments.map(a => a.name).join(', ');
   });

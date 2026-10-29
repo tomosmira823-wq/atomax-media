@@ -161,6 +161,8 @@ function register({ ipcMain, dialog, shell, getWin, userDir, claudeFull, checker
       else if (mime === 'application/pdf') { attach.push({ name: f.name, mime }); }
       else parts.push(buf.toString('utf8'));
     }
+    // the same file dropped and also inside the email (or dropped twice): keep the first copy, matched by contents or name
+    { const seen = new Set(), keep = []; for (const x of attach) { let key = x.name; try { key = require('crypto').createHash('sha1').update(fs.readFileSync(path.join(dir, x.name))).digest('hex'); } catch {} if (seen.has(key) || seen.has('n:' + x.name)) continue; seen.add(key); seen.add('n:' + x.name); keep.push(x); } attach.length = 0; attach.push(...keep); }
     if (text.trim()) parts.push(text.trim());
     // screenshots and PDFs (sent or attached) go to Claude to read: up to 4
     for (const a of attach.filter(a => IMG.test(a.mime) || a.mime === 'application/pdf').slice(0, 4)) content.push(checker.contentBlock(a.mime === 'application/pdf' ? 'pdf' : 'image', a.name, fs.readFileSync(path.join(dir, a.name))));
