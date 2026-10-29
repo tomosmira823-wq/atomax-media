@@ -18,7 +18,7 @@
   });
   await step('Clicking Milo opens his panel', async () => {
     window.__office.onPick('modeler'); await until(() => $('#modPanel').classList.contains('open'), 3000, 'panel');
-    if ($('#modelPanel').classList.contains('open')) throw new Error('scan panel also open'); return 'ok';
+    if ($('#modelPanel').classList.contains('open')) throw new Error('scan panel also open'); if (!$('#moPcTest') || $('#moPcTest').offsetParent === null) throw new Error('Test control button not visible in setup'); $('#moPcBox').open = true; await wait(100); if ($('#moPcTest').offsetParent === null) throw new Error('Test control not visible when opened'); const r = await window.office.pc.selftest(); if (!r.ok) throw new Error('selftest ' + r.detail); return 'ok, test control reachable';
   });
   await step('Context folder loads the model and the notes', async () => {
     $('#moFolder').click(); await until(() => window.__modellerUI._state().models >= 1, 20000, 'model loaded');

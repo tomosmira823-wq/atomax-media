@@ -420,6 +420,15 @@ body.fp canvas#scene{cursor:grab}
     <div id="moRun" hidden><span class="spinner"></span><div id="moMsg" style="margin-top:10px;font-weight:600">Milo is reading the request</div></div>
     <div id="moQs" hidden></div>
     <div id="moResult" hidden></div>
+    <details id="moPcBox" style="margin-top:14px;border-top:1px solid var(--line);padding-top:10px"><summary style="cursor:pointer;font-weight:700">Let Milo drive Plant 3D / AutoCAD <span class="hint">(takes control of this PC)</span></summary>
+      <div class="warn-note">Milo looks at your screen and clicks and types, like a person at the keyboard. A small bar stays on top showing each step. <b>Stop</b> on the bar (or Ctrl+Alt+Q) ends it at once. Screenshots go to Claude. Do not leave anything private open. Windows only.</div>
+      <div class="row" style="margin-top:8px;gap:6px;flex-wrap:wrap"><button class="btn small" id="moPcTest">Test control (10 s)</button></div>
+      <div class="hint">Moves your mouse a little, presses Shift and reads the cursor back. Do this first.</div>
+      <label>What should he do?</label><textarea id="moPcTask" rows="3"></textarea>
+      <label style="display:flex;align-items:center;gap:8px;color:var(--text)"><input type="checkbox" id="moPcApprove" checked /> Ask me before every action</label>
+      <div class="row" style="margin-top:8px;gap:6px;flex-wrap:wrap"><button class="btn small primary" id="moPcGo">Start (Milo takes over)</button></div>
+      <div class="hint" id="moPcOut" style="margin-top:8px;white-space:pre-wrap"></div>
+    </details>
   </div>
 </div>
 
