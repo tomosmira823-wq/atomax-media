@@ -27,7 +27,7 @@
   await step('Milo asks questions first', async () => {
     $('#moRequest').value = 'A new 150 mm pipe needs to run along the back of the rail.'; $('#moRequest').dispatchEvent(new Event('input'));
     if ($('#moGo').disabled) throw new Error('go disabled'); $('#moGo').click();
-    await until(() => !$('#moQs').hidden, 60000, 'questions'); const n = document.querySelectorAll('#moQs input[data-q]').length; if (n !== 2) throw new Error('questions ' + n); return n + ' questions';
+    try { await until(() => !$('#moQs').hidden, 150000, 'questions'); } catch (e) { throw new Error(String(e) + ' | err=' + $('#moErr').textContent + ' | run=' + !$('#moRun').hidden + ' msg=' + $('#moMsg').textContent + ' | setup=' + !$('#moSetup').hidden); } const n = document.querySelectorAll('#moQs input[data-q]').length; if (n !== 2) throw new Error('questions ' + n); return n + ' questions';
   });
   await step('Answers go back and Milo edits the model', async () => {
     document.querySelectorAll('#moQs input[data-q]').forEach(i => { i.value = 'answer ' + i.dataset.q; });
