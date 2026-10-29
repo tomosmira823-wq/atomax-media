@@ -100,5 +100,17 @@
     return e.asks[2].result.path;
   });
 
+  await step('Read it again: Eli re-reads the email and keeps the tasks already started', async () => {
+    window.__goRoom('email');
+    await until(() => $('#mlReread'), 60000, 'read again button');
+    $('#mlReread').click();
+    let e; for (let k = 0; k < 400; k++) { await wait(150); e = (await api.mail.list())[0]; if (!$('#mlReread') || !/again…/.test($('#mlReread').textContent)) { if (k > 5) break; } }
+    await until(() => $('#mlReread') && /Read it again$/.test($('#mlReread').textContent), 90000, 'reread done');
+    e = (await api.mail.list())[0];
+    const started = e.asks.filter(a => a.status !== 'proposed').length;
+    if (started < 3) throw new Error('lost started tasks: ' + e.asks.map(a => a.status).join(','));
+    return e.asks.length + ' tasks, ' + started + ' already started or done kept';
+  });
+
   return { steps: report.steps, errors: report.errors };
 })()

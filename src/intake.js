@@ -31,6 +31,12 @@ Rules for splitting and giving out work:
 - Use "none" only for things that need a person: a decision, a price, a phone call or meeting, a site visit.
 - If the email asks for a quote or fee proposal, add one task for "documents" to draft the quotation letter listing every item.
 - Read attached PDFs and drawings: they tell you what an agent can work from (an SLD, a fault level study, cable data).
+Forwarded emails: the person forwarding it (often someone at Atomax) may add their own instruction on top ("set this up", "can we do this", "test if this can be done"). List their instruction AND every item the original sender asked for, each as its own task for the agent who can do it. A "can we do this / test it" instruction means: give each item to its agent so the result shows whether it can be done.
+Who does what (use these, do not send them to "none"):
+- Earthing design: two tasks, "dex" draws the earthing schematic, "engineer" does the earthing calculations (fault current, conductor sizing, what soil data is needed).
+- SLDs and other electrical drawings: "dex".
+- Fault level, load flow, reactive power capability, protection co-ordination, harmonics (G5/5), flicker and unbalance (P28 / P29), G99 / G100 compliance studies, intertripping scheme design: "engineer" for a first-pass note (say in the detail that a full study needs PowerFactory if it does).
+- A quote or fee proposal: "documents".
 Only list real asks from the email. Do not invent work. Copy site names, job numbers, drawing numbers, ratings and dates exactly as written.
 Reply with JSON only, no markdown:
 {"from":"name <address>","subject":"...","date":"...","summary":"two lines max: what they want","site":"site or project name, as written","jobNumber":"a job number if one is written (e.g. X11475), else empty","asks":[{"title":"short task title, e.g. Draw an SLD for the Test site LV board","detail":"everything the agent needs from the email for this task","agent":"dex|cal|documents|milo|theo|none","kind":"sld|dxf-fix|drawing-check|document|model|other","due":"deadline if given, else empty"}],"reply":"a short suggested reply Tom could send back, in plain British English"}`;
@@ -92,8 +98,8 @@ function register({ ipcMain, dialog, shell, getWin, userDir, claudeFull, checker
     return best ? best.id : '';
   }
 
-  ipcMain.handle('mail:read', wrap(async ({ files = [], text = '' }) => {
-    const id = uid(), dir = path.join(DIR(), id); fs.mkdirSync(dir, { recursive: true });
+  const readEmail = async ({ files = [], text = '', reuseId = '' }) => {
+    const id = reuseId || uid(), dir = path.join(DIR(), id); fs.mkdirSync(dir, { recursive: true });
     const content = [], parts = [], originals = [], attach = [];
     for (const f of files) {
       const buf = Buffer.from(f.base64, 'base64'), ext = path.extname(f.name).toLowerCase(), mime = f.mime || extMime(f.name);
@@ -113,11 +119,22 @@ function register({ ipcMain, dialog, shell, getWin, userDir, claudeFull, checker
     let e; try { e = dxfmaker.parseReply(reply); } catch { throw new Error('Eli could not read that email. Try a screenshot or paste the text.'); }
     const email = { id, at: new Date().toISOString(), from: e.from || '', subject: e.subject || '', date: e.date || '', summary: e.summary || '', site: e.site || '', jobNumber: e.jobNumber || '', reply: e.reply || '',
       asks: (e.asks || []).map((a, i) => ({ i, title: String(a.title || 'Task').slice(0, 160), detail: String(a.detail || ''), agent: AGENTS[a.agent] ? a.agent : 'none', kind: a.kind || 'other', due: a.due || '', status: 'proposed' })),
-      originals, attachments: attach };
+      originals, attachments: attach, pasted: text || '' };
     email.jobId = matchJob(email);
-    const list = load(); list.unshift(email); save(list);
+    const list = load(), at = reuseId ? list.findIndex(x => x.id === reuseId) : -1;
+    if (at >= 0) list[at] = email; else list.unshift(email); save(list);
     BIZ.log({ who: 'Eli', action: 'Read an email', jobId: email.jobId, detail: `${email.subject || email.summary} · ${email.asks.length} task${email.asks.length === 1 ? '' : 's'} proposed` });
     return email;
+  };
+  ipcMain.handle('mail:read', wrap(readEmail));
+  // read an email again (after Eli's rules change): the same files and pasted text, a fresh list of tasks; tasks already started are kept
+  ipcMain.handle('mail:reread', wrap(async ({ id }) => {
+    const old = load().find(x => x.id === id); if (!old) throw new Error('That email is gone');
+    const files = (old.originals || []).map(n => { const p = path.join(DIR(), id, n.replace(/[\\/:*?"<>|]+/g, '_')); return fs.existsSync(p) ? { name: n, mime: extMime(n), base64: fs.readFileSync(p).toString('base64') } : null; }).filter(Boolean);
+    const e = await readEmail({ files, text: old.pasted || '', reuseId: id });
+    const kept = old.asks.filter(a => a.status !== 'proposed');
+    if (kept.length) { e.asks = [...kept, ...e.asks.filter(n => !kept.some(k => k.title.toLowerCase() === n.title.toLowerCase()))].map((a, i) => ({ ...a, i })); const list = load(); list[list.findIndex(x => x.id === id)] = e; save(list); }
+    return e;
   }));
   ipcMain.handle('mail:list', wrap(() => load().slice(0, 30)));
   ipcMain.handle('mail:folders', wrap(({ id, jobId }) => { const e = load().find(x => x.id === id); const j = jobId && BIZ.data().jobs.find(x => x.id === jobId); return BIZ.projects.suggest({ number: j ? j.number : e && e.jobNumber, name: j ? j.name : '', text: e ? `${e.site} ${e.subject}` : '' }); }));
@@ -168,7 +185,12 @@ Write in plain British English as Markdown: "# title", "## Summary" (3 lines max
     for (const p of pdfs) { try { content.push({ type: 'text', text: 'Project file: ' + path.basename(p) }); content.push(checker.contentBlock('pdf', p, fs.readFileSync(p))); } catch {} }
     content.push({ type: 'text', text: `THE TASK: ${a.title}\n${a.detail}\n\nFROM THE EMAIL (${e.from}, "${e.subject}"): ${e.summary}` });
     const system = ENG_SYSTEM + (job ? '\n\n' + BIZ.contextFor(job.id, 'Ada') : '');
-    const { text } = await claudeFull({ system, who: 'engineer', maxTokens: 8000, messages: [{ role: 'user', content }] });
+    // a long study can use up the reply before any text comes out: give her room, try once more with more, never save an empty note
+    let r = await claudeFull({ system, who: 'engineer', maxTokens: 16000, messages: [{ role: 'user', content }] });
+    let text = String(r.text || '').trim();
+    if (!text || r.stop === 'max_tokens' && text.length < 400) { r = await claudeFull({ system: system + '\nKeep the note under 2500 words: summary and results first, the full working only for the key nodes.', who: 'engineer', maxTokens: 32000, messages: [{ role: 'user', content }] }); text = String(r.text || '').trim(); }
+    if (!text) throw new Error(`Ada got an empty reply from Claude (stop reason: ${r.stop || 'unknown'}). Press "Ask Ada again", or pick another Claude model in Settings.`);
+    if (r.stop === 'max_tokens') text += '\n\n_(Ada ran out of room here: the note is cut short. Ask her again for the rest.)_';
     const outDir = (job && BIZ.outputDirFor(job.id, 'documents')) || path.join(userDir(), 'engineering');
     fs.mkdirSync(outDir, { recursive: true });
     const safe = a.title.replace(/[\\/:*?"<>|]+/g, '-').replace(/\s+/g, ' ').slice(0, 70);
