@@ -162,6 +162,16 @@ function register({ ipcMain, dialog, getWin, userDir, claudeFull, checker, log }
     if (r.canceled || !r.filePath) return null;
     fs.copyFileSync(String(from), r.filePath); return { path: r.filePath };
   }));
+  // a script or route list for AutoCAD / Plant 3D: the person picks where it goes
+  ipcMain.handle('mo:saveText', wrap(async ({ text, name, ext }) => {
+    const e = String(ext || 'txt').replace(/[^a-z0-9]/gi, '').slice(0, 4) || 'txt';
+    const base = String(name || 'milo').replace(/\.[^.]+$/, '').replace(/[^\w.-]+/g, '-').slice(0, 40) || 'milo';
+    const r = process.env.AMO_SAVE_AS ? { canceled: false, filePath: process.env.AMO_SAVE_AS + '.' + e } : await dialog.showSaveDialog(getWin(), { defaultPath: `${base}-MILO.${e}`, filters: [{ name: e.toUpperCase() + ' file', extensions: [e] }] });
+    if (r.canceled || !r.filePath) return null;
+    fs.writeFileSync(r.filePath, String(text || ''), e === 'scr' ? 'latin1' : 'utf8');
+    if (log) log({ who: 'Milo', action: 'Exported', detail: `${path.basename(r.filePath)} for AutoCAD / Plant 3D` });
+    return { path: r.filePath };
+  }));
   return { readFolder };
 }
 module.exports = { register, MO_SYSTEM, VERA_SYSTEM };

@@ -1,5 +1,6 @@
 // Milo's panel in the modeling room: a request, a 3D model, optional context (folder, notes, drawings, photos) -> Milo asks questions if he needs to,
 // edits a copy of the model, then it goes to Vera to be checked. Originals are never changed.
+import { toScript, toCsv, unitScale } from './plantexport.js';
 import { loadModel, makeRoot, describe, describeText, applyOps, clashCheck, renderViews, exportGlb, MODEL_EXT, THREE } from './moder.js';
 
 const $ = (s) => document.querySelector(s);
@@ -103,7 +104,7 @@ export function initModellerUI({ office, api, getAgent, getChecker, getSettings,
       if (r.status === 'questions') { questions = r.questions; idle(); renderQuestions(); return; }
       const after = makeRoot(models.map(m => m.group));
       const res = applyOps(after, r.ops), clash = clashCheck(after);
-      state = { before, after, ops: r.ops, summary: r.summary, assumptions: r.assumptions, res, clash, verdict: null, savedPath: null };
+      state = { before, after, ops: r.ops, summary: r.summary, assumptions: r.assumptions, res, clash, verdict: null, savedPath: null, unitGuess: d.unitGuess };
       showModel(after.clone(true));
       idle(); renderResult();
     } catch (e) { fail(e); }
@@ -143,6 +144,10 @@ export function initModellerUI({ office, api, getAgent, getChecker, getSettings,
         ${!v ? '<button class="btn small primary" id="moToVera">Send to Vera to check</button>' : ''}
         <button class="btn small" id="moSave">Save copy</button><button class="btn small" id="moNew">New job</button>
       </div>
+      <label>Take it into AutoCAD / Plant 3D <span class="hint">(what Milo added only)</span></label>
+      <div class="row" style="gap:6px;flex-wrap:wrap"><select id="moUnits" style="width:auto"><option value="auto">Units: auto (${esc(s.unitGuess || '')})</option><option value="m">Model is in metres</option><option value="mm">Model is in mm</option></select>
+        <button class="btn small" id="moScr">AutoCAD script (.scr)</button><button class="btn small" id="moCsv">Route list (.csv)</button></div>
+      <div class="hint" style="margin-top:4px">Draws the pipe centreline and plain 3D solids, with Z up. They are normal AutoCAD objects, not Plant 3D pipe objects: snap Plant 3D pipe to the centreline.</div>
       <div class="hint" id="moSaved" style="margin-top:8px">${s.savedPath ? 'Saved: ' + esc(s.savedPath) : ''}</div>
       <div class="err" id="moErr2" style="margin-top:8px"></div>`;
     show('result');
@@ -151,6 +156,16 @@ export function initModellerUI({ office, api, getAgent, getChecker, getSettings,
     const fx = $('#moFix'); if (fx) fx.addEventListener('click', () => plan({ feedback: 'Vera (model checker) sent it back:\n' + s.verdict.findings.map(f => `- [${f.severity}] ${f.text}`).join('\n'), usePrevious: true }));
     const tv = $('#moToVera'); if (tv) tv.addEventListener('click', toVera);
     $('#moSave').addEventListener('click', save);
+    const exp = async (kind) => {
+      try {
+        const o = { scale: unitScale(s.unitGuess, $('#moUnits').value), addedNames: s.res.added, title: models[0] ? models[0].name : 'Milo' };
+        if (!s.res.added.length) { $('#moErr2').textContent = 'Milo added nothing new, so there is nothing to export.'; return; }
+        const text = kind === 'scr' ? toScript(s.ops, o).text : toCsv(s.ops, o);
+        const r = await api.mo.saveText({ text, name: o.title, ext: kind });
+        if (r) $('#moSaved').textContent = 'Saved: ' + r.path;
+      } catch (e) { $('#moErr2').textContent = e.message; }
+    };
+    $('#moScr').addEventListener('click', () => exp('scr')); $('#moCsv').addEventListener('click', () => exp('csv'));
     $('#moNew').addEventListener('click', reset);
   }
 
