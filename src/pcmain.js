@@ -21,7 +21,7 @@ Rules:
 
 const ASK_TOOL = { name: 'ask_user', description: 'Ask the person a short question and wait for their typed answer. Use it before anything risky, or when you are stuck.', input_schema: { type: 'object', properties: { question: { type: 'string' } }, required: ['question'] } };
 
-function register({ ipcMain, BrowserWindow, desktopCapturer, screen, globalShortcut, getWin, loadSettings, anthropicBase, log, mock }) {
+function register({ jobContext, ipcMain, BrowserWindow, desktopCapturer, screen, globalShortcut, getWin, loadSettings, anthropicBase, log, mock }) {
   let run = null;   // { stopped, decide, overlay, mockLog }
   const mockLog = [];
 
@@ -120,7 +120,7 @@ function register({ ipcMain, BrowserWindow, desktopCapturer, screen, globalShort
       overlayState({ action: 'Starting', message: String(task).slice(0, 200) });
       const messages = [{ role: 'user', content: [{ type: 'text', text: `The job:\n<job>${String(task).slice(0, 4000)}</job>${context ? '\n\nBackground:\n' + String(context).slice(0, 4000) : ''}` }] }];
       for (let step = 0; step < maxSteps && !run.stopped; step++) {
-        const data = await callClaude({ system: PC_SYSTEM, messages, tools, model, legacy });
+        const data = await callClaude({ system: PC_SYSTEM + ((jobContext && jobContext(who)) ? '\n\n' + jobContext(who) : ''), messages, tools, model, legacy });
         const content = data.content || []; messages.push({ role: 'assistant', content });
         const say = content.filter(c => c.type === 'text').map(c => c.text).join('\n').trim();
         if (say) { finalText = say; overlayState({ action: who, message: say.slice(0, 400) }); }

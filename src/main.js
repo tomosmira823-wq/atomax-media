@@ -347,9 +347,12 @@ ipcMain.handle('history:remove', (_e, { id }) => { writeJson(HISTORY_FILE(), rea
 
 // ---------- the business layer: jobs, approvals, issue packs, documents, hours, briefs ----------
 const modmain = require('./modmain.js');
-const BIZ = bizmain.register({ ipcMain, dialog, shell, Notification, getWin: () => win, userDir: USER_DIR, claudeFull: (a) => claudeFull(a), checker });
-modmain.register({ ipcMain, dialog, getWin: () => win, userDir: USER_DIR, claudeFull: (a) => claudeFull(a), checker, log: (e) => BIZ.log(e) });
-require('./pcmain.js').register({ ipcMain, BrowserWindow, desktopCapturer, screen, globalShortcut, getWin: () => win, loadSettings, anthropicBase: ANTHROPIC, log: (e) => BIZ.log(e), mock: process.env.AMO_PC_MOCK === '1' });
+// the job picked on the project whiteboard (or in an agent's panel) goes to the engineering agents as background; never to the social writers (client details must not leak into posts)
+let BIZ;
+const withJob = (a) => { let c = ''; try { c = BIZ ? BIZ.contextFor(undefined, (String(a && a.system || '').match(/You are (Milo|Theo|Vera|Dex|Cal)\b/) || [])[1] || '') : ''; } catch {} return c ? { ...a, system: String(a.system || '') + '\n\n' + c } : a; };
+BIZ = bizmain.register({ ipcMain, dialog, shell, Notification, getWin: () => win, userDir: USER_DIR, claudeFull: (a) => claudeFull(a), checker });
+modmain.register({ ipcMain, dialog, getWin: () => win, userDir: USER_DIR, claudeFull: (a) => claudeFull(withJob(a)), checker, log: (e) => BIZ.log(e) });
+require('./pcmain.js').register({ ipcMain, BrowserWindow, desktopCapturer, screen, globalShortcut, getWin: () => win, loadSettings, anthropicBase: ANTHROPIC, log: (e) => BIZ.log(e), jobContext: (who) => { try { return BIZ.contextFor(undefined, who); } catch { return ''; } }, mock: process.env.AMO_PC_MOCK === '1' });
 
 // ---------- the drawing room: cable schedule vs drawings ----------
 let checkRunning = false;
@@ -394,7 +397,7 @@ ipcMain.handle('dxf:propose', async (_e, { source, dxfs, markups, note }) => {
     if (!String(note || '').trim()) return { items: [], notes: ['Type what you want Dex to do first.'] };
     const inv = files.map(f => 'FILE: ' + f.name + '\n' + dxffix.inventory(f.parsed)).join('\n\n');
     try {
-      const r = await claudeFull({ system: dxffix.DEX_NOTE_SYSTEM, maxTokens: 6000, messages: [{ role: 'user', content: 'The engineer says:\n<instruction>' + String(note).slice(0, 4000) + '</instruction>\n\nText in the drawing(s):\n' + inv }] });
+      const r = await claudeFull(withJob({ system: dxffix.DEX_NOTE_SYSTEM, maxTokens: 6000, messages: [{ role: 'user', content: 'The engineer says:\n<instruction>' + String(note).slice(0, 4000) + '</instruction>\n\nText in the drawing(s):\n' + inv }] }));
       const j = checker.parseJson(r.text).value;
       for (const it of (j.items || [])) {
         const fl = files.find(x => x.name === it.file) || (files.length === 1 ? files[0] : null);

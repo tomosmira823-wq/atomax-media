@@ -16,7 +16,7 @@ contextBridge.exposeInMainWorld('office', {
   },
   check: { run: call('check:run'), skill: call('check:skill'), last: call('check:last'), onProgress: (fn) => ipcRenderer.on('check:progress', (_e, p) => fn(p)) },
   biz: {
-    get: call('biz:get'), jobs: call('biz:jobs'), jobSave: call('biz:jobSave'), jobDelete: call('biz:jobDelete'), parseDrawings: call('biz:parseDrawings'),
+    get: call('biz:get'), jobs: call('biz:jobs'), taskSave: call('biz:taskSave'), taskDelete: call('biz:taskDelete'), setCurrent: call('biz:setCurrent'), current: call('biz:current'), jobSave: call('biz:jobSave'), jobDelete: call('biz:jobDelete'), parseDrawings: call('biz:parseDrawings'),
     hoursAdd: call('biz:hoursAdd'), hoursRemove: call('biz:hoursRemove'), people: call('biz:people'), decide: call('biz:decide'),
     pickFolder: call('biz:pickFolder'), pickFile: call('biz:pickFile'), issueScan: call('biz:issueScan'), issueQueue: call('biz:issueQueue'),
     docDraft: call('biz:docDraft'), docKinds: call('biz:docKinds'), briefRun: call('biz:briefRun'), routinesSet: call('biz:routinesSet'),

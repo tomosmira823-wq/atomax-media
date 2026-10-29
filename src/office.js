@@ -308,6 +308,21 @@ export class Office {
     const rugIn = new THREE.Mesh(new THREE.PlaneGeometry(M.x1 - M.x0 - 1.4, M.z1 - M.z0 - 1.4), mat(0x273047, { roughness: 1 })); rugIn.rotation.x = -Math.PI / 2; rugIn.position.set((M.x0 + M.x1) / 2, 0.035, (M.z0 + M.z1) / 2); s.add(rugIn);
     // glass walls as a row of small obstacles so wanderers go round them (door gap left open)
     this.meetingPoint = new THREE.Vector3((M.x0 + M.x1) / 2, 0, (M.z0 + M.z1) / 2);
+    // project whiteboard inside the meeting room, against the back glass, facing the room: click it to open the projects
+    {
+      const bx = (M.x0 + M.x1) / 2, bz = M.z0 + 0.35, bw = 4.4, bh = 2.3, by = 2.15;
+      const frame = box(bw + 0.2, bh + 0.2, 0.08, mat(0x6b7280, { metalness: 0.5, roughness: 0.4 }), bx, by, bz, false); s.add(frame);
+      this.projCanvas = document.createElement('canvas'); this.projCanvas.width = 1100; this.projCanvas.height = 575;
+      this.projTex = new THREE.CanvasTexture(this.projCanvas); this.projTex.colorSpace = THREE.SRGBColorSpace; this.projTex.anisotropy = 4;
+      const face = new THREE.Mesh(new THREE.PlaneGeometry(bw, bh), new THREE.MeshBasicMaterial({ map: this.projTex }));
+      face.position.set(bx, by, bz + 0.05); s.add(face); this.projBoard = face;
+      s.add(box(bw * 0.9, 0.06, 0.16, mat(0x6b7280), bx, by - bh / 2 - 0.12, bz + 0.06, false));   // marker tray
+      [0xe03131, 0x1971c2, 0x2f9e44].forEach((c, i) => s.add(box(0.28, 0.04, 0.04, mat(c), bx - 0.4 + i * 0.4, by - bh / 2 - 0.07, bz + 0.1, false)));
+      const hint = document.createElement('div'); hint.className = 'hint3d'; hint.textContent = 'Click the whiteboard for projects and tasks';
+      const co = new CSS2DObject(hint); co.position.set(bx, by + bh / 2 + 0.45, bz + 0.2); s.add(co); this.projHint = co;
+      this.projSpot = { p: [bx, 2.35, M.z0 + 5.4], t: [bx, 2.15, bz] };
+      this.setProjectBoard(null);
+    }
     this.obstacles.push({ rect: true, x0: this.meetingPoint.x - 2.6, x1: this.meetingPoint.x + 2.6, z0: this.meetingPoint.z - 2.0, z1: this.meetingPoint.z + 2.0 });   // table + chairs
     [[M.x0 + 1.2, M.z0 + 2.2, 0], [M.x1 - 1.2, M.z1 - 1.5, Math.PI], [M.x0 + 2.8, M.z1 - 1.2, -Math.PI / 2 * 0], [M.x1 - 1.4, M.z0 + 1.5, Math.PI / 2]].forEach(([x, z, f]) => this.pois.push({ x, z, face: f, room: true }));
 
@@ -806,6 +821,31 @@ export class Office {
   setScanning(on) { if (this.modelRoom) this.modelRoom.setBusy(on); }
 
   // ---------- room switching, picking, hand-over ----------
+  // redraw the project whiteboard in the meeting room: { jobs:[{number,name,status,open,doing,done}], agents:[{name,colour,text}] }
+  setProjectBoard(d) {
+    const c = this.projCanvas; if (!c) return; const g = c.getContext('2d'), W = c.width, H = c.height;
+    g.fillStyle = '#fbfcfd'; g.fillRect(0, 0, W, H);
+    g.fillStyle = '#e9ecef'; g.fillRect(0, 0, W, 8);
+    g.fillStyle = '#1b2a41'; g.font = '700 46px system-ui, sans-serif'; g.fillText('PROJECTS', 36, 66);
+    g.fillStyle = '#868e96'; g.font = '500 24px system-ui, sans-serif'; g.fillText(d ? 'tap the board to open' : 'no projects yet · tap the board to add the first job', 36, 100);
+    if (d && d.jobs) {
+      const cols = ['#ffe066', '#7fc8ff', '#b2f2bb', '#ffb3c1', '#d0bfff', '#ffd8a8'];
+      d.jobs.slice(0, 6).forEach((j, i) => {
+        const x = 36 + (i % 3) * 350, y = 130 + Math.floor(i / 3) * 190;
+        g.save(); g.translate(x, y); g.rotate(((i % 3) - 1) * 0.015); g.fillStyle = cols[i % cols.length]; g.shadowColor = 'rgba(0,0,0,.18)'; g.shadowBlur = 10; g.shadowOffsetY = 4; g.fillRect(0, 0, 320, 165); g.shadowColor = 'transparent';
+        g.fillStyle = '#212529'; g.font = '700 26px system-ui, sans-serif'; g.fillText(String(j.number).slice(0, 22), 14, 38);
+        g.font = '500 22px system-ui, sans-serif'; g.fillText(String(j.name || '').slice(0, 26), 14, 68);
+        g.fillStyle = '#495057'; g.font = '600 21px system-ui, sans-serif'; g.fillText(`${j.open} to do · ${j.doing} doing · ${j.done} done`, 14, 110);
+        g.font = '500 19px system-ui, sans-serif'; g.fillText(j.status + (j.last ? ' · ' + j.last : ''), 14, 140); g.restore();
+      });
+    }
+    if (d && d.agents && d.agents.length) {
+      g.fillStyle = '#1b2a41'; g.font = '700 26px system-ui, sans-serif'; g.fillText('WHO IS ON WHAT', 36, 530);
+      d.agents.slice(0, 5).forEach((a, i) => { g.fillStyle = a.colour || '#888'; g.beginPath(); g.arc(300 + i * 150 + 8, 520, 9, 0, 7); g.fill(); g.fillStyle = '#343a40'; g.font = '600 20px system-ui, sans-serif'; g.fillText(a.name + (a.n ? ' ' + a.n : ''), 300 + i * 150 + 24, 527); });
+    }
+    this.projTex.needsUpdate = true;
+  }
+
   focus(where, ms = 1100) {
     if (this.fp) this.exitFirstPerson(true);
     const [dx, dz] = DRAW_DESK;
@@ -814,6 +854,7 @@ export class Office {
       drawing: { p: [DRAW.cx + 9, 15, 24], t: [DRAW.cx + 1.5, 0.5, -3] },
       desk: { p: [dx + 8.0, 4.8, dz + 8.0], t: [dx + 2.8, 1.0, dz + 0.6] },
       drafting: { p: [DRAFT_TABLE[0] + 7.5, 4.8, DRAFT_TABLE[1] + 7.5], t: [DRAFT_TABLE[0] + 2.6, 1.0, DRAFT_TABLE[1] + 0.4] },
+      ...(this.projSpot ? { board: this.projSpot } : {}),
       ...(this.modelRoom ? this.modelRoom.spots : {})
     };
     const sp = spots[where]; if (!sp) return;
@@ -823,6 +864,7 @@ export class Office {
     if (this.deskHint) this.deskHint.visible = where === 'drawing';
     if (this.dexHint) this.dexHint.visible = where === 'drawing';
     if (this.modelRoom) { this.modelRoom.hint.visible = where === 'modeling'; for (const k of Object.values(this.modelRoom.stations)) k.hint.visible = where === 'modeling'; }
+    if (this.projHint) this.projHint.visible = where === 'media';
     this.canvas.style.cursor = '';
   }
 
@@ -832,6 +874,7 @@ export class Office {
     const visibleChain = (o) => { for (let n = o; n; n = n.parent) if (!n.visible) return false; return true; };
     const what = (e) => {
       this.ray.setFromCamera(ndc(e), this.camera);
+      if (this.room === 'media' && this.projBoard && this.ray.intersectObject(this.projBoard, true).length) return 'board';
       if (this.room === 'media' && this.doorPlaque && visibleChain(this.doorPlaque) && this.ray.intersectObject(this.doorPlaque, true).length) return 'door';
       if (this.room === 'drawing' && this.clickRoots.length && this.ray.intersectObjects(this.clickRoots, true).some(h => visibleChain(h.object))) return 'desk';
       if (this.room === 'drawing' && this.dexRoots && this.dexRoots.length && this.ray.intersectObjects(this.dexRoots, true).some(h => visibleChain(h.object))) return 'drafting';

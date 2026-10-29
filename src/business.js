@@ -15,7 +15,7 @@ const today = (d = new Date()) => d.toISOString().slice(0, 10);
 
 // ---------------- store ----------------
 function emptyData() {
-  return { jobs: [], hours: [], approvals: [], audit: [], briefs: [], docs: [], routines: { morning: { on: false, time: '08:00' }, weekly: { on: false, day: 5, time: '16:00' } }, lastRuns: {}, people: [] };
+  return { jobs: [], hours: [], approvals: [], audit: [], briefs: [], docs: [], routines: { morning: { on: false, time: '08:00' }, weekly: { on: false, day: 5, time: '16:00' } }, lastRuns: {}, people: [], tasks: [], currentJobId: '' };
 }
 function makeStore(file) {
   let cache = null;
@@ -87,6 +87,44 @@ function jobSummary(data, job) {
   return { used, budget: job.budgetHours, pct, over: pct !== null && pct > 100, drawings: job.drawings.length, live: live.length, pending: data.approvals.filter(a => a.jobId === job.id && a.status === 'pending').length };
 }
 function hoursByWho(data, sinceISO) { const m = {}; for (const h of data.hours) if (!sinceISO || h.date >= sinceISO) m[h.who] = Math.round(((m[h.who] || 0) + h.hours) * 100) / 100; return m; }
+
+// ---------------- tasks (set from the project whiteboard, handed to an agent) ----------------
+const TASK_STATUS = ['todo', 'doing', 'done'];
+function saveTask(data, t, who = 'Tom') {
+  const title = String(t.title || '').trim(); if (!title) throw new Error('A task needs a title.');
+  if (!data.jobs.some(j => j.id === t.jobId)) throw new Error('Pick a job for the task.');
+  const old = t.id && data.tasks.find(x => x.id === t.id);
+  const now = new Date().toISOString();
+  const status = TASK_STATUS.includes(t.status) ? t.status : (old ? old.status : 'todo');
+  const clean = { id: old ? old.id : uid('t'), jobId: t.jobId, title, detail: String(t.detail || ''), agentId: String(t.agentId || ''), agentName: String(t.agentName || ''), status,
+    note: String(t.note !== undefined ? t.note : (old ? old.note : '') || ''), lastActivity: old ? old.lastActivity || '' : '', createdAt: old ? old.createdAt : now, updatedAt: now,
+    doneAt: status === 'done' ? (old && old.doneAt) || now : '' };
+  if (old) { const was = old.status; Object.assign(old, clean); audit(data, { who, action: was !== status ? (status === 'done' ? 'Task done' : 'Task moved to ' + status) : 'Task updated', jobId: old.jobId, detail: title + (clean.agentName ? ' · ' + clean.agentName : '') }); return old; }
+  data.tasks.unshift(clean); audit(data, { who, action: 'Task set', jobId: clean.jobId, detail: title + (clean.agentName ? ' · for ' + clean.agentName : '') }); return clean;
+}
+function deleteTask(data, id, who = 'Tom') {
+  const t = data.tasks.find(x => x.id === id); if (!t) return false;
+  data.tasks = data.tasks.filter(x => x.id !== id); audit(data, { who, action: 'Task deleted', jobId: t.jobId, detail: t.title }); return true;
+}
+// an agent finished something on a job: remember it on that agent's open task
+function noteActivity(data, e) {
+  if (!e || !e.jobId || !e.who) return;
+  const t = data.tasks.find(x => x.jobId === e.jobId && x.status === 'doing' && x.agentName === e.who);
+  if (t) t.lastActivity = new Date().toISOString().slice(0, 16).replace('T', ' ') + ' · ' + e.action + (e.detail ? ': ' + String(e.detail).slice(0, 140) : '');
+}
+// what every agent is told about the job it is working on
+function jobContext(data, jobId, forWho = '') {
+  const j = data.jobs.find(x => x.id === jobId); if (!j) return '';
+  const s = jobSummary(data, j), L = [];
+  L.push(`JOB: ${j.number}${j.name ? ' ' + j.name : ''}${j.client ? ' · client ' + j.client : ''} · ${j.status}${j.dueDate ? ' · due ' + j.dueDate : ''}${s.budget ? ` · hours ${s.used} of ${s.budget}` : ''}`);
+  if (j.notes && j.notes.trim()) L.push('Job notes from the engineer:\n' + j.notes.trim().slice(0, 3000));
+  if (j.drawings.length) L.push(`Drawings on this job (${j.drawings.length}):\n` + j.drawings.slice(0, 40).map(d => `- ${d.no}${d.title ? ' ' + d.title : ''}${d.rev ? ' ' + d.rev : ''}${d.status && d.status !== 'Live' ? ' [' + d.status + ']' : ''}`).join('\n'));
+  const mine = data.tasks.filter(t => t.jobId === jobId && t.status !== 'done' && (!forWho || !t.agentName || t.agentName === forWho));
+  if (mine.length) L.push('Open tasks on this job:\n' + mine.slice(0, 12).map(t => `- [${t.status}] ${t.title}${t.agentName ? ' (' + t.agentName + ')' : ''}${t.detail ? ': ' + t.detail.slice(0, 200) : ''}`).join('\n'));
+  const act = data.audit.filter(a => a.jobId === jobId && !/^Task /.test(a.action)).slice(0, 8);
+  if (act.length) L.push('Recent work on this job:\n' + act.map(a => `- ${a.at.slice(0, 10)} ${a.who}: ${a.action}${a.detail ? ' ' + String(a.detail).slice(0, 120) : ''}`).join('\n'));
+  return 'JOB CONTEXT (use it as background for the request; do not repeat it back; the request itself comes first)\n' + L.join('\n\n');
+}
 
 // ---------------- approvals ----------------
 // kind: 'document' | 'issue-pack' | 'other'. payload carries what runs when it is approved.
@@ -312,6 +350,7 @@ function transmittalConfig({ job, rows, revision = 'P01', docNumber, date, to = 
 }
 
 module.exports = {
+  TASK_STATUS, saveTask, deleteTask, noteActivity, jobContext,
   makeStore, emptyData, audit, saveJob, deleteJob, parseDrawingLines, JOB_STATUS,
   addHours, removeHours, jobHours, jobSummary, hoursByWho,
   queueApproval, decideApproval,

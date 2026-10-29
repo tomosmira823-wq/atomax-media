@@ -16,14 +16,14 @@ function register({ ipcMain, dialog, shell, Notification, getWin, userDir, claud
   const bizDir = (...p) => { const d = path.join(userDir(), 'business', ...p); fs.mkdirSync(d, { recursive: true }); return d; };
 
   // other parts of the app (Cal, Dex) write to the audit trail through this
-  const log = (e) => { try { const d = data(); biz.audit(d, e); store.save(); } catch (err) { console.error('audit failed', err); } };
+  const log = (e) => { try { const d = data(); biz.audit(d, e); biz.noteActivity(d, e); store.save(); } catch (err) { console.error('audit failed', err); } };
 
   const view = () => {
     const d = data();
     return {
       jobs: d.jobs.map(j => ({ ...j, summary: biz.jobSummary(d, j) })),
       hours: d.hours.slice(0, 400), approvals: d.approvals.slice(0, 200), audit: d.audit.slice(0, 400), briefs: d.briefs.slice(0, 40), docs: d.docs.slice(0, 200),
-      routines: d.routines, lastRuns: d.lastRuns, people: d.people
+      routines: d.routines, lastRuns: d.lastRuns, people: d.people, tasks: d.tasks, currentJobId: d.currentJobId
     };
   };
   const wrap = (fn) => async (_e, args) => { try { return await fn(args || {}); } catch (e) { throw new Error(String(e && e.message || e)); } };
@@ -32,6 +32,10 @@ function register({ ipcMain, dialog, shell, Notification, getWin, userDir, claud
   ipcMain.handle('biz:jobs', wrap(() => data().jobs.map(j => ({ id: j.id, number: j.number, name: j.name, status: j.status }))));
   ipcMain.handle('biz:jobSave', wrap(({ job }) => { biz.saveJob(data(), job); store.save(); return view(); }));
   ipcMain.handle('biz:jobDelete', wrap(({ id }) => { biz.deleteJob(data(), id); store.save(); return view(); }));
+  ipcMain.handle('biz:taskSave', wrap(({ task }) => { biz.saveTask(data(), task); store.save(); return view(); }));
+  ipcMain.handle('biz:taskDelete', wrap(({ id }) => { biz.deleteTask(data(), id); store.save(); return view(); }));
+  ipcMain.handle('biz:setCurrent', wrap(({ id }) => { const d = data(); d.currentJobId = d.jobs.some(j => j.id === id) ? id : ''; store.save(); return d.currentJobId; }));
+  ipcMain.handle('biz:current', wrap(() => data().currentJobId || ''));
   ipcMain.handle('biz:parseDrawings', wrap(({ text }) => biz.parseDrawingLines(text)));
   ipcMain.handle('biz:hoursAdd', wrap((h) => { biz.addHours(data(), h); store.save(); return view(); }));
   ipcMain.handle('biz:hoursRemove', wrap(({ id }) => { biz.removeHours(data(), id); store.save(); return view(); }));
@@ -194,7 +198,9 @@ dead is true only if the sheet itself carries a cancelled / superseded / void / 
   const tick = () => { try { for (const k of biz.routinesDue(data())) runRoutine(k, false); } catch (e) { console.error('routine failed', e); } };
   setInterval(tick, 60 * 1000); setTimeout(tick, 15 * 1000);
 
-  return { log, store, data, view };
+  // the context block for the job in hand (the one picked on the whiteboard or in the agent's panel); '' when no job is set
+  const contextFor = (jobId, who) => { try { const d = data(); return biz.jobContext(d, jobId === undefined ? d.currentJobId : jobId, who); } catch { return ''; } };
+  return { log, store, data, view, contextFor };
 }
 
 module.exports = { register };
