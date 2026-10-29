@@ -146,3 +146,17 @@ The whiteboard in the meeting room opens the project board: every job, its conte
 
 ## Camera
 Left-drag pans freely, right-drag rotates, wheel zooms. Clicking a room flies the camera there without locking it; dragging interrupts the flight. "Whole office" shows everything.
+
+## File room (v1.9)
+Six cabinets along the west wall of the File Room: Skills, Templates, Company knowledge, Jobs, Brand and Agent rulebooks. Click a cabinet and its top drawer slides out and the panel opens. Everything is stored under userData/library/<cabinet>/. Drop files on the panel to file them in the open cabinet.
+- Skills: name, description, the agents that use it (agent chips and "+ agent") and an on/off switch. "Import from Claude" takes a folder with a SKILL.md. Agents read enabled skills from the library at run time. The first run seeds today's skill text so nothing changes.
+- Templates, Company knowledge, Jobs and Brand: text files are given to the agents ticked for them (text files only, up to 30 KB in total per prompt). Other file types are filed but not read.
+- Agent rulebooks: one per agent. Lessons saved here are in that agent's prompt from its next run.
+
+## Server room (v1.9)
+One rack per service (Claude, OpenAI, Higgsfield, LinkedIn, Meta, X). The light on top is green when working, amber near its monthly cap and red when broken, capped or expiring.
+- Every Claude, OpenAI, Google and Higgsfield image call is logged to userData/usage.json with the date, provider, agent, tokens or units, an estimated £ cost and any error. The £ figures are estimates from the list prices in src/usage.js, not billing data.
+- Monthly caps (defaults £60 Claude, £30 OpenAI, £30 Google, £50 Higgsfield) are checked before every call. A capped provider stops the agent with a clear message until the cap is raised in the Server Room.
+- Key test runs a cheap ping. The key itself is never shown.
+- Social logins show days left. Within 7 days the panel shows a red banner and the rack goes red, with a Reconnect button.
+- Bottom bar: app version and update status. Backups show "not set up yet" until a backup job exists.

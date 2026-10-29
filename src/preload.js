@@ -7,6 +7,8 @@ contextBridge.exposeInMainWorld('office', {
   agents: { get: call('agents:get'), set: call('agents:set'), reset: call('agents:reset') },
   posts: { get: call('posts:get'), set: call('posts:set') },
   files: { pickImages: call('file:pickImages'), saveImage: call('file:saveImage'), saveText: call('file:saveText') },
+  library: { cabinets: call('library:cabinets'), items: call('library:items'), read: call('library:read'), save: call('library:save'), remove: call('library:remove'), drop: call('library:drop'), importSkill: call('library:importSkill'), newSkill: call('library:newSkill'), correction: call('library:correction'), setRulebook: call('library:setRulebook'), agentView: call('library:agentView') },
+  server: { status: call('server:status'), setCap: call('server:setCap'), usage: call('server:usage') },
   ai: {
     writePost: call('ai:writePost'),
     revisePost: call('ai:revisePost'),

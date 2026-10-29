@@ -108,7 +108,7 @@ const FB = {
     const me = await jsonOrThrow(await fetch(`${G}/me?fields=name&access_token=${userToken}`), 'Meta me');
     const pages = await jsonOrThrow(await fetch(`${G}/me/accounts?fields=id,name,access_token,instagram_business_account{id,username}&access_token=${userToken}`), 'Meta pages');
     const list = (pages.data || []).map(p => ({ id: p.id, name: p.name, token: p.access_token, igId: p.instagram_business_account?.id || null, igName: p.instagram_business_account?.username || null }));
-    const out = { ...cfg, userToken, name: me.name, pages: list };
+    const out = { ...cfg, userToken, name: me.name, pages: list, expires: Date.now() + (long.expires_in || 60 * 86400) * 1000 };   // Meta long-lived tokens last about 60 days
     if (!out.pageId && list[0]) out.pageId = list[0].id;
     return out;
   },

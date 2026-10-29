@@ -6,6 +6,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { buildModelingRoom, modelingBounds } from './modelroom.js';
+import { buildFileRoom, buildServerRoom, paintSpend, paintRacks } from './newrooms.js';
 
 const GREEN = 0x40bd00, NAVY = 0x0e121d, NAVY2 = 0x1b2131, WHITE = 0xf4f5f7, WOOD = 0xe8d2b0;
 const ROOM_W = 26, ROOM_D = 22, WALL_H = 6;
@@ -36,7 +37,11 @@ const RECEP = mkRoom(-ROOM_W / 2, -2.3, BR_Z0, BR_Z1);
 const DOCS = mkRoom(-2.0, 11.2, BR_Z0, BR_Z1);
 const MEET = mkRoom(11.5, 26.0, BR_Z0, BR_Z1);
 const LOUNGE = mkRoom(26.3, 39.5, BR_Z0, BR_Z1);
-const NAV = { x0: -ROOM_W / 2, x1: NEXT.x1, z0: -ROOM_D / 2, z1: BR_Z1 };
+// the bottom row runs on east of the lounge: the File Room, then the Server Room
+const FILE = mkRoom(LOUNGE.x1 + 0.3, LOUNGE.x1 + 13.3, BR_Z0, BR_Z1);
+const SERVER = mkRoom(FILE.x1 + 0.3, FILE.x1 + 13.3, BR_Z0, BR_Z1);
+const BUILD_X1 = SERVER.x1;
+const NAV = { x0: -ROOM_W / 2, x1: BUILD_X1, z0: -ROOM_D / 2, z1: BR_Z1 };
 const DRAW_DESK = [DRAW.cx, -6.6, 0];
 const DRAFT_TABLE = [DRAW.x0 + 5.0, -1.2], DRAFT_STOOL = [DRAW.x0 + 6.4, -1.9];
 
@@ -179,7 +184,7 @@ export class Office {
 
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(NAVY);
-    this.scene.fog = new THREE.Fog(NAVY, 90, 160);
+    this.scene.fog = new THREE.Fog(NAVY, 140, 260);
     const pmrem = new THREE.PMREMGenerator(this.renderer);
     this.scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
     this.scene.environmentIntensity = 0.8;
@@ -190,7 +195,7 @@ export class Office {
     this.controls.target.set(14, 0, 8);
     this.controls.enableDamping = true;
     this.controls.maxPolarAngle = Math.PI / 2.3;
-    this.controls.minDistance = 4; this.controls.maxDistance = 110;
+    this.controls.minDistance = 4; this.controls.maxDistance = 190;
     // free movement: drag to slide the view along the floor, right-drag (or two fingers) to turn, wheel to zoom. Clicking a room only flies you there; you can drag away at any time.
     this.controls.enablePan = true; this.controls.screenSpacePanning = false; this.controls.panSpeed = 1.1;
     this.controls.mouseButtons = { LEFT: THREE.MOUSE.PAN, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.ROTATE };
@@ -202,7 +207,7 @@ export class Office {
     sun.position.set(-8, 34, 32); sun.castShadow = true;
     sun.shadow.mapSize.set(4096, 4096);
     sun.target.position.set(14, 0, 6); this.scene.add(sun.target);
-    const sc = sun.shadow.camera; sc.left = -46; sc.right = 46; sc.top = 36; sc.bottom = -36; sc.near = 1; sc.far = 110;
+    const sc = sun.shadow.camera; sc.left = -58; sc.right = 58; sc.top = 44; sc.bottom = -44; sc.near = 1; sc.far = 150;
     sun.shadow.bias = -0.0003; sun.shadow.normalBias = 0.04; sun.shadow.radius = 3;
     this.scene.add(sun);
     const fill = new THREE.PointLight(0xa8ffb0, 10, 40, 1.5); fill.position.set(6, 5, 4); this.scene.add(fill);
@@ -334,7 +339,7 @@ export class Office {
     const fl = new THREE.Mesh(new THREE.PlaneGeometry(R.w, R.d), floor); fl.rotation.x = -Math.PI / 2; fl.position.set(R.cx, 0.002, R.cz); fl.receiveShadow = true; s.add(fl);
     s.add(box(R.w + 1, 0.6, R.d + 1, mat(NAVY2), R.cx, -0.32, R.cz, false));
     const B = new THREE.Group(), L = new THREE.Group(); s.add(B); s.add(L);
-    const wallN = mat(NAVY, { roughness: 0.9 }), wallW = mat(0xeef0f3, { roughness: 0.95 }), frame = mat(NAVY2);
+    const wallN = mat(lowBack ? NAVY2 : NAVY, { roughness: 0.9 }), wallW = mat(0xeef0f3, { roughness: 0.95 }), frame = mat(NAVY2);
     const BH = lowBack ? 1.2 : WALL_H;
     const hole = (g, mt, horiz, at, lo, hi, thick, H = WALL_H) => {   // wall along an axis with a doorway between lo..hi
       const len0 = horiz ? [R.x0 - 0.3, lo] : [R.z0, lo], len1 = horiz ? [hi, R.x1] : [hi, R.z1];
@@ -368,7 +373,7 @@ export class Office {
   #buildBuilding() {
     const s = this.scene;
     // ---- corridor ----
-    const cw = NEXT.x1 - (-ROOM_W / 2), cd = CORR.z1 - CORR.z0, ccx = (NEXT.x1 - ROOM_W / 2) / 2, ccz = (CORR.z0 + CORR.z1) / 2;
+    const cw = BUILD_X1 - (-ROOM_W / 2), cd = CORR.z1 - CORR.z0, ccx = (BUILD_X1 - ROOM_W / 2) / 2, ccz = (CORR.z0 + CORR.z1) / 2;
     s.add(box(cw + 1, 0.6, cd + 0.4, mat(NAVY2), ccx, -0.32, ccz, false));
     const cf = new THREE.Mesh(new THREE.PlaneGeometry(cw, cd), mat(0x1c2333, { roughness: 0.45, metalness: 0.15 })); cf.rotation.x = -Math.PI / 2; cf.position.set(ccx, 0.005, ccz); cf.receiveShadow = true; s.add(cf);
     for (const z of [CORR.z0 + 0.05, CORR.z1 - 0.05]) { const st = new THREE.Mesh(new THREE.PlaneGeometry(cw, 0.12), mat(GREEN, { emissive: GREEN, emissiveIntensity: 0.4 })); st.rotation.x = -Math.PI / 2; st.position.set(ccx, 0.012, z); s.add(st); }
@@ -382,10 +387,25 @@ export class Office {
     this.#roomShell(DOCS, { name: 'JOBS · APPROVALS', floor: docsFloor, wallDoorZ: [DOCS.cz - 0.5, DOCS.cz + 1.5], backDoorX: doorBack(DOCS), accent: 0xb197fc, lowBack: true });
     this.#roomShell(MEET, { name: 'MEETING ROOM', floor: woodTex(MEET, 28), wallDoorZ: [MEET.cz - 0.5, MEET.cz + 1.5], backDoorX: doorBack(MEET), lowBack: true });
     this.#roomShell(LOUNGE, { name: 'LOUNGE', floor: woodTex(LOUNGE, 32), wallDoorZ: [LOUNGE.cz - 0.5, LOUNGE.cz + 1.5], backDoorX: doorBack(LOUNGE), lowBack: true });
+    // File Room (light floor, cabinets on the west wall) and Server Room (dark floor, racks), both opening onto the corridor
+    const fileFloor = new THREE.MeshStandardMaterial({ color: 0xdfe3ea, roughness: 0.3, metalness: 0.1 });
+    const serverFloor = new THREE.MeshStandardMaterial({ color: 0x1d2433, roughness: 0.4, metalness: 0.2 });
+    const fileShell = this.#roomShell(FILE, { name: ' ', floor: fileFloor, wallDoorZ: null, backDoorX: doorBack(FILE), accent: GREEN });
+    const serverShell = this.#roomShell(SERVER, { name: ' ', floor: serverFloor, wallDoorZ: null, backDoorX: doorBack(SERVER), accent: 0x4dabf7 });
+    // clickable plaques above each doorway, on the room side of the back wall
+    this.roomPlaques = {};
+    for (const [key, R, shell, text, accent] of [['file', FILE, fileShell, 'FILE ROOM', GREEN], ['server', SERVER, serverShell, 'SERVER ROOM', 0x4dabf7]]) {
+      const g = new THREE.Group();
+      g.add(box(3.9, 0.85, 0.1, mat(NAVY2, { roughness: 0.5 }), 0, 0, 0));
+      g.add(box(3.9, 0.06, 0.12, mat(accent, { emissive: accent, emissiveIntensity: 0.5 }), 0, -0.44, 0.02, false));
+      const tx = this.#textPlane(text, 3.5, 0.6, { color: '#ffffff', size: 64, weight: '700', spacing: 8 }); tx.position.set(0, 0.04, 0.07); g.add(tx);
+      g.position.set(R.cx, 4.5, R.z0 + 0.14);
+      shell.B.add(g); this.roomPlaques[key] = g;
+    }
     // lime kerb along the south edge of the bottom row and the east end of the building
     const kerb = (x0, x1, z, thick = 0.14) => s.add(box(x1 - x0, 0.1, thick, mat(GREEN, { emissive: GREEN, emissiveIntensity: 0.5 }), (x0 + x1) / 2, 0.05, z, false));
-    kerb(-ROOM_W / 2, LOUNGE.x1, BR_Z1 + 0.05);
-    s.add(box(0.14, 0.1, BR_Z1 - CORR.z0, mat(GREEN, { emissive: GREEN, emissiveIntensity: 0.5 }), LOUNGE.x1 + 0.05, 0.05, (CORR.z0 + BR_Z1) / 2, false));
+    kerb(-ROOM_W / 2, BUILD_X1, BR_Z1 + 0.05);
+    s.add(box(0.14, 0.1, BR_Z1 - CORR.z0, mat(GREEN, { emissive: GREEN, emissiveIntensity: 0.5 }), BUILD_X1 + 0.05, 0.05, (CORR.z0 + BR_Z1) / 2, false));
 
     // ---- next department: dashed plot, click "+ desk" ----
     const pc = document.createElement('canvas'); pc.width = 1024; pc.height = Math.round(1024 * NEXT.d / (NEXT.x1 - NEXT.x0)) || 900;
@@ -474,6 +494,17 @@ export class Office {
       const lp = new THREE.PointLight(0xffe2b3, 6, 8, 2); lp.position.set(R.cx - 2.4, WALL_H - 2.2, R.z1 - 2.6); s.add(lp);
       poi(R.cx - 2.4, R.z1 - 5.6, 0, 'Lounge'); poi(R.cx + 3.6, R.z0 + 4.4, Math.PI, 'Coffee');
     }
+    // ---- File Room and Server Room ----
+    // each room keeps its own labels, shown only when the camera is in that room (the overview stays readable)
+    const mkCtx = (chips) => ({ s, box, mat, t: (text, w, h, o) => this.#textPlane(text, w, h, o), chip: (text, x, y, z, cls) => { const c = this.#chip(text, x, y, z, cls); chips.push(c); return c; }, obstacles: this.obstacles, GREEN, chairs: [] });
+    const fileChips = [], serverChips = [];
+    const fctx = mkCtx(fileChips), sctx = mkCtx(serverChips);
+    const fileRoom = buildFileRoom(fctx, FILE);
+    const serverRoom = buildServerRoom(sctx, SERVER);
+    for (const [x, z, rot] of [...fctx.chairs, ...sctx.chairs]) { const ch = this.#officeChair(new THREE.Color(GREEN)); ch.position.set(x, 0, z); ch.rotation.y = rot; s.add(ch); }
+    this.newRooms = { file: { ...fileRoom, chips: fileChips }, server: { ...serverRoom, chips: serverChips } };
+    for (const c of [...fileChips, ...serverChips]) c.visible = false;
+    paintSpend(serverRoom, this.serverStatus || null); paintRacks(serverRoom, this.serverStatus || null);
   }
 
   // ---------- models ----------
@@ -973,7 +1004,8 @@ export class Office {
     if (this.fp) this.exitFirstPerson(true);
     const [dx, dz] = DRAW_DESK;
     const spots = {
-      overview: { p: [52, 46, 68], t: [14, 0, 8] },
+      overview: { p: [92, 84, 116], t: [30, 0, 6] },
+      ...(this.newRooms ? { file: { p: [FILE.cx + 8, 6.4, FILE.z1 + 8], t: [FILE.cx - 1.5, 1.0, FILE.cz] }, server: { p: [SERVER.cx + 8, 6.4, SERVER.z1 + 8], t: [SERVER.cx - 1.5, 1.2, SERVER.cz] } } : {}),
       media: { p: [26, 19, 32], t: [1, 0.5, 0.5] },
       drawing: { p: [DRAW.cx + 9, 17, 32], t: [DRAW.cx + 1.5, 0.5, 0] },
       desk: { p: [dx + 8.0, 4.8, dz + 8.0], t: [dx + 2.8, 1.0, dz + 0.6] },
@@ -990,6 +1022,7 @@ export class Office {
     if (this.modelRoom) { this.modelRoom.hint.visible = where === 'modeling'; for (const k of Object.values(this.modelRoom.stations)) k.hint.visible = where === 'modeling'; }
     const wideNow = where === 'media' || where === 'overview';
     if (this.projHint) this.projHint.visible = wideNow;
+    if (this.newRooms) { for (const c of this.newRooms.file.chips) c.visible = where === 'file'; for (const c of this.newRooms.server.chips) c.visible = where === 'server'; }
     this.canvas.style.cursor = '';
   }
 
@@ -1006,6 +1039,9 @@ export class Office {
       if (wide && this.nextRoots && this.ray.intersectObjects(this.nextRoots, true).length) return 'nextdesk';
       if (wide && this.docsAgentRoots && this.docsAgentRoots.length && this.ray.intersectObjects(this.docsAgentRoots, true).some(h => visibleChain(h.object))) return 'docs';
       if (wide && this.doorPlaque && visibleChain(this.doorPlaque) && this.ray.intersectObject(this.doorPlaque, true).length) return 'door';
+      if (wide && this.roomPlaques) for (const [k, g] of Object.entries(this.roomPlaques)) if (visibleChain(g) && this.ray.intersectObject(g, true).length) return k === 'file' ? 'fileroom' : 'serverroom';
+      if (this.room === 'file' && this.newRooms) { const h = this.ray.intersectObjects(this.newRooms.file.roots, true).find(h => visibleChain(h.object)); if (h) { const c = this.newRooms.file.cabs.find(c => this.#within(h.object, c.group)); if (c) return 'cabinet:' + c.key; } }
+      if (this.room === 'server' && this.newRooms) { const h = this.ray.intersectObjects(this.newRooms.server.roots, true).find(h => visibleChain(h.object)); if (h) { const r = this.newRooms.server.racks.find(r => this.#within(h.object, r.group)); if (r) return 'rack:' + r.key; } }
       if (this.room === 'drawing' && this.clickRoots.length && this.ray.intersectObjects(this.clickRoots, true).some(h => visibleChain(h.object))) return 'desk';
       if (this.room === 'drawing' && this.dexRoots && this.dexRoots.length && this.ray.intersectObjects(this.dexRoots, true).some(h => visibleChain(h.object))) return 'drafting';
       if (this.room === 'drawing' && this.modelRoom && visibleChain(this.modelRoom.plaque) && this.ray.intersectObject(this.modelRoom.plaque, true).length) return 'modeldoor';
@@ -1079,11 +1115,23 @@ export class Office {
   #animate() {
     requestAnimationFrame(() => this.#animate());
     if (document.hidden) return;
-    this.step(Math.min(this.clock.getDelta(), 0.05));
+    const dt = Math.min(this.clock.getDelta(), 0.05);
+    // cabinet drawers slide out toward the room
+    for (const c of this.newRooms?.file?.cabs || []) { const target = c.open ? 0.75 : 0; c.drawer.position.x += (target - c.drawer.position.x) * Math.min(1, dt * 7); }
+    this.step(dt);
+  }
+  #within(o, group) { for (let n = o; n; n = n.parent) if (n === group) return true; return false; }
+  // the File Room panel asks for a cabinet: its top drawer slides out, the others close
+  openCabinet(key) { for (const c of this.newRooms?.file?.cabs || []) c.open = c.key === key; }
+  // the Server Room gets the latest spend and provider state from the app
+  setServerStatus(st) {
+    this.serverStatus = st;
+    if (!this.newRooms) return;
+    paintSpend(this.newRooms.server, st); paintRacks(this.newRooms.server, st);
   }
 
 
-  get _dims() { return { DRAW, MODEL, DOOR2, ROOM_W, ROOM_D, CORR, RECEP, DOCS, MEET, LOUNGE, NEXT }; }
+  get _dims() { return { DRAW, MODEL, DOOR2, ROOM_W, ROOM_D, CORR, RECEP, DOCS, MEET, LOUNGE, FILE, SERVER, BUILD_X1, NEXT }; }
   // ---------- first person: walk through the rooms (W A S D / arrows, drag to look, Shift to hurry, Esc to leave) ----------
   // the walkable floor of the whole building (rooms, doorways, corridor), shared by first person and the agents' grid
   #inBuilding(x, z, m = 0.5) {
@@ -1095,8 +1143,8 @@ export class Office {
       || inR(ROOM_W / 2 - 0.6, DRAW.x0 + 0.6, dz, dz1)                                        // media <-> drawing doorway
       || inR(DRAW.x1 - 0.6, MODEL.x0 + 0.6, dz, dz1)                                          // drawing <-> modelling doorway
       || inR(NEXT.x0, NEXT.x1, NEXT.z0 + m, NEXT.z1) || inR(MODEL.x1 - 0.2, NEXT.x0 + 0.2, MODEL.z1 - 3, MODEL.z1)
-      || inR(-ROOM_W / 2 + m, NEXT.x1 - m, CORR.z0, CORR.z1)                                  // corridor
-      || [RECEP, DOCS, MEET, LOUNGE].some(R => inR(R.x0 + m, R.x1 - m, R.z0 + m, R.z1 - m) || inR(R.cx - 1.3, R.cx + 1.3, CORR.z1 - 0.2, R.z0 + m + 0.3))   // rooms + doorway from the corridor
+      || inR(-ROOM_W / 2 + m, BUILD_X1 - m, CORR.z0, CORR.z1)                                 // corridor
+      || [RECEP, DOCS, MEET, LOUNGE, FILE, SERVER].some(R => inR(R.x0 + m, R.x1 - m, R.z0 + m, R.z1 - m) || inR(R.cx - 1.3, R.cx + 1.3, CORR.z1 - 0.2, R.z0 + m + 0.3))   // rooms + doorway from the corridor
       || [DOCS, MEET, LOUNGE].some(R => inR(R.x0 - 0.6, R.x0 + 0.6, R.cz - 0.2, R.cz + 1.2));  // doorways between the bottom rooms
   }
   #fpAllowed(x, z) { return this.#inBuilding(x, z); }
@@ -1109,7 +1157,7 @@ export class Office {
     }
     return true;
   }
-  #fpRoomName(x, z = 0) { return z > CORR.z0 ? 'media' : x < DRAW.x0 ? 'media' : x < MODEL.x0 ? 'drawing' : 'modeling'; }
+  #fpRoomName(x, z = 0) { if (z > CORR.z0 && x > LOUNGE.x1) return x > FILE.x1 ? 'server' : 'file'; return z > CORR.z0 ? 'media' : x < DRAW.x0 ? 'media' : x < MODEL.x0 ? 'drawing' : 'modeling'; }
   enterFirstPerson() {
     if (this.fp) return; if (this.tween) { this.tween = null; }
     const t = this.controls.target, cp = this.camera.position;

@@ -138,6 +138,39 @@
 
 
   /* project whiteboard (meeting room) */
+  #filePanel, #serverPanel { display: none; right: 16px; left: auto; width: min(980px, 64vw); background: #f8f9fb; color: #212529; border-color: #cbd2dc; }
+  #filePanel.open, #serverPanel.open { display: flex; } body.room-side #brief, body.room-side #board { display: none; }
+  #filePanel h2, #serverPanel h2 { background: #1b2a41; color: #fff; } #filePanel .body, #serverPanel .body { padding: 0; display: grid; overflow: hidden; }
+  #filePanel .body { grid-template-columns: 220px 1fr; } #serverPanel .body { display: block; overflow: auto; }
+  #fcTabs { display: flex; flex-direction: column; background: #eef1f5; padding: 10px; gap: 6px; border-right: 1px solid #dde1e8; }
+  .fc { text-align: left; border: 0; background: #fff; border-radius: 6px; padding: 9px 10px; display: flex; align-items: center; gap: 8px; font: inherit; cursor: pointer; box-shadow: inset 4px 0 0 var(--c); }
+  .fc.on { outline: 2px solid #1b2a41; } .fc i { display: none; } .fc span { margin-left: auto; color: #868e96; font-size: 12px; }
+  #fcMain { padding: 14px 16px; overflow: auto; max-height: 72vh; } .fhead { display: flex; justify-content: space-between; gap: 10px; align-items: flex-start; } .fhead h3 { margin: 0 0 2px; }
+  .fbtns { display: flex; gap: 6px; flex-wrap: wrap; } .fbtns button, .fup, .scard button, .sbtns button, .sban button { font: inherit; font-size: 12.5px; padding: 6px 10px; border-radius: 6px; border: 1px solid #cbd2dc; background: #fff; color: #212529; cursor: pointer; }
+  .fbtns .bprim, .scard .bprim, .sbtns .bprim { background: #40bd00; border-color: #40bd00; color: #fff; }
+  .flist { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; } .frow { background: #fff; border: 1px solid #dde1e8; border-radius: 6px; padding: 10px 12px; display: grid; grid-template-columns: 1fr auto auto auto; gap: 10px; align-items: center; cursor: pointer; }
+  .frow.open { grid-template-columns: 1fr; } .frow .fedit { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 6px; cursor: default; } .frow .fedit input, .frow .fedit textarea, .frow .fedit select { font: inherit; font-size: 13px; padding: 6px; border: 1px solid #cbd2dc; border-radius: 5px; }
+  .fmain { min-width: 0; } .fagents { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; } .fagents select { font: inherit; font-size: 12px; }
+  .fx { border: 0; background: none; color: #868e96; font-size: 18px; cursor: pointer; } .fmsg { margin-top: 8px; font-size: 13px; color: #2b8a3e; }
+  .fswitch { position: relative; width: 38px; height: 22px; display: inline-block; } .fswitch input { opacity: 0; width: 0; height: 0; }
+  .fswitch span { position: absolute; inset: 0; background: #ced4da; border-radius: 20px; cursor: pointer; transition: .2s; } .fswitch span:before { content: ''; position: absolute; width: 16px; height: 16px; left: 3px; top: 3px; background: #fff; border-radius: 50%; transition: .2s; }
+  .fswitch input:checked + span { background: #40bd00; } .fswitch input:checked + span:before { transform: translateX(16px); }
+  #serverPanel { background: #111726; color: #e6e9f0; border-color: #2a3346; } #serverPanel h2 { background: #0b0e16; }
+  #srvMain { overflow: auto; max-height: 72vh; padding-bottom: 6px; }
+  #serverPanel .stop { display: flex; justify-content: space-between; align-items: flex-start; padding: 14px 16px 6px; gap: 12px; } #serverPanel h3 { margin: 0; } #serverPanel h4 { margin: 14px 16px 6px; font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: #8e97ab; }
+  .stotal { text-align: right; font-size: 12px; color: #8e97ab; } .stotal b { display: block; font-size: 22px; color: #e6e9f0; }
+  .sgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; padding: 0 16px; }
+  .scard { background: #171e2e; border: 1px solid #2a3346; border-radius: 8px; padding: 12px; display: flex; flex-direction: column; gap: 6px; border-left: 4px solid #495266; }
+  .scard.good { border-left-color: #40bd00; } .scard.warn { border-left-color: #ffa94d; } .scard.bad { border-left-color: #ff6b6b; border-color: #ff6b6b; }
+  .scard.small { min-height: 0; } .sh { display: flex; justify-content: space-between; align-items: center; } .pill { font-size: 11px; padding: 2px 8px; border-radius: 20px; background: #2a3346; } .pill.good { background: #1f4d1a; } .pill.warn { background: #5c3d12; } .pill.bad { background: #5c1f1f; }
+  .sm { font-size: 12px; color: #8e97ab; } .sv { font-size: 22px; font-weight: 700; } .sv span { font-size: 12px; color: #8e97ab; font-weight: 400; }
+  .bar { height: 8px; background: #2a3346; border-radius: 4px; overflow: hidden; } .bar i { display: block; height: 100%; background: #40bd00; }
+  .kv { display: flex; justify-content: space-between; gap: 8px; font-size: 12.5px; color: #8e97ab; } .kv b { color: #e6e9f0; font-weight: 500; text-align: right; }
+  .serr { font-size: 12px; color: #ff8787; } .scap { font-size: 12px; color: #ffa94d; } .sbtns { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
+  .capedit { display: flex; gap: 6px; } .capedit input { width: 100px; font: inherit; padding: 5px; border-radius: 5px; border: 1px solid #2a3346; background: #0b0e16; color: #e6e9f0; }
+  .sban { margin: 12px 16px 0; background: #5c1f1f; border: 1px solid #ff6b6b; border-radius: 8px; padding: 10px 12px; display: flex; justify-content: space-between; align-items: center; gap: 10px; font-size: 13px; }
+  .stop + .sban, .sban + h4 { margin-top: 12px; } #serverPanel .sbar, #serverBar { display: none; }
+  .sfoot { display: flex; justify-content: space-between; gap: 10px; padding: 9px 16px; border-top: 1px solid #2a3346; background: #0b0e16; font-size: 12px; color: #8e97ab; flex-wrap: wrap; }
   #boardPanel { display: none; right: 16px; left: auto; width: min(980px, 64vw); background: #f8f9fb; color: #212529; border-color: #cbd2dc; }
   #boardPanel.open { display: flex; } body.room-board #brief, body.room-board #board { display: none; }
   #boardPanel h2 { background: #1b2a41; color: #fff; } #boardPanel .body { padding: 0; display: grid; grid-template-columns: 230px 1fr; overflow: hidden; }
@@ -326,6 +359,8 @@ body.fp canvas#scene{cursor:grab}
     <button data-room="media">Media office</button>
     <button data-room="drawing">Drawing room</button>
     <button data-room="modeling">Modeling room</button>
+    <button data-room="file">File room</button>
+    <button data-room="server">Server room</button>
     <button id="fpBtn" title="Walk around inside the rooms (F)">First person</button>
   </div>
   <div class="right">
@@ -436,6 +471,23 @@ body.fp canvas#scene{cursor:grab}
     <div id="bdMain"></div>
   </div>
   <div style="padding:8px 12px;border-top:1px solid #dde1e8;background:#eef1f5;display:flex;justify-content:space-between;align-items:center"><span class="bsub">Pick a job and press "Work on this job": every engineering bot then gets its notes, drawings and open tasks as background. Posts never see it.</span><button id="bdNew" style="border:1px solid #ced4da;background:#fff;border-radius:6px;padding:6px 10px;font-size:12.5px">+ New job (Business tab)</button></div>
+</div>
+
+<!-- File room: the library (skills, templates, company knowledge, jobs, brand, agent rulebooks) -->
+<div class="panel" id="filePanel">
+  <h2><span>File room</span><button class="collapse" id="fileBack" title="Back to the office (Esc)">×</button></h2>
+  <div class="body">
+    <div id="fcTabs"></div>
+    <div id="fcMain"></div>
+  </div>
+  <div style="padding:8px 12px;border-top:1px solid #dde1e8;background:#eef1f5"><span class="bsub">Drop files anywhere on this window to file them in the open cabinet. Agents read skills, rulebooks and ticked files from here.</span></div>
+</div>
+
+<!-- Server room: spend, caps, keys, social logins, backups and updates -->
+<div class="panel" id="serverPanel">
+  <h2><span>Server room</span><button class="collapse" id="srvBack" title="Back to the office (Esc)">×</button></h2>
+  <div id="srvMain"></div>
+  <div class="sfoot" id="srvBar"></div>
 </div>
 
 <!-- Modeling room: Milo edits a 3D model, Vera checks it -->

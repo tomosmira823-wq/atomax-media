@@ -94,6 +94,8 @@ http.createServer(async (req, res) => {
     if (u === '/__reset') { calls = []; meshyPolls = 0; return json({ ok: true }); }
     if (u.startsWith('/anthropic/v1/messages')) {
       const body = JSON.parse(raw.toString());
+      const marks = raw.toString().match(/SCENARIO-MARKER|RULEBOOK-MARK/g);
+      if (marks) calls.push({ marker: [...new Set(marks)].join(',') });   // proves the library reached the prompt
       if (body.tools && body.tools.some(t => t.type === 'computer_toolset_20260801' || t.type === 'computer_20251124')) {   // Milo driving the PC
         const done = (body.messages || []).reduce((n, mm) => n + (Array.isArray(mm.content) ? mm.content.filter(b => b.type === 'tool_result').length : 0), 0);
         const lastRes = JSON.stringify(((body.messages || []).slice(-1)[0] || {}).content || '');
@@ -103,10 +105,12 @@ http.createServer(async (req, res) => {
         calls.push({ pc: true, tools: body.tools.map(t => t.type), beta: req.headers['anthropic-beta'] || '' });
         return json({ content, stop_reason: content.some(c => c.type === 'tool_use') ? 'tool_use' : 'end_turn' });
       }
+      const sys = body.system || '';
+      if (/YOUR RULEBOOK|FILES FROM THE FILE ROOM/.test(sys)) calls.push({ libCtx: true, tail: sys.slice(-700) });
       const text = claudeReply(body);
       // simulate an occasional cut-off reply on the Facebook writer to exercise the JSON repair
       const cut = /YOUR PLATFORM: Facebook/.test(body.system) && !/Revise/.test(body.system) && !/reviewer/.test(body.system);
-      return json({ content: [{ type: 'text', text: cut ? text.slice(0, Math.floor(text.length * 0.8)) : text }], stop_reason: cut ? 'max_tokens' : 'end_turn' });
+      return json({ content: [{ type: 'text', text: cut ? text.slice(0, Math.floor(text.length * 0.8)) : text }], stop_reason: cut ? 'max_tokens' : 'end_turn', usage: { input_tokens: 1800 + Math.round(sys.length / 4), output_tokens: Math.round(text.length / 4) } });
     }
     if (u.startsWith('/google/v1beta/interactions')) { const b = JSON.parse(raw.toString()); calls[calls.length - 1].refs = (b.input || []).filter(x => x.type === 'image').length; return json({ id: 'int_1', steps: [{ type: 'model_output', content: [{ type: 'image', mime_type: 'image/png', data: PNG }] }], output_image: { data: PNG } }); }
     if (u.startsWith('/google/v1beta/models'))  return json({ models: [{ name: 'models/gemini-nano-banana-2.1' }] });

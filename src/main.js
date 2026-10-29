@@ -11,6 +11,9 @@ const markup = require('./markup');
 const dxffix = require('./dxffix');
 const bizmain = require('./bizmain');
 const model3d = require('./model3d');
+const usage = require('./usage');
+const library = require('./library');
+const roomsmain = require('./roomsmain');
 const { STANDARD_SKILL } = checker;
 const path = require('path');
 const fs = require('fs');
@@ -42,6 +45,7 @@ const DEFAULT_SETTINGS = {
   model3dProvider: 'higgsfield',
   higgsfield3dModel: '',
   meshyKey: '',
+  caps: { claude: 60, openai: 30, google: 30, higgsfield: 50 },   // monthly spend caps in £ (estimates, see usage.js)
   social: { linkedin: {}, facebook: {}, x: {} },
   company: {
     name: 'Atomax-UK Ltd',
@@ -138,6 +142,8 @@ function decrypt(str) {
   if (str.startsWith('raw:')) return str.slice(4);
   return str;
 }
+usage.init(USER_DIR());
+library.init(USER_DIR(), DEFAULT_AGENTS, STANDARD_SKILL);
 function loadSettings() {
   const raw = readJson(SETTINGS_FILE(), {});
   const s = { ...DEFAULT_SETTINGS, ...raw, company: { ...DEFAULT_SETTINGS.company, ...(raw.company || {}) } };
@@ -202,12 +208,13 @@ function createWindow() {
   if (process.env.AMO_SCREENSHOT) {
     win.webContents.on('console-message', (_e, level, msg, line, src) => console.error('[page]', level, msg, src + ':' + line));
     win.webContents.once('did-finish-load', () => setTimeout(async () => {
-      if (['run', 'drawing', 'dex', 'model', 'fp', 'biz', 'mo', 'pc', 'theo', 'layout'].includes(process.env.AMO_SCENARIO)) {
-        const script = fs.readFileSync(path.join(__dirname, '..', 'test', ({ drawing: 'scenario-drawing.js', dex: 'scenario-dex.js', model: 'scenario-model.js', fp: 'scenario-fp.js', biz: 'scenario-biz.js', mo: 'scenario-mo.js', pc: 'scenario-pc.js', theo: 'scenario-theo.js', layout: 'scenario-layout.js' }[process.env.AMO_SCENARIO] || 'scenario-run.js')), 'utf8').replace(/__AMO_DIR__/g, (process.env.AMO_PICK_DIR || '').replace(/\\/g, '/'));
+      if (['run', 'drawing', 'dex', 'model', 'fp', 'biz', 'mo', 'pc', 'theo', 'layout', 'rooms'].includes(process.env.AMO_SCENARIO)) {
+        const script = fs.readFileSync(path.join(__dirname, '..', 'test', ({ drawing: 'scenario-drawing.js', dex: 'scenario-dex.js', model: 'scenario-model.js', fp: 'scenario-fp.js', biz: 'scenario-biz.js', mo: 'scenario-mo.js', pc: 'scenario-pc.js', theo: 'scenario-theo.js', layout: 'scenario-layout.js', rooms: 'scenario-rooms.js' }[process.env.AMO_SCENARIO] || 'scenario-run.js')), 'utf8').replace(/__AMO_DIR__/g, (process.env.AMO_PICK_DIR || '').replace(/\\/g, '/'));
         await win.webContents.executeJavaScript(`window.__variant = ${JSON.stringify(process.env.AMO_VARIANT || '')}`);
         const out = await win.webContents.executeJavaScript(script);
         console.error('[scenario]', JSON.stringify(out));
       }
+      else if (process.env.AMO_VIEW && process.env.AMO_VIEW.startsWith('go:')) { await win.webContents.executeJavaScript('new Promise(r => setTimeout(() => { window.__goRoom(' + JSON.stringify(process.env.AMO_VIEW.slice(3)) + '); r(); }, 1200))'); await new Promise(r => setTimeout(r, 14000)); }
       else if (process.env.AMO_VIEW === 'steptime') { const out = await win.webContents.executeJavaScript(`(async()=>{ const o = window.__office; await new Promise(r => setTimeout(r, 1500)); o.renderer.render = () => {}; const times = []; const N = ${process.env.AMO_STEPS || 40}; let worst = 0, worstAt = -1; for (let i = 0; i < N; i++) { if (i === 20 && ${process.env.AMO_SIT ? 'true' : 'false'}) for (const id of o.agents.keys()) o.setState(id, 'working', 'w'); const t0 = performance.now(); o.step(0.1); const t = performance.now() - t0; if (t > worst) { worst = t; worstAt = i; } if (i < 40) times.push(Math.round(t)); } times.push('worst', Math.round(worst), 'at', worstAt); const ag = [...o.agents.values()].map(a => ({ n: a.data.name, st: a.state, seated: !!a.seated, d: Math.hypot(a.group.position.x - a.seat.x, a.group.position.z - a.seat.z).toFixed(2), path: a.path && a.path.length, face: a.group.rotation.y.toFixed(2), want: a.faceSeat.toFixed(2) })); return { times, ag }; })()`); console.error('[steptime]', JSON.stringify(out)); }
       else if (process.env.AMO_VIEW === 'navtest') { const out = await win.webContents.executeJavaScript(`(async()=>{
         const o = window.__office; await new Promise(r => setTimeout(r, 1500));
@@ -258,10 +265,10 @@ app.whenReady().then(() => {
   // auto-update from GitHub releases (packaged builds only)
   if (app.isPackaged) {
     autoUpdater.autoDownload = true;
-    autoUpdater.on('update-available', (i) => win?.webContents.send('update:status', { state: 'downloading', version: i.version }));
-    autoUpdater.on('download-progress', (p) => win?.webContents.send('update:status', { state: 'downloading', percent: Math.round(p.percent) }));
-    autoUpdater.on('update-downloaded', (i) => win?.webContents.send('update:status', { state: 'ready', version: i.version }));
-    autoUpdater.on('error', (e) => win?.webContents.send('update:status', { state: 'error', message: String(e?.message || e) }));
+    autoUpdater.on('update-available', (i) => updSend({ state: 'downloading', version: i.version }));
+    autoUpdater.on('download-progress', (p) => updSend({ state: 'downloading', percent: Math.round(p.percent) }));
+    autoUpdater.on('update-downloaded', (i) => updSend({ state: 'ready', version: i.version }));
+    autoUpdater.on('error', (e) => updSend({ state: 'error', message: String(e?.message || e) }));
     autoUpdater.checkForUpdates().catch(() => {});
     setInterval(() => autoUpdater.checkForUpdates().catch(() => {}), 60 * 60 * 1000);
   }
@@ -355,6 +362,8 @@ const modmain = require('./modmain.js');
 // the job picked on the project whiteboard (or in an agent's panel) goes to the engineering agents as background; never to the social writers (client details must not leak into posts)
 let BIZ;
 const withJob = (a) => { let c = ''; try { c = BIZ ? BIZ.contextFor(undefined, (String(a && a.system || '').match(/You are (Milo|Theo|Vera|Dex|Cal)\b/) || [])[1] || '') : ''; } catch {} return c ? { ...a, system: String(a.system || '') + '\n\n' + c } : a; };
+roomsmain.register({ ipcMain, dialog, getWin: () => win, loadSettings, saveSettings, userDir: USER_DIR, version: () => app.getVersion(), getAgents: () => readJson(AGENTS_FILE(), DEFAULT_AGENTS) });
+const updSend = (u) => { roomsmain.setUpdate(u); updSend(u); };
 BIZ = bizmain.register({ ipcMain, dialog, shell, Notification, getWin: () => win, userDir: USER_DIR, claudeFull: (a) => claudeFull(a), checker });
 modmain.register({ ipcMain, dialog, getWin: () => win, userDir: USER_DIR, claudeFull: (a) => claudeFull(withJob(a)), checker, log: (e) => BIZ.log(e) });
 require('./pcmain.js').register({ ipcMain, BrowserWindow, desktopCapturer, screen, globalShortcut, getWin: () => win, loadSettings, anthropicBase: ANTHROPIC, log: (e) => BIZ.log(e), jobContext: (who) => { try { return BIZ.contextFor(undefined, who); } catch { return ''; } }, mock: process.env.AMO_PC_MOCK === '1' });
@@ -368,8 +377,8 @@ ipcMain.handle('check:run', async (_e, { agent, schedule, drawings, note, jobId 
     const progress = (p) => { try { win && win.webContents.send('check:progress', p); } catch {} };
     const report = await checker.runCheck({
       schedule, drawings, note: note || '',
-      skill: (agent && agent.rules && agent.rules.trim()) || STANDARD_SKILL,
-      claude: claudeFull, progress
+      skill: library.skillFor(agent && agent.id, (agent && agent.rules && agent.rules.trim()) || STANDARD_SKILL),
+      claude: (a) => claudeFull({ ...a, who: 'cal' }), progress
     });
     // marked-up copies of the drawings that have findings; originals are never touched
     progress({ message: 'marking up the drawings', stage: 'markup' });
@@ -383,7 +392,7 @@ ipcMain.handle('check:run', async (_e, { agent, schedule, drawings, note, jobId 
     return report;
   } finally { checkRunning = false; }
 });
-ipcMain.handle('check:skill', () => STANDARD_SKILL);
+ipcMain.handle('check:skill', () => library.skillFor('cal', STANDARD_SKILL));
 ipcMain.handle('check:last', () => readJson(path.join(USER_DIR(), 'last-check.json'), null));
 
 // ---------- Dex: fixing DXFs from markups ----------
@@ -422,7 +431,7 @@ ipcMain.handle('dxf:propose', async (_e, { source, dxfs, markups, note }) => {
     if (!(markups || []).length) return { items: [], notes: ['Drop at least one marked-up PDF.'] };
     for (const m of markups) {
       try {
-        const r = await claudeFull({ system: dxffix.DEX_SYSTEM, maxTokens: 6000, messages: [{ role: 'user', content: [checker.contentBlock('pdf', m.name, dxfBuf(m)), { type: 'text', text: 'Read every numbered red note on this marked-up drawing (file: ' + m.name + ').' }] }] });
+        const r = await claudeFull({ who: 'dex', system: dxffix.DEX_SYSTEM, maxTokens: 6000, messages: [{ role: 'user', content: [checker.contentBlock('pdf', m.name, dxfBuf(m)), { type: 'text', text: 'Read every numbered red note on this marked-up drawing (file: ' + m.name + ').' }] }] });
         const j = checker.parseJson(r.text).value;
         (j.items || []).forEach((it, i) => items.push({ id: 'M' + (items.length + 1), drawing: it.drawing || m.name, note: it.note || '', action: it.action === 'replace_text' && it.before && it.after ? 'replace_text' : 'none', before: it.before || '', after: it.after || '', why: it.why || '' }));
       } catch (e) { notes.push(m.name + ': could not be read (' + String(e.message || e).slice(0, 120) + ')'); }
@@ -590,26 +599,38 @@ ipcMain.handle('file:saveText', async (_e, { text, name }) => {
 });
 
 // ---------- Claude (Anthropic) ----------
-async function claudeFull({ system, messages, maxTokens = 4000, model, tools }) {
+// every Claude call goes through here: the monthly cap check, the library (rulebook + ticked files for `who`), and the usage log
+async function claudeFull({ system, messages, maxTokens = 4000, model, tools, who = '', test = false }) {
   const s = loadSettings();
-  if (!s.anthropicKey) throw new Error('No Claude API key. Add it in Settings.');
-  let msgs = messages, text = '', stop = '', searches = 0;
-  for (let turn = 0; turn < 4; turn++) {   // server-side tools (web search) can pause a long turn: carry on where it stopped
-    const res = await fetch(ANTHROPIC + '/v1/messages', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', 'x-api-key': s.anthropicKey, 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({ model: model || s.claudeModel, max_tokens: maxTokens, system, messages: msgs, ...(tools ? { tools } : {}) })
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(`Claude ${res.status}: ${data?.error?.message || JSON.stringify(data)}`);
-    const parts = data.content || [];
-    searches += parts.filter(c => c.type === 'server_tool_use').length;
-    text += (text ? '\n' : '') + parts.filter(c => c.type === 'text').map(c => c.text).join('\n');
-    stop = data.stop_reason;
-    if (stop !== 'pause_turn') break;
-    msgs = [...msgs, { role: 'assistant', content: parts }];
+  const useModel = model || s.claudeModel;
+  let tIn = 0, tOut = 0;
+  try {
+    if (!s.anthropicKey) throw new Error('No Claude API key. Add it in Settings.');
+    if (!test) usage.guard('claude', s);
+    const sys = who ? `${system || ''}\n${library.promptBlock(who)}` : system;
+    let msgs = messages, text = '', stop = '', searches = 0;
+    for (let turn = 0; turn < 4; turn++) {   // server-side tools (web search) can pause a long turn: carry on where it stopped
+      const res = await fetch(ANTHROPIC + '/v1/messages', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-api-key': s.anthropicKey, 'anthropic-version': '2023-06-01' },
+        body: JSON.stringify({ model: useModel, max_tokens: maxTokens, system: sys, messages: msgs, ...(tools ? { tools } : {}) })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(`Claude ${res.status}: ${data?.error?.message || JSON.stringify(data)}`);
+      tIn += data.usage?.input_tokens || 0; tOut += data.usage?.output_tokens || 0;
+      const parts = data.content || [];
+      searches += parts.filter(c => c.type === 'server_tool_use').length;
+      text += (text ? '\n' : '') + parts.filter(c => c.type === 'text').map(c => c.text).join('\n');
+      stop = data.stop_reason;
+      if (stop !== 'pause_turn') break;
+      msgs = [...msgs, { role: 'assistant', content: parts }];
+    }
+    usage.record({ provider: 'claude', who, model: useModel, tokensIn: tIn, tokensOut: tOut });
+    return { text, stop, searches };
+  } catch (e) {
+    usage.record({ provider: 'claude', who, model: useModel, tokensIn: tIn, tokensOut: tOut, error: e.message || String(e) });
+    throw e;
   }
-  return { text, stop, searches };
 }
 async function claudeMessage(args) { return (await claudeFull(args)).text; }
 
@@ -745,7 +766,7 @@ ${companyBlock(s.company)}
 
 YOUR PLATFORM: ${agent.platform}
 YOUR TONE: ${agent.tone}
-YOUR FORMAT RULES: ${agent.rules}
+YOUR FORMAT RULES: ${library.skillFor(agent.id, agent.rules)}
 ${examplesBlock(agent)}
 Write ONE post for ${agent.platform} from the brief and the POST IMAGES. Use what you can actually see in the post images; do not invent details. If reference material is given, match its style and structure but write fresh content about the brief.
 ${imageBrief ? `THE IMAGE THAT WILL BE POSTED WILL SHOW: ${imageBrief}\nWrite the caption to go with that picture, and make "imageIdea" a platform-specific art direction for exactly that scene (composition, crop, mood) - do not change what it shows.` : ''}
@@ -762,7 +783,7 @@ Reply with JSON only, no markdown fences, exactly this shape:
 }`;
 
   const content = buildContent({ images, refText, refImages, text: `BRIEF:\n${brief}\n${extra ? '\nEXTRA INSTRUCTIONS:\n' + extra : ''}` });
-  const text = await claudeMessage({ system, messages: [{ role: 'user', content }] });
+  const text = await claudeMessage({ system, who: agent.id, messages: [{ role: 'user', content }] });
   return extractJson(text);
 });
 
@@ -772,11 +793,12 @@ ipcMain.handle('ai:revisePost', async (_e, { agent, post, instruction }) => {
   const system = `You are ${agent.name}, the ${agent.platform} content writer in the ${s.company.name} media office.
 ${companyBlock(s.company)}
 YOUR TONE: ${agent.tone}
-YOUR FORMAT RULES: ${agent.rules}
+YOUR FORMAT RULES: ${library.skillFor(agent.id, agent.rules)}
 ${examplesBlock(agent)}
 Revise the post as instructed. Reply with JSON only in the same shape as the original.`;
   const text = await claudeMessage({
     system,
+    who: agent.id,
     messages: [{ role: 'user', content: `CURRENT POST JSON:\n${JSON.stringify(post, null, 2)}\n\nINSTRUCTION: ${instruction}` }]
   });
   return extractJson(text);
@@ -789,11 +811,11 @@ ipcMain.handle('ai:reviewPost', async (_e, { reviewer, agent, post, brief, image
 ${companyBlock(s.company)}
 
 HOW YOU REVIEW: ${reviewer.tone}
-WHAT YOU CHECK: ${reviewer.rules}
+WHAT YOU CHECK: ${library.skillFor(reviewer.id, reviewer.rules)}
 ${examplesBlock(reviewer)}
 You are reviewing a ${agent.platform} post written by ${agent.name}.
 ${agent.name}'s TONE BRIEF: ${agent.tone}
-${agent.name}'s FORMAT RULES: ${agent.rules}
+${agent.name}'s FORMAT RULES: ${library.skillFor(agent.id, agent.rules)}
 ${agent.examples ? `${agent.name}'s EXAMPLE POSTS (the voice the post should match):\n${agent.examples}\n` : ''}
 Assess whether this is a good post for ${agent.platform}. Be specific. If reference material is given, also judge whether the post matches its tone and structure without copying it. If you suggest changes, give the full corrected post text.
 Reply with JSON only, no markdown fences, exactly this shape:
@@ -806,7 +828,7 @@ Reply with JSON only, no markdown fences, exactly this shape:
   "fixedCaption": "the full improved post text ready to paste, or empty string if no changes needed"
 }`;
   const content = buildContent({ images, refText, refImages, text: `ORIGINAL BRIEF:\n${brief}\n\nPOST TO REVIEW (${agent.platform}):\n${post.caption}\n\nALT TEXT: ${post.altText || ''}` });
-  const text = await claudeMessage({ system, messages: [{ role: 'user', content }], maxTokens: 1500 });
+  const text = await claudeMessage({ system, who: reviewer.id, messages: [{ role: 'user', content }], maxTokens: 1500 });
   return extractJson(text);
 });
 
@@ -833,7 +855,7 @@ function openaiImageBody(model, prompt, size) {
   }
   return { model: 'dall-e-2', prompt: prompt.slice(0, 1000), size: '1024x1024', n: 1, response_format: 'b64_json' };
 }
-async function openaiGenerate(prompt, size, model, withLogo = true) {
+async function openaiGenerateRaw(prompt, size, model, withLogo = true) {
   const s = loadSettings();
   if (!s.openaiKey) throw new Error('No OpenAI key. Add it in Settings or switch the image provider.');
   model = model || s.openaiImageModel || 'gpt-image-1';
@@ -885,7 +907,7 @@ ipcMain.handle('logo:set', async () => {
 });
 ipcMain.handle('logo:reset', () => { try { fs.unlinkSync(USER_LOGO()); } catch {} return { custom: false, base64: fs.readFileSync(BUNDLED_LOGO).toString('base64') }; });
 ipcMain.handle('logo:get', () => ({ custom: fs.existsSync(USER_LOGO()), base64: (logoImage() || {}).base64 }));
-async function openaiEdit(prompt, image, size, extraImages = [], model) {
+async function openaiEditRaw(prompt, image, size, extraImages = [], model) {
   const s = loadSettings();
   if (!s.openaiKey) throw new Error('No OpenAI key. Image edits need OpenAI.');
   model = model || s.openaiImageModel || 'gpt-image-1';
@@ -918,6 +940,17 @@ async function openaiEdit(prompt, image, size, extraImages = [], model) {
   throw new Error('OpenAI returned no image');
 }
 
+// one meter for paid image and 3D calls: cap check before, usage row after (errors and pauses are logged too)
+async function metered(provider, who, fn) {
+  const s = loadSettings();
+  try { usage.guard(provider, s); const out = await fn(); usage.record({ provider, who, units: 1 }); return out; }
+  catch (e) { usage.record({ provider, who, units: 0, error: e.message || String(e) }); throw e; }
+}
+const openaiGenerate = (...a) => metered('openai', '', () => openaiGenerateRaw(...a));
+const googleGenerate = (...a) => metered('google', '', () => googleGenerateRaw(...a));
+const higgsfieldGenerate = (...a) => metered('higgsfield', '', () => higgsfieldGenerateRaw(...a));
+const openaiEdit = (...a) => metered('openai', '', () => openaiEditRaw(...a));
+
 async function downloadBase64(url) {
   const r = await fetch(url);
   if (!r.ok) throw new Error(`Download failed ${r.status}`);
@@ -933,7 +966,7 @@ function findGoogleImage(d) {
   for (const c of d?.candidates || []) for (const p of c.content?.parts || []) if (p.inlineData?.data || p.inline_data?.data) return p.inlineData?.data || p.inline_data?.data;
   return null;
 }
-async function googleGenerate(prompt, aspect, model, refImages = []) {
+async function googleGenerateRaw(prompt, aspect, model, refImages = []) {
   const s = loadSettings();
   if (!s.googleKey) throw new Error('No Google (Gemini) API key. Add it in Settings or switch the image provider.');
   model = model || s.googleImageModel || 'gemini-nano-banana-2.1';
@@ -974,7 +1007,7 @@ function findImageUrl(obj) {
   return null;
 }
 
-async function higgsfieldGenerate(prompt, aspect) {
+async function higgsfieldGenerateRaw(prompt, aspect) {
   const s = loadSettings();
   if (!s.higgsfieldKeyId || !s.higgsfieldSecret) throw new Error('No Higgsfield key ID / secret. Add them in Settings.');
   const auth = `Key ${s.higgsfieldKeyId}:${s.higgsfieldSecret}`;
@@ -1047,7 +1080,7 @@ ipcMain.handle('image:edit', async (_e, { prompt, image, size, withLogo = true, 
 ipcMain.handle('ai:test', async (_e, which) => {
   const s = loadSettings();
   if (which === 'claude') {
-    const t = await claudeMessage({ system: 'Reply with the single word OK.', messages: [{ role: 'user', content: 'ping' }], maxTokens: 10 });
+    const t = await claudeMessage({ system: 'Reply with the single word OK.', messages: [{ role: 'user', content: 'ping' }], maxTokens: 10, test: true, who: 'key test' });
     return 'Claude replied: ' + t.trim();
   }
   if (which === 'openai') {

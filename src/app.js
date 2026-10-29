@@ -1,6 +1,7 @@
 import { Office, AgentPreview, GEAR } from './office.js';
 import { initDexUI } from './dexui.js';
 import { initBoardUI } from './boardui.js';
+import { initRoomsUI } from './roomui.js';
 import { initModellerUI } from './modui.js';
 import { initCheckUI } from './checkui.js';
 import { initBizUI } from './bizui.js';
@@ -574,12 +575,17 @@ function openAgentForTask(task, job) {
 const modelUI = initModelingUI({ office, api, getSettings: () => settings, openSettings: () => { fillSettings(); openModal('settingsModal'); } });
 function goRoom(where) {
   const inModel = where === 'modeling' || where === 'scan' || where === 'modeler';
+  const inSide = where === 'file' || where === 'server';   // the File Room and the Server Room: their own panels
   const wideView = where === 'media' || where === 'overview' || where === 'board';
-  const inDraw = !wideView;
+  const inDraw = !wideView && !inSide;
+  document.body.classList.toggle('room-side', inSide);
   document.body.classList.toggle('room-drawing', inDraw);
   document.body.classList.toggle('room-board', where === 'board');
   document.body.classList.toggle('room-modeling', inModel);
-  document.querySelectorAll('#rooms button').forEach(b => b.classList.toggle('active', b.dataset.room === (inModel ? 'modeling' : inDraw ? 'drawing' : where === 'media' ? 'media' : 'overview')));
+  const navKey = inModel ? 'modeling' : inDraw ? 'drawing' : where === 'media' ? 'media' : where === 'file' ? 'file' : where === 'server' ? 'server' : 'overview';
+  document.querySelectorAll('#rooms button').forEach(b => b.classList.toggle('active', b.dataset.room === navKey));
+  if (where === 'file') roomsUI.showFile(); else roomsUI.hideFile();
+  if (where === 'server') roomsUI.showServer(); else roomsUI.hideServer();
   ['#checkPanel', '#dexPanel', '#modelPanel', '#modPanel'].forEach(sel => $(sel).classList.remove('collapsed'));
   if (where === 'modeler') modellerUI.show(); else modellerUI.hide();
   if (where === 'desk') { checkUI.show(); bizUI.fillJobSelect($('#checkJob')); } else checkUI.hide();
@@ -592,11 +598,20 @@ document.querySelectorAll('#rooms button').forEach(b => b.addEventListener('clic
 $('#deskBack').addEventListener('click', () => goRoom('drawing'));
 $('#dexBack').addEventListener('click', () => goRoom('drawing'));
 $('#modelBack').addEventListener('click', () => goRoom('modeling'));
-office.onPick = (what) => { if (what === 'door') goRoom('drawing'); else if (what === 'desk') { if (calAgent()) goRoom('desk'); } else if (what === 'drafting') { if (dexAgent()) goRoom('drafting'); } else if (what === 'modeldoor') goRoom('modeling'); else if (what === 'scan') goRoom('scan'); else if (what === 'board') goRoom('board'); else if (what === 'approvals') { bizUI.open('approvals').then(() => openModal('bizModal')); } else if (what === 'issue') { bizUI.open('issue').then(() => openModal('bizModal')); } else if (what === 'docs') { bizUI.open('docs').then(() => openModal('bizModal')); } else if (what === 'nextdesk') { const t = document.querySelector('[data-tab=agents]'); if (t) t.click(); } else if (what === 'modeler' || what === 'modelcheck') { if (modellerAgent()) { modellerUI.setMode('edit'); goRoom('modeler'); } } else if (what === 'builder') { if (theo()) { modellerUI.setMode('build'); goRoom('modeler'); } } };
-document.addEventListener('keydown', (e) => { if (e.key !== 'Escape' || document.querySelector('.modal.open')) return; if (office.room === 'desk' || office.room === 'drafting') goRoom('drawing'); else if (office.room === 'scan' || office.room === 'modeler') goRoom('modeling'); else if (office.room === 'board') goRoom('overview'); });
+function routeRoomPick(what) {
+  if (what === 'fileroom') { goRoom('file'); return true; }
+  if (what === 'serverroom') { goRoom('server'); return true; }
+  if (what.startsWith('cabinet:')) { const k = what.slice(8); goRoom('file'); roomsUI.showFile(k); office.openCabinet(k); return true; }
+  if (what.startsWith('rack:')) { goRoom('server'); return true; }
+  return false;
+}
+office.onPick = (what) => { if (routeRoomPick(what)) return; if (what === 'door') goRoom('drawing'); else if (what === 'desk') { if (calAgent()) goRoom('desk'); } else if (what === 'drafting') { if (dexAgent()) goRoom('drafting'); } else if (what === 'modeldoor') goRoom('modeling'); else if (what === 'scan') goRoom('scan'); else if (what === 'board') goRoom('board'); else if (what === 'approvals') { bizUI.open('approvals').then(() => openModal('bizModal')); } else if (what === 'issue') { bizUI.open('issue').then(() => openModal('bizModal')); } else if (what === 'docs') { bizUI.open('docs').then(() => openModal('bizModal')); } else if (what === 'nextdesk') { const t = document.querySelector('[data-tab=agents]'); if (t) t.click(); } else if (what === 'modeler' || what === 'modelcheck') { if (modellerAgent()) { modellerUI.setMode('edit'); goRoom('modeler'); } } else if (what === 'builder') { if (theo()) { modellerUI.setMode('build'); goRoom('modeler'); } } };
+document.addEventListener('keydown', (e) => { if (e.key !== 'Escape' || document.querySelector('.modal.open')) return; if (office.room === 'desk' || office.room === 'drafting') goRoom('drawing'); else if (office.room === 'scan' || office.room === 'modeler') goRoom('modeling'); else if (office.room === 'board' || office.room === 'file' || office.room === 'server') goRoom('overview'); });
 // ---- first person ----
 office.onFirstPerson = (on, room) => {
   document.body.classList.toggle('fp', on);
+  // while walking, the nav shows First person, not the room it was last in
+  if (on) document.querySelectorAll('#rooms button').forEach(b => b.classList.toggle('active', b.id === 'fpBtn'));
   if (on) { checkUI.hide(); dexUI.hide(); modelUI.hide(); modellerUI.hide(); }
   else if (room) goRoom(room);
 };
@@ -611,3 +626,9 @@ window.__goRoom = goRoom;
 window.__modelUI = modelUI;
 window.__modellerUI = modellerUI;
 window.__boardUI = boardUI;
+// the File Room and Server Room panels
+const roomsUI = initRoomsUI({ api, getAgents: () => agents, openSettings: () => { fillSettings(); openModal('settingsModal'); }, goBack: () => goRoom('overview') });
+window.__roomsUI = roomsUI;
+// the Server Room's spend screen and racks follow the usage log every 15 seconds
+async function pushServerStatus() { try { const st = await api.server.status(); office.setServerStatus(st); await roomsUI.refreshServer(); } catch {} }
+setTimeout(pushServerStatus, 1500); setInterval(pushServerStatus, 15000);
