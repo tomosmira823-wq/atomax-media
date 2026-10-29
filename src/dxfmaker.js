@@ -76,48 +76,92 @@ function drawChain(chain, x, y) {
 }
 const chainHeight = (chain) => { const r = drawChain(chain, 0, 0); return -r.y; };
 
-// ---------- layout: boards left to right, each with incomers above its busbar and feeders below ----------
+// ---------- layout: one connected tree ----------
+// A feeder that supplies another board carries it as its last item ({ board: {...} }); that board is drawn underneath, joined by the feeder's conductor.
+// Boards with no feeder above them are drawn side by side. Each feeder gets a slot wide enough for its labels and any board under it.
+const SUB_GAP_MIN = 6;
+const norm = (s) => String(s || '').toUpperCase().replace(/[^A-Z0-9]+/g, ' ').trim();
+const chainParts = (chain) => { const items = chain || []; const last = items[items.length - 1]; return last && last.board ? { items: items.slice(0, -1), sub: last.board } : { items, sub: null }; };
+const feederWidth = (f) => { const { sub } = chainParts(f.chain); return Math.max(FEED, sub ? boardWidth(sub) + 6 : 0); };
+function boardWidth(b) { const fs = b.feeders || []; return Math.max(FEED + 20, fs.reduce((n, f) => n + feederWidth(f), 0) + 10); }
+// a feeder label that only repeats the name of the item at its end is left off
+function feederLabelAdds(f) {
+  if (!f.label) return false;
+  const { items, sub } = chainParts(f.chain), endLabel = sub ? sub.label : (items[items.length - 1] || {}).label;
+  const fl = norm(f.label), el = norm(endLabel);
+  if (!el) return true;
+  const firstTwo = (x) => x.split(' ').slice(0, 2).join(' ');
+  return !(el.includes(fl) || fl.includes(firstTwo(el)) || el.includes(firstTwo(fl)));
+}
+
+function drawBoard(b, x0, y, prims, top) {
+  const w = boardWidth(b), bx1 = x0 + w;
+  let minY = y, maxY = y, maxX = bx1; const ixs = [];
+  // feeders, left to right in their slots
+  let cx = x0 + 5; const fxs = [];
+  for (const f of b.feeders || []) {
+    const fw = feederWidth(f), fx = cx + 10; fxs.push(fx);
+    const { items, sub } = chainParts(f.chain);
+    const r = drawChain(items, fx, y); prims.push(...r.prims);
+    let yEnd = r.y;
+    if (sub && !r.ended) {
+      // the conductor carries on down to the board it feeds; that board's name sits beside the conductor in the gap
+      const sl = wrap(sub.label || 'BOARD', Math.max(24, fw - 20));
+      const gap = Math.max(SUB_GAP_MIN, sl.length * LINE + 4);
+      prims.push(L(fx, yEnd, fx, yEnd - gap, 'SLD-CABLE'));
+      prims.push({ t: 'mtext', x: fx + 3, y: yEnd - 1.5, w: Math.max(24, fw - 20), h: TH, text: sl.join('\n'), attach: 1, layer: 'SLD-TEXT' });
+      const subX0 = Math.min(cx, fx - 6), d = drawBoard({ ...sub, label: '' }, subX0, yEnd - gap, prims, false);
+      yEnd = d.minY; maxX = Math.max(maxX, d.maxX);
+    } else if (feederLabelAdds(f)) {
+      const tl = wrap(f.label, FEED - 6); prims.push({ t: 'mtext', x: fx - 3, y: yEnd - 3, w: FEED - 6, h: TH, text: tl.join('\n'), attach: 1, layer: 'SLD-TEXT' });
+      yEnd -= 4 + tl.length * LINE;
+    }
+    minY = Math.min(minY, yEnd);
+    cx += fw;
+  }
+  // incomers (top-level boards only) land on the bus clear of every feeder
+  (b.incomers || []).forEach((c, i) => {
+    let ix = (fxs.length ? (fxs[0] + fxs[fxs.length - 1]) / 2 : x0 + 20) + i * FEED; while (fxs.some(fx => Math.abs(fx - ix) < 8)) ix += 8; ixs.push(ix);
+    const h = chainHeight(c.chain);
+    if (c.label) { const tl = wrap(c.label, 40); prims.push({ t: 'mtext', x: ix - 20, y: y + h + 3 + tl.length * LINE, w: 40, h: TH, text: tl.join('\n'), attach: 1, layer: 'SLD-TEXT' }); maxY = Math.max(maxY, y + h + 3 + tl.length * LINE); }
+    const r = drawChain(c.chain, ix, y + h); prims.push(...r.prims); maxY = Math.max(maxY, y + h);
+  });
+  // the busbar spans its own feeders and incomers only
+  const xs = [...fxs, ...ixs], busL = xs.length ? Math.min(...xs) - 8 : x0, busR = Math.max(xs.length ? Math.max(...xs) + 14 : x0 + 30, busL + 30);
+  prims.push(P([[busL, y], [busR, y]], false, 'SLD-BUS', 0.8));
+  // a top-level board's name: above the bus at the left when there is room, otherwise past its right end
+  if (top && b.label) {
+    const room = (busR - busL) / 2 - 14, bl = wrap(b.label, room >= 30 ? Math.min(44, room) : 44);
+    if (room >= 30) prims.push({ t: 'mtext', x: busL + 1, y: y + 1.5 + bl.length * LINE, w: Math.min(44, room), h: TH, text: bl.join('\n'), attach: 1, layer: 'SLD-TEXT' });
+    else { prims.push({ t: 'mtext', x: busR + 3, y: y + (bl.length * LINE) / 2, w: 44, h: TH, text: bl.join('\n'), attach: 1, layer: 'SLD-TEXT' }); maxX = Math.max(maxX, busR + 50); }
+    maxY = Math.max(maxY, y + 2 + bl.length * LINE);
+  }
+  return { minY, maxY, maxX, w };
+}
+
+const SHEETS = [['A3', 420, 297], ['A2', 594, 420], ['A1', 841, 594], ['A0', 1189, 841]];
 function layoutSld(spec) {
   const prims = [], boards = spec.boards || spec.busbars || [];
   if (!boards.length) throw new Error('The drawing has no boards');
-  let x0 = 0, minY = 0, maxY = 0;
-  for (const b of boards) {
-    const feeders = b.feeders || [], inc = b.incomers || [];
-    // the busbar runs past the last feeder's labels so they never meet the board name
-    const width = 15 + (Math.max(1, feeders.length) - 1) * FEED + LABEL_W + 10;
-    const bx0 = x0, bx1 = x0 + width, by = 0;
-    prims.push(P([[bx0, by], [bx1, by]], false, 'SLD-BUS', 0.8));
-    const bl = wrap(b.label || 'BOARD', 44);
-    prims.push({ t: 'mtext', x: bx1 + 3, y: by + (bl.length * LINE) / 2, w: 44, h: TH, text: bl.join('\n'), attach: 1, layer: 'SLD-TEXT' });
-    // incomers drop onto the busbar, spaced across it
-    inc.forEach((c, i) => {
-      // incomers land between feeders, never in line with one (it would look like a straight-through circuit)
-      const nF = Math.max(1, feeders.length), slot = Math.min(nF - 1, Math.floor((nF - 1) / 2) + i - Math.floor((inc.length - 1) / 2));
-      const ix = feeders.length > 1 ? bx0 + 15 + (Math.max(0, slot) + 0.5) * FEED : bx0 + 15 + FEED * 0.5 + i * FEED, h = chainHeight(c.chain);
-      if (c.label) { const tl = wrap(c.label, 40); prims.push({ t: 'mtext', x: ix - 20, y: by + h + 3 + tl.length * LINE, w: 40, h: TH, text: tl.join('\n'), attach: 1, layer: 'SLD-TEXT' }); maxY = Math.max(maxY, by + h + 3 + tl.length * LINE); }
-      const r = drawChain(c.chain, ix, by + h); prims.push(...r.prims); maxY = Math.max(maxY, by + h);
-    });
-    // feeders drop from the busbar
-    feeders.forEach((f, i) => {
-      const fx = bx0 + 15 + i * FEED;
-      const r = drawChain(f.chain, fx, by); prims.push(...r.prims); minY = Math.min(minY, r.y - (f.chain || []).length * 0);
-      if (f.label) { const tl = wrap(f.label, FEED - 4); prims.push({ t: 'mtext', x: fx - (FEED - 4) / 2, y: r.y - 3, w: FEED - 4, h: TH, text: tl.join('\n'), attach: 1, layer: 'SLD-TEXT' }); minY = Math.min(minY, r.y - 4 - tl.length * LINE); }
-      else minY = Math.min(minY, r.y);
-    });
-    x0 = bx1 + 3 + 44 + 25;   // room for the busbar label, then a gap before the next board
-  }
-  // notes, title box and border
-  const right = x0 - 25, notes = (spec.notes || []).map(String).filter(Boolean);
-  let y = minY - 12;
-  if (notes.length) { const nl = notes.flatMap((n, i) => wrap((i + 1) + '. ' + n, 150)); prims.push({ t: 'mtext', x: 0, y, w: 150, h: TH, text: ['NOTES', ...nl].join('\n'), attach: 1, layer: 'SLD-NOTES' }); y -= (nl.length + 1) * LINE + 8; }
-  const tbW = 130, tbH = 32, tbx = Math.max(right - tbW, 160), tby = y - tbH;
+  let x0 = 0, minY = 0, maxY = 0, maxX = 0;
+  for (const b of boards) { const d = drawBoard(b, x0, 0, prims, true); minY = Math.min(minY, d.minY); maxY = Math.max(maxY, d.maxY); maxX = Math.max(maxX, d.maxX); x0 = d.maxX + 25; }
+  // notes and title block under the drawing, then the smallest A-size sheet that holds it all
+  const notes = (spec.notes || []).map(String).filter(Boolean);
+  const nl = notes.flatMap((n, i) => wrap((i + 1) + '. ' + n, 150)), notesH = nl.length ? (nl.length + 1) * LINE + 8 : 0;
+  const tbW = 130, tbH = 32, m = 15;
+  const needW = Math.max(maxX + 2 * m + 10, 150 + tbW + 3 * m), needH = (maxY - minY) + Math.max(notesH, tbH) + 3 * m + 10;
+  const sheet = SHEETS.find(([, W, H]) => W >= needW && H >= needH) || ['', needW, needH];
+  const [sheetName, SW, SH] = sheet;
+  const left = -m - 5, top = maxY + m, right = left + SW, bottom = top - SH;
+  prims.push(P([[left, bottom], [right, bottom], [right, top], [left, top]], true, 'SLD-BORDER'));
+  prims.push(P([[left + 5, bottom + 5], [right - 5, bottom + 5], [right - 5, top - 5], [left + 5, top - 5]], true, 'SLD-BORDER'));
+  if (nl.length) prims.push({ t: 'mtext', x: left + m, y: bottom + m + notesH, w: 150, h: TH, text: ['NOTES', ...nl].join('\n'), attach: 1, layer: 'SLD-NOTES' });
+  const tbx = right - 10 - tbW, tby = bottom + 10;
   prims.push(P([[tbx, tby], [tbx + tbW, tby], [tbx + tbW, tby + tbH], [tbx, tby + tbH]], true, 'SLD-BORDER'));
   prims.push(L(tbx, tby + 14, tbx + tbW, tby + 14, 'SLD-BORDER'));
   prims.push({ t: 'mtext', x: tbx + 3, y: tby + tbH - 3, w: tbW - 6, h: 3.5, text: wrap(spec.title || (spec.kind === 'earthing' ? 'EARTHING SCHEMATIC' : 'SINGLE LINE DIAGRAM'), 70).join('\n'), attach: 1, layer: 'SLD-TEXT' });
-  prims.push({ t: 'mtext', x: tbx + 3, y: tby + 11, w: tbW - 6, h: TH, text: [`DWG No: ${spec.drawingNumber || 'TBC'}   REV: ${spec.revision || 'P01'}`, `DRAWN: Dex (Atomax Media Office) · ${new Date().toISOString().slice(0, 10)}`, 'DRAFT FOR CHECKING'].join('\n'), attach: 1, layer: 'SLD-TEXT' });
-  const m = 15, bx = -m - 10, bxr = Math.max(right, tbx + tbW) + m, byb = tby - m, byt = maxY + m + 10;
-  prims.push(P([[bx, byb], [bxr, byb], [bxr, byt], [bx, byt]], true, 'SLD-BORDER'));
-  return { prims, bounds: { x0: bx, y0: byb, x1: bxr, y1: byt } };
+  prims.push({ t: 'mtext', x: tbx + 3, y: tby + 11, w: tbW - 6, h: TH, text: [`DWG No: ${spec.drawingNumber || 'TBC'}   REV: ${spec.revision || 'P01'}${sheetName ? '   SHEET: ' + sheetName : ''}`, `DRAWN: Dex (Atomax Media Office) · ${new Date().toISOString().slice(0, 10)}`, 'DRAFT FOR CHECKING'].join('\n'), attach: 1, layer: 'SLD-TEXT' });
+  return { prims, bounds: { x0: left, y0: bottom, x1: right, y1: top }, sheet: sheetName || 'oversize' };
 }
 
 // ---------- DXF writer (R2010, appended to a template made with ezdxf) ----------
@@ -172,7 +216,8 @@ const SYSTEM = `You are Dex, the DXF maker in the Atomax-UK drawing room. You tu
 You can make two kinds of drawing, both described the same way:
 - "sld": single line diagrams.
 - "earthing": earthing schematics / earthing design drawings. The "board" is the main earth bar (MET) or an earth bar, its feeders are the earth conductors and bonds (use "cable" for the conductor, labelled with its size and type) ending at what they earth: the equipment ("board", e.g. transformer, inverter, BESS, switchgear, fence), an earth rod ("electrode") or the earth mesh ("grid"); use "link" for disconnecting / test links. Put fault levels and earth fault currents from the documents in the notes. Conductor sizes come from the documents or the engineer; if they are not given, write TBC and say in the notes that they need sizing against the earth fault current (adiabatic check) and that soil resistivity is needed for the electrode / mesh design.
-Describe them as boards (busbars). Each board has incomers (chains drawn above the busbar, ending on it) and feeders (chains drawn below it). A chain is a list of items from top to bottom, each { "symbol": one of supply, generator, transformer, breaker, isolator, switchfuse, fuse, contactor, ct, meter, ups, cable, line, link, and as the LAST item of a feeder only: board, load, motor, earth, electrode, grid, spare; "label": the text beside it }.
+Describe them as boards (busbars), joined into ONE connected diagram: when a feeder supplies another board (e.g. MV SWB > CBL-2 > RMU-WTG2, or a transformer feeding an LV board), put that board as the LAST item of the feeder's chain as {"board": {"label": "...", "feeders": [...]}}; it is drawn underneath, joined by the feeder. Only boards with nothing above them are top-level boards. Do not repeat a name: the feeder "label" is only for something the end item does not already say (leave it out otherwise).
+In earthing drawings, nest earth bars the same way: the cable screen or earth conductor feeding another substation's earth bar ends with {"board": {...}}. If an engineer's technical note in the project files gives conductor sizes or electrode design, use those values (say "per <note name>" in the notes); otherwise sizes stay TBC. Each board has incomers (chains drawn above the busbar, ending on it) and feeders (chains drawn below it). A chain is a list of items from top to bottom, each { "symbol": one of supply, generator, transformer, breaker, isolator, switchfuse, fuse, contactor, ct, meter, ups, cable, line, link, and as the LAST item of a feeder only: board, load, motor, earth, electrode, grid, spare; "label": the text beside it }.
 Labels: short, exactly as an engineer would write them, using what the project files say (ratings, cable sizes, tags, board names). Use a new line (\\n) between parts of a label, e.g. "Q1\\n630A TP MCCB". Do not invent ratings, cable sizes or tags that are not in the request or the files: if one is unknown write "TBC" in the label and list it in "notes".
 If something essential is missing (which boards, how many feeders, what the supply is) and the files do not say, ask: reply with {"questions": ["...", "..."]} (max 4 short questions) and nothing else.
 Otherwise reply with JSON only, no markdown:

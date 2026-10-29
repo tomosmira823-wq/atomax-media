@@ -237,7 +237,8 @@ function register({ ipcMain, dialog, shell, getWin, userDir, claudeFull, checker
   const ENG_SYSTEM = `You are Ada, the general engineer at Atomax-UK (electrical engineering consultancy, UK). Work through the task using only the email, its attachments and the project files given. Use standard methods: IEC 60909 for fault levels, BS 7671 / IEC 60364 for cable sizing, ENA TS 41-24 / IEEE 80 for earthing, G99 / G5/5 / P28 / P29 for grid code questions.
 Show where every input came from (document and table). Do the arithmetic step by step and check it. Never invent data: if something is missing, say what and why it matters.
 Be honest about limits: a first-pass hand calculation is not a full study. Say plainly what can be relied on, what needs PowerFactory / ETAP, and what data is still needed.
-Write in plain British English as Markdown: "# title", "## Summary" (3 lines max, the answer first), "## Inputs used", "## Method and working", "## Results" (tables), "## Limits and what is still needed".`;
+Write in plain British English as Markdown: "# title", "## Summary" (3 lines max, the answer first), "## Inputs used", "## Method and working", "## Results" (tables), "## Limits and what is still needed".
+EARTHING tasks: size every protective / earth conductor the drawing needs (MET to each switchboard, transformer tank and neutral links, RMU earth bars, cable screen bonds, mesh and electrode tails) with the adiabatic equation S = I·√t / k (BS 7671 543.1.3 / ENA TS 41-24), using the documented earth fault currents for each voltage level. State the fault duration t (the protection clearing time if documented, otherwise ENA TS 41-24 1 s for 33 kV / 11 kV and 3 s for conductor rating checks) and k (Cu 143, bare Cu 159 for buried conductors, Al 94, with the table reference) as assumptions. Round up to the next standard size (mm²) and give a "## Conductor schedule" table: From | To | Fault current (kA) | t (s) | k | Min size (mm²) | Selected size and material. Electrode count, mesh size and rise of earth potential need soil resistivity: if it is not given, say so and leave those TBC.`;
   ipcMain.handle('eng:run', wrap(async ({ id, ask, skills }) => {
     const list = load(), e = list.find(x => x.id === id); if (!e || !e.asks[ask]) throw new Error('No such task');
     const a = e.asks[ask], job = a.jobId && BIZ.data().jobs.find(j => j.id === a.jobId);
@@ -258,6 +259,8 @@ Write in plain British English as Markdown: "# title", "## Summary" (3 lines max
     const safe = a.title.replace(/[\\/:*?"<>|]+/g, '-').replace(/\s+/g, ' ').slice(0, 70);
     let file = path.join(outDir, `Technical note - ${safe}.md`), k = 2; while (fs.existsSync(file)) file = path.join(outDir, `Technical note - ${safe} (${k++}).md`);
     fs.writeFileSync(file, text, 'utf8');
+    // read the job folder again so Dex and the others see this note
+    if (job && job.folder) { try { BIZ.projects.gather(job.id, job.folder, { checker, dxffix: require('./dxffix') }); } catch {} }
     const summary = ((text.match(/## Summary\s*\n([\s\S]*?)(\n## |$)/) || [])[1] || text.slice(0, 400)).trim();
     a.status = 'done'; a.result = { summary, path: file, text: text.slice(0, 20000) }; save(list);
     if (a.taskId) { try { const d = BIZ.data(); const t = d.tasks.find(x => x.id === a.taskId); if (t) { biz.saveTask(d, { ...t, status: 'done', note: 'Note: ' + path.basename(file) }, 'Ada'); BIZ.store.save(); } } catch {} }
@@ -285,20 +288,23 @@ Write in plain British English as Markdown: "# title", "## Summary" (3 lines max
     for (const p of pdfs) { try { content.push({ type: 'text', text: 'Project file: ' + path.basename(p) }); content.push(checker.contentBlock('pdf', p, fs.readFileSync(p))); } catch {} }
     const em = emailId && load().find(x => x.id === emailId);
     if (em) for (const a of em.attachments.slice(0, 3)) { try { const buf = fs.readFileSync(path.join(DIR(), em.id, a.name)); content.push({ type: 'text', text: 'From the email: ' + a.name }); content.push(checker.contentBlock(a.mime === 'application/pdf' ? 'pdf' : 'image', a.name, buf)); } catch {} }
+    // the engineer's technical notes for this job (conductor sizes, electrode design): Dex draws from these instead of TBC
+    const notesRead = [];
+    try { const nd = job && BIZ.outputDirFor(job.id, 'documents'); if (nd && fs.existsSync(nd)) { const want = /earth/i.test(request) ? /earth/i : /./; const ns = fs.readdirSync(nd).filter(f => /^Technical note - .*\.md$/i.test(f)).map(f => ({ f, t: fs.statSync(path.join(nd, f)).mtimeMs })).sort((a, b) => b.t - a.t).filter(x => want.test(x.f) || /earth|conductor/i.test(fs.readFileSync(path.join(nd, x.f), 'utf8').slice(0, 3000))).slice(0, 2); for (const n of ns) { content.push({ type: 'text', text: `ENGINEER'S TECHNICAL NOTE (${n.f}) - use its sizes and say "per ${n.f.replace(/\.md$/, '')}" in the notes:\n` + fs.readFileSync(path.join(nd, n.f), 'utf8').slice(0, 20000) }); notesRead.push(n.f); } } } catch {}
     content.push({ type: 'text', text: `REQUEST: ${request}${answers.length ? '\n\nANSWERS FROM THE ENGINEER:\n' + answers.map(x => `Q: ${x.q}\nA: ${x.a}`).join('\n') : ''}` });
     // a big site needs a long spec: give room, retry with more if it is cut off, and never pass off a cut-off spec as complete
     let r = await claudeFull({ system, who: 'dex', skills: false, maxTokens: 12000, messages: [{ role: 'user', content }] });
     if (r.stop === 'max_tokens') r = await claudeFull({ system: system + '\nKeep labels short (four lines at most) and give a feeder label only when it adds something the end item label does not say.', who: 'dex', skills: false, maxTokens: 24000, messages: [{ role: 'user', content }] });
     const text = r.text, cutOff = r.stop === 'max_tokens';
     const spec = dxfmaker.parseReply(text);
-    if (spec.questions && spec.questions.length && !answers.length) return { questions: spec.questions.slice(0, 4).map(String), read: pdfs.map(p => path.basename(p)), skills: used };
+    if (spec.questions && spec.questions.length && !answers.length) return { questions: spec.questions.slice(0, 4).map(String), read: [...pdfs.map(p => path.basename(p)), ...notesRead], skills: used };
     if (!spec.boards && !spec.busbars) throw new Error('Dex did not produce a drawing: ' + String(text).slice(0, 200));
     const outDir = (job && BIZ.outputDirFor(job.id, 'dxf')) || path.join(userDir(), 'dxf-made');
     if (cutOff) spec.notes = [...(spec.notes || []), 'INCOMPLETE: Dex ran out of room before the end of the drawing. Parts after the last board shown are missing. Ask him again.'];
     const kindName = spec.kind === 'earthing' ? 'EARTHING' : 'SLD';
     const res = dxfmaker.make(spec, outDir, spec.drawingNumber && spec.drawingNumber !== 'TBC' ? spec.drawingNumber + '_' + kindName : (job ? job.number + '_' + kindName : kindName));
     BIZ.log({ who: 'Dex', action: 'Drew', jobId: job ? job.id : '', detail: `${path.basename(res.path)} · ${spec.summary || spec.title || 'SLD'}${used.length ? ' · skills: ' + used.join(', ') : ' · no skills'}` });
-    return { skills: used, incomplete: cutOff, path: res.path, folder: outDir, svg: res.svg, summary: spec.summary || '', title: spec.title || '', notes: spec.notes || [], read: pdfs.map(p => path.basename(p)), inJobFolder: !!(job && job.folder) };
+    return { skills: used, incomplete: cutOff, path: res.path, folder: outDir, svg: res.svg, summary: spec.summary || '', title: spec.title || '', notes: spec.notes || [], read: [...pdfs.map(p => path.basename(p)), ...notesRead], inJobFolder: !!(job && job.folder) };
   }));
 }
 
