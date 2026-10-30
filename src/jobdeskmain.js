@@ -33,7 +33,7 @@ function register({ ipcMain, dialog, getWin, claudeFull, BIZ, checker, userDir, 
     if (!file) { if (process.env.AMO_PICK_FILE) file = process.env.AMO_PICK_FILE; else { const r = await dialog.showOpenDialog(getWin(), { properties: ['openFile'], filters: [{ name: 'Excel', extensions: ['xlsx', 'xlsm'] }] }); if (r.canceled) return desk.view(jobId); file = r.filePaths[0]; } }
     desk.importMaster(jobId, file, checker); return desk.view(jobId);
   }));
-  ipcMain.handle('desk:approveMaster', wrap(({ jobId }) => { desk.approveMaster(jobId, 'Tom'); return desk.view(jobId); }));
+  ipcMain.handle('desk:approveMaster', wrap(({ jobId }) => { desk.approveMaster(jobId, 'Tom'); try { global.AMO_FLOW && global.AMO_FLOW.onApproved(jobId); } catch {} return desk.view(jobId); }));
   ipcMain.handle('desk:open', wrap(({ p }) => { if (p) shell.openPath(p); return true; }));
   ipcMain.handle('desk:show', wrap(({ p }) => { if (p) shell.showItemInFolder(p); return true; }));
   return desk;

@@ -76,8 +76,10 @@ function walk(dir, depth, out, max = 4000) {
 }
 function findRegisters(job) {
   if (!job || !job.folder || !fs.existsSync(job.folder)) return [];
-  return walk(job.folder, 4, []).filter(p => REGISTER_RE.test(path.basename(p)) && /\.(xlsx|xlsm|csv)$/i.test(p) && !/^~\$/.test(path.basename(p)))
-    .map(p => ({ path: p, name: path.basename(p), mtime: fs.statSync(p).mtimeMs })).sort((a, b) => b.mtime - a.mtime);
+  // the document register (9.1 Document Register in an Atomax folder), not the RFI, transmittal, vendor, risk or variation registers
+  return walk(job.folder, 4, []).filter(p => { const n = path.basename(p); return (REGISTER_RE.test(n) || /[\\/]9\.1 Document Register[\\/]/i.test(p)) && !/rfi|transmittal|vendor|risk|variation|action|comment/i.test(n) && /\.(xlsx|xlsm|csv)$/i.test(n) && !/^~\$/.test(n); })
+    .map(p => ({ path: p, name: path.basename(p), mtime: fs.statSync(p).mtimeMs, inReg: /9\.1 Document Register/i.test(p) ? 1 : 0, numbered: /^X\d/i.test(path.basename(p)) ? 1 : 0 }))
+    .sort((a, b) => b.inReg - a.inReg || b.numbered - a.numbered || b.mtime - a.mtime);
 }
 // read rows out of a register workbook: any row with a drawing number; title / rev / status from the other cells
 function readRegister(file, checker) {
@@ -114,7 +116,7 @@ function checkRegister(id, checker) {
 // a new register workbook from the job's drawing list (never over an existing file)
 function makeRegister(id, writeXlsx) {
   const job = jobOf(id); if (!job) throw new Error('No such job');
-  const dir = BIZ.outputDirFor(id, 'documents') || path.join(DIR, 'registers'); fs.mkdirSync(dir, { recursive: true });
+  const dir = BIZ.outputDirFor(id, 'register') || path.join(DIR, 'registers'); fs.mkdirSync(dir, { recursive: true });
   let p = path.join(dir, `${job.number} Drawing Register.xlsx`), k = 2; while (fs.existsSync(p)) p = path.join(dir, `${job.number} Drawing Register (${k++}).xlsx`);
   fs.writeFileSync(p, writeXlsx([{ name: 'Register', columns: [{ header: 'Document number' }, { header: 'Title' }, { header: 'Revision' }, { header: 'Status' }], rows: job.drawings.map(r => [r.no, r.title, r.rev, r.status]) }]));
   const d = load(id); d.registerFile = p; save(id, d);
@@ -204,7 +206,7 @@ const DEV_COLS = ['tag', 'description', 'type', 'location', 'panel', 'jb', 'aNum
 const HDR = { tag: 'Tag', description: 'Description', type: 'Type', location: 'Location', panel: 'Panel / RIO', jb: 'JB', aNumber: 'A-number', io: 'IO', source: 'Source', no: 'Cable no', from: 'From', to: 'To', cores: 'Cores', size: 'Size' };
 function exportMaster(id, writeXlsx) {
   const job = jobOf(id), d = load(id); if (!d.master) throw new Error('No master list yet');
-  const dir = BIZ.outputDirFor(id, 'documents') || path.join(DIR, 'masters'); fs.mkdirSync(dir, { recursive: true });
+  const dir = BIZ.outputDirFor(id, 'schedules') || path.join(DIR, 'masters'); fs.mkdirSync(dir, { recursive: true });
   const base = `${job.number} MASTER DEVICE LIST${d.master.status === 'approved' ? '' : ' - DRAFT'}`;
   let p = path.join(dir, base + '.xlsx'), k = 2; while (fs.existsSync(p)) p = path.join(dir, `${base} (${k++}).xlsx`);
   fs.writeFileSync(p, writeXlsx([
@@ -256,12 +258,12 @@ function view(id) {
   const d = load(id), prof = clientProfile(job), m = d.master;
   const hb = DN.habits(job);
   return { area: d.area || hb.area || '', disc: d.disc || hb.disc || '', project: hb.project, rules: getRules(id), rulesFile: rulesPath(job), client: job.client || '', clientProfile: prof ? prof.name : '', titleBlock: titleBlockFor(job) ? path.basename(titleBlockFor(job)) : '',
-    registerFile: d.registerFile, registerChecked: d.registerChecked, drawings: job.drawings, inputs: d.inputs, rfis: d.rfis, crs: d.crs,
+    flow: d.flow || null, autoFlow: !!d.autoFlow, registerFile: d.registerFile, registerChecked: d.registerChecked, drawings: job.drawings, inputs: d.inputs, rfis: d.rfis, crs: d.crs,
     master: m ? { status: m.status, builtAt: m.builtAt, approvedAt: m.approvedAt, devices: m.devices.length, cables: m.cables.length, gaps: m.gaps, read: m.read, file: m.file || '', summary: m.summary, preview: m.cables.slice(0, 40), incomplete: !!m.incomplete } : null };
 }
 function exportSheet(id, kind, writeXlsx) {
   const job = jobOf(id), d = load(id);
-  const dir = BIZ.outputDirFor(id, 'documents') || path.join(DIR, 'exports'); fs.mkdirSync(dir, { recursive: true });
+  const dir = BIZ.outputDirFor(id, kind === 'crs' ? 'crs' : 'rfi') || path.join(DIR, 'exports'); fs.mkdirSync(dir, { recursive: true });
   const spec = kind === 'crs'
     ? { base: `${job.number} Comment Response Sheet`, columns: ['No', 'Document', 'Comment', 'By', 'Atomax response', 'Status'], rows: d.crs.map(c => [c.no, c.doc, c.comment, c.by, c.response, c.status]) }
     : { base: `${job.number} RFI Register`, columns: ['No', 'Question', 'Raised', 'Status', 'Answer'], rows: d.rfis.map(r => [r.no, r.q, r.raised, r.status, r.answer]) };
@@ -271,4 +273,5 @@ function exportSheet(id, kind, writeXlsx) {
 }
 const masterOf = (id) => load(id).master;
 
-module.exports = { setNumbering, init, load, getRules, setRules, addCorrection, clientProfile, titleBlockFor, findRegisters, readRegister, checkRegister, makeRegister, proposeNumber, addDeliverables, addInputs, saveRfi, addComments, saveCrs, buildMaster, exportMaster, importMaster, approveMaster, context, view, exportSheet, masterOf, MASTER_SYSTEM, RULES_FILE };
+const saveRaw = (id, d) => save(id, d);
+module.exports = { saveRaw, setNumbering, init, load, getRules, setRules, addCorrection, clientProfile, titleBlockFor, findRegisters, readRegister, checkRegister, makeRegister, proposeNumber, addDeliverables, addInputs, saveRfi, addComments, saveCrs, buildMaster, exportMaster, importMaster, approveMaster, context, view, exportSheet, masterOf, MASTER_SYSTEM, RULES_FILE };

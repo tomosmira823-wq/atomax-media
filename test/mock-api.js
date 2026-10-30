@@ -75,7 +75,7 @@ function claudeReply(body) {
     return JSON.stringify(hasSupport ? { verdict: 'pass', score: 9, summary: 'Pipe is in the right place and supported.', findings: [], good: ['Pipe size matches the notes', 'No clashes'] } : { verdict: 'fix', score: 5, summary: 'The pipe has no support.', findings: [{ severity: 'fix', text: 'A pipe this long needs a support under it.' }], good: ['Route is right'] });
   }
   // ---- Cal (drawing checker) ----
-  if (/map the columns/.test(sys)) return JSON.stringify({ sheets: [{ sheet: 'CSV', isSchedule: true, headerRow: 1, firstDataRow: 2, cols: { tag: 'A', from: 'B', to: 'C', type: 'D', drawing: 'E' } }] });
+  if (/map the columns/.test(sys)) { const sh = (userText.match(/=== SHEET: ([^(]+?) \(/) || [])[1] || 'CSV'; return JSON.stringify({ sheets: [{ sheet: sh, isSchedule: true, headerRow: 1, firstDataRow: 2, cols: { tag: 'A', from: 'B', to: 'C', type: 'D', drawing: 'E' } }] }); }
   if (/reading ONE source document/.test(sys)) {
     const name = (userText.match(/Document file name: ([^\\]+?)\\n/) || [])[1];
     const note = /ENGINEER:/.test(sys) ? 'note-seen' : '';

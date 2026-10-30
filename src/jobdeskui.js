@@ -41,6 +41,11 @@ export async function renderJobDesk(api, el, job, { getAgents } = {}) {
       <input id="jdMNote" placeholder="Note for a rebuild (optional)" style="width:100%">
       <table class="jdt"><tr><th>Cable</th><th>From</th><th>To</th><th>Type</th><th>Cores</th><th>Size</th></tr>${(m.preview || []).map(c => `<tr><td>${esc(c.no)}</td><td>${esc(c.from)}</td><td>${esc(c.to)}</td><td>${esc(c.type)}</td><td>${esc(c.cores)}</td><td>${esc(c.size)}</td></tr>`).join('')}</table>${m.cables > 40 ? `<div class="bsub">First 40 of ${m.cables}. Open in Excel for all of it.</div>` : ''}`;
 
+  const fl = V.flow, stIcon = (s) => ({ done: '✓', running: '…', 'needs you': '!', failed: '✗', skipped: '–' })[s] || '';
+  const flowBody = `<div class="bsub">Once the master list is approved: Dex draws a BCD for each panel (DXF and PDF), Lex makes the cable schedule, then Cal checks one against the other both ways. Only the results come back to you.</div>
+    <div class="jdrow"><label><input type="checkbox" id="jdAuto" ${V.autoFlow ? 'checked' : ''}> Start it automatically when I approve the master list</label>
+      <button class="bprim" id="jdRun" ${m && m.status === 'approved' && !(fl && fl.status === 'running') ? '' : 'disabled'}>${fl && fl.status === 'running' ? 'Running…' : 'Run it now'}</button>${m && m.status === 'approved' ? '' : '<span class="bsub">Approve the master list first.</span>'}</div>
+    ${fl ? `<table class="jdt"><tr><th></th><th>Step</th><th>Result</th></tr>${fl.steps.map(s => `<tr><td>${stIcon(s.status)}</td><td>${esc(s.name)}</td><td>${esc(s.status)}${s.summary ? ' · ' + esc(s.summary) : ''}${(s.files || []).map(f => ` <button data-show="${esc(f)}">${esc(base(f))}</button>`).join('')}</td></tr>`).join('')}</table><div class="bsub">${esc(fl.status)} · started ${esc(String(fl.startedAt).slice(0, 16).replace('T', ' '))}</div>` : ''}`;
   const crsBody = `<table class="jdt"><tr><th>No</th><th>Document</th><th>Comment</th><th>Response</th><th>Status</th></tr>${V.crs.map(c => `<tr><td>${esc(c.no)}</td><td>${esc(c.doc)}</td><td>${esc(c.comment)}${c.by ? '<div class="bsub">' + esc(c.by) + '</div>' : ''}</td><td><textarea data-crsresp="${esc(c.no)}" rows="2">${esc(c.response)}</textarea></td><td><select data-crs="${esc(c.no)}">${['Open', 'Responded', 'Closed'].map(s => `<option ${s === c.status ? 'selected' : ''}>${s}</option>`).join('')}</select></td></tr>`).join('') || '<tr><td colspan="5" class="bsub">No client comments yet. Eli adds them when a comment sheet or marked-up drawing comes in.</td></tr>'}</table><button data-export="crs">Export comment response sheet</button>`;
 
   el.innerHTML = `<h3>Job desk</h3>
@@ -49,6 +54,7 @@ export async function renderJobDesk(api, el, job, { getAgents } = {}) {
     ${sec('client', 'Client profile', V.clientProfile ? esc(V.clientProfile) : 'none', clientBody)}
     ${sec('rfi', 'Inputs and RFIs', `${V.inputs.length} inputs · ${openR} open RFI${openR === 1 ? '' : 's'}`, rfiBody)}
     ${sec('master', 'Master device list', m ? (m.status === 'approved' ? 'approved' : 'draft') : 'not built', masterBody)}
+    ${sec('flow', 'Hands-off run', fl ? fl.status : (V.autoFlow ? 'automatic' : 'not run'), flowBody)}
     ${sec('crs', 'Client comments (CRS)', `${openC} open`, crsBody)}
     <div class="err" id="jdErr"></div>`;
 
@@ -72,6 +78,9 @@ export async function renderJobDesk(api, el, job, { getAgents } = {}) {
   const b = $('#jdBuild'); if (b) b.onclick = (e) => { $('#jdMMsg').textContent = 'Lex is reading the job documents and building the list (a minute or two)…'; run(e.target, () => api.desk.buildMaster({ jobId: job.id, note: $('#jdMNote') ? $('#jdMNote').value : '' })); };
   const me = $('#jdMExport'); if (me) me.onclick = (e) => run(e.target, () => api.desk.exportMaster({ jobId: job.id }));
   const mi = $('#jdMImport'); if (mi) mi.onclick = (e) => run(e.target, () => api.desk.importMaster({ jobId: job.id }));
+  $('#jdAuto').onchange = () => api.flow.auto({ jobId: job.id, on: $('#jdAuto').checked });
+  $('#jdRun').onclick = async (e) => { e.target.disabled = true; e.target.textContent = 'Running…'; const poll = setInterval(() => renderJobDesk(api, el, job, { getAgents }), 4000); try { await api.flow.run({ jobId: job.id }); } catch (err) { $('#jdErr').textContent = clean(err); } clearInterval(poll); again(); };
+  if (fl && fl.status === 'running' && !el.dataset.polling) { el.dataset.polling = '1'; setTimeout(() => { delete el.dataset.polling; renderJobDesk(api, el, job, { getAgents }); }, 4000); }
   const ma = $('#jdMApprove'); if (ma) ma.onclick = (e) => run(e.target, () => api.desk.approveMaster({ jobId: job.id }));
 }
 export function openDeskSection(key) { open[key] = true; }

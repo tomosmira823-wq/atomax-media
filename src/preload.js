@@ -10,6 +10,7 @@ contextBridge.exposeInMainWorld('office', {
   agents: { get: call('agents:get'), set: call('agents:set'), reset: call('agents:reset') },
   posts: { get: call('posts:get'), set: call('posts:set') },
   files: { pickImages: call('file:pickImages'), saveImage: call('file:saveImage'), saveText: call('file:saveText') },
+  flow: { run: call('flow:run'), get: call('flow:get'), auto: call('flow:auto') },
   desk: { get: call('desk:get'), setRules: call('desk:setRules'), correction: call('desk:correction'), checkRegister: call('desk:checkRegister'), makeRegister: call('desk:makeRegister'), setNumber: call('desk:setNumber'), rfi: call('desk:rfi'), numbering: call('desk:numbering'), addRfi: call('desk:addRfi'), crs: call('desk:crs'), export: call('desk:export'), buildMaster: call('desk:buildMaster'), exportMaster: call('desk:exportMaster'), importMaster: call('desk:importMaster'), approveMaster: call('desk:approveMaster'), open: call('desk:open'), show: call('desk:show') },
   library: { cabinets: call('library:cabinets'), items: call('library:items'), read: call('library:read'), save: call('library:save'), remove: call('library:remove'), drop: call('library:drop'), importSkill: call('library:importSkill'), newSkill: call('library:newSkill'), newClient: call('library:newClient'), correction: call('library:correction'), setRulebook: call('library:setRulebook'), agentView: call('library:agentView') },
   server: { status: call('server:status'), setCap: call('server:setCap'), usage: call('server:usage') },

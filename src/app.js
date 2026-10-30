@@ -147,13 +147,14 @@ function fillSettings() {
   fillConnections(); fillLogo();
   for (const k of ['anthropicKey', 'openaiKey', 'googleKey', 'googleImageModel', 'higgsfieldKeyId', 'higgsfieldSecret', 'claudeModel', 'openaiImageModel', 'higgsfieldModel', 'imageProvider']) $('#s_' + k).value = settings[k] || '';
   for (const k of ['name', 'about', 'audience', 'website', 'doNot', 'knowledge']) $('#c_' + k).value = settings.company[k] || '';
-  $('#s_projectRoots').value = (settings.projectRoots || []).join('\n');
+  $('#s_projectRoots').value = (settings.projectRoots || []).join('\n'); $('#s_templateDir').value = settings.templateDir || '';
   $('#siteHint').textContent = settings.company.pulledAt ? 'Last pulled ' + new Date(settings.company.pulledAt).toLocaleString('en-GB') + ' from ' + (settings.company.pages || []).length + ' pages.' : '';
 }
 $('#saveSettings').addEventListener('click', async () => {
   readConnections();
   for (const k of ['anthropicKey', 'openaiKey', 'googleKey', 'googleImageModel', 'higgsfieldKeyId', 'higgsfieldSecret', 'claudeModel', 'openaiImageModel', 'higgsfieldModel', 'imageProvider']) settings[k] = $('#s_' + k).value.trim();
   for (const k of ['name', 'about', 'audience', 'website', 'doNot', 'knowledge']) settings.company[k] = $('#c_' + k).value.trim();
+  settings.templateDir = $('#s_templateDir').value.trim();
   settings.projectRoots = $('#s_projectRoots').value.split(/\r?\n/).map(x => x.trim()).filter(Boolean);
   await api.settings.set(settings);
   settings.openaiImageQuality = $('#s_openaiImageQuality').value;

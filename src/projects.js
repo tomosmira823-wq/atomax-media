@@ -128,16 +128,42 @@ function relevantFiles(jobId, request, { exts = ['.pdf'], max = 3 } = {}) {
     .filter(x => x.s > 0).sort((a, b) => b.s - a.s || b.f.mtime - a.f.mtime).slice(0, max).map(x => path.join(p.folder, x.f.rel));
 }
 
-// where an agent's output goes inside the project folder: an existing subfolder that fits, otherwise a new one
+// where an agent's output goes inside the project folder.
+// Atomax project folders (made from the Template Project Directory) have numbered sections: each kind of output has its own place there.
+// Other folders: an existing subfolder that fits, otherwise a new one.
 const KIND = { dxf: [/^(dxf|cad|drawings?|dwg)/i, 'DXF'], markups: [/^markups?/i, 'MARKUPS'], documents: [/^(documents?|docs|reports?)/i, 'Documents'], models: [/^(3d|models?)/i, '3D Models'], email: [/^(emails?|correspondence|mail)/i, 'Correspondence'] };
+const ATOMAX = {
+  sld: ['7.4', 'Single Line Diagrams'], bcd: ['7.3', 'Block Diagrams'], 'bcd-instrument': ['6.3', 'Block Diagrams'], earthing: ['7.5', 'Routings and Layouts'], loop: ['6.4', 'Loop Diagrams'], dxf: ['7.13', 'Misc'],
+  markups: ['7.13', 'Misc', 'MARKUPS'], documents: ['7.12', 'Reports'], reports: ['7.12', 'Reports'], calcs: ['7.11', 'Calculations'], schedules: ['7.8', 'Schedules'], datasheets: ['7.1', 'Datasheets'],
+  email: ['7.0', 'Incoming Correspondance'], register: ['9.1', 'Document Register'], transmittals: ['9.2', 'Transmittals'], rfi: ['9.3', 'RFI'], issued: ['9.7', 'Issued'], crs: ['9.8', 'Document Client Comment Tracker'],
+  models: ['4.15', 'Misc'], 'site-data': ['10.1.', 'Existing Site Data'],
+};
+const SECTIONS = { 4: '4. Piping and Mechanical', 6: '6. Instrument', 7: '7. Electrical', 9: '9. Document Control', 10: '10. Site Data' };
+const isAtomax = (folder) => { try { return fs.readdirSync(folder).some(n => /^(7\. Electrical|9\. Document Control)/i.test(n)); } catch { return false; } };
+const findDir = (parent, prefix) => { try { const e = fs.readdirSync(parent, { withFileTypes: true }).find(d => d.isDirectory() && (d.name.startsWith(prefix + ' ') || d.name === prefix)); return e ? path.join(parent, e.name) : null; } catch { return null; } };
 function outputDir(folder, kind) {
   if (!folder || !fs.existsSync(folder)) return null;
-  const [re, made] = KIND[kind] || [/^output/i, 'Output'];
+  if (ATOMAX[kind] && isAtomax(folder)) {
+    const [num, name, sub] = ATOMAX[kind], top = num.split('.')[0];
+    const sec = findDir(folder, top + '.') || path.join(folder, SECTIONS[top] || top + '. Misc');
+    let dir = findDir(sec, num) || path.join(sec, `${num} ${name}`);
+    if (sub) dir = path.join(dir, sub);
+    fs.mkdirSync(dir, { recursive: true });
+    return dir;
+  }
+  const [re, made] = KIND[kind] || KIND[{ sld: 'dxf', bcd: 'dxf', 'bcd-instrument': 'dxf', earthing: 'dxf', loop: 'dxf', reports: 'documents', calcs: 'documents', schedules: 'documents', register: 'documents', rfi: 'documents', crs: 'documents', transmittals: 'documents', issued: 'documents', datasheets: 'documents', 'site-data': 'documents' }[kind]] || [/^output/i, 'Output'];
   let found = null;
   try { const e = fs.readdirSync(folder, { withFileTypes: true }).find(d => d.isDirectory() && re.test(d.name)); if (e) found = path.join(folder, e.name); } catch {}
   const dir = found || path.join(folder, made);
   fs.mkdirSync(dir, { recursive: true });
   return dir;
+}
+// the Atomax Template Project Directory: from Settings, or found in the OneDrive "Projects - Documents" library
+function templateDir() {
+  const s = getSettings ? getSettings() : {};
+  if (s.templateDir && fs.existsSync(s.templateDir)) return s.templateDir;
+  for (const r of searchRoots()) { for (const p of [path.join(r, 'Projects - Documents', 'Template Project Directory'), path.join(r, 'Template Project Directory')]) if (fs.existsSync(p)) return p; }
+  return '';
 }
 
 // what a job folder name looks like: built from Tom's real job numbers (e.g. X11475 -> one letter X + 5 digits); default one letter + 5 digits
@@ -170,13 +196,29 @@ function nextJobNumber(known = [], jobsFolder = '') {
   if (jobsFolder) { try { for (const e of fs.readdirSync(jobsFolder, { withFileTypes: true })) if (e.isDirectory()) { const m = e.name.match(/^X\d{4,6}(?:-\d{2})?/i); if (m) taken.push(m[0]); } } catch {} }
   return require('./docnumber').jobNumber(taken);
 }
-// make a project folder for a new job, with the usual subfolders
+// make a project folder for a new job: a copy of the Atomax Template Project Directory (folders and template files, the XXXXXXXX
+// placeholders in file names become the job number); without the template to hand, the same folders empty
+const SKIP_COPY = /-DESKTOP-[A-Z0-9]+\.|\.bak$|^~\$|^thumbs\.db$|^desktop\.ini$/i;
+function copyTemplate(src, dst, number) {
+  fs.mkdirSync(dst, { recursive: true });
+  for (const e of fs.readdirSync(src, { withFileTypes: true })) {
+    if (SKIP_COPY.test(e.name)) continue;
+    const from = path.join(src, e.name);
+    if (e.isDirectory()) { copyTemplate(from, path.join(dst, e.name), number); continue; }
+    const name = e.name.replace(/^(X{6,8}|x{6,8}|AAAAAAAA|XXXXXX001)(?=[-_ ])/, number);
+    const to = path.join(dst, name); if (!fs.existsSync(to)) fs.copyFileSync(from, to);
+  }
+}
 function createJobFolder(parent, number, name) {
   if (!parent || !fs.existsSync(parent)) throw new Error('The folder to create it in does not exist');
   const base = (String(number || '').trim() + ' ' + String(name || '').trim()).trim().replace(/[\\/:*?"<>|]+/g, '-').replace(/\s+/g, ' ').slice(0, 80) || 'New job';
   let dir = path.join(parent, base), i = 2; while (fs.existsSync(dir)) dir = path.join(parent, base + ' (' + i++ + ')');
-  for (const sub of ['Drawings', 'Documents', 'Correspondence']) fs.mkdirSync(path.join(dir, sub), { recursive: true });
+  const tpl = templateDir();
+  if (tpl) { try { copyTemplate(tpl, dir, String(number || '').trim() || 'XXXXXXXX'); return dir; } catch {} }
+  let folders = []; try { folders = JSON.parse(fs.readFileSync(path.join(__dirname, 'cad', 'project-folders.json'), 'utf8')); } catch {}
+  if (!folders.length) folders = ['Drawings', 'Documents', 'Correspondence'];
+  for (const sub of folders) fs.mkdirSync(path.join(dir, sub), { recursive: true });
   return dir;
 }
 
-module.exports = { jobParent, nextJobNumber, jobPattern, createJobFolder, init, suggest, gather, load, contextBlock, relevantFiles, outputDir, searchRoots, extract };
+module.exports = { templateDir, isAtomax, jobParent, nextJobNumber, jobPattern, createJobFolder, init, suggest, gather, load, contextBlock, relevantFiles, outputDir, searchRoots, extract };

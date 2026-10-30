@@ -3,6 +3,9 @@
 // so the 3D page never sees a key.
 
 const { app, BrowserWindow, ipcMain, dialog, safeStorage, shell, protocol, net, Notification, desktopCapturer, screen, globalShortcut } = require('electron');
+// every IPC handler is also kept here so the hands-off run (flow.js) can call the agents the same way the panels do
+const HANDLERS = {};
+{ const orig = ipcMain.handle.bind(ipcMain); ipcMain.handle = (ch, fn) => { HANDLERS[ch] = fn; return orig(ch, fn); }; }
 const { pathToFileURL } = require('url');
 const { autoUpdater } = require('electron-updater');
 const social = require('./social');
@@ -1132,3 +1135,6 @@ ipcMain.handle('ai:test', async (_e, which) => {
   }
   throw new Error('unknown');
 });
+
+// the hands-off run (needs every handler registered above)
+global.AMO_FLOW = require('./flow').register({ ipcMain, HANDLERS, BIZ });

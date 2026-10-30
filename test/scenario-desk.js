@@ -21,7 +21,7 @@
     return r.desk;
   });
   await step('area code gives QS 006 numbers', async () => { V = await api.desk.numbering({ jobId: job.id, area: 'TST', disc: '05' }); const nos = V.drawings.map(d => d.no); if (!nos.includes('X22001-TST-05-70-0001') || !nos.includes('X22001-TST-05-71-0001')) throw new Error(nos.join(',')); return nos; });
-  await step('board shows the job desk', async () => { window.__goRoom('board'); await window.__boardUI.show(); window.__boardUI.selectJob(job.id); await until(() => document.querySelectorAll('#bdDesk details.jd').length === 6); return document.querySelector('#bdDesk').textContent.includes('2 open RFIs'); });
+  await step('board shows the job desk', async () => { window.__goRoom('board'); await window.__boardUI.show(); window.__boardUI.selectJob(job.id); await until(() => document.querySelectorAll('#bdDesk details.jd').length === 7); return document.querySelector('#bdDesk').textContent.includes('2 open RFIs'); });
   await step('master list built and approved', async () => { V = await api.desk.buildMaster({ jobId: job.id }); if (V.master.devices !== 4) throw new Error(JSON.stringify(V.master)); V = await api.desk.approveMaster({ jobId: job.id }); return V.master.status; });
   let first;
   await step('Dex draws the BCD from the approved master list', async () => {
@@ -31,5 +31,7 @@
     return first.path;
   });
   await step('optional revision', async () => { const r = await api.dexMake({ jobId: job.id, request: 'Draw the BCD for RIO1', revision: { on: true, stage: 'comment' } }); if (r.revision !== 'A1' || !r.previousFound) throw new Error(r.revision + ' ' + r.previousFound); return r.diff; });
+  await step('hands-off run: BCD, schedule, check', async () => { const f = await api.flow.run({ jobId: job.id }); const bad = f.steps.filter(s => s.status === 'failed'); if (bad.length) throw new Error(JSON.stringify(bad)); return f.steps.map(s => s.name + ': ' + s.status + ' ' + (s.summary || '')); });
+  await step('PDF made beside the DXF', async () => { const r = await api.dexMake({ jobId: job.id, request: 'Draw the BCD for RIO1' }); if (!r.pdfs || !r.pdfs.length) throw new Error('no pdf'); return r.pdfs; });
   return out;
 })();

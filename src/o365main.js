@@ -92,8 +92,8 @@ function register({ ipcMain, claudeFull, BIZ, checker, userDir, projects }) {
     }
     return content;
   }
-  const outFile = (jobId, base, ext) => {
-    const dir = (jobId && BIZ.outputDirFor(jobId, 'documents')) || path.join(userDir(), 'office365');
+  const outFile = (jobId, base, ext, kind = 'documents') => {
+    const dir = (jobId && BIZ.outputDirFor(jobId, kind)) || path.join(userDir(), 'office365');
     fs.mkdirSync(dir, { recursive: true });
     const safe = String(base || 'Document').replace(/[\\/:*?"<>|]+/g, '-').replace(/\s+/g, ' ').trim().slice(0, 80) || 'Document';
     let p = path.join(dir, safe + ext), i = 2; while (fs.existsSync(p)) p = path.join(dir, `${safe} (${i++})${ext}`);
@@ -117,7 +117,7 @@ function register({ ipcMain, claudeFull, BIZ, checker, userDir, projects }) {
     }
     const { spec, cut } = await ask(system, 'excel', skills, [...extra, ...filesToContent(files), { type: 'text', text: 'REQUEST: ' + request }]);
     if (!Array.isArray(spec.sheets) || !spec.sheets.length) throw new Error('Lex did not return a workbook');
-    const file = outFile(job && job.id, spec.filename || (job ? job.number + ' workbook' : 'Workbook'), '.xlsx');
+    const file = outFile(job && job.id, spec.filename || (job ? job.number + ' workbook' : 'Workbook'), '.xlsx', /schedule|register|list|index/i.test(request + ' ' + (spec.filename || '')) ? 'schedules' : /calc/i.test(request) ? 'calcs' : 'documents');
     fs.writeFileSync(file, writeXlsx(spec.sheets));
     BIZ.log({ who: 'Lex', action: 'Made a workbook', jobId: job ? job.id : '', detail: path.basename(file) + ' · ' + (spec.summary || '') });
     const s0 = spec.sheets[0];

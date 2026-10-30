@@ -721,6 +721,8 @@ body.fp canvas#scene{cursor:grab}
   <div class="grid2">
     <div>
       <label>Claude API key (required)</label><input type="password" id="s_anthropicKey" placeholder="sk-ant-..." />
+      <label>Template Project Directory <span class="hint">(new job folders are copied from it; found automatically in OneDrive "Projects - Documents" if left empty)</span></label>
+      <input id="s_templateDir" placeholder="C:\Users\you\OneDrive - Atomax-UK Ltd\Projects - Documents\Template Project Directory" />
       <label>Folders the agents search for job files <span class="hint">(one per line: OneDrive, SharePoint sync folders, server shares such as \\atomax-dc\Projects or Z:\)</span></label>
       <textarea id="s_projectRoots" rows="3" placeholder="Z:\Projects&#10;C:\Users\you\OneDrive - Atomax-UK"></textarea>
       <label>Claude model</label>

@@ -328,6 +328,8 @@ EARTHING tasks: size every protective / earth conductor the drawing needs (MET t
     const spec = dxfmaker.parseReply(text);
     if (spec.questions && spec.questions.length && !answers.length) return { questions: spec.questions.slice(0, 4).map(String), read: [...pdfs.map(p => path.basename(p)), ...notesRead], skills: used };
     if (kind === 'bcd' || (Array.isArray(spec.cables) && spec.cables.length && !spec.boards)) spec.kind = 'bcd';
+    // National Grid jobs and LVAC block diagrams use the National Grid style (filled energised / de-energised blocks, coloured cable runs, legend)
+    if (spec.kind === 'bcd' && !spec.style && (/national grid|\bNGET?\b|\blvac\b/i.test(request) || (job && /national grid/i.test(job.client || '')))) spec.style = 'ng';
     if (spec.kind === 'bcd' ? !(spec.cables || []).length : (!spec.boards && !spec.busbars)) throw new Error('Dex did not produce a drawing: ' + String(text).slice(0, 200));
     const desk = require('./jobdesk'), DN = require('./docnumber');
     // a BCD made from an approved master list must carry exactly its cables (for the panels drawn): missing ones are added, extra ones flagged
@@ -353,7 +355,9 @@ EARTHING tasks: size every protective / earth conductor the drawing needs (MET t
       const onList = job.drawings.find(d => want.test(d.title) && !/^TBC-/.test(d.no) && /to do|live/i.test(d.status || 'Live'));
       spec.drawingNumber = onList ? onList.no : (desk.proposeNumber(job, spec.kind === 'bcd' ? 'BCD' : spec.kind === 'earthing' ? 'earthing' : 'SLD', [], job.id) || 'TBC');
     }
-    const outDir = (job && BIZ.outputDirFor(job.id, 'dxf')) || path.join(userDir(), 'dxf-made');
+    // the drawing's own place in an Atomax project folder (7.3 Block Diagrams, 7.4 Single Line Diagrams, 6.3 for instrument BCDs ...)
+    const outKind = spec.kind === 'bcd' ? ((job && /^05$/.test(require('./jobdesk').load(job.id).disc || '')) || /instrument|\bRIO\b|loop/i.test(request) ? 'bcd-instrument' : 'bcd') : spec.kind === 'earthing' ? 'earthing' : 'sld';
+    const outDir = (job && BIZ.outputDirFor(job.id, outKind)) || path.join(userDir(), 'dxf-made');
     if (cutOff) spec.notes = [...(spec.notes || []), 'INCOMPLETE: Dex ran out of room before the end of the drawing. Parts after the last board shown are missing. Ask him again.'];
     const kindName = spec.kind === 'earthing' ? 'EARTHING' : spec.kind === 'bcd' ? 'BCD' : 'SLD';
     const base = spec.drawingNumber && spec.drawingNumber !== 'TBC' ? spec.drawingNumber + '_' + kindName : (job ? job.number + '_' + kindName : kindName);
@@ -362,9 +366,11 @@ EARTHING tasks: size every protective / earth conductor the drawing needs (MET t
     if (revision && revision.on) { previous = dxfmaker.previousSpec(outDir, base); spec.revision = DN.nextRev(previous ? previous.spec.revision : (spec.revision || ''), revision.stage || ''); if (revision.note) spec.revisionNote = revision.note; }
     else if (!spec.revision || /^P0?1$/i.test(spec.revision)) spec.revision = 'P1';
     const template = job ? desk.titleBlockFor(job) : '';
-    const res = dxfmaker.make(spec, outDir, base, { template, previous });
+    const res = dxfmaker.make(spec, outDir, base, { template, previous, fill: job ? { client: job.client || '', project: `${job.number} ${job.name || ''}`.trim() } : {} });
+    // every DXF gets its monochrome PDF beside it (issues go out as DXF and PDF)
+    let madePdfs = []; try { madePdfs = await require('./pdfout').writePdfs(res); } catch (e) { (res.files || []).forEach(f => delete f.prims); }
     BIZ.log({ who: 'Dex', action: 'Drew', jobId: job ? job.id : '', detail: `${path.basename(res.path)} · ${spec.summary || spec.title || 'SLD'}${used.length ? ' · skills: ' + used.join(', ') : ' · no skills'}` });
-    return { masterCheck, sheets: (res.files || []).map(f => ({ path: f.path, label: f.label })), diff: res.diff, revision: spec.revision, previousFound: !!previous, titleBlock: template ? path.basename(template) : '', drawingNumber: spec.drawingNumber, skills: used, incomplete: cutOff, path: res.path, folder: outDir, svg: res.svg, summary: spec.summary || '', title: spec.title || '', notes: spec.notes || [], read: [...pdfs.map(p => path.basename(p)), ...notesRead], inJobFolder: !!(job && job.folder) };
+    return { pdfs: madePdfs, masterCheck, sheets: (res.files || []).map(f => ({ path: f.path, pdf: f.pdf || '', label: f.label })), diff: res.diff, revision: spec.revision, previousFound: !!previous, titleBlock: template ? path.basename(template) : '', drawingNumber: spec.drawingNumber, skills: used, incomplete: cutOff, path: res.path, folder: outDir, svg: res.svg, summary: spec.summary || '', title: spec.title || '', notes: spec.notes || [], read: [...pdfs.map(p => path.basename(p)), ...notesRead], inJobFolder: !!(job && job.folder) };
   }));
 }
 
