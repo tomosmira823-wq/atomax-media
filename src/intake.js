@@ -226,7 +226,19 @@ function register({ ipcMain, dialog, shell, getWin, userDir, claudeFull, checker
   }));
   // Tom says where his job folders live; remembered for next time
   ipcMain.handle('mail:setJobsFolder', wrap(({ folder }) => { if (!folder || !fs.existsSync(folder)) throw new Error('That folder does not exist'); if (saveSettings && loadSettings) saveSettings({ ...loadSettings(), jobsFolder: folder }); return { saved: folder, nextNumber: BIZ.projects.nextJobNumber(BIZ.data().jobs.map(j => j.number), folder) }; }));
-  ipcMain.handle('mail:pickParent', wrap(async () => { const r = await dialog.showOpenDialog(getWin(), { properties: ['openDirectory', 'createDirectory'], title: 'Where should the new job folder go?' }); return r.canceled ? null : r.filePaths[0]; }));
+  ipcMain.handle('mail:pickParent', wrap(async () => { if (process.env.AMO_PICK_DIR) return process.env.AMO_PICK_DIR; const r = await dialog.showOpenDialog(getWin(), { properties: ['openDirectory', 'createDirectory'], title: 'Where should the new job folder go?' }); return r.canceled ? null : r.filePaths[0]; }));
+  // a new job straight from the projects whiteboard: number, name, client and its folder (made from the Atomax template, an existing one linked, or none yet)
+  ipcMain.handle('board:newJob', wrap(({ number, name, client, mode, folder }) => {
+    number = String(number || '').trim().toUpperCase(); if (!number) throw new Error('Give the job a number');
+    const d = BIZ.data(); if (d.jobs.some(j => String(j.number).toUpperCase() === number)) throw new Error(number + ' is already a job');
+    if (mode === 'create') { const s = loadSettings ? loadSettings() : {}; if (!folder || !fs.existsSync(folder)) throw new Error('Choose where your job folders live'); if (saveSettings && s.jobsFolder !== folder) saveSettings({ ...s, jobsFolder: folder }); folder = BIZ.projects.createJobFolder(folder, number, name || ''); }
+    else if (mode === 'link') { if (!folder || !fs.existsSync(folder)) throw new Error('Choose the job folder'); }
+    else folder = '';
+    const job = biz.saveJob(d, { number, name: String(name || '').trim(), client: String(client || '').trim(), folder }, 'Tom');
+    BIZ.store.save();
+    if (folder) { try { BIZ.projects.gather(job.id, folder, { checker: require('./checker'), dxffix: require('./dxffix') }); } catch {} }
+    return { id: job.id, folder };
+  }));
   ipcMain.handle('mail:start', wrap(({ id, ask, jobId, newJob, folder, createIn }) => {
     const list = load(), e = list.find(x => x.id === id); if (!e) throw new Error('That email is gone');
     const a = e.asks[ask]; if (!a) throw new Error('No such task');

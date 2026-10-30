@@ -38,11 +38,43 @@ export function initBoardUI({ office, api, getAgents, openAgent, openBusiness, g
     const list = jobs.length ? jobs.map((j, i) => {
       const t = tasksOf(j.id), n = t.filter(x => x.status !== 'done').length;
       return `<button class="bj ${j.id === sel ? 'on' : ''}" data-job="${j.id}" style="--c:${NOTE_COLOURS[i % NOTE_COLOURS.length]}"><b>${esc(j.number)}</b>${j.id === cur ? '<span class="bcur">IN HAND</span>' : ''}<span>${esc(j.name || '')}</span><i>${esc(j.status)} · ${n} open task${n === 1 ? '' : 's'}</i></button>`;
-    }).join('') : '<div class="bhint">No jobs yet. Add the first one in the Business tab.</div>';
+    }).join('') : '<div class="bhint">No jobs yet. Press + New job below.</div>';
     $('#bdJobs').innerHTML = list;
     const j = jobOf(sel);
+    if (sel === '__new') { newJobForm(); return; }
     $('#bdMain').innerHTML = j ? jobPage(j) : overview();
     wireMain(j);
+  }
+
+  // a new job without leaving the whiteboard
+  async function newJobForm() {
+    let D = { nextNumber: '', saved: '', guess: '' }; try { D = await api.mail.defaults(); } catch {}
+    let parent = D.saved || D.guess || '';
+    const m = $('#bdMain');
+    m.innerHTML = `<div class="bhead"><div><h2>New job</h2><div class="bsub">The job number is X + today's date unless you change it.</div></div></div>
+      <div class="bnew">
+        <label>Job number</label><input id="njNo" value="${esc(D.nextNumber || '')}">
+        <label>Job name / site</label><input id="njName" placeholder="e.g. Eakring Training Centre">
+        <label>Client</label><input id="njClient" placeholder="e.g. National Grid">
+        <label>Project folder</label>
+        <label class="bopt"><input type="radio" name="njMode" value="create" checked> Make a new folder from the Atomax template in <b id="njParent">${esc(parent || '(choose where your job folders live)')}</b> <button id="njParentPick" type="button">Change…</button></label>
+        <label class="bopt"><input type="radio" name="njMode" value="link"> Use a folder I already have <button id="njLinkPick" type="button">Choose…</button> <span id="njLink" class="bsub"></span></label>
+        <label class="bopt"><input type="radio" name="njMode" value="none"> No folder yet</label>
+        <div class="brow"><button class="bprim" id="njSave">Create job</button><button id="njCancel">Cancel</button></div>
+        <div id="njMsg" class="bsub"></div>
+      </div>`;
+    let link = '';
+    $('#njParentPick').onclick = async () => { const f = await api.mail.pickParent(); if (f) { parent = f; $('#njParent').textContent = f; } };
+    $('#njLinkPick').onclick = async () => { const f = await api.biz.pickFolder(); if (f) { link = f; $('#njLink').textContent = f; m.querySelector('input[value="link"]').checked = true; } };
+    $('#njCancel').onclick = () => { sel = ''; render(); };
+    $('#njSave').onclick = async () => {
+      const mode = m.querySelector('input[name="njMode"]:checked').value;
+      $('#njMsg').textContent = mode === 'create' ? 'Making the folder…' : 'Saving…';
+      try {
+        const r = await api.mail.newJob({ number: $('#njNo').value, name: $('#njName').value, client: $('#njClient').value, mode, folder: mode === 'create' ? parent : link });
+        V = await api.biz.get(); sel = r.id; msg = r.folder ? 'Job created. Folder: ' + r.folder : 'Job created.'; render(); pushToBoard();
+      } catch (e) { $('#njMsg').textContent = e.message; }
+    };
   }
 
   function overview() {
@@ -136,7 +168,7 @@ export function initBoardUI({ office, api, getAgents, openAgent, openBusiness, g
 
   panel.addEventListener('click', (e) => { const b = e.target.closest('button[data-job]'); if (b) { sel = b.dataset.job; msg = ''; render(); } });
   $('#bdBack').addEventListener('click', () => goBack());
-  $('#bdNew').addEventListener('click', () => openBusiness());
+  $('#bdNew').addEventListener('click', () => { sel = '__new'; msg = ''; render(); });
 
   return {
     async show() { panel.classList.add('open'); try { await refresh(); } catch (e) { $('#bdMain').innerHTML = '<div class="bhint">' + esc(e.message) + '</div>'; } },
