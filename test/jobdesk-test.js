@@ -88,8 +88,10 @@ console.log(`\n${ok} passed`);
   const ngd = fs.readFileSync(r2.path, 'utf8'); assert.ok(ngd.includes('NG A0 BORDER') && (ngd.match(/NG A0 ISSUEBOX/g) || []).length >= 2 && ngd.includes('IRONBRIDGE') && ngd.includes('(OPEN)') && ngd.includes('NG Investment No. 100618-205464') && r2.files[0].page === 'A0');
   const cols = (t) => [...t.matchAll(/\r?\n\s*62\r?\n\s*(\d+)/g)].map(x => x[1]);
   const fb = [{ label: 'B', feeders: [{ chain: [{ symbol: 'mccb', label: 'Q1', status: 'new' }, { symbol: 'load', label: 'L', status: 'removal' }] }] }];
-  assert.ok(!cols(fs.readFileSync(m.make({ kind: 'sld', title: 'SLD', boards: fb }, out, 'NP', { border: 'ng' }).path, 'utf8')).some(c => c === '3'), 'no green unless a phase drawing');
-  assert.ok(cols(fs.readFileSync(m.make({ kind: 'sld', title: 'SLD', phase: 1, boards: fb }, out, 'PH', { border: 'ng' }).path, 'utf8')).includes('3'), 'phase drawing coloured');
+  const ents = (p) => { const t = fs.readFileSync(p, 'utf8'); return t.slice(t.lastIndexOf('ENTITIES')); };   // the layer table has its own colours
+  const green = (p) => cols(ents(p)).filter(c => c === '3').length;
+  const plain = green(m.make({ kind: 'sld', title: 'SLD', boards: fb }, out, 'NP', { border: 'ng' }).path), phased = green(m.make({ kind: 'sld', title: 'SLD', phase: 1, boards: fb }, out, 'PH', { border: 'ng' }).path);
+  assert.ok(phased > plain, `phase drawing coloured, plain one black (${plain} / ${phased})`);
   console.log('ok borders by job'); ok++;
 }
 console.log(`${ok} passed (with borders)`);
