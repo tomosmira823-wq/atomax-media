@@ -86,6 +86,10 @@ console.log(`\n${ok} passed`);
   const p2 = biz.saveJob(d, { number: 'X040126', name: 'P', client: 'PBE Group' }); assert.strictEqual(desk.borderFor(p2).key, 'pbe'); desk.setBorder(p2.id, null, 'A1'); assert.strictEqual(desk.borderFor(p2).key, 'pbe-A1');
   const r2 = m.make({ kind: 'sld', title: 'T', revHistory: [{ rev: 'P01', what: 'ISSUED FOR COMMENT' }, { rev: 'P02', what: 'ISSUED FOR COMMENT' }], revision: 'P02', boards: [{ label: 'B', enclosure: 'SWITCHROOM', feeders: [{ chain: [{ symbol: 'mccb', label: 'Q1', state: 'open' }, { symbol: 'cable', label: 'EXISTING CABLE' }, { symbol: 'load', label: 'L', status: 'removal' }] }] }] }, out, 'N', { border: 'ng', fill: { site: 'IRONBRIDGE', ngInvestment: '100618-205464' } });
   const ngd = fs.readFileSync(r2.path, 'utf8'); assert.ok(ngd.includes('NG A0 BORDER') && (ngd.match(/NG A0 ISSUEBOX/g) || []).length >= 2 && ngd.includes('IRONBRIDGE') && ngd.includes('(OPEN)') && ngd.includes('NG Investment No. 100618-205464') && r2.files[0].page === 'A0');
+  const cols = (t) => [...t.matchAll(/\r?\n\s*62\r?\n\s*(\d+)/g)].map(x => x[1]);
+  const fb = [{ label: 'B', feeders: [{ chain: [{ symbol: 'mccb', label: 'Q1', status: 'new' }, { symbol: 'load', label: 'L', status: 'removal' }] }] }];
+  assert.ok(!cols(fs.readFileSync(m.make({ kind: 'sld', title: 'SLD', boards: fb }, out, 'NP', { border: 'ng' }).path, 'utf8')).some(c => c === '3'), 'no green unless a phase drawing');
+  assert.ok(cols(fs.readFileSync(m.make({ kind: 'sld', title: 'SLD', phase: 1, boards: fb }, out, 'PH', { border: 'ng' }).path, 'utf8')).includes('3'), 'phase drawing coloured');
   console.log('ok borders by job'); ok++;
 }
 console.log(`${ok} passed (with borders)`);
