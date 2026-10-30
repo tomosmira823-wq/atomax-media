@@ -82,7 +82,8 @@ console.log(`\n${ok} passed`);
   desk.setBorder(a.id, 'atomax'); assert.strictEqual(desk.borderFor(a).key, 'atomax');
   const m = require('../src/dxfmaker'), out = fs.mkdtempSync(path.join(os.tmpdir(), 'bd-'));
   const r = m.make({ kind: 'sld', title: 'T', boards: [{ label: 'B', feeders: [{ chain: [{ symbol: 'mcb', label: 'Q1' }, { symbol: 'load', label: 'L' }] }] }] }, out, 'G', { border: 'bgen' });
-  assert.ok(fs.readFileSync(r.path, 'utf8').includes('BOULTING A0 BORDER') && r.files[0].page === 'A0');
+  assert.ok(fs.readFileSync(r.path, 'utf8').includes('BGEN A3 BORDER') && r.files[0].page === 'A3', r.files[0].page);
+  const p2 = biz.saveJob(d, { number: 'X040126', name: 'P', client: 'PBE Group' }); assert.strictEqual(desk.borderFor(p2).key, 'pbe'); desk.setBorder(p2.id, null, 'A1'); assert.strictEqual(desk.borderFor(p2).key, 'pbe-A1');
   console.log('ok borders by job'); ok++;
 }
 console.log(`${ok} passed (with borders)`);

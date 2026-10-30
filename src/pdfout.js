@@ -24,7 +24,10 @@ async function toPdf(prims, b, { page = 'A3', title = '' } = {}) {
   }
   for (const p of prims) {
     if (p.t !== 'text' && p.t !== 'mtext') continue;
-    const size = Math.max(2, p.h * s / 0.72), rows = String(p.text).split('\n').map(clean), pitch = p.t === 'mtext' ? p.h * 1.7 * s : 0;
+    const size = Math.max(2, p.h * s / 0.72), pitch = p.t === 'mtext' ? p.h * 1.7 * s : 0;
+    // MTEXT wraps at its width, as AutoCAD does
+    const maxW = p.t === 'mtext' && p.w ? p.w * s : 0, rows = [];
+    for (const line of String(p.text).split('\n').map(clean)) { if (!maxW || font.widthOfTextAtSize(line, size) <= maxW) { rows.push(line); continue; } let cur = ''; for (const w of line.split(' ')) { const t = cur ? cur + ' ' + w : w; if (cur && font.widthOfTextAtSize(t, size) > maxW) { rows.push(cur); cur = w; } else cur = t; } if (cur) rows.push(cur); }
     rows.forEach((row, i) => {
       if (!row) return;
       const w = font.widthOfTextAtSize(row, size);

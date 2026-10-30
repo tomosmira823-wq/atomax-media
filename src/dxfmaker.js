@@ -157,8 +157,8 @@ function layoutSld(spec, opts = {}) {
   if (!boards.length) throw new Error('The drawing has no boards');
   let x0 = 0, minY = 0, maxY = 0, maxX = 0;
   for (const b of boards) { const d = drawBoard(b, x0, 0, prims, true); minY = Math.min(minY, d.minY); maxY = Math.max(maxY, d.maxY); maxX = Math.max(maxX, d.maxX); x0 = d.maxX + 25; }
-  const f = frame(prims, spec, minY, maxY, maxX, '', { fill: opts.fill, border: borderOf(opts.border) });
-  return { prims: f.prims || prims, bounds: f.bounds, sheet: f.sheet };
+  const f = frame(prims, spec, minY, maxY, maxX, '', { fill: opts.fill, borderKey: opts.border });
+  return { prims: f.prims || prims, bounds: f.bounds, sheet: f.sheet, page: f.page, border: f.border };
 }
 
 
@@ -250,22 +250,42 @@ function bcdSheetBody(groups, links, nodes, prims, boxes) {
 // Each border: its geometry (for previews / PDFs; the DXF inserts the real block when the template has it), where the title block values go,
 // the revision rows, and the NOTES / LEGEND / REFERENCE DOCUMENTS column. Drawings go inside at 1:1 (text height 2).
 const readJson = (f) => { try { return JSON.parse(fs.readFileSync(path.join(__dirname, 'cad', f), 'utf8')); } catch { return null; } };
+// The company border families from the DWT templates (ATOMAX_ALL_TEMPLATES / BGEN / PBE_GROUP_BORDERS): A0-A3, each with its title block attributes,
+// revision box, drawing area (the template's viewport), NOTES / REFERENCE DOCUMENTS headings and the CDM box. Blocks are in the DXF template renamed
+// "<COMPANY> <SIZE> BORDER" so one file can hold all three families.
+const FAMILY = {};
+function familyCfg(j) {
+  const colX = j.notes ? j.notes[0] : j.box.x1 + 8, colR = j.geo.x0 + j.geo.w - 6, colW = colR - colX;
+  // the CDM box in the notes column: notes start under it
+  const inCol = (t) => t.x >= colX - 2;
+  const mtLines = (t) => String(t.text).split('\n').reduce((n, l) => n + Math.max(1, Math.ceil(l.length * t.h * 0.9 / Math.max(10, t.w || colW))), 0);   // MTEXT wraps at its width
+  const extraBottom = Math.min(...[...j.extras.texts.filter(inCol).map(t => t.y - (t.t === 'mtext' ? mtLines(t) * t.h * 1.7 : 0)), ...j.extras.prims.filter(p => p.t === 'line' && Math.min(p.x1, p.x2) >= colX - 2).map(p => Math.min(p.y1, p.y2))].filter(Number.isFinite), j.notes ? j.notes[1] - 4 : j.box.y1);
+  return {
+    geo: j.geo, block: j.block, page: j.size, box: j.box, maxScale: 1, textLayer: 'E-020___T-E-Drawing Frame Text', notesLayer: 'Z-903___T-E-Notes Text',
+    attrs: j.attrs, titleWidth: Math.max(30, colW - 6), company: j.company, size: j.size, colX,
+    revbox: { prims: j.rev.prims, texts: j.rev.texts, attrs: j.rev.attrs, block: j.revBlock }, rev: { x0: j.rev.x, y: j.rev.y, pitch: j.rev.h || 8, max: 8 },
+    heads: [...(j.notes ? [['NOTES', j.notes[0], j.notes[1]]] : []), ...(j.refs ? [['REFERENCE DOCUMENTS', j.refs[0], j.refs[1]]] : [])], extras: j.extras,
+    notes: j.notes && { x: colX, tx: colX + 5.9, y: Math.min(j.notes[1] - 6, extraBottom - 6), pitch: 3.35, w: colW, bottom: (j.refs ? j.refs[1] : j.rev.y) + 12 },
+    legendFlow: true, refs: j.refs && { x: colX, y: j.refs[1] - 6, pitch: 3.2, h: 1.75, bottom: j.rev.y + (j.rev.h || 8) * 3 + 4 },
+  };
+}
+for (const c of ['atomax', 'bgen', 'pbe']) { const j = readJson('borders/' + c + '.json'); if (j) for (const k of Object.keys(j)) FAMILY[k] = familyCfg(j[k]); }
+const SIZES = ['A3', 'A2', 'A1', 'A0'];
+// the border for a company: the size asked for, else the smallest sheet the drawing fits at 1:1
+function resolveBorder(company = 'atomax', size = '', W = 0, H = 0) {
+  const fam = (sz) => FAMILY[`${company}-${sz}`] || FAMILY[`atomax-${sz}`];
+  if (size && fam(size)) return fam(size);
+  for (const sz of SIZES) { const B = fam(sz); if (B && W <= B.box.x1 - B.box.x0 - 4 && H <= B.box.y1 - B.box.y0 - 4) return B; }
+  return fam('A0');
+}
 const BORDERS = {
-  atomax: (() => { const g = readJson('border-atomax-a1.json'); return g && {
-    geo: g, block: 'ATOMAX_A1_FRAME', page: 'A1', box: { x0: 24, y0: 24, x1: 730, y1: 572 }, maxScale: 1, textLayer: 'E-020___T-E-Drawing Frame Text', notesLayer: 'Z-903___T-E-Notes Text',
-    attrs: { CLIENT_1: [741.4, 91.9], PROJECT_1: [741.4, 76.9], PROJECT_2: [741.4, 71.9], TITLE1: [741.4, 60.9], TITLE2: [741.4, 55.9], TITLE3: [741.4, 50.9], TITLE4: [741.4, 45.9], DRN: [741.4, 36.9], CHKD: [741.4, 29.9], APRVD: [783.4, 29.9], DATE: [786.3, 36.9], SCALE: [813.4, 36.9], SHT: [797.7, 26.0], SHTX: [807.7, 26.0], DRAWING_NUMBER: [748.5, 17.2, 4], REV: [814.2, 18.0, 3.6, 'center'] },
-    titleWidth: 76, rev: { y: 135.2, pitch: 8, x0: 736.2, x1: 820.2, cols: [736.2, 745.2, 755.2, 797.2, 803.2, 813.2, 820.2], REV: 740.2, DATE: 750.2, DESC: 776.2, DRAWN: 800.2, CHECKED: 808.2, APPROVED: 816.2, h: 2, descH: 1.7, max: 7 },
-    notes: { x: 738.4, tx: 744.3, y: 568.5, pitch: 3.35, w: 76, bottom: 410 }, legend: { x: 744.6, tx: 756.4, y: 398, bottom: 222 }, refs: { x: 738.3, y: 211.7, pitch: 3.2, h: 1.75, bottom: 150 },
-  }; })(),
-  bgen: (() => { const g = readJson('border-bgen-a0.json'); return g && {
-    geo: g, block: 'BOULTING A0 BORDER', page: 'A0', box: { x0: 15, y0: 15, x1: 1060, y1: 806 }, maxScale: 1, textLayer: 'SLD-TEXT', notesLayer: 'SLD-NOTES',
-    attrs: Object.fromEntries(Object.entries(g.attrs).map(([k, a]) => [k, [a.x, a.y, a.h, a.align]])), titleWidth: 84,
-    revbox: g.revbox, rev: { y: 121, pitch: 8, x0: 1070, max: 20 }, notes: { x: 1072, tx: 1072, y: 806, pitch: LINE, w: 80, bottom: 140 },
-  }; })(),
+  atomax: FAMILY['atomax-A1'] || (() => { const g = readJson('border-atomax-a1.json'); return g && { geo: g, block: 'ATOMAX_A1_FRAME', page: 'A1', box: { x0: 24, y0: 24, x1: 730, y1: 572 }, maxScale: 1, textLayer: 'E-020___T-E-Drawing Frame Text', notesLayer: 'Z-903___T-E-Notes Text', attrs: {}, rev: { y: 135.2, pitch: 8, max: 0 } }; })(),
+  bgen: FAMILY['bgen-A1'], pbe: FAMILY['pbe-A1'],
 };
 const BORDER = BORDERS.atomax || BORDERS.bgen;
-const BORDER_NAMES = { atomax: 'Atomax A1', bgen: 'BGEN (Boulting) A0', ng: 'National Grid' };
-const borderOf = (key) => BORDERS[key] || BORDER;
+const BORDER_NAMES = { atomax: 'Atomax', bgen: 'BGEN', pbe: 'PBE Group', ng: 'National Grid' };
+// a border key is a company ('atomax', 'bgen', 'pbe') or company-size ('bgen-A3'); a ready border object passes through
+const borderOf = (key, W, H) => { if (key && key.geo) return key; const [c, sz] = String(key || 'atomax').split('-'); return resolveBorder(FAMILY[`${c}-A1`] ? c : 'atomax', sz || '', W, H); };
 const LEGEND_TEXT = { MCCB: 'MCCB. TEXT: RATING, FRAME', MCB: 'MCB / RCBO. TEXT: RATING, POLES, TYPE', 'SWITCH DISCONNECTOR': 'SWITCH DISCONNECTOR / MAIN SWITCH / ISOLATOR', 'ISOLATOR DISCONNECTOR': 'ISOLATOR', 'FUSED SWITCH DISCONNECTOR': 'FUSED SWITCH DISCONNECTOR', FUSE: 'FUSE', CONTACTOR1: 'CONTACTOR', MOTOR: 'MOTOR', LOAD: 'FINAL CIRCUIT / LOAD', 'HV-LV TRANSFORMER': 'TRANSFORMER' };
 function primsBounds(prims) {
   prims = flatPrims(prims);
@@ -280,8 +300,8 @@ function primsBounds(prims) {
   return { x0, y0, x1, y1 };
 }
 function borderFrame(prims, spec, sheetLabel, opts) {
-  const B = opts.border || BORDER, cb = B.box, f = opts.fill || {};
   const c = primsBounds(prims), W = c.x1 - c.x0, H = c.y1 - c.y0;
+  const B = opts.border && opts.border.geo ? opts.border : borderOf(opts.borderKey || opts.border, W, H), cb = B.box, f = opts.fill || {};
   const k = Math.min(B.maxScale || 1, (cb.x1 - cb.x0) / W, (cb.y1 - cb.y0) / H);   // 1:1 like the Atomax drawings; only reduced if it cannot fit (then said in the notes)
   const dx = cb.x0 + ((cb.x1 - cb.x0) - W * k) / 2 - c.x0 * k, dy = cb.y1 - ((cb.y1 - cb.y0) - H * k) / 2 - c.y1 * k;
   const out = place(prims, dx, dy, k);
@@ -290,16 +310,21 @@ function borderFrame(prims, spec, sheetLabel, opts) {
   const title = wrap(spec.title || f.title || 'DRAWING', B.titleWidth || 76).slice(0, 4), proj = wrap(f.project || '', B.titleWidth || 76);
   const today = (() => { const d = new Date(); return [d.getDate(), d.getMonth() + 1, d.getFullYear()].map((v, i) => String(v).padStart(i < 2 ? 2 : 4, '0')).join('.'); })();
   const val = { DRAWING_NUMBER: spec.drawingNumber || f.drawingNumber || 'TBC', REV: spec.revision || 'P01', TITLE1: title[0] || '', TITLE2: title[1] || '', TITLE3: title[2] || '', TITLE4: title[3] || '', DRN: f.drawn || 'DEX', DATE: f.date || today, SCALE: 'NTS', CHKD: f.checked || '', APRVD: f.approved || '', SHT: f.sht || '1', SHTX: f.shtx || '1', CLIENT_1: f.client || '', CLIENT_2: f.client2 || '', PROJECT_1: proj[0] || '', PROJECT_2: proj[1] || f.project2 || '' };
-  for (const [tag, a] of Object.entries(B.attrs)) if (val[tag]) out.push({ t: 'text', x: a[0], y: a[1], h: tag === 'DRAWING_NUMBER' && String(val[tag]).length > 18 ? Math.min(a[2] || 2, 3.4) : a[2] || 2, text: String(val[tag]).slice(0, 60), align: a[3] || 'left', layer: B.textLayer });
+  // the drawing number is shrunk until it fits between the sheet-size label and the revision box
+  const fitH = (tag, a, v) => { const h = a[2] || 2; if (tag !== 'DRAWING_NUMBER' || !B.colX || a[3] !== 'center') return h; const half = a[0] - (B.colX + 7); return Math.max(2, Math.min(h, (2 * half) / (String(v).length * 0.92))); };
+  if (B.size === 'A3' || B.size === 'A2') val.DATE = val.DATE.replace(/\.(\d{2})(\d{2})$/, '.$2');   // the narrow title blocks take dd.mm.yy
+  if (B.attrs.REV) val.REV = val.REV;
+  for (const [tag, a] of Object.entries(B.attrs)) if (val[tag]) out.push({ t: 'text', x: a[0], y: a[1], h: tag === 'REV' ? Math.min(a[2] || 2, 3.3) : fitH(tag, a, val[tag]), text: String(val[tag]).slice(0, 60), align: a[3] || 'left', layer: B.textLayer });
   // revision rows, oldest at the bottom, each above the last
   const hist = spec.revHistory && spec.revHistory.length ? spec.revHistory : [{ rev: val.REV, what: /^A/i.test(val.REV) ? 'ISSUED FOR COMMENT' : 'PRELIMINARY\nDRAFT FOR CHECKING' }];
   const R = B.rev;
   hist.slice(-(R.max || 7)).forEach((r, i) => {
     const y = R.y + i * R.pitch, desc = String(r.what || '').toUpperCase().split('\n').flatMap(l => wrap(l, 40)).slice(0, 2), by = r.by || 'DEX';
     if (B.revbox) {   // the BGEN revision block
-      const ox = R.x0, oy = R.y + i * R.pitch, rv = { REV: r.rev, DATE: r.date || val.DATE, DESC1: desc[0] || '', DESC2: desc[1] || '', DRAWN: by };
-      for (const p of B.revbox.prims) out.push(moved({ ...p, layer: 'SLD-BORDER' }, ox, oy));
-      for (const [tag, a] of Object.entries(B.revbox.attrs)) if (rv[tag]) out.push({ t: 'text', x: ox + a.x, y: oy + a.y - a.h / 2, h: a.h, text: rv[tag], align: a.align, layer: B.textLayer });
+      const ox = R.x0, oy = R.y + i * R.pitch, rv = { REV: r.rev, DATE: String(r.date || val.DATE).replace(/\.(\d{2})(\d{2})$/, '.$2'), DESC1: desc[0] || '', DESC2: desc[1] || '', DRAWN: by };
+      if (B.revbox.block) out.push({ t: 'insert', name: B.revbox.block, x: ox, y: oy, layer: 'SLD-BORDER', prims: [...B.revbox.prims.map(p => ({ ...p, layer: 'SLD-BORDER' })), ...(B.revbox.texts || []).map(t => ({ ...t, t: t.t === 'mtext' ? 'mtext' : 'text', layer: 'SLD-BORDER' }))] });
+      else for (const p of B.revbox.prims) out.push(moved({ ...p, layer: 'SLD-BORDER' }, ox, oy));
+      for (const [tag, a0] of Object.entries(B.revbox.attrs)) { const a = Array.isArray(a0) ? { x: a0[0], y: a0[1], h: a0[2], align: a0[3] } : a0; if (rv[tag]) out.push({ t: 'text', x: ox + a.x, y: oy + a.y - a.h / 2, h: a.h, text: rv[tag], align: a.align, layer: B.textLayer }); }
       return;
     }
     if (i > 0) { const yt = y + R.pitch / 2, yb = y - R.pitch / 2; out.push(L(R.x0, yt, R.x1, yt, 'SLD-BORDER')); R.cols.forEach(x => out.push(L(x, yb, x, yt, 'SLD-BORDER'))); }   // the frame draws the first row; later rows are added above it
@@ -308,12 +333,17 @@ function borderFrame(prims, spec, sheetLabel, opts) {
     if (desc.length > 1) { tx(R.DESC, desc[0], R.descH, y + 0.95); tx(R.DESC, desc[1], R.descH, y - 2.65); } else tx(R.DESC, desc[0] || '', R.descH);
     tx(R.DRAWN, by); tx(R.CHECKED, r.checked || ''); tx(R.APPROVED, r.approved || '');
   });
+  // the template's own headings and the CDM box (its XXXXX placeholders get the project number and job title)
+  for (const [t, x, y] of (B.heads || [])) out.push({ t: 'text', x, y: y - 2, h: 2.6, text: t, layer: B.notesLayer });
+  if (B.extras) { let n = 0; out.push(...B.extras.prims.map(p => ({ ...p, layer: 'SLD-BORDER' }))); for (const t of B.extras.texts) { const txt = /^X{4,}$/.test(String(t.text).trim()) ? (n++ === 0 ? (f.projectNo || f.project || '').split(' ')[0] : (f.jobTitle || f.project || '').replace(/^\S+\s*/, '')) : t.text; out.push({ ...t, text: txt, layer: B.notesLayer }); } }
   // NOTES, then the LEGEND of the symbols used, then REFERENCE DOCUMENTS
   const N = B.notes, notes = [...(spec.notes || []).map(String).filter(Boolean), ...(k < 1 ? [`DRAWING REDUCED TO ${Math.round(k * 100)}% TO FIT THE SHEET.`] : []), 'DRAFT BY DEX (ATOMAX MEDIA OFFICE) FOR CHECKING.'];
   let ny = N.y;
   notes.forEach((nt, i) => { const ls = wrap(String(nt).toUpperCase(), N.w - (N.tx - N.x)); if (ny - ls.length * N.pitch < N.bottom) return; out.push({ t: 'text', x: N.x, y: ny, h: 2, text: (i + 1) + '.', layer: B.notesLayer }); ls.forEach(l => { out.push({ t: 'text', x: N.tx, y: ny, h: 2, text: l, layer: B.notesLayer }); ny -= N.pitch; }); ny -= 1.6; });
-  if (B.legend) {
-    const used = [...new Set(prims.filter(p => p.t === 'insert' && LEGEND_TEXT[p.name]).map(p => p.name))], Lg = B.legend; let ly = Lg.y;
+  if (B.legend || B.legendFlow) {
+    const Lg = B.legend || { x: N.x + 6.6, tx: N.x + 18.4, y: ny - 6, bottom: N.bottom };
+    if (B.legendFlow) out.push({ t: 'text', x: N.x, y: ny - 2, h: 2.6, text: 'LEGEND', layer: B.notesLayer }), Lg.y = ny - 8;
+    const used = [...new Set(prims.filter(p => p.t === 'insert' && LEGEND_TEXT[p.name]).map(p => p.name))]; let ly = Lg.y;
     for (const name of used) { const hs = HOUSE[name]; if (!hs || ly - 18 < Lg.bottom) continue; out.push({ t: 'insert', name, x: Lg.x, y: ly, k: 0.6, layer: 'SLD-SYMBOL', prims: hs.prims }); wrap(LEGEND_TEXT[name], 60).forEach((l, j) => out.push({ t: 'text', x: Lg.tx, y: ly - 7.8 - j * 3.4, h: 2, text: l, layer: B.notesLayer })); ly -= Math.max(19, -hs.bbox[1] * 0.6 + 4); }
     const extra = [...(prims.some(p => p.layer === 'SLD-BUS') ? [['bus', 'LV BUSBAR']] : []), ...(prims.some(p => p.layer === 'BCD-CABLEBOX') ? [['box', 'CABLE: NUMBER, CORES x SIZE, TYPE']] : []), ...(spec.legend || []).map(t => ['', String(t)])];
     for (const [kind, t] of extra) { if (ly - 6 < Lg.bottom) break; if (kind === 'bus') out.push({ ...P([[Lg.x - 6, ly - 2], [Lg.x + 6, ly - 2]], false, 'SLD-BUS', 0.8) }); if (kind === 'box') out.push(P([[Lg.x - 6, ly - 4], [Lg.x + 6, ly - 4], [Lg.x + 6, ly], [Lg.x - 6, ly]], true, 'BCD-CABLEBOX')); out.push({ t: 'text', x: Lg.tx, y: ly - 3, h: 2, text: t.toUpperCase(), layer: B.notesLayer }); ly -= 6; }
@@ -321,7 +351,7 @@ function borderFrame(prims, spec, sheetLabel, opts) {
   if (B.refs) { let ry = B.refs.y; for (const r of (spec.references || []).map(String).filter(Boolean)) { if (ry < B.refs.bottom) break; out.push({ t: 'text', x: B.refs.x, y: ry, h: B.refs.h, text: r.toUpperCase().slice(0, 70), layer: B.notesLayer }); ry -= B.refs.pitch; } }
   if (sheetLabel && !B.attrs.SHT) out.push({ t: 'text', x: 1112, y: 128 + hist.length * 8, h: TH, text: sheetLabel, align: 'center', layer: B.textLayer });
   const g = B.geo;
-  return { prims: out, bounds: { x0: g.x0 - 2, y0: g.y0 - 2, x1: g.x0 + g.w + 2, y1: g.y0 + g.h + 2 }, sheet: B.page, page: B.page, content: cb };
+  return { prims: out, bounds: { x0: g.x0 - 2, y0: g.y0 - 2, x1: g.x0 + g.w + 2, y1: g.y0 + g.h + 2 }, sheet: B.page, page: B.page, content: cb, border: `${B.company || ''} ${B.page}`.trim() };
 }
 function frame(prims, spec, minY, maxY, maxX, sheetLabel, opts = {}) {
   if (BORDER && !opts.noTitle && !opts.ownBorder) { const r = borderFrame(prims, spec, sheetLabel, opts); prims.length = 0; prims.push(...r.prims); return r; }
@@ -365,7 +395,7 @@ function layoutBcd(spec, opts = {}) {
   BSTYLE = { ng: spec.style === 'ng' || spec.style === 'national-grid' };
   const { groups: raw, links } = bcdGroups(model);
   // a JB with more devices than a sheet holds carries on to the next sheet ("CONT.")
-  const SHEET_ROWS = sheetRows(opts.noTitle ? null : borderOf(opts.border));
+  const SHEET_ROWS = sheetRows(opts.noTitle ? null : borderOf(String(opts.border || 'atomax').includes('-') ? opts.border : `${opts.border || 'atomax'}-A1`));
   const groups = raw.flatMap(g => { if (g.down.length <= SHEET_ROWS) return [g]; const out = []; for (let i = 0; i < g.down.length; i += SHEET_ROWS) out.push({ ...g, jb: g.jb && i ? { ...g.jb, label: (g.jb.label ? g.jb.label + ' ' : '') + '(CONT.)' } : g.jb, up: i ? [] : g.up, down: g.down.slice(i, i + SHEET_ROWS) }); return out; });
   // split the groups over sheets (a JB never splits across sheets)
   const sheets = []; let cur = [], rows = 0;
@@ -387,8 +417,8 @@ function layoutBcd(spec, opts = {}) {
     const clash = cableClashes(prims); if (clash.length) throw new Error('BCD layout has cables that overlap or cross (' + clash.slice(0, 3).join('; ') + '). Not saved.');
     const label = sheets.length > 1 ? `SHEET ${i + 1} OF ${sheets.length}` : '';
     if (sheets.length > 1 && i < sheets.length - 1) prims.push({ t: 'mtext', x: BCD_X.device, y: body.minY - 2, w: 80, h: TH, text: `CONTINUED ON SHEET ${i + 2}`, attach: 1, layer: 'BCD-TEXT' });
-    const f = frame(prims, spec, body.minY - 8, 10, body.maxX, label, { fixed: true, noTitle: !!opts.noTitle, border: borderOf(opts.border), fill: { ...(opts.fill || {}), sht: String(i + 1), shtx: String(sheets.length) } });
-    return { prims, bounds: f.bounds, content: f.content, sheet: f.sheet, label, boxes, cables: [...gs.flatMap(g => [...g.up, ...g.down.map(d => d.c)]), ...(i === sheets.length - 1 ? links : [])].map(c => String(c.no || '')) };
+    const f = frame(prims, spec, body.minY - 8, 10, body.maxX, label, { fixed: true, noTitle: !!opts.noTitle, border: borderOf(String(opts.border || 'atomax').includes('-') ? opts.border : `${opts.border || 'atomax'}-A1`), fill: { ...(opts.fill || {}), sht: String(i + 1), shtx: String(sheets.length) } });
+    return { prims, bounds: f.bounds, content: f.content, sheet: f.sheet, page: f.page, border: f.border, label, boxes, cables: [...gs.flatMap(g => [...g.up, ...g.down.map(d => d.c)]), ...(i === sheets.length - 1 ? links : [])].map(c => String(c.no || '')) };
   });
 }
 // revision clouds round the cable boxes that changed, with the revision triangle beside them
@@ -570,7 +600,7 @@ function make(spec, outDir, baseName, opts = {}) {
     const dxf = writeDxf(prims, bounds, { template: opts.template, fill: { title: spec.title || '', drawingNumber: spec.drawingNumber || 'TBC', revision: spec.revision || 'P1', date: new Date().toISOString().slice(0, 10), sheet: sh.label || '', drawn: 'Dex' } });
     const file = uniquePath(outDir, `${stem}${sheets.length > 1 ? '_SH' + (i + 1) : ''}_DRAFT`, '.dxf');
     fs.writeFileSync(file, dxf, 'utf8');
-    files.push({ path: file, svg: toSvg(prims, bounds), entities: prims.length, label: sh.label, cables: sh.cables || [], prims, bounds, page: sh.page || (opts.template ? 'A3' : borderOf(opts.border).page || 'A3') });
+    files.push({ path: file, svg: toSvg(prims, bounds), entities: prims.length, label: sh.label, cables: sh.cables || [], prims, bounds, page: sh.page || (opts.template ? 'A3' : 'A1'), border: sh.border || '' });
   });
   // the spec is kept next to the drawing so the next revision can be compared with it
   try { fs.writeFileSync(files[0].path.replace(/\.dxf$/i, '.spec.json'), JSON.stringify(spec, null, 1)); } catch {}

@@ -198,7 +198,7 @@ function nextJobNumber(known = [], jobsFolder = '') {
 }
 // make a project folder for a new job: a copy of the Atomax Template Project Directory (folders and template files, the XXXXXXXX
 // placeholders in file names become the job number); without the template to hand, the same folders empty
-const SKIP_COPY = /-DESKTOP-[A-Z0-9]+\.|\.bak$|^~\$|^thumbs\.db$|^desktop\.ini$/i;
+const SKIP_COPY = /-DESKTOP-[A-Z0-9]+\.|\.bak$|^~\$|^thumbs\.db$|^desktop\.ini$|^_DXF FOR CLAUDE/i;
 function copyTemplate(src, dst, number) {
   fs.mkdirSync(dst, { recursive: true });
   for (const e of fs.readdirSync(src, { withFileTypes: true })) {

@@ -14,7 +14,7 @@ export async function renderJobDesk(api, el, job, { getAgents } = {}) {
 
   const regBody = `<div class="jdrow"><label>Project ref <input value="${esc(V.project)}" disabled style="width:100px"></label><label>Area code <input id="jdArea" value="${esc(V.area)}" placeholder="e.g. MLT" style="width:70px"></label>
       <label>Discipline <select id="jdDisc"><option value="06" ${V.disc !== '05' ? 'selected' : ''}>06 Electrical</option><option value="05" ${V.disc === '05' ? 'selected' : ''}>05 Instrumentation / combined E&I</option></select></label><button id="jdNum">Save</button></div>
-    <div class="jdrow"><label>Drawing border <select id="jdBorder">${[['auto', 'Automatic (by client)'], ['atomax', 'Atomax A1'], ['bgen', 'BGEN'], ['ng', 'National Grid'], ['client', 'Client title block from the File Room']].map(([k, t]) => `<option value="${k}" ${V.border === k ? 'selected' : ''}>${t}</option>`).join('')}</select></label><span class="bsub">Drawings use: <b>${esc(V.borderUsed)}</b></span></div>
+    <div class="jdrow"><label>Drawing border <select id="jdBorder">${[['auto', 'Automatic (by client)'], ['atomax', 'Atomax'], ['bgen', 'BGEN'], ['pbe', 'PBE Group'], ['ng', 'National Grid'], ['client', 'Client title block from the File Room']].map(([k, t]) => `<option value="${k}" ${V.border === k ? 'selected' : ''}>${t}</option>`).join('')}</select></label><label>Sheet <select id="jdSize">${[['', 'Size to fit'], ['A3', 'A3'], ['A2', 'A2'], ['A1', 'A1'], ['A0', 'A0']].map(([k, t]) => `<option value="${k}" ${(V.sheetSize || '') === k ? 'selected' : ''}>${t}</option>`).join('')}</select></label><span class="bsub">Drawings use: <b>${esc(V.borderUsed)}</b></span></div>
     ${V.borderWarning ? `<div class="err">${esc(V.borderWarning)}</div>` : ''}
     <div class="bsub">Numbers follow QS 006: ${esc(V.project)}-${esc(V.area || 'AREA')}-${esc(V.disc || '06')}-type-0001 (70 SLD, 71 BCD, 72 interconnection, 73 cable routing, 74 earthing, 23 schedules).</div>
     <div class="jdrow">${V.registerFile ? `Register: <span class="bp">${esc(base(V.registerFile))}</span> <button data-show="${esc(V.registerFile)}">Show</button>` : V.registerChecked ? 'No drawing register found in the job folder.' : 'Register not checked yet.'}
@@ -65,6 +65,7 @@ export async function renderJobDesk(api, el, job, { getAgents } = {}) {
   el.querySelectorAll('details.jd').forEach(d => d.addEventListener('toggle', () => { open[d.dataset.sec] = d.open; }));
   el.querySelectorAll('[data-show]').forEach(b => b.onclick = () => api.desk.show({ p: b.dataset.show }));
   $('#jdBorder').onchange = (e) => run(null, () => api.desk.border({ jobId: job.id, key: e.target.value }));
+  $('#jdSize').onchange = (e) => run(null, () => api.desk.border({ jobId: job.id, size: e.target.value }));
   $('#jdNum').onclick = (e) => run(e.target, () => api.desk.numbering({ jobId: job.id, area: $('#jdArea').value, disc: $('#jdDisc').value }));
   $('#jdReg').onclick = (e) => run(e.target, () => api.desk.checkRegister({ jobId: job.id }));
   $('#jdMkReg').onclick = (e) => run(e.target, async () => { const r = await api.desk.makeRegister({ jobId: job.id }); api.desk.show({ p: r.path }); });
