@@ -327,6 +327,14 @@ EARTHING tasks: size every protective / earth conductor the drawing needs (MET t
     // the PDFs in the project folder that look relevant (an existing SLD, a schedule), and the email's screenshots / PDFs
     const pdfs = job ? BIZ.projects.relevantFiles(job.id, request, { exts: ['.pdf'], max: 3 }) : [];
     for (const p of pdfs) { try { content.push({ type: 'text', text: 'Project file: ' + path.basename(p) }); content.push(checker.contentBlock('pdf', p, fs.readFileSync(p))); } catch {} }
+    // the job's spreadsheets: a BCD or SLD is usually drawn from the cable schedule / load schedule / IO list (files named by their QS 006 number are found by type code and sheet names)
+    const sheetsRead = [];
+    if (job && /bcd|sld|block|single.?line|cable|earthing/i.test(request + ' ' + kind)) {
+      const want = kind === 'bcd' ? 'cable schedule instrument index io list tag list' : kind === 'earthing' ? 'earthing conductors cable schedule' : 'cable schedule load schedule protection settings';
+      for (const p of BIZ.projects.relevantFiles(job.id, request + ' ' + want, { exts: ['.xlsx', '.xlsm', '.csv'], max: 3 }).filter(p => !/register/i.test(path.basename(p)))) {
+        try { const b = fs.readFileSync(p); content.push({ type: 'text', text: `PROJECT WORKBOOK ${path.basename(p)} (copy cable numbers, from / to, cores, sizes and types exactly as written; TBC stays TBC):\n` + checker.sheetsAsText(/\.csv$/i.test(p) ? [{ name: 'csv', rows: checker.readCsv(b.toString('utf8')) }] : checker.readXlsx(b), 40000) }); sheetsRead.push(path.basename(p)); } catch {}
+      }
+    }
     const em = emailId && load().find(x => x.id === emailId);
     if (em) for (const a of em.attachments.slice(0, 3)) { try { const buf = fs.readFileSync(path.join(DIR(), em.id, a.name)); content.push({ type: 'text', text: 'From the email: ' + a.name }); content.push(checker.contentBlock(a.mime === 'application/pdf' ? 'pdf' : 'image', a.name, buf)); } catch {} }
     // the engineer's technical notes for this job (conductor sizes, electrode design): Dex draws from these instead of TBC
@@ -338,7 +346,7 @@ EARTHING tasks: size every protective / earth conductor the drawing needs (MET t
     if (r.stop === 'max_tokens') r = await claudeFull({ system: system + '\nKeep labels short (four lines at most) and give a feeder label only when it adds something the end item label does not say.', who: 'dex', skills: false, maxTokens: 24000, messages: [{ role: 'user', content }] });
     const text = r.text, cutOff = r.stop === 'max_tokens';
     const spec = dxfmaker.parseReply(text);
-    if (spec.questions && spec.questions.length && !answers.length) return { questions: spec.questions.slice(0, 4).map(String), read: [...pdfs.map(p => path.basename(p)), ...notesRead], skills: used };
+    if (spec.questions && spec.questions.length && !answers.length) return { questions: spec.questions.slice(0, 4).map(String), read: [...pdfs.map(p => path.basename(p)), ...sheetsRead, ...notesRead], skills: used };
     if (kind === 'bcd' || (Array.isArray(spec.cables) && spec.cables.length && !spec.boards)) spec.kind = 'bcd';
     // National Grid jobs and LVAC block diagrams use the National Grid style (filled energised / de-energised blocks, coloured cable runs, legend)
     if (spec.kind === 'bcd' && !spec.style && (/national grid|\bNGET?\b|\blvac\b/i.test(request) || (job && /national grid/i.test(job.client || '')))) spec.style = 'ng';
@@ -383,7 +391,7 @@ EARTHING tasks: size every protective / earth conductor the drawing needs (MET t
     // every DXF gets its monochrome PDF beside it (issues go out as DXF and PDF)
     let madePdfs = []; try { madePdfs = await require('./pdfout').writePdfs(res); } catch (e) { (res.files || []).forEach(f => delete f.prims); }
     BIZ.log({ who: 'Dex', action: 'Drew', jobId: job ? job.id : '', detail: `${path.basename(res.path)} · ${spec.summary || spec.title || 'SLD'}${used.length ? ' · skills: ' + used.join(', ') : ' · no skills'}` });
-    return { border: bd.name, borderWarning: bd.warning || '', pdfs: madePdfs, masterCheck, sheets: (res.files || []).map(f => ({ path: f.path, pdf: f.pdf || '', label: f.label })), diff: res.diff, revision: spec.revision, previousFound: !!previous, titleBlock: template ? path.basename(template) : '', drawingNumber: spec.drawingNumber, skills: used, incomplete: cutOff, path: res.path, folder: outDir, svg: res.svg, summary: spec.summary || '', title: spec.title || '', notes: spec.notes || [], read: [...pdfs.map(p => path.basename(p)), ...notesRead], inJobFolder: !!(job && job.folder) };
+    return { border: bd.name, borderWarning: bd.warning || '', pdfs: madePdfs, masterCheck, sheets: (res.files || []).map(f => ({ path: f.path, pdf: f.pdf || '', label: f.label })), diff: res.diff, revision: spec.revision, previousFound: !!previous, titleBlock: template ? path.basename(template) : '', drawingNumber: spec.drawingNumber, skills: used, incomplete: cutOff, path: res.path, folder: outDir, svg: res.svg, summary: spec.summary || '', title: spec.title || '', notes: spec.notes || [], read: [...pdfs.map(p => path.basename(p)), ...sheetsRead, ...notesRead], inJobFolder: !!(job && job.folder) };
   }));
 }
 
