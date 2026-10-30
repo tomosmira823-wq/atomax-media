@@ -412,7 +412,7 @@ ipcMain.handle('check:run', async (_e, { agent, schedule, drawings, note, jobId 
     });
     // marked-up copies of the drawings that have findings; originals are never touched
     progress({ message: 'marking up the drawings', stage: 'markup' });
-    try { report.markups = await markup.makeMarkups({ report, drawings, fallbackDir: (jobId && BIZ.outputDirFor(jobId, 'markups')) || path.join(USER_DIR(), 'drawing-checks') }); }
+    try { report.markups = await markup.makeMarkups({ report, drawings, fallbackDir: (jobId && BIZ.outputDirFor(jobId, 'markups') && path.dirname(BIZ.outputDirFor(jobId, 'markups'))) || path.join(USER_DIR(), 'drawing-checks') }); }
     catch (e) { report.markups = { dir: '', made: [], failed: [{ name: '(all)', reason: String(e.message || e).slice(0, 160) }], untouched: 0 }; }
     const mk = report.markups;
     report.text += '\n\nMARKED-UP COPIES (originals untouched)\n' + ((mk.made.length || mk.notes) ? `  - Saved ${mk.made.length + (mk.notes ? 1 : 0)} file${mk.made.length + (mk.notes ? 1 : 0) === 1 ? '' : 's'} in ${mk.dir}\n` + mk.made.map(m => `  - ${path.basename(m.out)} (${m.notes} note${m.notes === 1 ? '' : 's'})`).join('\n') + (mk.notes ? `\n  - ${path.basename(mk.notes.out)} (${mk.notes.count} schedule-level note${mk.notes.count === 1 ? '' : 's'} that cannot sit on a drawing)` : '') : '  - None made (nothing to mark on the drawings, or they could not be marked up).') + (mk.failed.length ? '\n' + mk.failed.map(f => `  - Could not mark up ${f.name}: ${f.reason}`).join('\n') : '') + `\n  - ${mk.untouched} file${mk.untouched === 1 ? ' has' : 's have'} nothing to mark.`;

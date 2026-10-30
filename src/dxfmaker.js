@@ -41,7 +41,8 @@ const SYMBOLS = {
 const ALIASES = { mcb: 'breaker', mccb: 'breaker', acb: 'breaker', cb: 'breaker', vcb: 'breaker', rcbo: 'breaker', 'circuit breaker': 'breaker', switch: 'isolator', disconnector: 'isolator', 'switch disconnector': 'isolator', 'fuse switch': 'switchfuse', 'fused switch': 'switchfuse', tx: 'transformer', 'current transformer': 'ct', kwh: 'meter', 'distribution board': 'board', db: 'board', panel: 'board', mcc: 'board', dno: 'supply', incomer: 'supply', 'mains supply': 'supply', gen: 'generator', genset: 'generator', 'diesel generator': 'generator', conductor: 'line', rod: 'electrode', 'earth rod': 'electrode', 'earth electrode': 'electrode', 'test link': 'link', 'disconnecting link': 'link', 'earth link': 'link', mesh: 'grid', 'earth mesh': 'grid', 'earth mat': 'grid', 'earth grid': 'grid', equipment: 'board', inverter: 'board', switchgear: 'board', 'earth conductor': 'cable', bond: 'cable' };
 // Atomax / BGEN house symbols, taken from the SLD symbol template (Template_MCCB.dxf): top terminal at (0,0), drawn downwards, at the template's own scale (text height 2)
 const HOUSE = (() => { try { return JSON.parse(fs.readFileSync(path.join(__dirname, 'cad', 'symbols-sld.json'), 'utf8')); } catch { return {}; } })();
-const house = (name, extra = {}) => () => { const s = HOUSE[name]; return { len: -s.bbox[1], w: Math.max(2, s.bbox[2]), prims: s.prims.map(p => ({ ...p, layer: 'SLD-SYMBOL' })), ...extra, prims2: undefined, ...(extra.text ? { prims: [...s.prims.map(p => ({ ...p, layer: 'SLD-SYMBOL' })), T(0, s.bbox[1] / 2 - 0.9, extra.text, 3)] } : {}) }; };
+// each house symbol is written as an INSERT of the real block (the block definitions are in the Atomax DXF template); previews draw the same geometry
+const house = (name, extra = {}) => () => { const s = HOUSE[name]; const ins = { t: 'insert', name, x: 0, y: 0, layer: 'SLD-SYMBOL', prims: s.prims }; return { len: -s.bbox[1], w: Math.max(2, s.bbox[2]), house: name, ...extra, prims: extra.text ? [ins, T(0, s.bbox[1] / 2 - 0.9, extra.text, 3)] : [ins] }; };
 if (HOUSE.MCCB) Object.assign(SYMBOLS, {
   breaker: house('MCCB'), mcb: house('MCB'), isolator: house('ISOLATOR DISCONNECTOR'), switch: house('SWITCH DISCONNECTOR'), switchfuse: house('FUSED SWITCH DISCONNECTOR'),
   fuse: house('FUSE'), contactor: house('CONTACTOR1'), motor: house('MOTOR', { end: true, text: 'M' }), load: house('LOAD', { end: true }), transformer: house('HV-LV TRANSFORMER'),
@@ -51,7 +52,7 @@ const symbolOf = (name) => { const n = String(name || '').toLowerCase().trim(); 
 
 const moved = (p, dx, dy) => {
   if (p.t === 'line') return { ...p, x1: p.x1 + dx, y1: p.y1 + dy, x2: p.x2 + dx, y2: p.y2 + dy };
-  if (p.pts) return { ...p, pts: p.pts.map(([x, y]) => [x + dx, y + dy]) };
+  if (p.pts) return { ...p, pts: p.pts.map(([x, y]) => [x + dx, y + dy]), ...(p.rings ? { rings: p.rings.map(r => r.map(([x, y]) => [x + dx, y + dy])) } : {}) };
   return { ...p, x: p.x + dx, y: p.y + dy };
 };
 const lines = (s) => String(s || '').split(/\r?\n|\\n/).map(x => x.trim()).filter(Boolean);
@@ -69,9 +70,12 @@ function drawChain(chain, x, y) {
     const sym = SYMBOLS[symbolOf(item.symbol)]();
     const label = wrap(item.label, sym.inside ? 16 : LABEL_W);
     const need = sym.inside ? 0 : label.length * LINE + 2.8;
+    if (sym.inside && label.length > 2) {   // a board name over two lines: the box grows to hold it
+      const bh = label.length * LINE + 3; sym.prims = [L(0, 0, 0, -2), P([[-9, -2], [9, -2], [9, -2 - bh], [-9, -2 - bh]], true)]; sym.len = 2 + bh;
+    }
     sym.prims.forEach(p => prims.push(moved(p, x, y)));
     if (label.length) {
-      if (sym.inside) prims.push({ t: 'mtext', x: x, y: y - 6, w: 17, h: TH, text: label.join('\n'), attach: 5, layer: 'SLD-TEXT' });
+      if (sym.inside) prims.push({ t: 'mtext', x: x, y: y - 2 - (sym.len - 2) / 2, w: 17, h: TH, text: label.join('\n'), attach: 5, layer: 'SLD-TEXT' });
       else prims.push({ t: 'mtext', x: x + sym.w + 2, y: y - 1.8, w: LABEL_W, h: TH, text: label.join('\n'), attach: 1, layer: 'SLD-TEXT' });
     }
     y -= sym.len;
@@ -242,8 +246,27 @@ function bcdSheetBody(groups, links, nodes, prims, boxes) {
 }
 // sheet frame: our own border + title block, unless the client's title block is used (then only the content is placed)
 // ---------- the drawing border: the BGEN / Atomax A0 border and title block (from the template), drawings placed inside it at 1:1 (text height 2) ----------
-const BORDER = (() => { try { return JSON.parse(fs.readFileSync(path.join(__dirname, 'cad', 'border-bgen-a0.json'), 'utf8')); } catch { return null; } })();
+// Drawing borders. Atomax A1 (from X191026-0000-06-70-0030, the frame block ATOMAX_A1_FRAME) is the default; the BGEN/Boulting A0 one is kept for clients that use it.
+// Each border: its geometry (for previews / PDFs; the DXF inserts the real block when the template has it), where the title block values go,
+// the revision rows, and the NOTES / LEGEND / REFERENCE DOCUMENTS column. Drawings go inside at 1:1 (text height 2).
+const readJson = (f) => { try { return JSON.parse(fs.readFileSync(path.join(__dirname, 'cad', f), 'utf8')); } catch { return null; } };
+const BORDERS = {
+  atomax: (() => { const g = readJson('border-atomax-a1.json'); return g && {
+    geo: g, block: 'ATOMAX_A1_FRAME', page: 'A1', box: { x0: 24, y0: 24, x1: 730, y1: 572 }, maxScale: 1, textLayer: 'E-020___T-E-Drawing Frame Text', notesLayer: 'Z-903___T-E-Notes Text',
+    attrs: { CLIENT_1: [741.4, 91.9], PROJECT_1: [741.4, 76.9], PROJECT_2: [741.4, 71.9], TITLE1: [741.4, 60.9], TITLE2: [741.4, 55.9], TITLE3: [741.4, 50.9], TITLE4: [741.4, 45.9], DRN: [741.4, 36.9], CHKD: [741.4, 29.9], APRVD: [783.4, 29.9], DATE: [786.3, 36.9], SCALE: [813.4, 36.9], SHT: [797.7, 26.0], SHTX: [807.7, 26.0], DRAWING_NUMBER: [748.5, 17.2, 4], REV: [814.2, 18.0, 3.6, 'center'] },
+    titleWidth: 76, rev: { y: 135.2, pitch: 8, x0: 736.2, x1: 820.2, cols: [736.2, 745.2, 755.2, 797.2, 803.2, 813.2, 820.2], REV: 740.2, DATE: 750.2, DESC: 776.2, DRAWN: 800.2, CHECKED: 808.2, APPROVED: 816.2, h: 2, descH: 1.7, max: 7 },
+    notes: { x: 738.4, tx: 744.3, y: 568.5, pitch: 3.35, w: 76, bottom: 410 }, legend: { x: 744.6, tx: 756.4, y: 398, bottom: 222 }, refs: { x: 738.3, y: 211.7, pitch: 3.2, h: 1.75, bottom: 150 },
+  }; })(),
+  bgen: (() => { const g = readJson('border-bgen-a0.json'); return g && {
+    geo: g, block: '', page: 'A0', box: { x0: 15, y0: 15, x1: 1060, y1: 806 }, maxScale: 1, textLayer: 'SLD-TEXT', notesLayer: 'SLD-NOTES',
+    attrs: Object.fromEntries(Object.entries(g.attrs).map(([k, a]) => [k, [a.x, a.y, a.h, a.align]])), titleWidth: 84,
+    revbox: g.revbox, rev: { y: 121, pitch: 8, x0: 1070, max: 20 }, notes: { x: 1072, tx: 1072, y: 806, pitch: LINE, w: 80, bottom: 140 },
+  }; })(),
+};
+const BORDER = BORDERS.atomax || BORDERS.bgen;
+const LEGEND_TEXT = { MCCB: 'MCCB. TEXT: RATING, FRAME', MCB: 'MCB / RCBO. TEXT: RATING, POLES, TYPE', 'SWITCH DISCONNECTOR': 'SWITCH DISCONNECTOR / MAIN SWITCH / ISOLATOR', 'ISOLATOR DISCONNECTOR': 'ISOLATOR', 'FUSED SWITCH DISCONNECTOR': 'FUSED SWITCH DISCONNECTOR', FUSE: 'FUSE', CONTACTOR1: 'CONTACTOR', MOTOR: 'MOTOR', LOAD: 'FINAL CIRCUIT / LOAD', 'HV-LV TRANSFORMER': 'TRANSFORMER' };
 function primsBounds(prims) {
+  prims = flatPrims(prims);
   let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity; const add = (x, y) => { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; };
   for (const p of prims) {
     if (p.t === 'line') { add(p.x1, p.y1); add(p.x2, p.y2); }
@@ -255,31 +278,48 @@ function primsBounds(prims) {
   return { x0, y0, x1, y1 };
 }
 function borderFrame(prims, spec, sheetLabel, opts) {
-  const B = BORDER, cb = { x0: 15, y0: 15, x1: 1060, y1: 806 }, notesBox = { x0: 1072, x1: 1152, y1: 806 };
+  const B = opts.border || BORDER, cb = B.box, f = opts.fill || {};
   const c = primsBounds(prims), W = c.x1 - c.x0, H = c.y1 - c.y0;
-  // scaled to fill the sheet (text never below height 2; up to 4x so a small drawing still reads when the A0 sheet is printed at A3), centred in the drawing area
-  const k = Math.min(4, (cb.x1 - cb.x0) / W, (cb.y1 - cb.y0) / H);
+  const k = Math.min(B.maxScale || 1, (cb.x1 - cb.x0) / W, (cb.y1 - cb.y0) / H);   // 1:1 like the Atomax drawings; only reduced if it cannot fit (then said in the notes)
   const dx = cb.x0 + ((cb.x1 - cb.x0) - W * k) / 2 - c.x0 * k, dy = cb.y1 - ((cb.y1 - cb.y0) - H * k) / 2 - c.y1 * k;
-  const placed = place(prims, dx, dy, k);
-  const out = [...placed];
-  for (const p of B.prims) out.push({ ...p, layer: 'SLD-BORDER' });
-  for (const t of B.texts) out.push(t.t === 'mtext' ? { ...t, layer: 'SLD-BORDER' } : { t: 'text', x: t.x, y: t.y, h: t.h, text: t.text, align: t.align, rot: t.rot || 0, layer: 'SLD-BORDER' });
-  const f = opts.fill || {}, title = wrap(spec.title || f.title || 'DRAWING', 84).slice(0, 4);
-  const val = { DRAWING_NUMBER: spec.drawingNumber || f.drawingNumber || 'TBC', REV: spec.revision || 'P1', TITLE1: title[0] || '', TITLE2: title[1] || '', TITLE3: title[2] || '', TITLE4: title[3] || '', DRN: f.drawn || 'DEX', DATE: f.date || (() => { const d = new Date(); return [d.getDate(), d.getMonth() + 1, d.getFullYear() % 100].map(v => String(v).padStart(2, '0')).join('.'); })(), SCALE: 'NTS', CHKD: f.checked || '', APRVD: f.approved || '', SHT: f.sht || '1', SHTX: f.shtx || '1', CLIENT_1: f.client || '', CLIENT_2: f.client2 || '', PROJECT_1: f.project || '', PROJECT_2: f.project2 || '' };
-  for (const [tag, a] of Object.entries(B.attrs)) if (val[tag]) out.push({ t: 'text', x: a.x, y: a.y, h: tag === 'DRAWING_NUMBER' && String(val[tag]).length > 16 ? 3 : a.h, text: String(val[tag]).slice(0, 60), align: a.align, layer: 'SLD-TEXT' });
-  // revision rows above the title block, oldest at the bottom
-  const hist = spec.revHistory && spec.revHistory.length ? spec.revHistory : [{ rev: val.REV, what: spec.revision && /^A/i.test(spec.revision) ? 'ISSUED FOR COMMENT' : 'DRAFT FOR CHECKING' }];
-  if (B.revbox) hist.slice(-20).forEach((r, i) => {
-    const d = wrap(String(r.what || '').toUpperCase(), 40), oy = 121 + i * 8, ox = 1070, rv = { REV: r.rev, DATE: r.date || val.DATE, DESC1: d[0] || '', DESC2: d[1] || '', DRAWN: r.by || 'DEX', CHECKED: '', APPROVED: '' };
-    for (const p of B.revbox.prims) out.push(moved({ ...p, layer: 'SLD-BORDER' }, ox, oy));
-    for (const [tag, a] of Object.entries(B.revbox.attrs)) if (rv[tag]) out.push({ t: 'text', x: ox + a.x, y: oy + a.y - a.h / 2, h: a.h, text: rv[tag], align: a.align, layer: 'SLD-TEXT' });
+  const out = place(prims, dx, dy, k);
+  // the frame: the real block in the DXF, its geometry in previews
+  out.push({ t: 'insert', name: B.block || '__border', x: 0, y: 0, layer: 'SLD-BORDER', prims: [...B.geo.prims.map(p => ({ ...p, layer: 'SLD-BORDER' })), ...B.geo.texts.map(t => t.t === 'mtext' ? { ...t, layer: 'SLD-BORDER' } : { t: 'text', x: t.x, y: t.y, h: t.h, text: t.text, align: t.align, rot: t.rot || 0, layer: 'SLD-BORDER' })] });
+  const title = wrap(spec.title || f.title || 'DRAWING', B.titleWidth || 76).slice(0, 4), proj = wrap(f.project || '', B.titleWidth || 76);
+  const today = (() => { const d = new Date(); return [d.getDate(), d.getMonth() + 1, d.getFullYear()].map((v, i) => String(v).padStart(i < 2 ? 2 : 4, '0')).join('.'); })();
+  const val = { DRAWING_NUMBER: spec.drawingNumber || f.drawingNumber || 'TBC', REV: spec.revision || 'P01', TITLE1: title[0] || '', TITLE2: title[1] || '', TITLE3: title[2] || '', TITLE4: title[3] || '', DRN: f.drawn || 'DEX', DATE: f.date || today, SCALE: 'NTS', CHKD: f.checked || '', APRVD: f.approved || '', SHT: f.sht || '1', SHTX: f.shtx || '1', CLIENT_1: f.client || '', CLIENT_2: f.client2 || '', PROJECT_1: proj[0] || '', PROJECT_2: proj[1] || f.project2 || '' };
+  for (const [tag, a] of Object.entries(B.attrs)) if (val[tag]) out.push({ t: 'text', x: a[0], y: a[1], h: tag === 'DRAWING_NUMBER' && String(val[tag]).length > 18 ? Math.min(a[2] || 2, 3.4) : a[2] || 2, text: String(val[tag]).slice(0, 60), align: a[3] || 'left', layer: B.textLayer });
+  // revision rows, oldest at the bottom, each above the last
+  const hist = spec.revHistory && spec.revHistory.length ? spec.revHistory : [{ rev: val.REV, what: /^A/i.test(val.REV) ? 'ISSUED FOR COMMENT' : 'PRELIMINARY\nDRAFT FOR CHECKING' }];
+  const R = B.rev;
+  hist.slice(-(R.max || 7)).forEach((r, i) => {
+    const y = R.y + i * R.pitch, desc = String(r.what || '').toUpperCase().split('\n').flatMap(l => wrap(l, 40)).slice(0, 2), by = r.by || 'DEX';
+    if (B.revbox) {   // the BGEN revision block
+      const ox = R.x0, oy = R.y + i * R.pitch, rv = { REV: r.rev, DATE: r.date || val.DATE, DESC1: desc[0] || '', DESC2: desc[1] || '', DRAWN: by };
+      for (const p of B.revbox.prims) out.push(moved({ ...p, layer: 'SLD-BORDER' }, ox, oy));
+      for (const [tag, a] of Object.entries(B.revbox.attrs)) if (rv[tag]) out.push({ t: 'text', x: ox + a.x, y: oy + a.y - a.h / 2, h: a.h, text: rv[tag], align: a.align, layer: B.textLayer });
+      return;
+    }
+    if (i > 0) { const yt = y + R.pitch / 2, yb = y - R.pitch / 2; out.push(L(R.x0, yt, R.x1, yt, 'SLD-BORDER')); R.cols.forEach(x => out.push(L(x, yb, x, yt, 'SLD-BORDER'))); }   // the frame draws the first row; later rows are added above it
+    const tx = (x, text, h = R.h, yy = y - h / 2) => out.push({ t: 'text', x, y: yy, h, text, align: 'center', layer: B.textLayer });
+    tx(R.REV, r.rev); tx(R.DATE, String(r.date || val.DATE).replace(/\.(\d{2})(\d{2})$/, '.$2'), R.descH);
+    if (desc.length > 1) { tx(R.DESC, desc[0], R.descH, y + 0.95); tx(R.DESC, desc[1], R.descH, y - 2.65); } else tx(R.DESC, desc[0] || '', R.descH);
+    tx(R.DRAWN, by); tx(R.CHECKED, r.checked || ''); tx(R.APPROVED, r.approved || '');
   });
-  // notes in the column above the revisions
-  const notes = [...(spec.notes || []).map(String).filter(Boolean), ...(k < 1 ? [`Drawing reduced to ${Math.round(k * 100)}% to fit the sheet.`] : []), 'DRAFT BY DEX (ATOMAX MEDIA OFFICE) FOR CHECKING.'];
-  const nl = notes.flatMap((n, i) => wrap((i + 1) + '. ' + n, notesBox.x1 - notesBox.x0));
-  out.push({ t: 'mtext', x: notesBox.x0, y: notesBox.y1, w: notesBox.x1 - notesBox.x0, h: TH, text: ['NOTES', ...nl].slice(0, 160).join('\n'), attach: 1, layer: 'SLD-NOTES' });
-  if (sheetLabel) out.push({ t: 'text', x: 1112, y: 128 + hist.length * 8, h: TH, text: sheetLabel, align: 'center', layer: 'SLD-TEXT' });
-  return { prims: out, bounds: { x0: -3, y0: 0, x1: 1159, y1: 821 }, sheet: 'A0', content: cb };
+  // NOTES, then the LEGEND of the symbols used, then REFERENCE DOCUMENTS
+  const N = B.notes, notes = [...(spec.notes || []).map(String).filter(Boolean), ...(k < 1 ? [`DRAWING REDUCED TO ${Math.round(k * 100)}% TO FIT THE SHEET.`] : []), 'DRAFT BY DEX (ATOMAX MEDIA OFFICE) FOR CHECKING.'];
+  let ny = N.y;
+  notes.forEach((nt, i) => { const ls = wrap(String(nt).toUpperCase(), N.w - (N.tx - N.x)); if (ny - ls.length * N.pitch < N.bottom) return; out.push({ t: 'text', x: N.x, y: ny, h: 2, text: (i + 1) + '.', layer: B.notesLayer }); ls.forEach(l => { out.push({ t: 'text', x: N.tx, y: ny, h: 2, text: l, layer: B.notesLayer }); ny -= N.pitch; }); ny -= 1.6; });
+  if (B.legend) {
+    const used = [...new Set(prims.filter(p => p.t === 'insert' && LEGEND_TEXT[p.name]).map(p => p.name))], Lg = B.legend; let ly = Lg.y;
+    for (const name of used) { const hs = HOUSE[name]; if (!hs || ly - 18 < Lg.bottom) continue; out.push({ t: 'insert', name, x: Lg.x, y: ly, k: 0.6, layer: 'SLD-SYMBOL', prims: hs.prims }); wrap(LEGEND_TEXT[name], 60).forEach((l, j) => out.push({ t: 'text', x: Lg.tx, y: ly - 7.8 - j * 3.4, h: 2, text: l, layer: B.notesLayer })); ly -= Math.max(19, -hs.bbox[1] * 0.6 + 4); }
+    const extra = [...(prims.some(p => p.layer === 'SLD-BUS') ? [['bus', 'LV BUSBAR']] : []), ...(prims.some(p => p.layer === 'BCD-CABLEBOX') ? [['box', 'CABLE: NUMBER, CORES x SIZE, TYPE']] : []), ...(spec.legend || []).map(t => ['', String(t)])];
+    for (const [kind, t] of extra) { if (ly - 6 < Lg.bottom) break; if (kind === 'bus') out.push({ ...P([[Lg.x - 6, ly - 2], [Lg.x + 6, ly - 2]], false, 'SLD-BUS', 0.8) }); if (kind === 'box') out.push(P([[Lg.x - 6, ly - 4], [Lg.x + 6, ly - 4], [Lg.x + 6, ly], [Lg.x - 6, ly]], true, 'BCD-CABLEBOX')); out.push({ t: 'text', x: Lg.tx, y: ly - 3, h: 2, text: t.toUpperCase(), layer: B.notesLayer }); ly -= 6; }
+  }
+  if (B.refs) { let ry = B.refs.y; for (const r of (spec.references || []).map(String).filter(Boolean)) { if (ry < B.refs.bottom) break; out.push({ t: 'text', x: B.refs.x, y: ry, h: B.refs.h, text: r.toUpperCase().slice(0, 70), layer: B.notesLayer }); ry -= B.refs.pitch; } }
+  if (sheetLabel && !B.attrs.SHT) out.push({ t: 'text', x: 1112, y: 128 + hist.length * 8, h: TH, text: sheetLabel, align: 'center', layer: B.textLayer });
+  const g = B.geo;
+  return { prims: out, bounds: { x0: g.x0 - 2, y0: g.y0 - 2, x1: g.x0 + g.w + 2, y1: g.y0 + g.h + 2 }, sheet: B.page, page: B.page, content: cb };
 }
 function frame(prims, spec, minY, maxY, maxX, sheetLabel, opts = {}) {
   if (BORDER && !opts.noTitle && !opts.ownBorder) { const r = borderFrame(prims, spec, sheetLabel, opts); prims.length = 0; prims.push(...r.prims); return r; }
@@ -316,7 +356,7 @@ function cableClashes(prims) {
   }
   return out;
 }
-const SHEET_ROWS = BORDER ? 34 : 10;   // device rows per sheet (A0 border at 1:1, or the old A3 frame)
+const SHEET_ROWS = BORDER ? Math.floor((BORDER.box.y1 - BORDER.box.y0 - 20) / 22) : 10;   // device rows per sheet (A0 border at 1:1, or the old A3 frame)
 function layoutBcd(spec, opts = {}) {
   const model = bcdModel(spec);
   if (!model.cables.length) throw new Error('The BCD has no cables');
@@ -366,7 +406,8 @@ function bcdDiff(oldSpec, newSpec) {
 }
 
 // ---------- DXF writer (R2010, appended to a template made with ezdxf) ----------
-const TEMPLATE = () => fs.readFileSync(path.join(__dirname, 'dxf-template-r2010.dxf'), 'utf8');
+const ATOMAX_TPL = path.join(__dirname, 'cad', 'atomax-template.dxf');
+const TEMPLATE = () => fs.readFileSync(fs.existsSync(ATOMAX_TPL) ? ATOMAX_TPL : path.join(__dirname, 'dxf-template-r2010.dxf'), 'utf8');
 const n = (v) => (Math.round(v * 1000) / 1000).toString();
 const LAYERS = [['SLD-BUS', 1], ['SLD-CABLE', 3], ['SLD-SYMBOL', 7], ['SLD-TEXT', 7], ['SLD-BORDER', 8], ['SLD-NOTES', 30], ['BCD-BLOCK', 7], ['BCD-CABLE', 7], ['BCD-CABLEBOX', 2], ['BCD-TEXT', 7], ['BCD-REVISION', 1]];
 // add any of our layers the template does not have (so a client's own title block DXF can be the template)
@@ -399,14 +440,17 @@ function writeDxf(prims, bounds, opts = {}) {
   const g = (code, val) => out.push(String(code).padStart(3, ' '), String(val));
   let colour = 0; const head = (type, layer) => { g(0, type); g(5, (h++).toString(16).toUpperCase()); g(330, OWNER); g(100, 'AcDbEntity'); g(8, layer || '0'); if (colour) g(62, colour); };
   const clean = (s) => String(s).replace(/[\r\n]+/g, ' ');
-  for (const p of prims) {
+  const blocks = new Set([...tpl.matchAll(/\n\s*0\nBLOCK\n[\s\S]*?\n\s*2\n([^\n]+)\n/g)].map(m => m[1].trim()));
+  const list = []; const add = (p) => { if (p.t === 'insert' && !blocks.has(p.name)) flatPrims([p]).forEach(add); else list.push(p); }; prims.forEach(add);
+  for (const p of list) {
     colour = p.colour || 0;
-    if (p.t === 'line') { head('LINE', p.layer); g(100, 'AcDbLine'); g(10, n(p.x1)); g(20, n(p.y1)); g(30, 0); g(11, n(p.x2)); g(21, n(p.y2)); g(31, 0); }
+    if (p.t === 'insert') { head('INSERT', p.layer); g(100, 'AcDbBlockReference'); g(2, p.name); g(10, n(p.x)); g(20, n(p.y)); g(30, 0); if ((p.k || 1) !== 1) { g(41, n(p.k)); g(42, n(p.k)); g(43, n(p.k)); } }
+    else if (p.t === 'line') { head('LINE', p.layer); g(100, 'AcDbLine'); g(10, n(p.x1)); g(20, n(p.y1)); g(30, 0); g(11, n(p.x2)); g(21, n(p.y2)); g(31, 0); }
     else if (p.t === 'circle') { head('CIRCLE', p.layer); g(100, 'AcDbCircle'); g(10, n(p.x)); g(20, n(p.y)); g(30, 0); g(40, n(p.r)); }
     else if (p.t === 'arc') { head('ARC', p.layer); g(100, 'AcDbCircle'); g(10, n(p.x)); g(20, n(p.y)); g(30, 0); g(40, n(p.r)); g(100, 'AcDbArc'); g(50, n(p.a0)); g(51, n(p.a1)); }
     else if (p.t === 'pline') { head('LWPOLYLINE', p.layer); g(100, 'AcDbPolyline'); g(90, p.pts.length); g(70, p.closed ? 1 : 0); if (p.width) g(43, n(p.width)); for (const [x, y] of p.pts) { g(10, n(x)); g(20, n(y)); } }
     else if (p.t === 'text') { head('TEXT', p.layer); g(100, 'AcDbText'); g(10, n(p.x)); g(20, n(p.y)); g(30, 0); g(40, n(p.h)); g(1, clean(p.text)); if (p.rot) g(50, n(p.rot)); g(7, 'Standard'); if (p.align === 'center') { g(72, 1); g(11, n(p.x)); g(21, n(p.y)); g(31, 0); } g(100, 'AcDbText'); }
-    else if (p.t === 'fill' && p.pts && p.pts.length > 2) { head('HATCH', p.layer); g(100, 'AcDbHatch'); g(10, 0); g(20, 0); g(30, 0); g(210, 0); g(220, 0); g(230, 1); g(2, 'SOLID'); g(70, 1); g(71, 0); g(91, 1); g(92, 2); g(72, 0); g(73, 1); g(93, p.pts.length); for (const [x, y] of p.pts) { g(10, n(x)); g(20, n(y)); } g(97, 0); g(75, 0); g(76, 1); g(98, 0); }
+    else if (p.t === 'fill' && p.pts && p.pts.length > 2) { head('HATCH', p.layer); g(100, 'AcDbHatch'); g(10, 0); g(20, 0); g(30, 0); g(210, 0); g(220, 0); g(230, 1); g(2, 'SOLID'); g(70, 1); g(71, 0); const rings = p.rings || [p.pts]; g(91, rings.length); for (const r of rings) { g(92, 2); g(72, 0); g(73, 1); g(93, r.length); for (const [x, y] of r) { g(10, n(x)); g(20, n(y)); } g(97, 0); } g(75, 0); g(76, 1); g(98, 0); }
     else if (p.t === 'mtext') { head('MTEXT', p.layer); g(100, 'AcDbMText'); g(10, n(p.x)); g(20, n(p.y)); g(30, 0); g(40, n(p.h)); g(41, n(p.w)); g(71, p.attach || 1); g(72, 5); g(1, String(p.text).replace(/\r?\n/g, '\\P')); g(7, 'Standard'); }
   }
   tpl = tpl.replace(/(\n\s*0\nSECTION\n\s*2\nENTITIES\n)(\s*0\nENDSEC\n)/, (_m, a, b) => a + out.join('\n') + '\n' + b);
@@ -420,6 +464,7 @@ function writeDxf(prims, bounds, opts = {}) {
 
 // ---------- SVG preview for the panel ----------
 function toSvg(prims, b) {
+  prims = flatPrims(prims);
   const W = b.x1 - b.x0, H = b.y1 - b.y0, Y = (y) => n(b.y1 - y), X = (x) => n(x - b.x0);
   const esc = (s) => String(s).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]);
   const col = (layer) => ({ 'SLD-BUS': '#e03131', 'SLD-CABLE': '#2f9e44', 'SLD-BORDER': '#868e96', 'SLD-NOTES': '#e67700' })[layer] || '#1b2a41';
@@ -429,7 +474,7 @@ function toSvg(prims, b) {
     if (p.t === 'arc') { const a0 = p.a0 * Math.PI / 180, a1 = p.a1 * Math.PI / 180; return `<path d="M${X(p.x + p.r * Math.cos(a0))} ${Y(p.y + p.r * Math.sin(a0))} A${p.r} ${p.r} 0 0 0 ${X(p.x + p.r * Math.cos(a1))} ${Y(p.y + p.r * Math.sin(a1))}" fill="none" stroke="${col(p.layer)}" stroke-width="0.35"/>`; }
     if (p.t === 'pline') return `<polyline points="${p.pts.map(([x, y]) => X(x) + ',' + Y(y)).join(' ')}${p.closed ? ' ' + X(p.pts[0][0]) + ',' + Y(p.pts[0][1]) : ''}" fill="none" stroke="${col(p.layer)}" stroke-width="${p.width || 0.35}"/>`;
     if (p.t === 'text') return `<text ${p.rot ? `transform="rotate(${-p.rot} ${X(p.x)} ${Y(p.y)})" ` : ''}x="${X(p.x)}" y="${Y(p.y)}" font-size="${p.h}" text-anchor="${p.align === 'center' ? 'middle' : 'start'}" dominant-baseline="middle" font-family="Arial">${esc(p.text)}</text>`;
-    if (p.t === 'fill') return `<polygon points="${p.pts.map(([x, y]) => X(x) + ',' + Y(y)).join(' ')}" fill="${p.colour === 3 ? '#40c057' : p.colour === 1 ? '#fa5252' : '#adb5bd'}" stroke="none"/>`;
+    if (p.t === 'fill') return `<path fill-rule="evenodd" d="${(p.rings || [p.pts]).map(r => 'M' + r.map(([x, y]) => X(x) + ' ' + Y(y)).join(' L') + ' Z').join(' ')}" fill="${p.colour === 3 ? '#40c057' : p.colour === 1 ? '#fa5252' : '#495057'}" stroke="none"/>`;
     if (p.t === 'mtext') { const ls = String(p.text).split('\n'), mid = p.attach === 5 || p.attach === 6 || p.attach === 4; const y0 = mid ? p.y + (ls.length - 1) * LINE / 2 : p.y - p.h; return `<text font-size="${p.h}" font-family="Arial" fill="${col(p.layer)}" text-anchor="${p.attach === 5 ? 'middle' : p.attach === 6 ? 'end' : 'start'}">${ls.map((l, i) => `<tspan x="${X(p.x)}" y="${Y(y0 - i * LINE)}">${esc(l)}</tspan>`).join('')}</text>`; }
     return '';
   });
@@ -489,8 +534,10 @@ function parseReply(text) {
 // move / scale primitives (placing a drawing inside a client's title block)
 function place(prims, dx, dy, k = 1) {
   const X = (x) => x * k + dx, Y = (y) => y * k + dy;
-  return prims.map(p => p.t === 'line' ? { ...p, x1: X(p.x1), y1: Y(p.y1), x2: X(p.x2), y2: Y(p.y2) } : p.pts ? { ...p, pts: p.pts.map(([x, y]) => [X(x), Y(y)]), ...(p.width ? { width: p.width * k } : {}) } : p.t === 'text' || p.t === 'mtext' ? { ...p, x: X(p.x), y: Y(p.y), w: p.w ? p.w * k : p.w, h: Math.max(p.h * k, TH) } : { ...p, x: X(p.x), y: Y(p.y), r: p.r * k });
+  return prims.map(p => p.t === 'insert' ? { ...p, x: X(p.x), y: Y(p.y), k: (p.k || 1) * k } : p.t === 'line' ? { ...p, x1: X(p.x1), y1: Y(p.y1), x2: X(p.x2), y2: Y(p.y2) } : p.pts ? { ...p, pts: p.pts.map(([x, y]) => [X(x), Y(y)]), ...(p.rings ? { rings: p.rings.map(r => r.map(([x, y]) => [X(x), Y(y)])) } : {}), ...(p.width ? { width: p.width * k } : {}) } : p.t === 'text' || p.t === 'mtext' ? { ...p, x: X(p.x), y: Y(p.y), w: p.w ? p.w * k : p.w, h: Math.max(p.h * k, TH) } : { ...p, x: X(p.x), y: Y(p.y), r: p.r * k });
 }
+// block inserts expanded to plain geometry (for previews, PDFs and measuring)
+function flatPrims(prims) { const out = []; for (const p of prims) { if (p.t === 'insert') out.push(...flatPrims(place(p.prims.map(q => ({ ...q, layer: q.layer || p.layer })), p.x, p.y, p.k || 1))); else out.push(p); } return out; }
 const safeName = (s) => String(s).replace(/[\\/:*?"<>|]+/g, '_').replace(/\s+/g, '_').slice(0, 60);
 const uniquePath = (dir, stem, ext) => { let f = path.join(dir, stem + ext), i = 2; while (fs.existsSync(f)) f = path.join(dir, `${stem}_${i++}${ext}`); return f; };
 
@@ -520,7 +567,7 @@ function make(spec, outDir, baseName, opts = {}) {
     const dxf = writeDxf(prims, bounds, { template: opts.template, fill: { title: spec.title || '', drawingNumber: spec.drawingNumber || 'TBC', revision: spec.revision || 'P1', date: new Date().toISOString().slice(0, 10), sheet: sh.label || '', drawn: 'Dex' } });
     const file = uniquePath(outDir, `${stem}${sheets.length > 1 ? '_SH' + (i + 1) : ''}_DRAFT`, '.dxf');
     fs.writeFileSync(file, dxf, 'utf8');
-    files.push({ path: file, svg: toSvg(prims, bounds), entities: prims.length, label: sh.label, cables: sh.cables || [], prims, bounds });
+    files.push({ path: file, svg: toSvg(prims, bounds), entities: prims.length, label: sh.label, cables: sh.cables || [], prims, bounds, page: sh.page || (opts.template ? 'A3' : (BORDER && BORDER.page) || 'A3') });
   });
   // the spec is kept next to the drawing so the next revision can be compared with it
   try { fs.writeFileSync(files[0].path.replace(/\.dxf$/i, '.spec.json'), JSON.stringify(spec, null, 1)); } catch {}
@@ -532,4 +579,4 @@ function previousSpec(outDir, baseName) {
   try { const c = fs.readdirSync(outDir).filter(f => f.startsWith(stem) && f.endsWith('.spec.json')).map(f => ({ f, t: fs.statSync(path.join(outDir, f)).mtimeMs })).sort((a, b) => b.t - a.t)[0]; return c ? { file: c.f, spec: JSON.parse(fs.readFileSync(path.join(outDir, c.f), 'utf8')) } : null; } catch { return null; }
 }
 
-module.exports = { cableClashes, previousSpec, layoutBcd, bcdDiff, SYSTEM, ALIASES, SYMBOLS, symbolOf, layoutSld, writeDxf, toSvg, parseReply, make };
+module.exports = { flatPrims, BORDERS, cableClashes, previousSpec, layoutBcd, bcdDiff, SYSTEM, ALIASES, SYMBOLS, symbolOf, layoutSld, writeDxf, toSvg, parseReply, make };

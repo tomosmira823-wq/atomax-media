@@ -5,6 +5,7 @@ const { PDFDocument, StandardFonts, rgb, degrees } = require('pdf-lib');
 const PAGES = { A3: [1190.55, 841.89], A1: [2383.94, 1683.78], A0: [3370.39, 2383.94] };
 
 async function toPdf(prims, b, { page = 'A3', title = '' } = {}) {
+  prims = require('./dxfmaker').flatPrims(prims);
   const doc = await PDFDocument.create(); if (title) doc.setTitle(title); doc.setProducer('Atomax Media Office (Dex)');
   const [PW, PH] = PAGES[page] || PAGES.A3, pg = doc.addPage([PW, PH]), font = await doc.embedFont(StandardFonts.Helvetica);
   const m = 14, s = Math.min((PW - 2 * m) / (b.x1 - b.x0), (PH - 2 * m) / (b.y1 - b.y0));
@@ -14,7 +15,7 @@ async function toPdf(prims, b, { page = 'A3', title = '' } = {}) {
   const poly = (pts, closed, p) => { for (let i = 1; i < pts.length; i++) pg.drawLine({ start: { x: X(pts[i - 1][0]), y: Y(pts[i - 1][1]) }, end: { x: X(pts[i][0]), y: Y(pts[i][1]) }, thickness: lw(p), color: black }); if (closed && pts.length > 2) pg.drawLine({ start: { x: X(pts[pts.length - 1][0]), y: Y(pts[pts.length - 1][1]) }, end: { x: X(pts[0][0]), y: Y(pts[0][1]) }, thickness: lw(p), color: black }); };
   const clean = (t) => String(t).replace(/[^\x20-\x7E -ÿ]/g, (c) => ({ '²': '2', '–': '-', '—': '-', '°': 'deg' })[c] || '');
   // fills first (grey in black and white), then lines, then text on top
-  for (const p of prims) if (p.t === 'fill' && p.pts && p.pts.length > 2) pg.drawSvgPath('M' + p.pts.map(([x, y]) => `${X(x) - X(b.x0)} ${-(Y(y) - Y(b.y0))}`).join(' L') + ' Z', { x: X(b.x0), y: Y(b.y0), color: p.colour === 1 ? rgb(0.55, 0.55, 0.55) : rgb(0.82, 0.82, 0.82), borderWidth: 0 });
+  for (const p of prims) if (p.t === 'fill' && p.pts && p.pts.length > 2) pg.drawSvgPath((p.rings || [p.pts]).map(r => 'M' + r.map(([x, y]) => `${X(x) - X(b.x0)} ${-(Y(y) - Y(b.y0))}`).join(' L') + ' Z').join(' '), { x: X(b.x0), y: Y(b.y0), color: p.layer === 'SLD-BORDER' ? rgb(0, 0, 0) : p.colour === 1 ? rgb(0.55, 0.55, 0.55) : rgb(0.82, 0.82, 0.82), borderWidth: 0 });
   for (const p of prims) {
     if (p.t === 'line') pg.drawLine({ start: { x: X(p.x1), y: Y(p.y1) }, end: { x: X(p.x2), y: Y(p.y2) }, thickness: lw(p), color: black });
     else if (p.t === 'pline') poly(p.pts, p.closed, p);
@@ -43,7 +44,7 @@ async function toPdf(prims, b, { page = 'A3', title = '' } = {}) {
 // the PDF next to each DXF of a make() result (same name, .pdf)
 async function writePdfs(res, opts = {}) {
   const fs = require('fs'), out = [];
-  for (const f of res.files || []) { if (!f.prims) continue; const p = f.path.replace(/\.dxf$/i, '.pdf'); fs.writeFileSync(p, await toPdf(f.prims, f.bounds, opts)); out.push(p); f.pdf = p; delete f.prims; }
+  for (const f of res.files || []) { if (!f.prims) continue; const p = f.path.replace(/\.dxf$/i, '.pdf'); fs.writeFileSync(p, await toPdf(f.prims, f.bounds, { page: f.page, ...opts })); out.push(p); f.pdf = p; delete f.prims; }
   return out;
 }
 module.exports = { toPdf, writePdfs };
