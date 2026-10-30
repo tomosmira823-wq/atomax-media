@@ -489,7 +489,7 @@ $SKPOLY
   9
 $TDCREATE
  40
-2461344.428298611
+2461344.4347685184
   9
 $TDUCREATE
  40
@@ -497,7 +497,7 @@ $TDUCREATE
   9
 $TDUPDATE
  40
-2461344.428298611
+2461344.4347916665
   9
 $TDUUPDATE
  40
@@ -549,7 +549,7 @@ $SPLINESEGS
   9
 $HANDSEED
   5
-31E
+44E
   9
 $SURFTAB1
  70
@@ -933,7 +933,7 @@ $FINGERPRINTGUID
   9
 $VERSIONGUID
   2
-{E91E71BE-BA36-4FD8-9F9E-A291AAA46E66}
+{995DB7B9-F6F9-4AC9-A4FF-ADC97D6901F7}
   9
 $EXTNAMES
 290
@@ -2233,7 +2233,7 @@ LAYER
 100
 AcDbSymbolTable
  70
-24
+25
   0
 LAYER
   5
@@ -2835,6 +2835,32 @@ Continuous
 347
 21
   0
+LAYER
+  5
+44C
+330
+1
+100
+AcDbSymbolTableRecord
+100
+AcDbLayerTableRecord
+  2
+E-020___B-E-Drawing Frame Attributes
+ 70
+0
+ 62
+7
+  6
+Continuous
+370
+-3
+390
+5
+347
+171DF
+348
+0
+  0
 ENDTAB
   0
 TABLE
@@ -2847,7 +2873,7 @@ STYLE
 100
 AcDbSymbolTable
  70
-29
+30
   0
 STYLE
   5
@@ -3661,13 +3687,41 @@ ROMANS.SHX
   4
 
   0
+STYLE
+  5
+44D
+330
+5
+100
+AcDbSymbolTableRecord
+100
+AcDbTextStyleTableRecord
+  2
+Tahoma
+ 70
+0
+ 40
+2.0
+ 41
+1.0
+ 50
+0.0
+ 71
+0
+ 42
+50.0
+  3
+tahoma.ttf
+  4
+
+  0
 ENDTAB
   0
 TABLE
   2
 VIEW
   5
-7
+31F
 330
 0
 100
@@ -3681,7 +3735,7 @@ TABLE
   2
 UCS
   5
-6
+31E
 330
 0
 100
@@ -5435,7 +5489,7 @@ BLOCK_RECORD
 100
 AcDbSymbolTable
  70
-21
+23
   0
 BLOCK_RECORD
   5
@@ -5848,6 +5902,46 @@ AcDbSymbolTableRecord
 AcDbBlockTableRecord
   2
 MCCB ISOLATING
+340
+0
+ 70
+0
+280
+1
+281
+0
+  0
+BLOCK_RECORD
+  5
+320
+330
+9
+100
+AcDbSymbolTableRecord
+100
+AcDbBlockTableRecord
+  2
+BOULTING A0 BORDER
+340
+0
+ 70
+0
+280
+1
+281
+0
+  0
+BLOCK_RECORD
+  5
+43C
+330
+9
+100
+AcDbSymbolTableRecord
+100
+AcDbBlockTableRecord
+  2
+BOULTING A0 REVBOX
 340
 0
  70
@@ -38447,6 +38541,8444 @@ AcDbEntity
 100
 AcDbBlockEnd
   0
+BLOCK
+  5
+321
+330
+320
+100
+AcDbEntity
+  8
+0
+100
+AcDbBlockBegin
+  2
+BOULTING A0 BORDER
+ 70
+2
+ 10
+0.0
+ 20
+0.0
+ 30
+0.0
+  3
+BOULTING A0 BORDER
+  1
+
+  0
+LINE
+  5
+323
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+1070.0
+ 20
+121.0
+ 30
+0.0
+ 11
+1154.0
+ 21
+121.0
+ 31
+0.0
+  0
+LINE
+  5
+324
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+1070.0
+ 20
+26.0
+ 30
+0.0
+ 11
+1154.0
+ 21
+26.0
+ 31
+0.0
+  0
+LINE
+  5
+325
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+1070.0
+ 20
+33.00000000000003
+ 30
+0.0
+ 11
+1154.0
+ 21
+33.00000000000003
+ 31
+0.0
+  0
+LINE
+  5
+326
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+1070.0
+ 20
+19.0
+ 30
+0.0
+ 11
+1154.0
+ 21
+19.0
+ 31
+0.0
+  0
+LINE
+  5
+327
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+1112.0
+ 20
+14.99999999999997
+ 30
+0.0
+ 11
+1154.0
+ 21
+14.99999999999997
+ 31
+0.0
+  0
+TEXT
+  5
+328
+330
+320
+100
+AcDbEntity
+  8
+E-020___T-E-Drawing Frame Text
+100
+AcDbText
+ 10
+1142.659208731241
+ 20
+12.0
+ 30
+0.0
+ 40
+2.0
+  1
+REVISION
+  7
+BOULTING ARIAL
+ 41
+0.8
+ 72
+1
+ 11
+1148.0
+ 21
+12.0
+ 31
+0.0
+100
+AcDbText
+  0
+LINE
+  5
+329
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+1070.0
+ 20
+60.0
+ 30
+0.0
+ 11
+1154.0
+ 21
+60.0
+ 31
+0.0
+  0
+LINE
+  5
+32A
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+1070.0
+ 20
+75.0
+ 30
+0.0
+ 11
+1154.0
+ 21
+75.0
+ 31
+0.0
+  0
+TEXT
+  5
+32B
+330
+320
+100
+AcDbEntity
+  8
+E-020___T-E-Drawing Frame Text
+ 62
+146
+420
+26488
+430
+PANTONE(R) color bridge CMYK EC$PANTONE 3155 EC
+100
+AcDbText
+ 10
+1072.0
+ 20
+7.0
+ 30
+0.0
+ 40
+4.0
+  1
+A0
+  7
+BOULTING ARIAL
+100
+AcDbText
+  0
+LINE
+  5
+32C
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+1142.0
+ 20
+15.0
+ 30
+0.0
+ 11
+1142.0
+ 21
+5.0
+ 31
+0.0
+  0
+TEXT
+  5
+32D
+330
+320
+100
+AcDbEntity
+  8
+E-020___T-E-Drawing Frame Text
+100
+AcDbText
+ 10
+1071.0
+ 20
+30.0
+ 30
+0.0
+ 40
+2.0
+  1
+DRAWN
+  7
+BOULTING ARIAL
+ 41
+0.8
+100
+AcDbText
+  0
+TEXT
+  5
+32E
+330
+320
+100
+AcDbEntity
+  8
+E-020___T-E-Drawing Frame Text
+100
+AcDbText
+ 10
+1071.0
+ 20
+15.0
+ 30
+0.0
+ 40
+2.0
+  1
+DRAWING NUMBER
+  7
+BOULTING ARIAL
+ 41
+0.8
+100
+AcDbText
+  0
+TEXT
+  5
+32F
+330
+320
+100
+AcDbEntity
+  8
+E-020___T-E-Drawing Frame Text
+100
+AcDbText
+ 10
+1071.0
+ 20
+23.0
+ 30
+0.0
+ 40
+2.0
+  1
+CHECKED
+  7
+BOULTING ARIAL
+ 41
+0.8
+100
+AcDbText
+  0
+LINE
+  5
+330
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+1137.0
+ 20
+33.00000000000006
+ 30
+0.0
+ 11
+1137.0
+ 21
+26.00000000000003
+ 31
+0.0
+  0
+TEXT
+  5
+331
+330
+320
+100
+AcDbEntity
+  8
+E-020___T-E-Drawing Frame Text
+100
+AcDbText
+ 10
+1113.0
+ 20
+30.0
+ 30
+0.0
+ 40
+2.0
+  1
+DATE
+  7
+BOULTING ARIAL
+ 41
+0.8
+100
+AcDbText
+  0
+TEXT
+  5
+332
+330
+320
+100
+AcDbEntity
+  8
+E-020___T-E-Drawing Frame Text
+100
+AcDbText
+ 10
+1138.0
+ 20
+30.0
+ 30
+0.0
+ 40
+2.0
+  1
+SCALE
+  7
+BOULTING ARIAL
+ 41
+0.8
+100
+AcDbText
+  0
+TEXT
+  5
+333
+330
+320
+100
+AcDbEntity
+  8
+E-020___T-E-Drawing Frame Text
+100
+AcDbText
+ 10
+1113.0
+ 20
+22.99999999999997
+ 30
+0.0
+ 40
+2.0
+  1
+APPROVED
+  7
+BOULTING ARIAL
+ 41
+0.8
+100
+AcDbText
+  0
+LINE
+  5
+334
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+1112.0
+ 20
+33.00000000000003
+ 30
+0.0
+ 11
+1112.0
+ 21
+14.99999999999997
+ 31
+0.0
+  0
+LINE
+  5
+335
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+1112.0
+ 20
+33.00000000000003
+ 30
+0.0
+ 11
+1112.0
+ 21
+14.99999999999997
+ 31
+0.0
+  0
+TEXT
+  5
+336
+330
+320
+100
+AcDbEntity
+  8
+E-020___T-E-Drawing Frame Text
+100
+AcDbText
+ 10
+1113.0
+ 20
+15.99999999999997
+ 30
+0.0
+ 40
+2.0
+  1
+SHEET
+  7
+BOULTING ARIAL
+ 41
+0.8
+100
+AcDbText
+  0
+TEXT
+  5
+337
+330
+320
+100
+AcDbEntity
+  8
+E-020___T-E-Drawing Frame Text
+100
+AcDbText
+ 10
+1135.448021828104
+ 20
+16.0
+ 30
+0.0
+ 40
+2.0
+  1
+OF
+  7
+BOULTING ARIAL
+ 41
+0.8
+ 72
+1
+ 11
+1137.0
+ 21
+16.0
+ 31
+0.0
+100
+AcDbText
+  0
+TEXT
+  5
+338
+330
+320
+100
+AcDbEntity
+  8
+E-020___T-E-Drawing Frame Text
+100
+AcDbText
+ 10
+1071.0
+ 20
+57.0
+ 30
+0.0
+ 40
+2.0
+  1
+DRAWING TITLE
+  7
+BOULTING ARIAL
+ 41
+0.8
+100
+AcDbText
+  0
+TEXT
+  5
+339
+330
+320
+100
+AcDbEntity
+  8
+E-020___T-E-Drawing Frame Text
+100
+AcDbText
+ 10
+1071.0
+ 20
+72.0
+ 30
+0.0
+ 40
+2.0
+  1
+PROJECT
+  7
+BOULTING ARIAL
+ 41
+0.8
+100
+AcDbText
+  0
+TEXT
+  5
+33A
+330
+320
+100
+AcDbEntity
+  8
+E-020___T-E-Drawing Frame Text
+100
+AcDbText
+ 10
+1071.0
+ 20
+87.0
+ 30
+0.0
+ 40
+2.0
+  1
+CLIENT
+  7
+BOULTING ARIAL
+ 41
+0.8
+100
+AcDbText
+  0
+TEXT
+  5
+33B
+330
+320
+100
+AcDbEntity
+  8
+E-020___T-E-Drawing Frame Text
+100
+AcDbText
+ 10
+1138.833287858117
+ 20
+117.5
+ 30
+0.0
+ 40
+2.0
+  1
+CHKD
+  7
+BOULTING ARIAL
+ 41
+0.8
+ 72
+4
+ 11
+1142.0
+ 21
+118.5
+ 31
+0.0
+100
+AcDbText
+  0
+TEXT
+  5
+33C
+330
+320
+100
+AcDbEntity
+  8
+E-020___T-E-Drawing Frame Text
+100
+AcDbText
+ 10
+1103.362346521146
+ 20
+117.4993178717599
+ 30
+0.0
+ 40
+2.0
+  1
+DESCRIPTION
+  7
+BOULTING ARIAL
+ 41
+0.8
+ 72
+4
+ 11
+1111.0
+ 21
+118.5
+ 31
+0.0
+100
+AcDbText
+  0
+LINE
+  5
+33D
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+1078.0
+ 20
+121.0
+ 30
+0.0
+ 11
+1078.0
+ 21
+116.0
+ 31
+0.0
+  0
+TEXT
+  5
+33E
+330
+320
+100
+AcDbEntity
+  8
+E-020___T-E-Drawing Frame Text
+100
+AcDbText
+ 10
+1071.70204638472
+ 20
+117.5
+ 30
+0.0
+ 40
+2.0
+  1
+REV
+  7
+BOULTING ARIAL
+ 41
+0.8
+ 72
+4
+ 11
+1074.0
+ 21
+118.5
+ 31
+0.0
+100
+AcDbText
+  0
+TEXT
+  5
+33F
+330
+320
+100
+AcDbEntity
+  8
+E-020___T-E-Drawing Frame Text
+100
+AcDbText
+ 10
+1081.019372442019
+ 20
+117.5
+ 30
+0.0
+ 40
+2.0
+  1
+DATE
+  7
+BOULTING ARIAL
+ 41
+0.8
+ 72
+4
+ 11
+1084.0
+ 21
+118.5
+ 31
+0.0
+100
+AcDbText
+  0
+LINE
+  5
+340
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+1090.0
+ 20
+121.0
+ 30
+0.0
+ 11
+1090.0
+ 21
+116.0
+ 31
+0.0
+  0
+LINE
+  5
+341
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+1138.0
+ 20
+121.0
+ 30
+0.0
+ 11
+1138.0
+ 21
+116.0
+ 31
+0.0
+  0
+LINE
+  5
+342
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+1130.0
+ 20
+121.0
+ 30
+0.0
+ 11
+1130.0
+ 21
+116.0
+ 31
+0.0
+  0
+TEXT
+  5
+343
+330
+320
+100
+AcDbEntity
+  8
+E-020___T-E-Drawing Frame Text
+100
+AcDbText
+ 10
+1131.578717598908
+ 20
+117.5
+ 30
+0.0
+ 40
+2.0
+  1
+DRN
+  7
+BOULTING ARIAL
+ 41
+0.8
+ 72
+4
+ 11
+1134.0
+ 21
+118.5
+ 31
+0.0
+100
+AcDbText
+  0
+LINE
+  5
+344
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+1146.0
+ 20
+121.0
+ 30
+0.0
+ 11
+1146.0
+ 21
+116.0
+ 31
+0.0
+  0
+TEXT
+  5
+345
+330
+320
+100
+AcDbEntity
+  8
+E-020___T-E-Drawing Frame Text
+100
+AcDbText
+ 10
+1147.765347885402
+ 20
+117.5
+ 30
+0.0
+ 40
+2.0
+  1
+APP
+  7
+BOULTING ARIAL
+ 41
+0.8
+ 72
+4
+ 11
+1150.0
+ 21
+118.5
+ 31
+0.0
+100
+AcDbText
+  0
+TEXT
+  5
+346
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbText
+ 10
+53.72305593451569
+ 20
+1.495907230559345
+ 30
+0.0
+ 40
+2.0
+  1
+2
+  7
+BOULTING ARIAL
+ 72
+4
+ 11
+54.5
+ 21
+2.5
+ 31
+0.0
+100
+AcDbText
+  0
+TEXT
+  5
+347
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbText
+ 10
+153.7230559345157
+ 20
+1.5
+ 30
+0.0
+ 40
+2.0
+  1
+4
+  7
+BOULTING ARIAL
+ 72
+4
+ 11
+154.5
+ 21
+2.5
+ 31
+0.0
+100
+AcDbText
+  0
+TEXT
+  5
+348
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbText
+ 10
+103.7230559345157
+ 20
+1.513642564802182
+ 30
+0.0
+ 40
+2.0
+  1
+3
+  7
+BOULTING ARIAL
+ 72
+4
+ 11
+104.5
+ 21
+2.5
+ 31
+0.0
+100
+AcDbText
+  0
+TEXT
+  5
+349
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbText
+ 10
+253.7230559345157
+ 20
+1.512960436562073
+ 30
+0.0
+ 40
+2.0
+  1
+6
+  7
+BOULTING ARIAL
+ 72
+4
+ 11
+254.5
+ 21
+2.5
+ 31
+0.0
+100
+AcDbText
+  0
+TEXT
+  5
+34A
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbText
+ 10
+203.7230559345157
+ 20
+1.530695770804911
+ 30
+0.0
+ 40
+2.0
+  1
+5
+  7
+BOULTING ARIAL
+ 72
+4
+ 11
+204.5
+ 21
+2.5
+ 31
+0.0
+100
+AcDbText
+  0
+TEXT
+  5
+34B
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbText
+ 10
+303.7230559345157
+ 20
+1.512960436562073
+ 30
+0.0
+ 40
+2.0
+  1
+7
+  7
+BOULTING ARIAL
+ 72
+4
+ 11
+304.5
+ 21
+2.5
+ 31
+0.0
+100
+AcDbText
+  0
+TEXT
+  5
+34C
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbText
+ 10
+353.7230559345157
+ 20
+1.512960436562073
+ 30
+0.0
+ 40
+2.0
+  1
+8
+  7
+BOULTING ARIAL
+ 72
+4
+ 11
+354.5
+ 21
+2.5
+ 31
+0.0
+100
+AcDbText
+  0
+TEXT
+  5
+34D
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbText
+ 10
+403.7230559345156
+ 20
+1.512960436562073
+ 30
+0.0
+ 40
+2.0
+  1
+9
+  7
+BOULTING ARIAL
+ 72
+4
+ 11
+404.4999999999999
+ 21
+2.5
+ 31
+0.0
+100
+AcDbText
+  0
+TEXT
+  5
+34E
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbText
+ 10
+452.9461118690313
+ 20
+1.512960436562073
+ 30
+0.0
+ 40
+2.0
+  1
+10
+  7
+BOULTING ARIAL
+ 72
+4
+ 11
+454.4999999999999
+ 21
+2.5
+ 31
+0.0
+100
+AcDbText
+  0
+TEXT
+  5
+34F
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbText
+ 10
+552.9461118690313
+ 20
+1.495907230559345
+ 30
+0.0
+ 40
+2.0
+  1
+12
+  7
+BOULTING ARIAL
+ 72
+4
+ 11
+554.4999999999999
+ 21
+2.5
+ 31
+0.0
+100
+AcDbText
+  0
+TEXT
+  5
+350
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbText
+ 10
+502.9461118690313
+ 20
+1.495907230559345
+ 30
+0.0
+ 40
+2.0
+  1
+11
+  7
+BOULTING ARIAL
+ 72
+4
+ 11
+504.4999999999999
+ 21
+2.5
+ 31
+0.0
+100
+AcDbText
+  0
+TEXT
+  5
+351
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbText
+ 10
+652.9461118690313
+ 20
+1.495907230559345
+ 30
+0.0
+ 40
+2.0
+  1
+14
+  7
+BOULTING ARIAL
+ 72
+4
+ 11
+654.4999999999999
+ 21
+2.5
+ 31
+0.0
+100
+AcDbText
+  0
+TEXT
+  5
+352
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbText
+ 10
+602.9461118690313
+ 20
+1.513642564802182
+ 30
+0.0
+ 40
+2.0
+  1
+13
+  7
+BOULTING ARIAL
+ 72
+4
+ 11
+604.4999999999999
+ 21
+2.5
+ 31
+0.0
+100
+AcDbText
+  0
+TEXT
+  5
+353
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbText
+ 10
+702.9461118690313
+ 20
+1.512960436562073
+ 30
+0.0
+ 40
+2.0
+  1
+15
+  7
+BOULTING ARIAL
+ 72
+4
+ 11
+704.4999999999999
+ 21
+2.5
+ 31
+0.0
+100
+AcDbText
+  0
+TEXT
+  5
+354
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbText
+ 10
+752.9461118690313
+ 20
+1.512960436562073
+ 30
+0.0
+ 40
+2.0
+  1
+16
+  7
+BOULTING ARIAL
+ 72
+4
+ 11
+754.4999999999999
+ 21
+2.5
+ 31
+0.0
+100
+AcDbText
+  0
+TEXT
+  5
+355
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbText
+ 10
+11.92400620586017
+ 20
+1.495907230559345
+ 30
+0.0
+ 40
+2.0
+  1
+1
+  7
+BOULTING ARIAL
+ 72
+4
+ 11
+12.70095027134448
+ 21
+2.5
+ 31
+0.0
+100
+AcDbText
+  0
+TEXT
+  5
+356
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbText
+ 10
+952.9461118690313
+ 20
+1.512960436562073
+ 30
+0.0
+ 40
+2.0
+  1
+20
+  7
+BOULTING ARIAL
+ 72
+4
+ 11
+954.4999999999999
+ 21
+2.5
+ 31
+0.0
+100
+AcDbText
+  0
+TEXT
+  5
+357
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbText
+ 10
+902.9461118690313
+ 20
+1.512960436562073
+ 30
+0.0
+ 40
+2.0
+  1
+19
+  7
+BOULTING ARIAL
+ 72
+4
+ 11
+904.4999999999999
+ 21
+2.5
+ 31
+0.0
+100
+AcDbText
+  0
+TEXT
+  5
+358
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbText
+ 10
+852.9461118690313
+ 20
+1.512960436562073
+ 30
+0.0
+ 40
+2.0
+  1
+18
+  7
+BOULTING ARIAL
+ 72
+4
+ 11
+854.4999999999999
+ 21
+2.5
+ 31
+0.0
+100
+AcDbText
+  0
+TEXT
+  5
+359
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbText
+ 10
+802.9461118690313
+ 20
+1.495907230559345
+ 30
+0.0
+ 40
+2.0
+  1
+17
+  7
+BOULTING ARIAL
+ 72
+4
+ 11
+804.4999999999999
+ 21
+2.5
+ 31
+0.0
+100
+AcDbText
+  0
+TEXT
+  5
+35A
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbText
+ 10
+1002.946111869031
+ 20
+1.495907230559345
+ 30
+0.0
+ 40
+2.0
+  1
+21
+  7
+BOULTING ARIAL
+ 72
+4
+ 11
+1004.5
+ 21
+2.5
+ 31
+0.0
+100
+AcDbText
+  0
+TEXT
+  5
+35B
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbText
+ 10
+1052.946111869031
+ 20
+1.495907230559345
+ 30
+0.0
+ 40
+2.0
+  1
+22
+  7
+BOULTING ARIAL
+ 72
+4
+ 11
+1054.5
+ 21
+2.5
+ 31
+0.0
+100
+AcDbText
+  0
+TEXT
+  5
+35C
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbText
+ 10
+1102.946111869031
+ 20
+1.513642564802182
+ 30
+0.0
+ 40
+2.0
+  1
+23
+  7
+BOULTING ARIAL
+ 72
+4
+ 11
+1104.5
+ 21
+2.5
+ 31
+0.0
+100
+AcDbText
+  0
+TEXT
+  5
+35D
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbText
+ 10
+1143.329353067504
+ 20
+1.495907230559345
+ 30
+0.0
+ 40
+2.0
+  1
+24
+  7
+BOULTING ARIAL
+ 72
+4
+ 11
+1144.883241198473
+ 21
+2.5
+ 31
+0.0
+100
+AcDbText
+  0
+TEXT
+  5
+35E
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbText
+ 10
+1155.491132332878
+ 20
+434.4999999999999
+ 30
+0.0
+ 40
+2.0
+  1
+H
+  7
+BOULTING ARIAL
+ 72
+4
+ 11
+1156.5
+ 21
+435.5
+ 31
+0.0
+100
+AcDbText
+  0
+TEXT
+  5
+35F
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbText
+ 10
+1155.413369713506
+ 20
+484.4999999999999
+ 30
+0.0
+ 40
+2.0
+  1
+G
+  7
+BOULTING ARIAL
+ 72
+4
+ 11
+1156.5
+ 21
+485.5
+ 31
+0.0
+100
+AcDbText
+  0
+TEXT
+  5
+360
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbText
+ 10
+1155.646657571623
+ 20
+534.4999999999999
+ 30
+0.0
+ 40
+2.0
+  1
+F
+  7
+BOULTING ARIAL
+ 72
+4
+ 11
+1156.5
+ 21
+535.5
+ 31
+0.0
+100
+AcDbText
+  0
+TEXT
+  5
+361
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbText
+ 10
+1155.491132332878
+ 20
+634.4999999999999
+ 30
+0.0
+ 40
+2.0
+  1
+D
+  7
+BOULTING ARIAL
+ 72
+4
+ 11
+1156.5
+ 21
+635.5
+ 31
+0.0
+100
+AcDbText
+  0
+TEXT
+  5
+362
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbText
+ 10
+1155.568212824011
+ 20
+584.4999999999999
+ 30
+0.0
+ 40
+2.0
+  1
+E
+  7
+BOULTING ARIAL
+ 72
+4
+ 11
+1156.5
+ 21
+585.5
+ 31
+0.0
+100
+AcDbText
+  0
+TEXT
+  5
+363
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbText
+ 10
+1155.568212824011
+ 20
+734.4999999999999
+ 30
+0.0
+ 40
+2.0
+  1
+B
+  7
+BOULTING ARIAL
+ 72
+4
+ 11
+1156.5
+ 21
+735.5
+ 31
+0.0
+100
+AcDbText
+  0
+TEXT
+  5
+364
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbText
+ 10
+1155.491132332878
+ 20
+684.4999999999999
+ 30
+0.0
+ 40
+2.0
+  1
+C
+  7
+BOULTING ARIAL
+ 72
+4
+ 11
+1156.5
+ 21
+685.5
+ 31
+0.0
+100
+AcDbText
+  0
+TEXT
+  5
+365
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbText
+ 10
+1155.568212824011
+ 20
+784.4999999999999
+ 30
+0.0
+ 40
+2.0
+  1
+A
+  7
+BOULTING ARIAL
+ 72
+4
+ 11
+1156.5
+ 21
+785.5
+ 31
+0.0
+100
+AcDbText
+  0
+TEXT
+  5
+366
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbText
+ 10
+1155.491132332878
+ 20
+34.5
+ 30
+0.0
+ 40
+2.0
+  1
+R
+  7
+BOULTING ARIAL
+ 72
+4
+ 11
+1156.5
+ 21
+35.5
+ 31
+0.0
+100
+AcDbText
+  0
+TEXT
+  5
+367
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbText
+ 10
+1155.413369713506
+ 20
+84.5600272851296
+ 30
+0.0
+ 40
+2.0
+  1
+Q
+  7
+BOULTING ARIAL
+ 72
+4
+ 11
+1156.5
+ 21
+85.5
+ 31
+0.0
+100
+AcDbText
+  0
+TEXT
+  5
+368
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbText
+ 10
+1155.568212824011
+ 20
+134.5
+ 30
+0.0
+ 40
+2.0
+  1
+P
+  7
+BOULTING ARIAL
+ 72
+4
+ 11
+1156.5
+ 21
+135.5
+ 31
+0.0
+100
+AcDbText
+  0
+TEXT
+  5
+369
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbText
+ 10
+1155.491132332878
+ 20
+184.5
+ 30
+0.0
+ 40
+2.0
+  1
+N
+  7
+BOULTING ARIAL
+ 72
+4
+ 11
+1156.5
+ 21
+185.5
+ 31
+0.0
+100
+AcDbText
+  0
+TEXT
+  5
+36A
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbText
+ 10
+1155.336289222374
+ 20
+234.5
+ 30
+0.0
+ 40
+2.0
+  1
+M
+  7
+BOULTING ARIAL
+ 72
+4
+ 11
+1156.5
+ 21
+235.5
+ 31
+0.0
+100
+AcDbText
+  0
+TEXT
+  5
+36B
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbText
+ 10
+1155.723055934515
+ 20
+284.5
+ 30
+0.0
+ 40
+2.0
+  1
+L
+  7
+BOULTING ARIAL
+ 72
+4
+ 11
+1156.5
+ 21
+285.5
+ 31
+0.0
+100
+AcDbText
+  0
+TEXT
+  5
+36C
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbText
+ 10
+1155.568212824011
+ 20
+334.5
+ 30
+0.0
+ 40
+2.0
+  1
+K
+  7
+BOULTING ARIAL
+ 72
+4
+ 11
+1156.5
+ 21
+335.5
+ 31
+0.0
+100
+AcDbText
+  0
+TEXT
+  5
+36D
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbText
+ 10
+1155.801500682128
+ 20
+384.5170532060027
+ 30
+0.0
+ 40
+2.0
+  1
+J
+  7
+BOULTING ARIAL
+ 72
+4
+ 11
+1156.5
+ 21
+385.5
+ 31
+0.0
+100
+AcDbText
+  0
+TEXT
+  5
+36E
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbText
+ 10
+1.491132332878581
+ 20
+434.4999999999999
+ 30
+0.0
+ 40
+2.0
+  1
+H
+  7
+BOULTING ARIAL
+ 72
+4
+ 11
+2.5
+ 21
+435.5
+ 31
+0.0
+100
+AcDbText
+  0
+TEXT
+  5
+36F
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbText
+ 10
+1.413369713506139
+ 20
+484.4999999999999
+ 30
+0.0
+ 40
+2.0
+  1
+G
+  7
+BOULTING ARIAL
+ 72
+4
+ 11
+2.5
+ 21
+485.5
+ 31
+0.0
+100
+AcDbText
+  0
+TEXT
+  5
+370
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbText
+ 10
+1.646657571623465
+ 20
+534.4999999999999
+ 30
+0.0
+ 40
+2.0
+  1
+F
+  7
+BOULTING ARIAL
+ 72
+4
+ 11
+2.5
+ 21
+535.5
+ 31
+0.0
+100
+AcDbText
+  0
+TEXT
+  5
+371
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbText
+ 10
+1.491132332878581
+ 20
+634.4999999999999
+ 30
+0.0
+ 40
+2.0
+  1
+D
+  7
+BOULTING ARIAL
+ 72
+4
+ 11
+2.5
+ 21
+635.5
+ 31
+0.0
+100
+AcDbText
+  0
+TEXT
+  5
+372
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbText
+ 10
+1.568212824010914
+ 20
+584.4999999999999
+ 30
+0.0
+ 40
+2.0
+  1
+E
+  7
+BOULTING ARIAL
+ 72
+4
+ 11
+2.5
+ 21
+585.5
+ 31
+0.0
+100
+AcDbText
+  0
+TEXT
+  5
+373
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbText
+ 10
+1.568212824010914
+ 20
+734.4999999999999
+ 30
+0.0
+ 40
+2.0
+  1
+B
+  7
+BOULTING ARIAL
+ 72
+4
+ 11
+2.5
+ 21
+735.5
+ 31
+0.0
+100
+AcDbText
+  0
+TEXT
+  5
+374
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbText
+ 10
+1.491132332878581
+ 20
+684.4999999999999
+ 30
+0.0
+ 40
+2.0
+  1
+C
+  7
+BOULTING ARIAL
+ 72
+4
+ 11
+2.5
+ 21
+685.5
+ 31
+0.0
+100
+AcDbText
+  0
+TEXT
+  5
+375
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbText
+ 10
+1.568212824010914
+ 20
+784.4999999999999
+ 30
+0.0
+ 40
+2.0
+  1
+A
+  7
+BOULTING ARIAL
+ 72
+4
+ 11
+2.5
+ 21
+785.5
+ 31
+0.0
+100
+AcDbText
+  0
+TEXT
+  5
+376
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbText
+ 10
+1.491132332878581
+ 20
+34.5
+ 30
+0.0
+ 40
+2.0
+  1
+R
+  7
+BOULTING ARIAL
+ 72
+4
+ 11
+2.5
+ 21
+35.5
+ 31
+0.0
+100
+AcDbText
+  0
+TEXT
+  5
+377
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbText
+ 10
+1.413369713506139
+ 20
+84.5600272851296
+ 30
+0.0
+ 40
+2.0
+  1
+Q
+  7
+BOULTING ARIAL
+ 72
+4
+ 11
+2.5
+ 21
+85.5
+ 31
+0.0
+100
+AcDbText
+  0
+TEXT
+  5
+378
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbText
+ 10
+1.568212824010914
+ 20
+134.5
+ 30
+0.0
+ 40
+2.0
+  1
+P
+  7
+BOULTING ARIAL
+ 72
+4
+ 11
+2.5
+ 21
+135.5
+ 31
+0.0
+100
+AcDbText
+  0
+TEXT
+  5
+379
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbText
+ 10
+1.491132332878581
+ 20
+184.5
+ 30
+0.0
+ 40
+2.0
+  1
+N
+  7
+BOULTING ARIAL
+ 72
+4
+ 11
+2.5
+ 21
+185.5
+ 31
+0.0
+100
+AcDbText
+  0
+TEXT
+  5
+37A
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbText
+ 10
+1.336289222373806
+ 20
+234.5
+ 30
+0.0
+ 40
+2.0
+  1
+M
+  7
+BOULTING ARIAL
+ 72
+4
+ 11
+2.5
+ 21
+235.5
+ 31
+0.0
+100
+AcDbText
+  0
+TEXT
+  5
+37B
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbText
+ 10
+1.723055934515688
+ 20
+284.5
+ 30
+0.0
+ 40
+2.0
+  1
+L
+  7
+BOULTING ARIAL
+ 72
+4
+ 11
+2.5
+ 21
+285.5
+ 31
+0.0
+100
+AcDbText
+  0
+TEXT
+  5
+37C
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbText
+ 10
+1.568212824010914
+ 20
+334.5
+ 30
+0.0
+ 40
+2.0
+  1
+K
+  7
+BOULTING ARIAL
+ 72
+4
+ 11
+2.5
+ 21
+335.5
+ 31
+0.0
+100
+AcDbText
+  0
+TEXT
+  5
+37D
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbText
+ 10
+1.801500682128239
+ 20
+384.5170532060027
+ 30
+0.0
+ 40
+2.0
+  1
+J
+  7
+BOULTING ARIAL
+ 72
+4
+ 11
+2.5
+ 21
+385.5
+ 31
+0.0
+100
+AcDbText
+  0
+TEXT
+  5
+37E
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbText
+ 10
+53.72305593451569
+ 20
+817.4959072305593
+ 30
+0.0
+ 40
+2.0
+  1
+2
+  7
+BOULTING ARIAL
+ 72
+4
+ 11
+54.5
+ 21
+818.5
+ 31
+0.0
+100
+AcDbText
+  0
+TEXT
+  5
+37F
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbText
+ 10
+153.7230559345157
+ 20
+817.5
+ 30
+0.0
+ 40
+2.0
+  1
+4
+  7
+BOULTING ARIAL
+ 72
+4
+ 11
+154.5
+ 21
+818.5
+ 31
+0.0
+100
+AcDbText
+  0
+TEXT
+  5
+380
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbText
+ 10
+103.7230559345157
+ 20
+817.5136425648021
+ 30
+0.0
+ 40
+2.0
+  1
+3
+  7
+BOULTING ARIAL
+ 72
+4
+ 11
+104.5
+ 21
+818.5
+ 31
+0.0
+100
+AcDbText
+  0
+TEXT
+  5
+381
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbText
+ 10
+253.7230559345157
+ 20
+817.512960436562
+ 30
+0.0
+ 40
+2.0
+  1
+6
+  7
+BOULTING ARIAL
+ 72
+4
+ 11
+254.5
+ 21
+818.5
+ 31
+0.0
+100
+AcDbText
+  0
+TEXT
+  5
+382
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbText
+ 10
+203.7230559345157
+ 20
+817.5306957708048
+ 30
+0.0
+ 40
+2.0
+  1
+5
+  7
+BOULTING ARIAL
+ 72
+4
+ 11
+204.5
+ 21
+818.5
+ 31
+0.0
+100
+AcDbText
+  0
+TEXT
+  5
+383
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbText
+ 10
+303.7230559345157
+ 20
+817.512960436562
+ 30
+0.0
+ 40
+2.0
+  1
+7
+  7
+BOULTING ARIAL
+ 72
+4
+ 11
+304.5
+ 21
+818.5
+ 31
+0.0
+100
+AcDbText
+  0
+TEXT
+  5
+384
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbText
+ 10
+353.7230559345157
+ 20
+817.512960436562
+ 30
+0.0
+ 40
+2.0
+  1
+8
+  7
+BOULTING ARIAL
+ 72
+4
+ 11
+354.5
+ 21
+818.5
+ 31
+0.0
+100
+AcDbText
+  0
+TEXT
+  5
+385
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbText
+ 10
+403.7230559345156
+ 20
+817.512960436562
+ 30
+0.0
+ 40
+2.0
+  1
+9
+  7
+BOULTING ARIAL
+ 72
+4
+ 11
+404.4999999999999
+ 21
+818.5
+ 31
+0.0
+100
+AcDbText
+  0
+TEXT
+  5
+386
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbText
+ 10
+452.9461118690313
+ 20
+817.512960436562
+ 30
+0.0
+ 40
+2.0
+  1
+10
+  7
+BOULTING ARIAL
+ 72
+4
+ 11
+454.4999999999999
+ 21
+818.5
+ 31
+0.0
+100
+AcDbText
+  0
+TEXT
+  5
+387
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbText
+ 10
+552.9461118690313
+ 20
+817.4959072305593
+ 30
+0.0
+ 40
+2.0
+  1
+12
+  7
+BOULTING ARIAL
+ 72
+4
+ 11
+554.4999999999999
+ 21
+818.5
+ 31
+0.0
+100
+AcDbText
+  0
+TEXT
+  5
+388
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbText
+ 10
+502.9461118690313
+ 20
+817.4959072305593
+ 30
+0.0
+ 40
+2.0
+  1
+11
+  7
+BOULTING ARIAL
+ 72
+4
+ 11
+504.4999999999999
+ 21
+818.5
+ 31
+0.0
+100
+AcDbText
+  0
+TEXT
+  5
+389
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbText
+ 10
+652.9461118690313
+ 20
+817.4959072305593
+ 30
+0.0
+ 40
+2.0
+  1
+14
+  7
+BOULTING ARIAL
+ 72
+4
+ 11
+654.4999999999999
+ 21
+818.5
+ 31
+0.0
+100
+AcDbText
+  0
+TEXT
+  5
+38A
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbText
+ 10
+602.9461118690313
+ 20
+817.5136425648021
+ 30
+0.0
+ 40
+2.0
+  1
+13
+  7
+BOULTING ARIAL
+ 72
+4
+ 11
+604.4999999999999
+ 21
+818.5
+ 31
+0.0
+100
+AcDbText
+  0
+TEXT
+  5
+38B
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbText
+ 10
+702.9461118690313
+ 20
+817.512960436562
+ 30
+0.0
+ 40
+2.0
+  1
+15
+  7
+BOULTING ARIAL
+ 72
+4
+ 11
+704.4999999999999
+ 21
+818.5
+ 31
+0.0
+100
+AcDbText
+  0
+TEXT
+  5
+38C
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbText
+ 10
+752.9461118690313
+ 20
+817.512960436562
+ 30
+0.0
+ 40
+2.0
+  1
+16
+  7
+BOULTING ARIAL
+ 72
+4
+ 11
+754.4999999999999
+ 21
+818.5
+ 31
+0.0
+100
+AcDbText
+  0
+TEXT
+  5
+38D
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbText
+ 10
+11.92400620586017
+ 20
+817.4959072305593
+ 30
+0.0
+ 40
+2.0
+  1
+1
+  7
+BOULTING ARIAL
+ 72
+4
+ 11
+12.70095027134448
+ 21
+818.5
+ 31
+0.0
+100
+AcDbText
+  0
+TEXT
+  5
+38E
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbText
+ 10
+952.9461118690313
+ 20
+817.512960436562
+ 30
+0.0
+ 40
+2.0
+  1
+20
+  7
+BOULTING ARIAL
+ 72
+4
+ 11
+954.4999999999999
+ 21
+818.5
+ 31
+0.0
+100
+AcDbText
+  0
+TEXT
+  5
+38F
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbText
+ 10
+902.9461118690313
+ 20
+817.512960436562
+ 30
+0.0
+ 40
+2.0
+  1
+19
+  7
+BOULTING ARIAL
+ 72
+4
+ 11
+904.4999999999999
+ 21
+818.5
+ 31
+0.0
+100
+AcDbText
+  0
+TEXT
+  5
+390
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbText
+ 10
+852.9461118690313
+ 20
+817.512960436562
+ 30
+0.0
+ 40
+2.0
+  1
+18
+  7
+BOULTING ARIAL
+ 72
+4
+ 11
+854.4999999999999
+ 21
+818.5
+ 31
+0.0
+100
+AcDbText
+  0
+TEXT
+  5
+391
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbText
+ 10
+802.9461118690313
+ 20
+817.4959072305593
+ 30
+0.0
+ 40
+2.0
+  1
+17
+  7
+BOULTING ARIAL
+ 72
+4
+ 11
+804.4999999999999
+ 21
+818.5
+ 31
+0.0
+100
+AcDbText
+  0
+TEXT
+  5
+392
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbText
+ 10
+1002.946111869031
+ 20
+817.4959072305593
+ 30
+0.0
+ 40
+2.0
+  1
+21
+  7
+BOULTING ARIAL
+ 72
+4
+ 11
+1004.5
+ 21
+818.5
+ 31
+0.0
+100
+AcDbText
+  0
+TEXT
+  5
+393
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbText
+ 10
+1052.946111869031
+ 20
+817.4959072305593
+ 30
+0.0
+ 40
+2.0
+  1
+22
+  7
+BOULTING ARIAL
+ 72
+4
+ 11
+1054.5
+ 21
+818.5
+ 31
+0.0
+100
+AcDbText
+  0
+TEXT
+  5
+394
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbText
+ 10
+1102.946111869031
+ 20
+817.5136425648021
+ 30
+0.0
+ 40
+2.0
+  1
+23
+  7
+BOULTING ARIAL
+ 72
+4
+ 11
+1104.5
+ 21
+818.5
+ 31
+0.0
+100
+AcDbText
+  0
+TEXT
+  5
+395
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbText
+ 10
+1143.329353067504
+ 20
+817.4959072305593
+ 30
+0.0
+ 40
+2.0
+  1
+24
+  7
+BOULTING ARIAL
+ 72
+4
+ 11
+1144.883241198473
+ 21
+818.5
+ 31
+0.0
+100
+AcDbText
+  0
+TEXT
+  5
+396
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+370
+25
+100
+AcDbText
+ 10
+-1.000000000000008
+ 20
+679.5197817189631
+ 30
+0.0
+ 40
+2.0
+  1
+DRAWING SHEET A0 - BS EN ISO 5457:1999, EN ISO7200:2004, BS EN ISO 9431:1999, BS EN ISO 3098:1998
+ 50
+90.0
+  7
+BOULTING ARIAL
+ 72
+2
+ 11
+-1.0
+ 21
+821.0
+ 31
+0.0
+100
+AcDbText
+  0
+LINE
+  5
+397
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+1129.5
+ 20
+816.0
+ 30
+0.0
+ 11
+1129.5
+ 21
+821.0
+ 31
+0.0
+  0
+LINE
+  5
+398
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+1079.5
+ 20
+816.0
+ 30
+0.0
+ 11
+1079.5
+ 21
+821.0
+ 31
+0.0
+  0
+LINE
+  5
+399
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+1029.5
+ 20
+816.0
+ 30
+0.0
+ 11
+1029.5
+ 21
+821.0
+ 31
+0.0
+  0
+LINE
+  5
+39A
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+979.4999999999999
+ 20
+816.0
+ 30
+0.0
+ 11
+979.4999999999999
+ 21
+821.0
+ 31
+0.0
+  0
+LINE
+  5
+39B
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+929.4999999999999
+ 20
+816.0
+ 30
+0.0
+ 11
+929.4999999999999
+ 21
+821.0
+ 31
+0.0
+  0
+LINE
+  5
+39C
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+879.4999999999999
+ 20
+816.0
+ 30
+0.0
+ 11
+879.4999999999999
+ 21
+821.0
+ 31
+0.0
+  0
+LINE
+  5
+39D
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+779.4999999999999
+ 20
+816.0
+ 30
+0.0
+ 11
+779.4999999999999
+ 21
+821.0
+ 31
+0.0
+  0
+LINE
+  5
+39E
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+829.4999999999999
+ 20
+816.0
+ 30
+0.0
+ 11
+829.4999999999999
+ 21
+821.0
+ 31
+0.0
+  0
+LINE
+  5
+39F
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+679.4999999999999
+ 20
+816.0
+ 30
+0.0
+ 11
+679.4999999999999
+ 21
+821.0
+ 31
+0.0
+  0
+LINE
+  5
+3A0
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+729.4999999999999
+ 20
+816.0
+ 30
+0.0
+ 11
+729.4999999999999
+ 21
+821.0
+ 31
+0.0
+  0
+LINE
+  5
+3A1
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+629.4999999999999
+ 20
+816.0
+ 30
+0.0
+ 11
+629.4999999999999
+ 21
+821.0
+ 31
+0.0
+  0
+LINE
+  5
+3A2
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+579.4999999999999
+ 20
+811.0
+ 30
+0.0
+ 11
+579.4999999999999
+ 21
+821.0
+ 31
+0.0
+  0
+LINE
+  5
+3A3
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+479.4999999999999
+ 20
+816.0
+ 30
+0.0
+ 11
+479.4999999999999
+ 21
+821.0
+ 31
+0.0
+  0
+LINE
+  5
+3A4
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+529.4999999999999
+ 20
+816.0
+ 30
+0.0
+ 11
+529.4999999999999
+ 21
+821.0
+ 31
+0.0
+  0
+LINE
+  5
+3A5
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+429.4999999999999
+ 20
+816.0
+ 30
+0.0
+ 11
+429.4999999999999
+ 21
+821.0
+ 31
+0.0
+  0
+LINE
+  5
+3A6
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+379.5
+ 20
+816.0
+ 30
+0.0
+ 11
+379.5
+ 21
+821.0
+ 31
+0.0
+  0
+LINE
+  5
+3A7
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+329.5
+ 20
+816.0
+ 30
+0.0
+ 11
+329.5
+ 21
+821.0
+ 31
+0.0
+  0
+LINE
+  5
+3A8
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+279.5
+ 20
+816.0
+ 30
+0.0
+ 11
+279.5
+ 21
+821.0
+ 31
+0.0
+  0
+LINE
+  5
+3A9
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+229.5
+ 20
+816.0
+ 30
+0.0
+ 11
+229.5
+ 21
+821.0
+ 31
+0.0
+  0
+LINE
+  5
+3AA
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+129.5
+ 20
+816.0
+ 30
+0.0
+ 11
+129.5
+ 21
+821.0
+ 31
+0.0
+  0
+LINE
+  5
+3AB
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+179.5
+ 20
+816.0
+ 30
+0.0
+ 11
+179.5
+ 21
+821.0
+ 31
+0.0
+  0
+LINE
+  5
+3AC
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+79.5
+ 20
+816.0
+ 30
+0.0
+ 11
+79.5
+ 21
+821.0
+ 31
+0.0
+  0
+LINE
+  5
+3AD
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+29.5
+ 20
+816.0
+ 30
+0.0
+ 11
+29.5
+ 21
+821.0
+ 31
+0.0
+  0
+LINE
+  5
+3AE
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+729.4999999999999
+ 20
+816.0
+ 30
+0.0
+ 11
+729.4999999999999
+ 21
+821.0
+ 31
+0.0
+  0
+LINE
+  5
+3AF
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+679.4999999999999
+ 20
+816.0
+ 30
+0.0
+ 11
+679.4999999999999
+ 21
+821.0
+ 31
+0.0
+  0
+LINE
+  5
+3B0
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+579.4999999999999
+ 20
+811.0
+ 30
+0.0
+ 11
+579.4999999999999
+ 21
+821.0
+ 31
+0.0
+  0
+LINE
+  5
+3B1
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+629.4999999999999
+ 20
+816.0
+ 30
+0.0
+ 11
+629.4999999999999
+ 21
+821.0
+ 31
+0.0
+  0
+LINE
+  5
+3B2
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+579.4999999999999
+ 20
+811.0
+ 30
+0.0
+ 11
+579.4999999999999
+ 21
+821.0
+ 31
+0.0
+  0
+LINE
+  5
+3B3
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+529.4999999999999
+ 20
+816.0
+ 30
+0.0
+ 11
+529.4999999999999
+ 21
+821.0
+ 31
+0.0
+  0
+LINE
+  5
+3B4
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+479.4999999999999
+ 20
+816.0
+ 30
+0.0
+ 11
+479.4999999999999
+ 21
+821.0
+ 31
+0.0
+  0
+LINE
+  5
+3B5
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+529.4999999999999
+ 20
+816.0
+ 30
+0.0
+ 11
+529.4999999999999
+ 21
+821.0
+ 31
+0.0
+  0
+LINE
+  5
+3B6
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+479.4999999999999
+ 20
+816.0
+ 30
+0.0
+ 11
+479.4999999999999
+ 21
+821.0
+ 31
+0.0
+  0
+LINE
+  5
+3B7
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+429.4999999999999
+ 20
+816.0
+ 30
+0.0
+ 11
+429.4999999999999
+ 21
+821.0
+ 31
+0.0
+  0
+LINE
+  5
+3B8
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+429.4999999999999
+ 20
+816.0
+ 30
+0.0
+ 11
+429.4999999999999
+ 21
+821.0
+ 31
+0.0
+  0
+LINE
+  5
+3B9
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+329.5
+ 20
+816.0
+ 30
+0.0
+ 11
+329.5
+ 21
+821.0
+ 31
+0.0
+  0
+LINE
+  5
+3BA
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+279.5
+ 20
+816.0
+ 30
+0.0
+ 11
+279.5
+ 21
+821.0
+ 31
+0.0
+  0
+LINE
+  5
+3BB
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+329.5
+ 20
+816.0
+ 30
+0.0
+ 11
+329.5
+ 21
+821.0
+ 31
+0.0
+  0
+LINE
+  5
+3BC
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+229.5
+ 20
+816.0
+ 30
+0.0
+ 11
+229.5
+ 21
+821.0
+ 31
+0.0
+  0
+LINE
+  5
+3BD
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+229.5
+ 20
+816.0
+ 30
+0.0
+ 11
+229.5
+ 21
+821.0
+ 31
+0.0
+  0
+LINE
+  5
+3BE
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+129.5
+ 20
+816.0
+ 30
+0.0
+ 11
+129.5
+ 21
+821.0
+ 31
+0.0
+  0
+LINE
+  5
+3BF
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+179.5
+ 20
+816.0
+ 30
+0.0
+ 11
+179.5
+ 21
+821.0
+ 31
+0.0
+  0
+LINE
+  5
+3C0
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+129.5
+ 20
+816.0
+ 30
+0.0
+ 11
+129.5
+ 21
+821.0
+ 31
+0.0
+  0
+LINE
+  5
+3C1
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+179.5
+ 20
+816.0
+ 30
+0.0
+ 11
+179.5
+ 21
+821.0
+ 31
+0.0
+  0
+LINE
+  5
+3C2
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+79.5
+ 20
+816.0
+ 30
+0.0
+ 11
+79.5
+ 21
+821.0
+ 31
+0.0
+  0
+LINE
+  5
+3C3
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+29.5
+ 20
+816.0
+ 30
+0.0
+ 11
+29.5
+ 21
+821.0
+ 31
+0.0
+  0
+LINE
+  5
+3C4
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+79.5
+ 20
+816.0
+ 30
+0.0
+ 11
+79.5
+ 21
+821.0
+ 31
+0.0
+  0
+LINE
+  5
+3C5
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+5.0
+ 20
+710.5
+ 30
+0.0
+ 11
+0.0
+ 21
+710.5
+ 31
+0.0
+  0
+LINE
+  5
+3C6
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+5.0
+ 20
+760.5
+ 30
+0.0
+ 11
+0.0
+ 21
+760.5
+ 31
+0.0
+  0
+LINE
+  5
+3C7
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+5.0
+ 20
+660.5
+ 30
+0.0
+ 11
+0.0
+ 21
+660.5
+ 31
+0.0
+  0
+LINE
+  5
+3C8
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+5.0
+ 20
+610.5
+ 30
+0.0
+ 11
+0.0
+ 21
+610.5
+ 31
+0.0
+  0
+LINE
+  5
+3C9
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+5.0
+ 20
+560.5
+ 30
+0.0
+ 11
+0.0
+ 21
+560.5
+ 31
+0.0
+  0
+LINE
+  5
+3CA
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+5.0
+ 20
+510.5
+ 30
+0.0
+ 11
+0.0
+ 21
+510.5
+ 31
+0.0
+  0
+LINE
+  5
+3CB
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+5.0
+ 20
+460.5
+ 30
+0.0
+ 11
+0.0
+ 21
+460.5
+ 31
+0.0
+  0
+LINE
+  5
+3CC
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+5.0
+ 20
+360.5
+ 30
+0.0
+ 11
+0.0
+ 21
+360.5
+ 31
+0.0
+  0
+LINE
+  5
+3CD
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+0.0
+ 20
+410.5
+ 30
+0.0
+ 11
+10.0
+ 21
+410.5
+ 31
+0.0
+  0
+LINE
+  5
+3CE
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+5.0
+ 20
+310.5
+ 30
+0.0
+ 11
+0.0
+ 21
+310.5
+ 31
+0.0
+  0
+LINE
+  5
+3CF
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+5.0
+ 20
+260.5
+ 30
+0.0
+ 11
+0.0
+ 21
+260.5
+ 31
+0.0
+  0
+LINE
+  5
+3D0
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+5.0
+ 20
+210.5
+ 30
+0.0
+ 11
+0.0
+ 21
+210.5
+ 31
+0.0
+  0
+LINE
+  5
+3D1
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+5.0
+ 20
+110.5
+ 30
+0.0
+ 11
+0.0
+ 21
+110.5
+ 31
+0.0
+  0
+LINE
+  5
+3D2
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+5.0
+ 20
+160.5
+ 30
+0.0
+ 11
+0.0
+ 21
+160.5
+ 31
+0.0
+  0
+LINE
+  5
+3D3
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+5.0
+ 20
+60.5
+ 30
+0.0
+ 11
+0.0
+ 21
+60.5
+ 31
+0.0
+  0
+LINE
+  5
+3D4
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+5.0
+ 20
+360.5
+ 30
+0.0
+ 11
+0.0
+ 21
+360.5
+ 31
+0.0
+  0
+LINE
+  5
+3D5
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+5.0
+ 20
+260.5
+ 30
+0.0
+ 11
+0.0
+ 21
+260.5
+ 31
+0.0
+  0
+LINE
+  5
+3D6
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+5.0
+ 20
+310.5
+ 30
+0.0
+ 11
+0.0
+ 21
+310.5
+ 31
+0.0
+  0
+LINE
+  5
+3D7
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+5.0
+ 20
+660.5
+ 30
+0.0
+ 11
+0.0
+ 21
+660.5
+ 31
+0.0
+  0
+LINE
+  5
+3D8
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+5.0
+ 20
+710.5
+ 30
+0.0
+ 11
+0.0
+ 21
+710.5
+ 31
+0.0
+  0
+LINE
+  5
+3D9
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+5.0
+ 20
+760.5
+ 30
+0.0
+ 11
+0.0
+ 21
+760.5
+ 31
+0.0
+  0
+LINE
+  5
+3DA
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+5.0
+ 20
+560.5
+ 30
+0.0
+ 11
+0.0
+ 21
+560.5
+ 31
+0.0
+  0
+LINE
+  5
+3DB
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+5.0
+ 20
+610.5
+ 30
+0.0
+ 11
+0.0
+ 21
+610.5
+ 31
+0.0
+  0
+LINE
+  5
+3DC
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+1159.0
+ 20
+710.5
+ 30
+0.0
+ 11
+1154.0
+ 21
+710.5
+ 31
+0.0
+  0
+LINE
+  5
+3DD
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+1159.0
+ 20
+760.5
+ 30
+0.0
+ 11
+1154.0
+ 21
+760.5
+ 31
+0.0
+  0
+LINE
+  5
+3DE
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+1159.0
+ 20
+660.5
+ 30
+0.0
+ 11
+1154.0
+ 21
+660.5
+ 31
+0.0
+  0
+LINE
+  5
+3DF
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+1159.0
+ 20
+610.5
+ 30
+0.0
+ 11
+1154.0
+ 21
+610.5
+ 31
+0.0
+  0
+LINE
+  5
+3E0
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+1159.0
+ 20
+560.5
+ 30
+0.0
+ 11
+1154.0
+ 21
+560.5
+ 31
+0.0
+  0
+LINE
+  5
+3E1
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+1159.0
+ 20
+510.5
+ 30
+0.0
+ 11
+1154.0
+ 21
+510.5
+ 31
+0.0
+  0
+LINE
+  5
+3E2
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+1159.0
+ 20
+460.5
+ 30
+0.0
+ 11
+1154.0
+ 21
+460.5
+ 31
+0.0
+  0
+LINE
+  5
+3E3
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+1159.0
+ 20
+360.5
+ 30
+0.0
+ 11
+1154.0
+ 21
+360.5
+ 31
+0.0
+  0
+LINE
+  5
+3E4
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+1149.0
+ 20
+410.5
+ 30
+0.0
+ 11
+1159.0
+ 21
+410.5
+ 31
+0.0
+  0
+LINE
+  5
+3E5
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+1159.0
+ 20
+310.5
+ 30
+0.0
+ 11
+1154.0
+ 21
+310.5
+ 31
+0.0
+  0
+LINE
+  5
+3E6
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+1159.0
+ 20
+260.5
+ 30
+0.0
+ 11
+1154.0
+ 21
+260.5
+ 31
+0.0
+  0
+LINE
+  5
+3E7
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+1159.0
+ 20
+210.5
+ 30
+0.0
+ 11
+1154.0
+ 21
+210.5
+ 31
+0.0
+  0
+LINE
+  5
+3E8
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+1159.0
+ 20
+110.5
+ 30
+0.0
+ 11
+1154.0
+ 21
+110.5
+ 31
+0.0
+  0
+LINE
+  5
+3E9
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+1159.0
+ 20
+160.5
+ 30
+0.0
+ 11
+1154.0
+ 21
+160.5
+ 31
+0.0
+  0
+LINE
+  5
+3EA
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+1159.0
+ 20
+60.5
+ 30
+0.0
+ 11
+1154.0
+ 21
+60.5
+ 31
+0.0
+  0
+LINE
+  5
+3EB
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+1159.0
+ 20
+360.5
+ 30
+0.0
+ 11
+1154.0
+ 21
+360.5
+ 31
+0.0
+  0
+LINE
+  5
+3EC
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+1159.0
+ 20
+260.5
+ 30
+0.0
+ 11
+1154.0
+ 21
+260.5
+ 31
+0.0
+  0
+LINE
+  5
+3ED
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+1159.0
+ 20
+310.5
+ 30
+0.0
+ 11
+1154.0
+ 21
+310.5
+ 31
+0.0
+  0
+LINE
+  5
+3EE
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+1159.0
+ 20
+660.5
+ 30
+0.0
+ 11
+1154.0
+ 21
+660.5
+ 31
+0.0
+  0
+LINE
+  5
+3EF
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+1159.0
+ 20
+710.5
+ 30
+0.0
+ 11
+1154.0
+ 21
+710.5
+ 31
+0.0
+  0
+LINE
+  5
+3F0
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+1159.0
+ 20
+760.5
+ 30
+0.0
+ 11
+1154.0
+ 21
+760.5
+ 31
+0.0
+  0
+LINE
+  5
+3F1
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+1159.0
+ 20
+560.5
+ 30
+0.0
+ 11
+1154.0
+ 21
+560.5
+ 31
+0.0
+  0
+LINE
+  5
+3F2
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+1159.0
+ 20
+610.5
+ 30
+0.0
+ 11
+1154.0
+ 21
+610.5
+ 31
+0.0
+  0
+LINE
+  5
+3F3
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+1129.5
+ 20
+0.0
+ 30
+0.0
+ 11
+1129.5
+ 21
+5.0
+ 31
+0.0
+  0
+LINE
+  5
+3F4
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+1079.5
+ 20
+0.0
+ 30
+0.0
+ 11
+1079.5
+ 21
+5.0
+ 31
+0.0
+  0
+LINE
+  5
+3F5
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+1029.5
+ 20
+0.0
+ 30
+0.0
+ 11
+1029.5
+ 21
+5.0
+ 31
+0.0
+  0
+LINE
+  5
+3F6
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+979.4999999999999
+ 20
+0.0
+ 30
+0.0
+ 11
+979.4999999999999
+ 21
+5.0
+ 31
+0.0
+  0
+LINE
+  5
+3F7
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+929.4999999999999
+ 20
+0.0
+ 30
+0.0
+ 11
+929.4999999999999
+ 21
+5.0
+ 31
+0.0
+  0
+LINE
+  5
+3F8
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+879.4999999999999
+ 20
+0.0
+ 30
+0.0
+ 11
+879.4999999999999
+ 21
+5.0
+ 31
+0.0
+  0
+LINE
+  5
+3F9
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+779.4999999999999
+ 20
+0.0
+ 30
+0.0
+ 11
+779.4999999999999
+ 21
+5.0
+ 31
+0.0
+  0
+LINE
+  5
+3FA
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+829.4999999999999
+ 20
+0.0
+ 30
+0.0
+ 11
+829.4999999999999
+ 21
+5.0
+ 31
+0.0
+  0
+LINE
+  5
+3FB
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+679.4999999999999
+ 20
+0.0
+ 30
+0.0
+ 11
+679.4999999999999
+ 21
+5.0
+ 31
+0.0
+  0
+LINE
+  5
+3FC
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+729.4999999999999
+ 20
+0.0
+ 30
+0.0
+ 11
+729.4999999999999
+ 21
+5.0
+ 31
+0.0
+  0
+LINE
+  5
+3FD
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+629.4999999999999
+ 20
+0.0
+ 30
+0.0
+ 11
+629.4999999999999
+ 21
+5.0
+ 31
+0.0
+  0
+LINE
+  5
+3FE
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+579.4999999999999
+ 20
+0.0
+ 30
+0.0
+ 11
+579.4999999999999
+ 21
+10.0
+ 31
+0.0
+  0
+LINE
+  5
+3FF
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+479.4999999999999
+ 20
+0.0
+ 30
+0.0
+ 11
+479.4999999999999
+ 21
+5.0
+ 31
+0.0
+  0
+LINE
+  5
+400
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+529.4999999999999
+ 20
+0.0
+ 30
+0.0
+ 11
+529.4999999999999
+ 21
+5.0
+ 31
+0.0
+  0
+LINE
+  5
+401
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+429.4999999999999
+ 20
+0.0
+ 30
+0.0
+ 11
+429.4999999999999
+ 21
+5.0
+ 31
+0.0
+  0
+LINE
+  5
+402
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+379.5
+ 20
+0.0
+ 30
+0.0
+ 11
+379.5
+ 21
+5.0
+ 31
+0.0
+  0
+LINE
+  5
+403
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+329.5
+ 20
+0.0
+ 30
+0.0
+ 11
+329.5
+ 21
+5.0
+ 31
+0.0
+  0
+LINE
+  5
+404
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+279.5
+ 20
+0.0
+ 30
+0.0
+ 11
+279.5
+ 21
+5.0
+ 31
+0.0
+  0
+LINE
+  5
+405
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+229.5
+ 20
+0.0
+ 30
+0.0
+ 11
+229.5
+ 21
+5.0
+ 31
+0.0
+  0
+LINE
+  5
+406
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+129.5
+ 20
+0.0
+ 30
+0.0
+ 11
+129.5
+ 21
+5.0
+ 31
+0.0
+  0
+LINE
+  5
+407
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+179.5
+ 20
+0.0
+ 30
+0.0
+ 11
+179.5
+ 21
+5.0
+ 31
+0.0
+  0
+LINE
+  5
+408
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+79.5
+ 20
+0.0
+ 30
+0.0
+ 11
+79.5
+ 21
+5.0
+ 31
+0.0
+  0
+LINE
+  5
+409
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+29.5
+ 20
+0.0
+ 30
+0.0
+ 11
+29.5
+ 21
+5.0
+ 31
+0.0
+  0
+LINE
+  5
+40A
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+729.4999999999999
+ 20
+0.0
+ 30
+0.0
+ 11
+729.4999999999999
+ 21
+5.0
+ 31
+0.0
+  0
+LINE
+  5
+40B
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+679.4999999999999
+ 20
+0.0
+ 30
+0.0
+ 11
+679.4999999999999
+ 21
+5.0
+ 31
+0.0
+  0
+LINE
+  5
+40C
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+629.4999999999999
+ 20
+0.0
+ 30
+0.0
+ 11
+629.4999999999999
+ 21
+5.0
+ 31
+0.0
+  0
+LINE
+  5
+40D
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+529.4999999999999
+ 20
+0.0
+ 30
+0.0
+ 11
+529.4999999999999
+ 21
+5.0
+ 31
+0.0
+  0
+LINE
+  5
+40E
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+479.4999999999999
+ 20
+0.0
+ 30
+0.0
+ 11
+479.4999999999999
+ 21
+5.0
+ 31
+0.0
+  0
+LINE
+  5
+40F
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+529.4999999999999
+ 20
+0.0
+ 30
+0.0
+ 11
+529.4999999999999
+ 21
+5.0
+ 31
+0.0
+  0
+LINE
+  5
+410
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+479.4999999999999
+ 20
+0.0
+ 30
+0.0
+ 11
+479.4999999999999
+ 21
+5.0
+ 31
+0.0
+  0
+LINE
+  5
+411
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+429.4999999999999
+ 20
+0.0
+ 30
+0.0
+ 11
+429.4999999999999
+ 21
+5.0
+ 31
+0.0
+  0
+LINE
+  5
+412
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+429.4999999999999
+ 20
+0.0
+ 30
+0.0
+ 11
+429.4999999999999
+ 21
+5.0
+ 31
+0.0
+  0
+LINE
+  5
+413
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+329.5
+ 20
+0.0
+ 30
+0.0
+ 11
+329.5
+ 21
+5.0
+ 31
+0.0
+  0
+LINE
+  5
+414
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+279.5
+ 20
+0.0
+ 30
+0.0
+ 11
+279.5
+ 21
+5.0
+ 31
+0.0
+  0
+LINE
+  5
+415
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+329.5
+ 20
+0.0
+ 30
+0.0
+ 11
+329.5
+ 21
+5.0
+ 31
+0.0
+  0
+LINE
+  5
+416
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+229.5
+ 20
+0.0
+ 30
+0.0
+ 11
+229.5
+ 21
+5.0
+ 31
+0.0
+  0
+LINE
+  5
+417
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+229.5
+ 20
+0.0
+ 30
+0.0
+ 11
+229.5
+ 21
+5.0
+ 31
+0.0
+  0
+LINE
+  5
+418
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+129.5
+ 20
+0.0
+ 30
+0.0
+ 11
+129.5
+ 21
+5.0
+ 31
+0.0
+  0
+LINE
+  5
+419
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+179.5
+ 20
+0.0
+ 30
+0.0
+ 11
+179.5
+ 21
+5.0
+ 31
+0.0
+  0
+LINE
+  5
+41A
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+129.5
+ 20
+0.0
+ 30
+0.0
+ 11
+129.5
+ 21
+5.0
+ 31
+0.0
+  0
+LINE
+  5
+41B
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+179.5
+ 20
+0.0
+ 30
+0.0
+ 11
+179.5
+ 21
+5.0
+ 31
+0.0
+  0
+LINE
+  5
+41C
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+79.5
+ 20
+0.0
+ 30
+0.0
+ 11
+79.5
+ 21
+5.0
+ 31
+0.0
+  0
+LINE
+  5
+41D
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+29.5
+ 20
+0.0
+ 30
+0.0
+ 11
+29.5
+ 21
+5.0
+ 31
+0.0
+  0
+LINE
+  5
+41E
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+79.5
+ 20
+0.0
+ 30
+0.0
+ 11
+79.5
+ 21
+5.0
+ 31
+0.0
+  0
+LINE
+  5
+41F
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+5.0
+ 20
+5.0
+ 30
+0.0
+ 11
+1154.0
+ 21
+5.0
+ 31
+0.0
+  0
+LINE
+  5
+420
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+1154.0
+ 20
+5.0
+ 30
+0.0
+ 11
+1154.0
+ 21
+816.0
+ 31
+0.0
+  0
+LINE
+  5
+421
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+1154.0
+ 20
+816.0
+ 30
+0.0
+ 11
+5.0
+ 21
+816.0
+ 31
+0.0
+  0
+LINE
+  5
+422
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+5.0
+ 20
+816.0
+ 30
+0.0
+ 11
+5.0
+ 21
+5.0
+ 31
+0.0
+  0
+LINE
+  5
+423
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+0.0
+ 20
+0.0
+ 30
+0.0
+ 11
+1159.0
+ 21
+0.0
+ 31
+0.0
+  0
+LINE
+  5
+424
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+1159.0
+ 20
+0.0
+ 30
+0.0
+ 11
+1159.0
+ 21
+821.0
+ 31
+0.0
+  0
+LINE
+  5
+425
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+1159.0
+ 20
+821.0
+ 30
+0.0
+ 11
+0.0
+ 21
+821.0
+ 31
+0.0
+  0
+LINE
+  5
+426
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+0.0
+ 20
+821.0
+ 30
+0.0
+ 11
+0.0
+ 21
+0.0
+ 31
+0.0
+  0
+TEXT
+  5
+427
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbText
+ 10
+1090.503503022162
+ 20
+95.47145866463693
+ 30
+0.0
+ 40
+3.564
+  1
+www.boulting.co.uk
+  7
+Tahoma
+ 72
+1
+ 11
+1112.0
+ 21
+97.2534586646369
+ 31
+0.0
+100
+AcDbText
+ 73
+2
+  0
+ATTDEF
+  5
+428
+330
+320
+100
+AcDbEntity
+  8
+E-020___B-E-Drawing Frame Attributes
+100
+AcDbText
+ 10
+1109.0
+ 20
+7.0
+ 30
+0.0
+ 40
+4.0
+  1
+
+  7
+BOULTING ARIAL
+ 41
+0.8
+ 72
+1
+ 11
+1109.0
+ 21
+7.0
+ 31
+0.0
+100
+AcDbAttributeDefinition
+  3
+DRAWING NUMBER
+  2
+DRAWING_NUMBER
+ 70
+0
+  0
+ATTDEF
+  5
+429
+330
+320
+100
+AcDbEntity
+  8
+E-020___B-E-Drawing Frame Attributes
+100
+AcDbText
+ 10
+1146.260300136425
+ 20
+6.0
+ 30
+0.0
+ 40
+4.0
+  1
+**
+  7
+BOULTING ARIAL
+ 41
+0.8
+ 72
+1
+ 11
+1148.0
+ 21
+6.0
+ 31
+0.0
+100
+AcDbAttributeDefinition
+  3
+REVISION
+  2
+REV
+ 70
+0
+  0
+ATTDEF
+  5
+42A
+330
+320
+100
+AcDbEntity
+  8
+E-020___B-E-Drawing Frame Attributes
+100
+AcDbText
+ 10
+1075.0
+ 20
+51.0
+ 30
+0.0
+ 40
+2.0
+  1
+
+  7
+BOULTING ARIAL
+ 41
+0.8
+100
+AcDbAttributeDefinition
+  3
+DRAWING TITLE1
+  2
+TITLE1
+ 70
+0
+  0
+ATTDEF
+  5
+42B
+330
+320
+100
+AcDbEntity
+  8
+E-020___B-E-Drawing Frame Attributes
+100
+AcDbText
+ 10
+1075.0
+ 20
+46.0
+ 30
+0.0
+ 40
+2.0
+  1
+
+  7
+BOULTING ARIAL
+ 41
+0.8
+100
+AcDbAttributeDefinition
+  3
+DRAWING TITLE2
+  2
+TITLE2
+ 70
+0
+  0
+ATTDEF
+  5
+42C
+330
+320
+100
+AcDbEntity
+  8
+E-020___B-E-Drawing Frame Attributes
+100
+AcDbText
+ 10
+1075.0
+ 20
+41.0
+ 30
+0.0
+ 40
+2.0
+  1
+
+  7
+BOULTING ARIAL
+ 41
+0.8
+100
+AcDbAttributeDefinition
+  3
+DRAWING TITLE3
+  2
+TITLE3
+ 70
+0
+  0
+ATTDEF
+  5
+42D
+330
+320
+100
+AcDbEntity
+  8
+E-020___B-E-Drawing Frame Attributes
+100
+AcDbText
+ 10
+1075.0
+ 20
+36.0
+ 30
+0.0
+ 40
+2.0
+  1
+
+  7
+BOULTING ARIAL
+ 41
+0.8
+100
+AcDbAttributeDefinition
+  3
+DRAWING TITLE4
+  2
+TITLE4
+ 70
+0
+  0
+ATTDEF
+  5
+42E
+330
+320
+100
+AcDbEntity
+  8
+E-020___B-E-Drawing Frame Attributes
+100
+AcDbText
+ 10
+1082.0
+ 20
+27.0
+ 30
+0.0
+ 40
+2.0
+  1
+**
+  7
+BOULTING ARIAL
+ 41
+0.8
+100
+AcDbAttributeDefinition
+  3
+DRAWN
+  2
+DRN
+ 70
+0
+  0
+ATTDEF
+  5
+42F
+330
+320
+100
+AcDbEntity
+  8
+E-020___B-E-Drawing Frame Attributes
+100
+AcDbText
+ 10
+1120.0
+ 20
+27.0
+ 30
+0.0
+ 40
+2.0
+  1
+**.**.2013
+  7
+BOULTING ARIAL
+ 41
+0.8
+100
+AcDbAttributeDefinition
+  3
+DATE
+  2
+DATE
+ 70
+0
+  0
+ATTDEF
+  5
+430
+330
+320
+100
+AcDbEntity
+  8
+E-020___B-E-Drawing Frame Attributes
+100
+AcDbText
+ 10
+1147.384720327421
+ 20
+27.0
+ 30
+0.0
+ 40
+2.0
+  1
+*:**
+  7
+BOULTING ARIAL
+ 41
+0.8
+ 72
+1
+ 11
+1149.0
+ 21
+27.0
+ 31
+0.0
+100
+AcDbAttributeDefinition
+  3
+SCALE
+  2
+SCALE
+ 70
+0
+  0
+ATTDEF
+  5
+431
+330
+320
+100
+AcDbEntity
+  8
+E-020___B-E-Drawing Frame Attributes
+100
+AcDbText
+ 10
+1082.0
+ 20
+20.0
+ 30
+0.0
+ 40
+2.0
+  1
+**
+  7
+BOULTING ARIAL
+ 41
+0.8
+100
+AcDbAttributeDefinition
+  3
+CHECKED
+  2
+CHKD
+ 70
+0
+  0
+ATTDEF
+  5
+432
+330
+320
+100
+AcDbEntity
+  8
+E-020___B-E-Drawing Frame Attributes
+100
+AcDbText
+ 10
+1120.0
+ 20
+19.99999999999997
+ 30
+0.0
+ 40
+2.0
+  1
+**
+  7
+BOULTING ARIAL
+ 41
+0.8
+100
+AcDbAttributeDefinition
+  3
+APPROVED
+  2
+APRVD
+ 70
+0
+  0
+ATTDEF
+  5
+433
+330
+320
+100
+AcDbEntity
+  8
+E-020___B-E-Drawing Frame Attributes
+100
+AcDbText
+ 10
+1131.130150068212
+ 20
+16.0
+ 30
+0.0
+ 40
+2.0
+  1
+**
+  7
+BOULTING ARIAL
+ 41
+0.8
+ 72
+1
+ 11
+1132.0
+ 21
+16.0
+ 31
+0.0
+100
+AcDbAttributeDefinition
+  3
+SHEET
+  2
+SHT
+ 70
+0
+  0
+ATTDEF
+  5
+434
+330
+320
+100
+AcDbEntity
+  8
+E-020___B-E-Drawing Frame Attributes
+100
+AcDbText
+ 10
+1141.130150068212
+ 20
+16.0
+ 30
+0.0
+ 40
+2.0
+  1
+**
+  7
+BOULTING ARIAL
+ 41
+0.8
+ 72
+1
+ 11
+1142.0
+ 21
+16.0
+ 31
+0.0
+100
+AcDbAttributeDefinition
+  3
+OF
+  2
+SHTX
+ 70
+0
+  0
+ATTDEF
+  5
+435
+330
+320
+100
+AcDbEntity
+  8
+E-020___B-E-Drawing Frame Attributes
+100
+AcDbText
+ 10
+1075.0
+ 20
+82.0
+ 30
+0.0
+ 40
+2.0
+  1
+
+  7
+BOULTING ARIAL
+ 41
+0.8
+100
+AcDbAttributeDefinition
+  3
+CLIENT 1
+  2
+CLIENT_1
+ 70
+0
+  0
+ATTDEF
+  5
+436
+330
+320
+100
+AcDbEntity
+  8
+E-020___B-E-Drawing Frame Attributes
+100
+AcDbText
+ 10
+1075.0
+ 20
+77.0
+ 30
+0.0
+ 40
+2.0
+  1
+
+  7
+BOULTING ARIAL
+ 41
+0.8
+100
+AcDbAttributeDefinition
+  3
+CLIENT 2
+  2
+CLIENT_2
+ 70
+0
+  0
+ATTDEF
+  5
+437
+330
+320
+100
+AcDbEntity
+  8
+E-020___B-E-Drawing Frame Attributes
+100
+AcDbText
+ 10
+1075.0
+ 20
+67.0
+ 30
+0.0
+ 40
+2.0
+  1
+
+  7
+BOULTING ARIAL
+ 41
+0.8
+100
+AcDbAttributeDefinition
+  3
+PROJECT 1
+  2
+PROJECT_1
+ 70
+0
+  0
+ATTDEF
+  5
+438
+330
+320
+100
+AcDbEntity
+  8
+E-020___B-E-Drawing Frame Attributes
+100
+AcDbText
+ 10
+1075.0
+ 20
+62.0
+ 30
+0.0
+ 40
+2.0
+  1
+
+  7
+BOULTING ARIAL
+ 41
+0.8
+100
+AcDbAttributeDefinition
+  3
+PROJECT 2
+  2
+PROJECT_2
+ 70
+0
+  0
+LINE
+  5
+439
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+1070.0
+ 20
+121.0
+ 30
+0.0
+ 11
+1070.0
+ 21
+5.0
+ 31
+0.0
+  0
+LINE
+  5
+43A
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+1070.0
+ 20
+90.0
+ 30
+0.0
+ 11
+1154.0
+ 21
+90.0
+ 31
+0.0
+  0
+LINE
+  5
+43B
+330
+320
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+1070.0
+ 20
+116.0
+ 30
+0.0
+ 11
+1154.0
+ 21
+116.0
+ 31
+0.0
+  0
+ENDBLK
+  5
+322
+330
+320
+100
+AcDbEntity
+  8
+0
+100
+AcDbBlockEnd
+  0
+BLOCK
+  5
+43D
+330
+43C
+100
+AcDbEntity
+  8
+0
+100
+AcDbBlockBegin
+  2
+BOULTING A0 REVBOX
+ 70
+2
+ 10
+0.0
+ 20
+0.0
+ 30
+0.0
+  3
+BOULTING A0 REVBOX
+  1
+
+  0
+LINE
+  5
+43F
+330
+43C
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+0.0
+ 20
+8.0
+ 30
+0.0
+ 11
+84.0
+ 21
+8.0
+ 31
+0.0
+  0
+LINE
+  5
+440
+330
+43C
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+8.0
+ 20
+8.0
+ 30
+0.0
+ 11
+8.0
+ 21
+0.0
+ 31
+0.0
+  0
+LINE
+  5
+441
+330
+43C
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+20.0
+ 20
+8.0
+ 30
+0.0
+ 11
+20.0
+ 21
+0.0
+ 31
+0.0
+  0
+LINE
+  5
+442
+330
+43C
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+68.0
+ 20
+8.0
+ 30
+0.0
+ 11
+68.0
+ 21
+0.0
+ 31
+0.0
+  0
+LINE
+  5
+443
+330
+43C
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+60.0
+ 20
+8.0
+ 30
+0.0
+ 11
+60.0
+ 21
+0.0
+ 31
+0.0
+  0
+LINE
+  5
+444
+330
+43C
+100
+AcDbEntity
+  8
+E-020___E-E-Drawing Frame
+100
+AcDbLine
+ 10
+76.0
+ 20
+8.0
+ 30
+0.0
+ 11
+76.0
+ 21
+0.0
+ 31
+0.0
+  0
+ATTDEF
+  5
+445
+330
+43C
+100
+AcDbEntity
+  8
+E-020___B-E-Drawing Frame Attributes
+100
+AcDbText
+ 10
+4.0
+ 20
+4.0
+ 30
+0.0
+ 40
+2.0
+  1
+
+  7
+BOULTING ARIAL
+ 41
+0.8
+ 72
+4
+ 11
+4.0
+ 21
+4.0
+ 31
+0.0
+100
+AcDbAttributeDefinition
+  3
+REV
+  2
+REV
+ 70
+0
+  0
+ATTDEF
+  5
+446
+330
+43C
+100
+AcDbEntity
+  8
+E-020___B-E-Drawing Frame Attributes
+100
+AcDbText
+ 10
+9.15306957708049
+ 20
+3.013642564802182
+ 30
+0.0
+ 40
+2.0
+  1
+**.**.2013
+  7
+BOULTING ARIAL
+ 41
+0.8
+ 72
+4
+ 11
+14.0
+ 21
+4.0
+ 31
+0.0
+100
+AcDbAttributeDefinition
+  3
+DATE
+  2
+DATE
+ 70
+0
+  0
+ATTDEF
+  5
+447
+330
+43C
+100
+AcDbEntity
+  8
+E-020___B-E-Drawing Frame Attributes
+100
+AcDbText
+ 10
+40.0
+ 20
+6.0
+ 30
+0.0
+ 40
+2.0
+  1
+
+  7
+BOULTING ARIAL
+ 41
+0.8
+ 72
+4
+ 11
+40.0
+ 21
+6.0
+ 31
+0.0
+100
+AcDbAttributeDefinition
+  3
+DESC1
+  2
+DESC1
+ 70
+0
+  0
+ATTDEF
+  5
+448
+330
+43C
+100
+AcDbEntity
+  8
+E-020___B-E-Drawing Frame Attributes
+100
+AcDbText
+ 10
+40.0
+ 20
+2.0
+ 30
+0.0
+ 40
+2.0
+  1
+
+  7
+BOULTING ARIAL
+ 41
+0.8
+ 72
+4
+ 11
+40.0
+ 21
+2.0
+ 31
+0.0
+100
+AcDbAttributeDefinition
+  3
+DESC2
+  2
+DESC2
+ 70
+0
+  0
+ATTDEF
+  5
+449
+330
+43C
+100
+AcDbEntity
+  8
+E-020___B-E-Drawing Frame Attributes
+100
+AcDbText
+ 10
+64.0
+ 20
+4.0
+ 30
+0.0
+ 40
+2.0
+  1
+
+  7
+BOULTING ARIAL
+ 41
+0.8
+ 72
+4
+ 11
+64.0
+ 21
+4.0
+ 31
+0.0
+100
+AcDbAttributeDefinition
+  3
+DRAWN
+  2
+DRAWN
+ 70
+0
+  0
+ATTDEF
+  5
+44A
+330
+43C
+100
+AcDbEntity
+  8
+E-020___B-E-Drawing Frame Attributes
+100
+AcDbText
+ 10
+72.0
+ 20
+4.0
+ 30
+0.0
+ 40
+2.0
+  1
+
+  7
+BOULTING ARIAL
+ 41
+0.8
+ 72
+4
+ 11
+72.0
+ 21
+4.0
+ 31
+0.0
+100
+AcDbAttributeDefinition
+  3
+CHECKED
+  2
+CHECKED
+ 70
+0
+  0
+ATTDEF
+  5
+44B
+330
+43C
+100
+AcDbEntity
+  8
+E-020___B-E-Drawing Frame Attributes
+100
+AcDbText
+ 10
+80.0
+ 20
+4.0
+ 30
+0.0
+ 40
+2.0
+  1
+
+  7
+BOULTING ARIAL
+ 41
+0.8
+ 72
+4
+ 11
+80.0
+ 21
+4.0
+ 31
+0.0
+100
+AcDbAttributeDefinition
+  3
+APPROVED
+  2
+APPROVED
+ 70
+0
+  0
+ENDBLK
+  5
+43E
+330
+43C
+100
+AcDbEntity
+  8
+0
+100
+AcDbBlockEnd
+  0
 ENDSEC
   0
 SECTION
@@ -40267,7 +48799,7 @@ DictionaryVariables
 280
 0
   1
-1.4.5 @ 2026-10-30T10:16:45.168823+00:00
+1.4.5 @ 2026-10-30T10:26:06.510390+00:00
   0
 ENDSEC
   0

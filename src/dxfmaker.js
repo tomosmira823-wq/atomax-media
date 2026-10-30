@@ -157,7 +157,7 @@ function layoutSld(spec, opts = {}) {
   if (!boards.length) throw new Error('The drawing has no boards');
   let x0 = 0, minY = 0, maxY = 0, maxX = 0;
   for (const b of boards) { const d = drawBoard(b, x0, 0, prims, true); minY = Math.min(minY, d.minY); maxY = Math.max(maxY, d.maxY); maxX = Math.max(maxX, d.maxX); x0 = d.maxX + 25; }
-  const f = frame(prims, spec, minY, maxY, maxX, '', { fill: opts.fill });
+  const f = frame(prims, spec, minY, maxY, maxX, '', { fill: opts.fill, border: borderOf(opts.border) });
   return { prims: f.prims || prims, bounds: f.bounds, sheet: f.sheet };
 }
 
@@ -258,12 +258,14 @@ const BORDERS = {
     notes: { x: 738.4, tx: 744.3, y: 568.5, pitch: 3.35, w: 76, bottom: 410 }, legend: { x: 744.6, tx: 756.4, y: 398, bottom: 222 }, refs: { x: 738.3, y: 211.7, pitch: 3.2, h: 1.75, bottom: 150 },
   }; })(),
   bgen: (() => { const g = readJson('border-bgen-a0.json'); return g && {
-    geo: g, block: '', page: 'A0', box: { x0: 15, y0: 15, x1: 1060, y1: 806 }, maxScale: 1, textLayer: 'SLD-TEXT', notesLayer: 'SLD-NOTES',
+    geo: g, block: 'BOULTING A0 BORDER', page: 'A0', box: { x0: 15, y0: 15, x1: 1060, y1: 806 }, maxScale: 1, textLayer: 'SLD-TEXT', notesLayer: 'SLD-NOTES',
     attrs: Object.fromEntries(Object.entries(g.attrs).map(([k, a]) => [k, [a.x, a.y, a.h, a.align]])), titleWidth: 84,
     revbox: g.revbox, rev: { y: 121, pitch: 8, x0: 1070, max: 20 }, notes: { x: 1072, tx: 1072, y: 806, pitch: LINE, w: 80, bottom: 140 },
   }; })(),
 };
 const BORDER = BORDERS.atomax || BORDERS.bgen;
+const BORDER_NAMES = { atomax: 'Atomax A1', bgen: 'BGEN (Boulting) A0', ng: 'National Grid' };
+const borderOf = (key) => BORDERS[key] || BORDER;
 const LEGEND_TEXT = { MCCB: 'MCCB. TEXT: RATING, FRAME', MCB: 'MCB / RCBO. TEXT: RATING, POLES, TYPE', 'SWITCH DISCONNECTOR': 'SWITCH DISCONNECTOR / MAIN SWITCH / ISOLATOR', 'ISOLATOR DISCONNECTOR': 'ISOLATOR', 'FUSED SWITCH DISCONNECTOR': 'FUSED SWITCH DISCONNECTOR', FUSE: 'FUSE', CONTACTOR1: 'CONTACTOR', MOTOR: 'MOTOR', LOAD: 'FINAL CIRCUIT / LOAD', 'HV-LV TRANSFORMER': 'TRANSFORMER' };
 function primsBounds(prims) {
   prims = flatPrims(prims);
@@ -356,13 +358,14 @@ function cableClashes(prims) {
   }
   return out;
 }
-const SHEET_ROWS = BORDER ? Math.floor((BORDER.box.y1 - BORDER.box.y0 - 20) / 22) : 10;   // device rows per sheet (A0 border at 1:1, or the old A3 frame)
+const sheetRows = (B) => B ? Math.floor((B.box.y1 - B.box.y0 - 20) / 22) : 10;   // device rows per sheet (A0 border at 1:1, or the old A3 frame)
 function layoutBcd(spec, opts = {}) {
   const model = bcdModel(spec);
   if (!model.cables.length) throw new Error('The BCD has no cables');
   BSTYLE = { ng: spec.style === 'ng' || spec.style === 'national-grid' };
   const { groups: raw, links } = bcdGroups(model);
   // a JB with more devices than a sheet holds carries on to the next sheet ("CONT.")
+  const SHEET_ROWS = sheetRows(opts.noTitle ? null : borderOf(opts.border));
   const groups = raw.flatMap(g => { if (g.down.length <= SHEET_ROWS) return [g]; const out = []; for (let i = 0; i < g.down.length; i += SHEET_ROWS) out.push({ ...g, jb: g.jb && i ? { ...g.jb, label: (g.jb.label ? g.jb.label + ' ' : '') + '(CONT.)' } : g.jb, up: i ? [] : g.up, down: g.down.slice(i, i + SHEET_ROWS) }); return out; });
   // split the groups over sheets (a JB never splits across sheets)
   const sheets = []; let cur = [], rows = 0;
@@ -384,7 +387,7 @@ function layoutBcd(spec, opts = {}) {
     const clash = cableClashes(prims); if (clash.length) throw new Error('BCD layout has cables that overlap or cross (' + clash.slice(0, 3).join('; ') + '). Not saved.');
     const label = sheets.length > 1 ? `SHEET ${i + 1} OF ${sheets.length}` : '';
     if (sheets.length > 1 && i < sheets.length - 1) prims.push({ t: 'mtext', x: BCD_X.device, y: body.minY - 2, w: 80, h: TH, text: `CONTINUED ON SHEET ${i + 2}`, attach: 1, layer: 'BCD-TEXT' });
-    const f = frame(prims, spec, body.minY - 8, 10, body.maxX, label, { fixed: true, noTitle: !!opts.noTitle, fill: { ...(opts.fill || {}), sht: String(i + 1), shtx: String(sheets.length) } });
+    const f = frame(prims, spec, body.minY - 8, 10, body.maxX, label, { fixed: true, noTitle: !!opts.noTitle, border: borderOf(opts.border), fill: { ...(opts.fill || {}), sht: String(i + 1), shtx: String(sheets.length) } });
     return { prims, bounds: f.bounds, content: f.content, sheet: f.sheet, label, boxes, cables: [...gs.flatMap(g => [...g.up, ...g.down.map(d => d.c)]), ...(i === sheets.length - 1 ? links : [])].map(c => String(c.no || '')) };
   });
 }
@@ -554,7 +557,7 @@ function make(spec, outDir, baseName, opts = {}) {
     spec.revHistory = [...(old.revHistory || [{ rev: old.revision || 'P1', what: 'First issue' }]), { rev: spec.revision, what: (spec.revisionNote ? spec.revisionNote + '. ' : '') + (said || 'no cable changes') }];
     spec.notes = [...(spec.notes || []), 'REVISION HISTORY: ' + spec.revHistory.map(r => `${r.rev} ${r.what}`).join(' / ')];
   }
-  const sheets = spec.kind === 'bcd' ? layoutBcd(spec, { noTitle: !!opts.template, diff, fill: opts.fill }) : [(() => { const r = layoutSld(spec, { fill: opts.fill }); return { ...r, label: '' }; })()];
+  const sheets = spec.kind === 'bcd' ? layoutBcd(spec, { noTitle: !!opts.template, diff, fill: opts.fill, border: opts.border }) : [(() => { const r = layoutSld(spec, { fill: opts.fill, border: opts.border }); return { ...r, label: '' }; })()];
   const files = [];
   sheets.forEach((sh, i) => {
     let prims = sh.prims, bounds = sh.bounds;
@@ -567,7 +570,7 @@ function make(spec, outDir, baseName, opts = {}) {
     const dxf = writeDxf(prims, bounds, { template: opts.template, fill: { title: spec.title || '', drawingNumber: spec.drawingNumber || 'TBC', revision: spec.revision || 'P1', date: new Date().toISOString().slice(0, 10), sheet: sh.label || '', drawn: 'Dex' } });
     const file = uniquePath(outDir, `${stem}${sheets.length > 1 ? '_SH' + (i + 1) : ''}_DRAFT`, '.dxf');
     fs.writeFileSync(file, dxf, 'utf8');
-    files.push({ path: file, svg: toSvg(prims, bounds), entities: prims.length, label: sh.label, cables: sh.cables || [], prims, bounds, page: sh.page || (opts.template ? 'A3' : (BORDER && BORDER.page) || 'A3') });
+    files.push({ path: file, svg: toSvg(prims, bounds), entities: prims.length, label: sh.label, cables: sh.cables || [], prims, bounds, page: sh.page || (opts.template ? 'A3' : borderOf(opts.border).page || 'A3') });
   });
   // the spec is kept next to the drawing so the next revision can be compared with it
   try { fs.writeFileSync(files[0].path.replace(/\.dxf$/i, '.spec.json'), JSON.stringify(spec, null, 1)); } catch {}
@@ -579,4 +582,4 @@ function previousSpec(outDir, baseName) {
   try { const c = fs.readdirSync(outDir).filter(f => f.startsWith(stem) && f.endsWith('.spec.json')).map(f => ({ f, t: fs.statSync(path.join(outDir, f)).mtimeMs })).sort((a, b) => b.t - a.t)[0]; return c ? { file: c.f, spec: JSON.parse(fs.readFileSync(path.join(outDir, c.f), 'utf8')) } : null; } catch { return null; }
 }
 
-module.exports = { flatPrims, BORDERS, cableClashes, previousSpec, layoutBcd, bcdDiff, SYSTEM, ALIASES, SYMBOLS, symbolOf, layoutSld, writeDxf, toSvg, parseReply, make };
+module.exports = { BORDER_NAMES, flatPrims, BORDERS, cableClashes, previousSpec, layoutBcd, bcdDiff, SYSTEM, ALIASES, SYMBOLS, symbolOf, layoutSld, writeDxf, toSvg, parseReply, make };

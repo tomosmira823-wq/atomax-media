@@ -74,3 +74,15 @@ t('no register: say so, then make one', () => {
   const p = desk.makeRegister(j2.id, writeXlsx); assert.ok(fs.existsSync(p) && /X301026 Drawing Register\.xlsx$/.test(p));
 });
 console.log(`\n${ok} passed`);
+// borders: auto by client, set per job, National Grid needs its DXF
+{
+  const d = data(); const a = biz.saveJob(d, { number: 'X010126', name: 'Bustleholm', client: 'BGEN' }), n = biz.saveJob(d, { number: 'X020126', name: 'Feckenham', client: 'National Grid' }), o = biz.saveJob(d, { number: 'X030126', name: 'Other', client: 'Diageo' });
+  assert.strictEqual(desk.borderFor(a).key, 'bgen'); assert.strictEqual(desk.borderFor(o).key, 'atomax');
+  const ng = desk.borderFor(n); assert.ok(ng.key === 'atomax' && /National Grid/.test(ng.warning));
+  desk.setBorder(a.id, 'atomax'); assert.strictEqual(desk.borderFor(a).key, 'atomax');
+  const m = require('../src/dxfmaker'), out = fs.mkdtempSync(path.join(os.tmpdir(), 'bd-'));
+  const r = m.make({ kind: 'sld', title: 'T', boards: [{ label: 'B', feeders: [{ chain: [{ symbol: 'mcb', label: 'Q1' }, { symbol: 'load', label: 'L' }] }] }] }, out, 'G', { border: 'bgen' });
+  assert.ok(fs.readFileSync(r.path, 'utf8').includes('BOULTING A0 BORDER') && r.files[0].page === 'A0');
+  console.log('ok borders by job'); ok++;
+}
+console.log(`${ok} passed (with borders)`);

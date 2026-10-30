@@ -257,7 +257,8 @@ function view(id) {
   const job = jobOf(id); if (!job) throw new Error('No such job');
   const d = load(id), prof = clientProfile(job), m = d.master;
   const hb = DN.habits(job);
-  return { area: d.area || hb.area || '', disc: d.disc || hb.disc || '', project: hb.project, rules: getRules(id), rulesFile: rulesPath(job), client: job.client || '', clientProfile: prof ? prof.name : '', titleBlock: titleBlockFor(job) ? path.basename(titleBlockFor(job)) : '',
+  const bd = borderFor(job);
+  return { border: d.border || 'auto', borderUsed: bd.name, borderWarning: bd.warning || '', area: d.area || hb.area || '', disc: d.disc || hb.disc || '', project: hb.project, rules: getRules(id), rulesFile: rulesPath(job), client: job.client || '', clientProfile: prof ? prof.name : '', titleBlock: titleBlockFor(job) ? path.basename(titleBlockFor(job)) : '',
     flow: d.flow || null, autoFlow: !!d.autoFlow, registerFile: d.registerFile, registerChecked: d.registerChecked, drawings: job.drawings, inputs: d.inputs, rfis: d.rfis, crs: d.crs,
     master: m ? { status: m.status, builtAt: m.builtAt, approvedAt: m.approvedAt, devices: m.devices.length, cables: m.cables.length, gaps: m.gaps, read: m.read, file: m.file || '', summary: m.summary, preview: m.cables.slice(0, 40), incomplete: !!m.incomplete } : null };
 }
@@ -272,6 +273,21 @@ function exportSheet(id, kind, writeXlsx) {
   return p;
 }
 const masterOf = (id) => load(id).master;
+// which border a job's drawings go on. Set per job on the job desk; "auto" goes by the client: BGEN jobs on the BGEN border, National Grid jobs on the
+// National Grid border (a title block DXF for it in the File Room Clients cabinet), everything else on the Atomax border.
+const BORDER_KEYS = ['auto', 'atomax', 'bgen', 'ng', 'client'];
+function setBorder(id, key) { const d = load(id); d.border = BORDER_KEYS.includes(key) ? key : 'auto'; return save(id, d); }
+function borderFor(job) {
+  const d = job ? load(job.id) : {}, set = d.border || 'auto', who = job ? `${job.client || ''} ${job.name || ''}` : '';
+  const clientDxf = job ? titleBlockFor(job) : '';
+  let key = set;
+  if (set === 'auto') key = /national grid|\bnget?\b/i.test(who) ? 'ng' : /\bb-?gen\b|boulting/i.test(who) ? 'bgen' : clientDxf ? 'client' : 'atomax';
+  if (key === 'ng' || key === 'client') {
+    if (clientDxf) return { key: 'client', template: clientDxf, name: path.basename(clientDxf), set };
+    return { key: 'atomax', name: 'Atomax A1', set, warning: key === 'ng' ? 'No National Grid border yet: drop its title block DXF in the File Room Clients cabinet (file name with "National Grid"). Drawn on the Atomax border for now.' : 'No client border DXF found in the Clients cabinet. Drawn on the Atomax border.' };
+  }
+  return { key, name: key === 'bgen' ? 'BGEN (Boulting) A0' : 'Atomax A1', set };
+}
 
 const saveRaw = (id, d) => save(id, d);
-module.exports = { saveRaw, setNumbering, init, load, getRules, setRules, addCorrection, clientProfile, titleBlockFor, findRegisters, readRegister, checkRegister, makeRegister, proposeNumber, addDeliverables, addInputs, saveRfi, addComments, saveCrs, buildMaster, exportMaster, importMaster, approveMaster, context, view, exportSheet, masterOf, MASTER_SYSTEM, RULES_FILE };
+module.exports = { setBorder, borderFor, saveRaw, setNumbering, init, load, getRules, setRules, addCorrection, clientProfile, titleBlockFor, findRegisters, readRegister, checkRegister, makeRegister, proposeNumber, addDeliverables, addInputs, saveRfi, addComments, saveCrs, buildMaster, exportMaster, importMaster, approveMaster, context, view, exportSheet, masterOf, MASTER_SYSTEM, RULES_FILE };

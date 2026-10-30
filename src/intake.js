@@ -365,12 +365,13 @@ EARTHING tasks: size every protective / earth conductor the drawing needs (MET t
     let previous = null;
     if (revision && revision.on) { previous = dxfmaker.previousSpec(outDir, base); spec.revision = DN.nextRev(previous ? previous.spec.revision : (spec.revision || ''), revision.stage || ''); if (revision.note) spec.revisionNote = revision.note; }
     else if (!spec.revision || /^P0?1$/i.test(spec.revision)) spec.revision = 'P1';
-    const template = job ? desk.titleBlockFor(job) : '';
-    const res = dxfmaker.make(spec, outDir, base, { template, previous, fill: job ? { client: job.client || '', project: `${job.number} ${job.name || ''}`.trim() } : {} });
+    const bd = job ? desk.borderFor(job) : { key: 'atomax', name: 'Atomax A1' }, template = bd.template || '';
+    if (bd.warning) spec.notes = [...(spec.notes || [])];
+    const res = dxfmaker.make(spec, outDir, base, { template, border: bd.key, previous, fill: job ? { client: job.client || '', project: `${job.number} ${job.name || ''}`.trim() } : {} });
     // every DXF gets its monochrome PDF beside it (issues go out as DXF and PDF)
     let madePdfs = []; try { madePdfs = await require('./pdfout').writePdfs(res); } catch (e) { (res.files || []).forEach(f => delete f.prims); }
     BIZ.log({ who: 'Dex', action: 'Drew', jobId: job ? job.id : '', detail: `${path.basename(res.path)} · ${spec.summary || spec.title || 'SLD'}${used.length ? ' · skills: ' + used.join(', ') : ' · no skills'}` });
-    return { pdfs: madePdfs, masterCheck, sheets: (res.files || []).map(f => ({ path: f.path, pdf: f.pdf || '', label: f.label })), diff: res.diff, revision: spec.revision, previousFound: !!previous, titleBlock: template ? path.basename(template) : '', drawingNumber: spec.drawingNumber, skills: used, incomplete: cutOff, path: res.path, folder: outDir, svg: res.svg, summary: spec.summary || '', title: spec.title || '', notes: spec.notes || [], read: [...pdfs.map(p => path.basename(p)), ...notesRead], inJobFolder: !!(job && job.folder) };
+    return { border: bd.name, borderWarning: bd.warning || '', pdfs: madePdfs, masterCheck, sheets: (res.files || []).map(f => ({ path: f.path, pdf: f.pdf || '', label: f.label })), diff: res.diff, revision: spec.revision, previousFound: !!previous, titleBlock: template ? path.basename(template) : '', drawingNumber: spec.drawingNumber, skills: used, incomplete: cutOff, path: res.path, folder: outDir, svg: res.svg, summary: spec.summary || '', title: spec.title || '', notes: spec.notes || [], read: [...pdfs.map(p => path.basename(p)), ...notesRead], inJobFolder: !!(job && job.folder) };
   }));
 }
 

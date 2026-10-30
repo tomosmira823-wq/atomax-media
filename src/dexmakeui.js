@@ -70,7 +70,7 @@ export function initDexMakeUI({ api, office, bizUI, getDex }) {
       questions = []; renderQuestions();
       $('#dmOut').innerHTML = `<div class="headline good" style="margin-top:12px">Saved ${esc(r.path.split(/[\\/]/).pop())}</div>
         <div class="hint">${esc(r.summary || r.title)}${r.inJobFolder ? '' : ' · saved in the app folder because the job has no project folder'}</div>
-        ${r.drawingNumber ? `<div class="hint">Drawing ${esc(r.drawingNumber)} rev ${esc(r.revision || '')}${r.titleBlock ? ' · client title block ' + esc(r.titleBlock) : ' · Atomax draft title block (drop the client\'s title block DXF in the File Room Clients cabinet to use theirs)'}</div>` : ''}
+        ${r.drawingNumber ? `<div class="hint">Drawing ${esc(r.drawingNumber)} rev ${esc(r.revision || '')} · border: ${esc(r.border || 'Atomax A1')} (change it on the job desk)</div>` : ''}${r.borderWarning ? `<div class="err">${esc(r.borderWarning)}</div>` : ''}
         ${r.pdfs && r.pdfs.length ? `<div class="hint">PDF${r.pdfs.length > 1 ? 's' : ''} made too (black and white): ${r.pdfs.map(p => esc(p.split(/[\\/]/).pop())).join(', ')}</div>` : ''}
         ${r.sheets && r.sheets.length > 1 ? `<div class="hint">${r.sheets.length} sheets: ${r.sheets.map(x => esc(x.path.split(/[\\/]/).pop())).join(', ')}</div>` : ''}
         ${r.masterCheck ? `<div class="hint">Checked against the approved master list: ${r.masterCheck.added.length ? 'added ' + r.masterCheck.added.length + ' cable(s) Dex left out' : 'no cables missing'}${r.masterCheck.extra.length ? ' · <b style="color:#e8590c">' + r.masterCheck.extra.length + ' not on the master list: ' + esc(r.masterCheck.extra.join(', ')) + '</b>' : ''}</div>` : ''}
