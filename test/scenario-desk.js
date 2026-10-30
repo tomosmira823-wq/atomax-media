@@ -30,7 +30,7 @@
     if (!first.masterCheck || !first.masterCheck.added.includes('HOP01-JB1/C003')) throw new Error(JSON.stringify(first.masterCheck));
     return first.path;
   });
-  await step('optional revision', async () => { const r = await api.dexMake({ jobId: job.id, request: 'Draw the BCD for RIO1', revision: { on: true, stage: 'comment' } }); if (r.revision !== 'A1' || !r.previousFound) throw new Error(r.revision + ' ' + r.previousFound); return r.diff; });
+  await step('optional revision', async () => { const r = await api.dexMake({ jobId: job.id, request: 'Draw the BCD for RIO1', revision: { on: true, stage: 'comment' } }); if (r.revision !== 'A01' || !r.previousFound) throw new Error(r.revision + ' ' + r.previousFound); return r.diff; });
   await step('hands-off run: BCD, schedule, check', async () => { const f = await api.flow.run({ jobId: job.id }); const bad = f.steps.filter(s => s.status === 'failed'); if (bad.length) throw new Error(JSON.stringify(bad)); return f.steps.map(s => s.name + ': ' + s.status + ' ' + (s.summary || '')); });
   await step('PDF made beside the DXF', async () => { const r = await api.dexMake({ jobId: job.id, request: 'Draw the BCD for RIO1' }); if (!r.pdfs || !r.pdfs.length) throw new Error('no pdf'); return r.pdfs; });
   return out;

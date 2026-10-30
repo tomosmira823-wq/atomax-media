@@ -4,7 +4,7 @@
 //   CC        discipline (05 instrumentation, also used for combined E&I in which case 06 is not used; 06 electrical ...)
 //   DD        document type (70 SLD, 71 BCD, 23 schedules ...)
 //   EEEE      sequence number from 0001 for each document type
-//   FF        revision: P1.. preliminary (internal), A1.. issued for comment, C1.. for construction, X1.. as built, Z1 cancelled
+//   FF        revision: P01.. preliminary (internal), A01.. issued for comment, C01.. for construction, X01.. as built, Z01 cancelled
 'use strict';
 const DISCIPLINE = { '00': 'HSEQ', '01': 'Project', '02': 'Plant', '03': 'Process', '04': 'Piping', '05': 'Instrumentation (or combined E&I)', '06': 'Electrical', '07': 'Civil & Structural', '08': 'Construction', '09': 'Scaffolding', '10': 'Installation & Painting', '11': 'Start Up & Commissioning', '12': 'Process Control Systems', '13': 'Document Control', '14': 'Project Close Out' };
 const DOC_TYPE = {
@@ -38,12 +38,12 @@ function next(job, what, { area = '', disc = '', taken = [] } = {}) {
   const used = [...(job.drawings || []).map(d => d.no), ...taken].map(n => String(n).toUpperCase()).filter(n => n.startsWith(prefix)).map(n => parseInt(n.slice(prefix.length), 10) || 0);
   return { no: prefix + String(Math.max(0, ...used) + 1).padStart(4, '0'), type: dd, disc: cc };
 }
-// revisions in QS 006 order; keeps the job's style (P1 or P01) if it already uses one
+// revisions in QS 006 order; always two digits (P01)
 const STAGES = { preliminary: 'P', comment: 'A', construction: 'C', asbuilt: 'X', cancelled: 'Z' };
 function nextRev(cur, stage = '') {
-  const m = String(cur || '').toUpperCase().match(/^([A-Z])(\d+)$/), pad = m && m[2].length > 1 ? m[2].length : 1;
+  const m = String(cur || '').toUpperCase().match(/^([A-Z])(\d+)$/), pad = Math.max(2, m ? m[2].length : 2);   // Atomax revisions are two digits: P01, A01, C01
   const want = stage ? STAGES[stage] : (m ? m[1] : 'P');
-  if (!m || m[1] !== want) return want + (pad > 1 ? '1'.padStart(pad, '0') : '1');
+  if (!m || m[1] !== want) return want + '1'.padStart(pad, '0');
   return want + String(+m[2] + 1).padStart(pad, '0');
 }
 // a new job's reference: X + the date (DDMMYY); a second job on the same day gets -02, -03 ...
@@ -54,5 +54,5 @@ function jobNumber(known = [], d = new Date()) {
   for (let i = 2; i < 100; i++) { const n = base + '-' + String(i).padStart(2, '0'); if (!set.has(n)) return n; }
   return base;
 }
-const RULES_TEXT = `ATOMAX DOCUMENT NUMBERING (QS 006 Rev 1): AAAAAAAA-BBBB-CC-DD-EEEE_RevFF = project ref (X + date) - area code - discipline (05 instrumentation or combined E&I, 06 electrical) - document type (70 SLD, 71 BCD, 72 interconnection diagram, 73 cable routing & equipment layout, 74 earthing report & calculation, 23 schedules, 01 registers, 08 calculations, 09 reports, 22 technical query, 24 GA) - sequence 0001 per type. Revisions: P1, P2.. preliminary (internal), A1.. issued for comment, C1.. for construction, X1.. as built, Z1 cancelled. Some clients have their own numbering by agreement: the client profile says so.`;
+const RULES_TEXT = `ATOMAX DOCUMENT NUMBERING (QS 006 Rev 1): AAAAAAAA-BBBB-CC-DD-EEEE_RevFF = project ref (X + date) - area code - discipline (05 instrumentation or combined E&I, 06 electrical) - document type (70 SLD, 71 BCD, 72 interconnection diagram, 73 cable routing & equipment layout, 74 earthing report & calculation, 23 schedules, 01 registers, 08 calculations, 09 reports, 22 technical query, 24 GA) - sequence 0001 per type. Revisions are always two digits: P01, P02.. preliminary (internal), A01.. issued for comment, C01.. for construction, X01.. as built, Z01 cancelled. Some clients have their own numbering by agreement: the client profile says so.`;
 module.exports = { DISCIPLINE, DOC_TYPE, typeCode, parse, habits, next, nextRev, jobNumber, RULES_TEXT, QS_RE };

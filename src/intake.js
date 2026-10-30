@@ -384,7 +384,8 @@ EARTHING tasks: size every protective / earth conductor the drawing needs (MET t
     // optional: a new revision of a drawing Dex made before (changes clouded on BCDs, history carried in the notes)
     let previous = null;
     if (revision && revision.on) { previous = dxfmaker.previousSpec(outDir, base); spec.revision = DN.nextRev(previous ? previous.spec.revision : (spec.revision || ''), revision.stage || ''); if (revision.note) spec.revisionNote = revision.note; }
-    else if (!spec.revision || /^P0?1$/i.test(spec.revision)) spec.revision = 'P1';
+    else if (!spec.revision || /^P0?1$/i.test(spec.revision)) spec.revision = 'P01';
+    spec.revision = String(spec.revision).toUpperCase().replace(/^([A-Z])(\d)$/, '$10$2');   // two digits: P01
     const bd = job ? desk.borderFor(job) : { key: 'atomax', name: 'Atomax A1' }, template = bd.template || '';
     if (bd.warning) spec.notes = [...(spec.notes || [])];
     const res = dxfmaker.make(spec, outDir, base, { template, border: bd.key, previous, fill: job ? { client: job.client || '', project: `${job.number} ${job.name || ''}`.trim(), site: (desk.load(job.id).ng || {}).site || job.name || '', ngInvestment: (desk.load(job.id).ng || {}).investment || '' } : {} });

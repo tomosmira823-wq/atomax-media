@@ -27,7 +27,7 @@ t('QS 006 numbering follows the register', () => {
   assert.strictEqual(DN.next(data().jobs[0], 'SLD').no, 'X11481-02-MLT-06-70-0001');
   assert.strictEqual(DN.next({ number: 'X301026', drawings: [] }, 'BCD').no, '');
   assert.strictEqual(DN.jobNumber([], new Date(2026, 9, 30)), 'X301026');
-  assert.strictEqual(DN.nextRev('P1', 'comment'), 'A1'); assert.strictEqual(DN.nextRev('A1'), 'A2'); assert.strictEqual(DN.nextRev('P05'), 'P06');
+  assert.strictEqual(DN.nextRev('P1', 'comment'), 'A01'); assert.strictEqual(DN.nextRev('A01'), 'A02'); assert.strictEqual(DN.nextRev('P05'), 'P06');
 });
 t('deliverables numbered, no duplicates', () => {
   const a = desk.addDeliverables(job.id, [{ type: 'BCD', title: 'BCD Malt RIO3', qty: 2 }, { type: 'cable schedule', title: 'Cable schedule' }]);

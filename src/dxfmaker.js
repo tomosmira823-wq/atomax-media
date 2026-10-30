@@ -346,9 +346,14 @@ function placeIn(B, prims, c = primsBounds(prims)) {
   const boxes = KO ? flatPrims(prims).map(p => primsBounds([p])).filter(b => Number.isFinite(b.x0)) : [];
   const hits = (dx, dy) => KO && boxes.some(b => b.x1 + dx > KO.x0 - 2 && b.x0 + dx < KO.x1 + 2 && b.y1 + dy > KO.y0 && b.y0 + dy < KO.y1 + 2);
   const cx = cb.x0 + (cb.x1 - cb.x0 - W) / 2 - c.x0, cy = cb.y1 - (cb.y1 - cb.y0 - H) / 2 - c.y1, top = cb.y1 - c.y1, left = cb.x0 - c.x0;
-  for (let dy = cy; dy <= top + 1e-6; dy = Math.min(top, dy + 4)) { if (!hits(cx, dy)) return { k: 1, dx: cx, dy }; if (dy >= top) break; }
-  for (let dx = cx; dx >= left - 1e-6; dx = Math.max(left, dx - 4)) { if (!hits(dx, top)) return { k: 1, dx, dy: top }; if (dx <= left) break; }
-  return null;
+  if (!hits(cx, cy)) return { k: 1, dx: cx, dy: cy };
+  // otherwise the clear spot nearest the middle (moving left, up, or a bit of both)
+  let best = null;
+  for (let dx = cx; dx >= left - 1e-6; dx -= 2) for (let dy = cy; dy <= top + 1e-6; dy += 2) {
+    const d = Math.hypot(cx - dx, dy - cy); if (best && d >= best.d) break;
+    if (!hits(dx, dy)) { best = { k: 1, dx, dy, d }; break; }
+  }
+  return best;
 }
 function borderFrame(prims, spec, sheetLabel, opts) {
   const c = primsBounds(prims), W = c.x1 - c.x0, H = c.y1 - c.y0;
@@ -400,12 +405,18 @@ function borderFrame(prims, spec, sheetLabel, opts) {
   if (B.legend || B.legendFlow) {
     const Lg = B.legend || { x: N.x + 6.6, tx: N.x + 18.4, y: ny - 6, bottom: N.bottom };
     const used = [...new Set(prims.filter(p => p.t === 'insert' && LEGEND_TEXT[p.name]).map(p => p.name))];
-    const hasExtra = prims.some(p => p.layer === 'SLD-BUS' || p.layer === 'BCD-CABLEBOX') || (spec.legend || []).length;
+    const hasExtra = prims.some(p => p.layer === 'SLD-BUS' || p.layer === 'BCD-CABLEBOX') || (spec.legend || []).length || (spec.ngLegend || []).length;
     if (B.legendFlow && (used.length || hasExtra)) out.push({ t: 'text', x: N.x, y: ny - 2, h: 2.6, text: 'LEGEND', layer: B.notesLayer });   // no empty LEGEND heading (the NG BCD has its own legend on the drawing)
     if (B.legendFlow) Lg.y = ny - 8;
     let ly = Lg.y;
     for (const name of used) { const hs = HOUSE[name]; if (!hs || ly - 18 < Lg.bottom) continue; out.push({ t: 'insert', name, x: Lg.x, y: ly, k: 0.6, layer: 'SLD-SYMBOL', prims: hs.prims }); wrap(LEGEND_TEXT[name], 60).forEach((l, j) => out.push({ t: 'text', x: Lg.tx, y: ly - 7.8 - j * 3.4, h: 2, text: l, layer: B.notesLayer })); ly -= Math.max(19, -hs.bbox[1] * 0.6 + 4); }
     const extra = [...(prims.some(p => p.layer === 'SLD-BUS') ? [['bus', 'LV BUSBAR']] : []), ...(prims.some(p => p.layer === 'BCD-CABLEBOX') ? [['box', 'CABLE: NUMBER, CORES x SIZE, TYPE']] : []), ...(spec.legend || []).map(t => ['', String(t)])];
+    for (const [kind, t] of (spec.ngLegend || [])) {   // the National Grid key: cable colours and equipment states
+      if (ly - 6 < Lg.bottom) break; const x0 = Lg.x - 6, x1 = Lg.x + 6, y = ly - 3;
+      if (kind === 'dash82') dashed(out, x0, y, x1, 82); else if (kind.startsWith('line')) out.push({ ...L(x0, y, x1, y, 'BCD-CABLE'), colour: +kind.slice(4) });
+      else { const b = [[x0, y - 2], [x1, y - 2], [x1, y + 2], [x0, y + 2]], col = +kind.slice(4); out.push({ t: 'fill', pts: b, layer: 'BCD-BLOCK', colour: col }); out.push({ ...P(b, true, 'BCD-BLOCK'), colour: col }); }
+      out.push({ t: 'text', x: Lg.tx, y: ly - 4, h: 2, text: t, layer: B.notesLayer }); ly -= 6;
+    }
     for (const [kind, t] of extra) { if (ly - 6 < Lg.bottom) break; if (kind === 'bus') out.push({ ...P([[Lg.x - 6, ly - 2], [Lg.x + 6, ly - 2]], false, 'SLD-BUS', 0.8) }); if (kind === 'box') out.push(P([[Lg.x - 6, ly - 4], [Lg.x + 6, ly - 4], [Lg.x + 6, ly], [Lg.x - 6, ly]], true, 'BCD-CABLEBOX')); out.push({ t: 'text', x: Lg.tx, y: ly - 3, h: 2, text: t.toUpperCase(), layer: B.notesLayer }); ly -= 6; }
   }
   if (B.refs) { let ry = B.refs.y; for (const r of (spec.references || []).map(String).filter(Boolean)) { if (ry < B.refs.bottom) break; out.push({ t: 'text', x: B.refs.x, y: ry, h: B.refs.h, text: r.toUpperCase().slice(0, 70), layer: B.notesLayer }); ry -= B.refs.pitch; } }
@@ -430,7 +441,7 @@ function frame(prims, spec, minY, maxY, maxX, sheetLabel, opts = {}) {
     prims.push(P([[tbx, tby], [tbx + tbW, tby], [tbx + tbW, tby + tbH], [tbx, tby + tbH]], true, 'SLD-BORDER'));
     prims.push(L(tbx, tby + 14, tbx + tbW, tby + 14, 'SLD-BORDER'));
     prims.push({ t: 'mtext', x: tbx + 3, y: tby + tbH - 3, w: tbW - 6, h: 3.5, text: wrap(spec.title || 'BLOCK CABLE DIAGRAM', 70).join('\n'), attach: 1, layer: 'SLD-TEXT' });
-    prims.push({ t: 'mtext', x: tbx + 3, y: tby + 11, w: tbW - 6, h: TH, text: [`DWG No: ${spec.drawingNumber || 'TBC'}   REV: ${spec.revision || 'P1'}${sheetName ? '   ' + sheetName : ''}${sheetLabel ? '   ' + sheetLabel : ''}`, `DRAWN: Dex (Atomax Media Office) · ${new Date().toISOString().slice(0, 10)}`, 'DRAFT FOR CHECKING'].join('\n'), attach: 1, layer: 'SLD-TEXT' });
+    prims.push({ t: 'mtext', x: tbx + 3, y: tby + 11, w: tbW - 6, h: TH, text: [`DWG No: ${spec.drawingNumber || 'TBC'}   REV: ${spec.revision || 'P01'}${sheetName ? '   ' + sheetName : ''}${sheetLabel ? '   ' + sheetLabel : ''}`, `DRAWN: Dex (Atomax Media Office) · ${new Date().toISOString().slice(0, 10)}`, 'DRAFT FOR CHECKING'].join('\n'), attach: 1, layer: 'SLD-TEXT' });
   }
   return { bounds: { x0: left, y0: bottom, x1: right, y1: top }, sheet: sheetName || 'oversize', content: { x0: left + m, y0: bottom + m, x1: right - m, y1: top - m } };
 }
@@ -587,18 +598,9 @@ function layoutPowerBcd(spec, model, opts = {}) {
     }
   });
   // the legend, as on the National Grid template, right of the last column
-  // the legend goes under the drawing at the left (keeps the sheet as small as it can be)
-  const minBottom = Math.min(...Object.values(pts).map(p => p.top - p.h));
-  { const lx = 0; let ly = minBottom - 14;
-    const item = (dr, text) => { dr(lx, ly); prims.push({ t: 'mtext', x: lx + 16, y: ly, w: 50, h: TH, text, attach: 4, layer: 'BCD-TEXT' }); ly -= 7; };
-    const used = new Set(cables.map(ngCableColour));
-    if (used.has(82)) item((x, y) => dashed(prims, x, y, x + 12, 82), 'EXISTING BY OTHERS');
-    if (used.has(1)) item((x, y) => prims.push({ ...L(x, y, x + 12, y, 'BCD-CABLE'), colour: 1 }), 'NEW BY BGEN');
-    if (used.has(5)) item((x, y) => prims.push({ ...L(x, y, x + 12, y, 'BCD-CABLE'), colour: 5 }), 'CURRENT SUPPLY CABLING');
-    const sw = (colr) => (x, y) => { const b = [[x, y - 2.5], [x + 12, y - 2.5], [x + 12, y + 2.5], [x, y + 2.5]]; prims.push({ t: 'fill', pts: b, layer: 'BCD-BLOCK', colour: colr }); prims.push({ ...P(b, true, 'BCD-BLOCK'), colour: colr }); };
-    const st = new Set([...nodes.values()].map(nd => NG[String(nd.status || 'energised').toLowerCase()] || 3));
-    if (st.has(3)) item(sw(3), 'ENERGISED'); if (st.has(1)) item(sw(1), 'DE-ENERGISED / NEW');
-  }
+  // the legend (key) goes in the notes column under the notes, as on the National Grid drawings
+  { const used = new Set(cables.map(ngCableColour)), st = new Set([...nodes.values()].map(nd => NG[String(nd.status || 'energised').toLowerCase()] || 3));
+    spec.ngLegend = [...(used.has(82) ? [['dash82', 'EXISTING BY OTHERS']] : []), ...(used.has(1) ? [['line1', 'NEW BY BGEN']] : []), ...(used.has(5) ? [['line5', 'CURRENT SUPPLY CABLING']] : []), ...(st.has(3) ? [['fill3', 'ENERGISED']] : []), ...(st.has(1) ? [['fill1', 'DE-ENERGISED / NEW']] : [])]; }
   if (opts.diff) for (const b of boxes) if (opts.diff.added.includes(b.no) || opts.diff.changed.includes(b.no)) revCloud(prims, b, spec.revision);
   const clash = cableClashes(prims); if (clash.length && !process.env.AMO_NOCLASH) throw new Error('BCD layout has cables that overlap or cross (' + clash.slice(0, 3).join('; ') + '). Not saved.');
   const bb = primsBounds(prims); if (process.env.AMO_DBG) console.error('power bcd size', Math.round(bb.x1 - bb.x0), Math.round(bb.y1 - bb.y0)); const key = opts.border && opts.border.geo ? opts.border : (String(opts.border || 'atomax'));
@@ -764,6 +766,8 @@ const uniquePath = (dir, stem, ext) => { let f = path.join(dir, stem + ext), i =
 
 // spec -> files on disk; returns paths and a preview. opts: { template: client title block DXF, previous: { spec } for a new revision }
 function make(spec, outDir, baseName, opts = {}) {
+  if (spec.revision) spec.revision = String(spec.revision).toUpperCase().replace(/^([A-Z])(\d)$/, '$10$2');   // Atomax revisions are two digits: P01
+  (spec.revHistory || []).forEach(r => { if (r.rev) r.rev = String(r.rev).toUpperCase().replace(/^([A-Z])(\d)$/, '$10$2'); });
   fs.mkdirSync(outDir, { recursive: true });
   const stem = safeName(baseName || spec.drawingNumber || spec.title || 'SLD');
   // a new revision: what changed against the previous spec, the history carried on, clouds round changed cable boxes (BCDs)
@@ -772,7 +776,7 @@ function make(spec, outDir, baseName, opts = {}) {
     const old = opts.previous.spec;
     diff = spec.kind === 'bcd' ? bcdDiff(old, spec) : null;
     const said = diff ? [diff.added.length ? 'added ' + diff.added.join(', ') : '', diff.removed.length ? 'removed ' + diff.removed.join(', ') : '', diff.changed.length ? 'changed ' + diff.changed.join(', ') : ''].filter(Boolean).join('; ') : (spec.revisionNote || 'revised');
-    spec.revHistory = [...(old.revHistory || [{ rev: old.revision || 'P1', what: 'First issue' }]), { rev: spec.revision, what: (spec.revisionNote ? spec.revisionNote + '. ' : '') + (said || 'no cable changes') }];
+    spec.revHistory = [...(old.revHistory || [{ rev: old.revision || 'P01', what: 'First issue' }]), { rev: spec.revision, what: (spec.revisionNote ? spec.revisionNote + '. ' : '') + (said || 'no cable changes') }];
     spec.notes = [...(spec.notes || []), 'REVISION HISTORY: ' + spec.revHistory.map(r => `${r.rev} ${r.what}`).join(' / ')];
   }
   const sheets = spec.kind === 'bcd' ? layoutBcd(spec, { noTitle: !!opts.template, diff, fill: opts.fill, border: opts.border }) : [(() => { const r = layoutSld(spec, { fill: opts.fill, border: opts.border }); return { ...r, label: '' }; })()];
@@ -785,7 +789,7 @@ function make(spec, outDir, baseName, opts = {}) {
       const k = Math.min(1, aw / W, ah / H);
       prims = place(prims, ext.x0 + 15 - c.x0 * k, ext.y1 - 15 - c.y1 * k, k); bounds = ext;
     }
-    const dxf = writeDxf(prims, bounds, { template: opts.template, fill: { title: spec.title || '', drawingNumber: spec.drawingNumber || 'TBC', revision: spec.revision || 'P1', date: new Date().toISOString().slice(0, 10), sheet: sh.label || '', drawn: 'Dex' } });
+    const dxf = writeDxf(prims, bounds, { template: opts.template, fill: { title: spec.title || '', drawingNumber: spec.drawingNumber || 'TBC', revision: spec.revision || 'P01', date: new Date().toISOString().slice(0, 10), sheet: sh.label || '', drawn: 'Dex' } });
     const file = uniquePath(outDir, `${stem}${sheets.length > 1 ? '_SH' + (i + 1) : ''}_DRAFT`, '.dxf');
     fs.writeFileSync(file, dxf, 'utf8');
     files.push({ path: file, svg: toSvg(prims, bounds), entities: prims.length, label: sh.label, cables: sh.cables || [], prims, bounds, page: sh.page || (opts.template ? 'A3' : 'A1'), border: sh.border || '' });
