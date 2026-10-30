@@ -21,7 +21,16 @@ function claudeReply(body) {
              { title: 'Confirm the price for the SLD', detail: 'Sam asks what it will cost.', agent: 'none', kind: 'other', due: '' },
              { title: 'Set up a new job and project folder', detail: 'No job number given; allocate one and file the email.', agent: 'eli', kind: 'other', due: '' },
              { title: 'Check the fault level at the 33kV board', detail: 'First-pass IEC 60909 check from the attached study.', agent: 'engineer', kind: 'other', due: '' }],
-      reply: 'Hi Sam, thanks. We will send the SLD by Friday. Tom' });
+      reply: 'Hi Sam, thanks. We will send the SLD by Friday. Tom',
+      deliverables: [{ type: 'SLD', title: 'Single line diagram - Test site LV board', qty: 1 }, { type: 'BCD', title: 'Block cable diagram - RIO1', qty: 1 }],
+      inputs: [{ name: 'Instrument index', rev: 'C', what: 'device list' }], missingInputs: ['IO list'], clientQuestions: ['Is the pump on RIO1?'] });
+  }
+  // ---- master device list (built by Lex) ----
+  if (/MASTER DEVICE LIST for an Atomax-UK/.test(sys)) {
+    calls.push({ master: true, docs: (userText.match(/WORKBOOK /g) || []).length, rules: /JOB RULES/.test(sys) });
+    return JSON.stringify({ devices: [{ tag: 'RIO1', type: 'rio', description: 'Remote IO 1' }, { tag: 'HOP01-JB1', type: 'jb' }, { tag: 'HOP01-LS01', type: 'switch', jb: 'HOP01-JB1', panel: 'RIO1', source: 'Instrument index rev C' }, { tag: 'HOP01-LS02', type: 'switch', jb: 'HOP01-JB1', panel: 'RIO1', source: 'Instrument index rev C' }],
+      cables: [{ no: 'RIO1/C001', from: 'RIO1', to: 'HOP01-JB1', type: 'BS5308', cores: '4P', size: '0.5', source: 'Instrument index rev C' }, { no: 'HOP01-JB1/C002', from: 'HOP01-JB1', to: 'HOP01-LS01', type: 'BS5308', cores: '1P', size: '0.5' }, { no: 'HOP01-JB1/C003', from: 'HOP01-JB1', to: 'HOP01-LS02', type: 'BS5308', cores: '1P', size: '0.5' }],
+      gaps: ['HOP01-LS02 has no A-number in the index'], summary: '4 devices, 3 cables' });
   }
   // ---- Lex (Excel) and Wren (Word) ----
   if (/You are Lex, the Excel agent/.test(sys)) {
@@ -40,6 +49,7 @@ function claudeReply(body) {
   // ---- Dex (DXF maker) ----
   if (/You are Dex, the DXF maker/.test(sys)) {
     calls.push({ dexMake: true, pdfs: (userText.match(/"type":"document"/g) || []).length, folderCtx: /PROJECT FOLDER:/.test(sys), skill: /YOUR SKILLS/.test(sys), answered: /ANSWERS FROM THE ENGINEER/.test(userText) });
+    if (/REQUEST: [^"]*\bBCD\b/.test(userText)) { calls.push({ dexBcd: true, master: /MASTER DEVICE LIST \(APPROVED/.test(sys) }); return JSON.stringify({ kind: 'bcd', title: 'RIO1 BLOCK CABLE DIAGRAM', drawingNumber: 'TBC', summary: 'RIO1 BCD', nodes: [{ tag: 'RIO1', type: 'rio' }, { tag: 'HOP01-JB1', type: 'jb' }], cables: [{ no: 'RIO1/C001', from: 'RIO1', to: 'HOP01-JB1', type: 'BS5308', cores: '4P', size: '0.5' }, { no: 'HOP01-JB1/C002', from: 'HOP01-JB1', to: 'HOP01-LS01', type: 'BS5308', cores: '1P', size: '0.5' }] }); }
     if (!/ANSWERS FROM THE ENGINEER/.test(userText)) return JSON.stringify({ questions: ['What is the cable size to DB-01?'] });
     return JSON.stringify({ kind: 'sld', title: 'TEST SITE LV SINGLE LINE DIAGRAM', drawingNumber: 'X22001-01-01-0001', revision: 'P01', summary: 'Main LV board with three ways; cable lengths TBC.',
       boards: [{ label: 'MAIN LV BOARD\n400V 3PH 4W', incomers: [{ label: '11kV DNO', chain: [{ symbol: 'supply', label: 'DNO 11kV' }, { symbol: 'transformer', label: 'TX1\n1000kVA' }, { symbol: 'breaker', label: 'Q0\n1600A ACB' }] }],

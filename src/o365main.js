@@ -69,6 +69,7 @@ function writeXlsx(sheets) {
 const EXCEL_SYSTEM = `You are Lex, the Excel agent in the Atomax-UK 365 room (electrical engineering consultancy: cable schedules, registers, transmittals, calculations, trackers).
 Build the workbook the engineer asks for from the request, the attached files and the project files. Copy data exactly as written (tags, cable numbers, sizes, revisions); never invent values: leave a cell empty or write TBC. Use formulas (strings starting "=", e.g. "=SUM(D2:D20)") where a total or calculation belongs, so the sheet stays live.
 When an existing workbook is attached and the request is to change it, return the whole changed sheet(s), not only the changes.
+CABLE SCHEDULES: when the job context has an APPROVED MASTER DEVICE LIST, every cable on it is one row and nothing else is added: cable number, from and to (tag and description at both ends), type, cores, size exactly as the master list says, and the drawing reference (the BCD number from the drawing list). Use the column layout from your skills (the house cable schedule template) exactly. Fill outside diameter, weight, gland size and voltage grade from the CABLE DATASHEETS supplied; if a cable type has no datasheet, leave those cells empty and say so in the summary. If the master list is only a draft, say in the summary that it is not approved yet.
 Reply with JSON only, no markdown: {"filename":"short file name without extension","summary":"one or two lines: what is in it and anything TBC","sheets":[{"name":"sheet name","columns":[{"header":"..."}],"rows":[["cell", 1.5, "=B2*C2"]]}]}`;
 
 const WORD_SYSTEM = (base) => `You are Wren, the Word agent in the Atomax-UK 365 room. The engineer's request decides the document type (report, technical note, letter, specification, method statement, minutes) and its sections; the default sections below are only a fallback. Turn any attached notes (for example a Markdown technical note) into a proper Atomax document without changing their facts.\n\n${base}`;
@@ -109,7 +110,12 @@ function register({ ipcMain, claudeFull, BIZ, checker, userDir, projects }) {
     if (!request.trim()) throw new Error('Say what Lex should make');
     const job = jobId && BIZ.data().jobs.find(j => j.id === jobId);
     const system = EXCEL_SYSTEM + (job ? '\n\n' + BIZ.contextFor(job.id, 'Lex') : '');
-    const { spec, cut } = await ask(system, 'excel', skills, [...filesToContent(files), { type: 'text', text: 'REQUEST: ' + request }]);
+    // cable schedules get the cable datasheets from the File Room
+    const extra = [];
+    if (/cable schedule|schedule of cables|\bcables?\b/i.test(request)) {
+      try { const lib = require('./library'); for (const i of lib.list('datasheets').filter(x => x.on && /\.pdf$/i.test(x.file)).slice(0, 5)) { extra.push({ type: 'text', text: 'CABLE DATASHEET: ' + i.name }); extra.push(checker.contentBlock('pdf', i.file, fs.readFileSync(lib.pathOf('datasheets', i.file)))); } } catch {}
+    }
+    const { spec, cut } = await ask(system, 'excel', skills, [...extra, ...filesToContent(files), { type: 'text', text: 'REQUEST: ' + request }]);
     if (!Array.isArray(spec.sheets) || !spec.sheets.length) throw new Error('Lex did not return a workbook');
     const file = outFile(job && job.id, spec.filename || (job ? job.number + ' workbook' : 'Workbook'), '.xlsx');
     fs.writeFileSync(file, writeXlsx(spec.sheets));

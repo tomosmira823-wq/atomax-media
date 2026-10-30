@@ -144,6 +144,27 @@ dead is true only if the sheet itself carries a cancelled / superseded / void / 
         } catch (e) { notes.push('Transmittal not checked: ' + String(e.message || e).slice(0, 120)); }
       }
       const report = biz.issueCheck({ job, files, transmittal, reads });
+      // client rules: natives or not (client profile), and every DXF has its PDF and every PDF its DXF
+      try {
+        const desk = require('./jobdesk'), prof = job ? desk.clientProfile(job) : null, add = (level, check, text, file = '') => { report.findings.push({ id: report.findings.length + 1, level, check, text, file }); report[level === 'fail' ? 'fails' : 'warns']++; };
+        if (prof && /no natives|natives (are )?not|(dxf and pdf|pdf and dxf) only|only (dxf|pdf)/i.test(prof.text)) {
+          files.filter(f => /\.(dwg|xlsx|xls|docx|doc)$/i.test(f.name)).forEach(f => add('fail', 'Client rules', `${prof.name} takes DXF and PDF only (client profile): remove the native file.`, f.name));
+          report.coverage.push(`Client issue format from the ${prof.name} profile (DXF and PDF only)`);
+        } else report.coverage.push(prof ? `Client profile ${prof.name} read (no issue format rule in it)` : 'No client profile, so the client\'s issue format was NOT checked');
+        const parsed = files.map(f => ({ ...f, ...biz.parseName(f.name), ext: path.extname(f.name).toLowerCase() })).filter(f => f.no);
+        const has = (no, rev, ext) => parsed.some(f => f.no === no && f.ext === ext && (!rev || !f.rev || f.rev === rev));
+        if (parsed.some(f => f.ext === '.dxf')) {
+          parsed.filter(f => f.ext === '.dxf' && !has(f.no, f.rev, '.pdf')).forEach(f => add('warn', 'Pairs', 'DXF with no matching PDF.', f.name));
+          parsed.filter(f => f.ext === '.pdf' && !has(f.no, f.rev, '.dxf')).forEach(f => add('warn', 'Pairs', 'PDF with no matching DXF.', f.name));
+          report.coverage.push('Every DXF has its PDF and every PDF its DXF');
+        }
+        report.ok = report.fails === 0;
+      } catch {}
+      // Eli's cover email for the issue (Tom sends it)
+      try {
+        const live = report.drawingFiles.filter(f => /\.pdf$/i.test(f.name) || !report.drawingFiles.some(g => g.no === f.no && /\.pdf$/i.test(g.name)));
+        report.coverEmail = `Subject: ${job ? job.number + ' ' + job.name + ' - ' : ''}Document issue\n\nHi,\n\nPlease find the following documents issued${transmittalPath ? ' under transmittal ' + path.basename(transmittalPath).replace(/\.[^.]+$/, '') : ''}:\n\n${live.map(f => `- ${f.no || f.name}${f.rev ? ' rev ' + f.rev : ''}`).join('\n')}\n\nPlease let me know if you have any questions.\n\nKind regards`;
+      } catch {}
       report.notes = notes; report.folder = folder; report.jobId = jobId; report.transmittalName = transmittalPath ? path.basename(transmittalPath) : '';
       report.reads = reads;
       biz.audit(d, { who: 'Iris', action: 'Issue check', jobId, detail: `${report.fails} to fix, ${report.warns} to look at in ${path.basename(folder)}` }); store.save();
@@ -169,7 +190,7 @@ dead is true only if the sheet itself carries a cancelled / superseded / void / 
     if (!String(details || '').trim()) throw new Error('Give Doc something to write from: the scope, the facts, the dates.');
     const d = data(); const job = d.jobs.find(j => j.id === jobId) || null;
     if (!job) throw new Error('Pick the job this document is for.');
-    const num = String(docNumber || '').trim() || biz.nextDocNumber(d, job);
+    const num = String(docNumber || '').trim() || biz.nextDocNumber(d, job, (biz.DOC_KINDS[kind] || {}).title || kind);
     const history = d.docs.filter(x => x.docNumber === num).sort((a, b) => String(a.revision).localeCompare(String(b.revision))).map(x => ({ rev: x.revision, description: x.description, date: x.date, preparedBy: x.prepared, checkedBy: x.checked, approvedBy: x.approved }));
     let rev = String(revision || '').trim();
     if (!rev) { const last = history[history.length - 1]; const m = last && last.rev.match(/^([A-Z]*)(\d+)$/i); rev = m ? m[1].toUpperCase() + String(+m[2] + 1).padStart(m[2].length, '0') : 'P01'; }
@@ -204,7 +225,7 @@ dead is true only if the sheet itself carries a cancelled / superseded / void / 
 
   // the context block for the job in hand (the one picked on the whiteboard or in the agent's panel); '' when no job is set
   // job context = the job card plus what is in its project folder (when one is linked and has been read)
-  const contextFor = (jobId, who) => { try { const d = data(), id = jobId === undefined ? d.currentJobId : jobId; const c = biz.jobContext(d, id, who); if (!c) return ''; const p = projects.contextBlock(id); return p ? c + '\n\n' + p : c; } catch { return ''; } };
+  const contextFor = (jobId, who) => { try { const d = data(), id = jobId === undefined ? d.currentJobId : jobId; const c = biz.jobContext(d, id, who); if (!c) return ''; const p = projects.contextBlock(id); let k = ''; try { k = require('./jobdesk').context(id, who); } catch {} return [c, k, p].filter(Boolean).join('\n\n'); } catch { return ''; } };
 
   // ---- project folders ----
   const jobOf = (id) => { const j = data().jobs.find(x => x.id === id); if (!j) throw new Error('No such job'); return j; };

@@ -65,11 +65,15 @@ export function initDexMakeUI({ api, office, bizUI, getDex }) {
     $('#dmMsg').textContent = answers.length ? 'Dex is drawing it' : 'Dex is reading the project files';
     const dex = getDex(); if (dex) office.setState(dex.id, 'working', 'drawing an SLD');
     try {
-      const r = await api.dexMake({ jobId: $('#dmJob').value, request, answers, emailId, skills: picker ? picker.selected() : undefined });
+      const r = await api.dexMake({ jobId: $('#dmJob').value, request, answers, emailId, skills: picker ? picker.selected() : undefined, revision: $('#dmRevOn').checked ? { on: true, stage: $('#dmRevStage').value, note: $('#dmRevNote').value } : null });
       if (r.questions) { questions = r.questions; renderQuestions(); if (dex) office.setState(dex.id, 'idle'); return; }
       questions = []; renderQuestions();
       $('#dmOut').innerHTML = `<div class="headline good" style="margin-top:12px">Saved ${esc(r.path.split(/[\\/]/).pop())}</div>
         <div class="hint">${esc(r.summary || r.title)}${r.inJobFolder ? '' : ' · saved in the app folder because the job has no project folder'}</div>
+        ${r.drawingNumber ? `<div class="hint">Drawing ${esc(r.drawingNumber)} rev ${esc(r.revision || '')}${r.titleBlock ? ' · client title block ' + esc(r.titleBlock) : ' · Atomax draft title block (drop the client\'s title block DXF in the File Room Clients cabinet to use theirs)'}</div>` : ''}
+        ${r.sheets && r.sheets.length > 1 ? `<div class="hint">${r.sheets.length} sheets: ${r.sheets.map(x => esc(x.path.split(/[\\/]/).pop())).join(', ')}</div>` : ''}
+        ${r.masterCheck ? `<div class="hint">Checked against the approved master list: ${r.masterCheck.added.length ? 'added ' + r.masterCheck.added.length + ' cable(s) Dex left out' : 'no cables missing'}${r.masterCheck.extra.length ? ' · <b style="color:#e8590c">' + r.masterCheck.extra.length + ' not on the master list: ' + esc(r.masterCheck.extra.join(', ')) + '</b>' : ''}</div>` : ''}
+        ${r.diff ? `<div class="hint">Revision ${esc(r.revision)} against the last one: ${[r.diff.added.length ? 'added ' + esc(r.diff.added.join(', ')) : '', r.diff.removed.length ? 'removed ' + esc(r.diff.removed.join(', ')) : '', r.diff.changed.length ? 'changed ' + esc(r.diff.changed.join(', ')) : ''].filter(Boolean).join(' · ') || 'no cable changes'} (clouded on the drawing)</div>` : r.revision && $('#dmRevOn').checked && !r.previousFound ? '<div class="hint">No earlier drawing by Dex found for this number, so nothing to compare with.</div>' : ''}
         ${r.read && r.read.length ? `<div class="hint">Read from the project: ${esc(r.read.join(', '))}</div>` : ''}
         <div class="hint">${r.skills && r.skills.length ? 'Skills used: ' + esc(r.skills.join(', ')) : 'No skills used: tick Dex on a skill in the File Room (Skills cabinet)'}</div>
         ${r.incomplete ? '<div class="err" style="margin-top:6px">Dex ran out of room: this drawing is incomplete. Press Make the DXF again.</div>' : ''}
@@ -83,6 +87,7 @@ export function initDexMakeUI({ api, office, bizUI, getDex }) {
     finally { busy = false; $('#dmRun').hidden = true; $('#dmGo').disabled = false; }
   }
   $('#dmGo').addEventListener('click', go);
+  $('#dmRevOn').addEventListener('change', () => { $('#dmRevBox').hidden = !$('#dmRevOn').checked; });
 
   return {
     // open in make mode, optionally with a job, a request and the email it came from; auto starts the first pass

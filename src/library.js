@@ -13,6 +13,8 @@ const CABINETS = [
   { key: 'jobs', label: 'Jobs', colour: '#b197fc' },
   { key: 'brand', label: 'Brand', colour: '#f783ac' },
   { key: 'rulebooks', label: 'Agent rulebooks', colour: '#38d9a9' },
+  { key: 'clients', label: 'Clients', colour: '#ff922b' },
+  { key: 'datasheets', label: 'Cable datasheets', colour: '#868e96' },
 ];
 const CONTEXT_CABINETS = ['templates', 'knowledge', 'jobs', 'brand'];
 const TEXT_EXT = new Set(['.md', '.txt', '.csv', '.json', '.tsv', '.html']);
@@ -172,6 +174,15 @@ function importSkills(paths) {
 }
 const importSkill = (folder) => importSkills([folder]).items;
 
+// a client profile (title block, numbering, issue format, corrections); its title block DXF can sit next to it in the same cabinet
+function newClient({ name, text }) {
+  const file = uniqueFile('clients', slug(name) + '.md');
+  fs.mkdirSync(dirOf('clients'), { recursive: true });
+  fs.writeFileSync(path.join(dirOf('clients'), file), text || `# ${name}\n\n## Title block\n- \n\n## Numbering\n- \n\n## Issue format\n- e.g. DXF and PDF only, no natives\n\n## Corrections\n`, 'utf8');
+  const idx = readIndex('clients'); idx[file] = { name: name || 'Client', description: 'Client profile', agents: [], on: true }; writeIndex('clients', idx);
+  return list('clients');
+}
+const pathOf = (key, file) => path.join(dirOf(key), file);
 function newSkill({ name, description, text }) {
   const file = uniqueFile('skills', slug(name) + '.md');
   fs.writeFileSync(path.join(dirOf('skills'), file), text || '', 'utf8');
@@ -244,4 +255,4 @@ function addCorrection(agentId, text) {
   return rulebookFor(agentId);
 }
 
-module.exports = { skillsBlock, skillsFor, CABINETS, init, list, readText, save, remove, addFiles, importSkill, importSkills, unzipText, newSkill, skillFor, rulebookFor, promptBlock, addCorrection, setRulebook, _root: () => ROOT };
+module.exports = { newClient, pathOf, skillsBlock, skillsFor, CABINETS, init, list, readText, save, remove, addFiles, importSkill, importSkills, unzipText, newSkill, skillFor, rulebookFor, promptBlock, addCorrection, setRulebook, _root: () => ROOT };

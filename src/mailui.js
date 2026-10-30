@@ -5,7 +5,7 @@ const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<'
 const NAMES = { dex: 'Dex · DXF maker', engineer: 'Ada · engineer', excel: 'Lex · Excel', word: 'Wren · Word', documents: 'Dot · documents', cal: 'Cal · drawing checker', milo: 'Milo · 3D modeller', theo: 'Theo · 3D builder', eli: 'Eli · job + folder setup', none: 'You (Tom)' };
 const clean = (e) => String(e && e.message || e).replace(/^Error invoking remote method '[^']+': (Error: )?/, '');
 
-export function initMailUI({ api, office, getAgents, onStart, goBack }) {
+export function initMailUI({ api, office, getAgents, onStart, onDesk, goBack }) {
   const panel = $('#mailPanel');
   let emails = [], cur = null, staged = [], startOpen = -1, jobs = [], eliPicker = null, adaPicker = null;
   const eli = () => (getAgents() || []).find(a => a.role === 'email' && a.enabled);
@@ -47,11 +47,16 @@ export function initMailUI({ api, office, getAgents, onStart, goBack }) {
     const e = cur;
     m.innerHTML = `<div class="mlhead"><h3>${esc(e.subject || 'Email')}</h3><div class="bsub">${esc(e.from)}${e.date ? ' · ' + esc(e.date) : ''}${e.site ? ' · site: ' + esc(e.site) : ''}${e.jobNumber ? ' · job ' + esc(e.jobNumber) : ''}</div></div>
       ${e.urgency === 'urgent' ? `<div class="mlurgent">URGENT${e.urgencyWhy ? ' · ' + esc(e.urgencyWhy) : ''}</div>` : ''}
+      ${e.jobId ? `<div class="mljob">Related to existing job <b>${esc(jobName(e.jobId))}</b>. Tasks you start go on that job.</div>` : e.folderFound ? `<div class="mljob">Not a job in the office yet, but a folder for ${esc(e.jobNumber)} already exists: <span class="bp">${esc(e.folderFound)}</span>. Starting a task links it.</div>` : ''}
+      ${e.commentReturn ? `<div class="mljob">Client comments: ${e.comments.length} comment${e.comments.length === 1 ? '' : 's'} go onto the job's comment response sheet when you start a task.</div>` : ''}
       <div class="mlsum">${esc(e.summary)}</div>
       ${(e.people || []).length ? `<div class="mlpeople">${e.people.map(p => `<span><b>${esc(p.name)}</b>${p.company ? ' · ' + esc(p.company) : ''}<i>${esc(p.role || '')}</i></span>`).join('')}</div>` : ''}
       ${(e.attachmentNotes || []).length ? `<div class="mlatt">${e.attachmentNotes.map(a => `<div>📎 <b>${esc(a.name)}</b> — ${esc(a.what || '')}${a.usefulFor ? `<i> · useful for: ${esc(a.usefulFor)}</i>` : ''}</div>`).join('')}</div>` : (e.attachments || []).length ? `<div class="mlatt">${e.attachments.map(a => `<div>📎 ${esc(a.name)}</div>`).join('')}</div>` : ''}<button id="mlReread" title="Run Eli over this email again with his latest rules">Read it again</button>
       <div style="font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;color:#868e96;margin-top:12px">What it asks for</div>
       ${e.asks.length ? e.asks.map((a, i) => askCard(a, i)).join('') : '<div class="bhint">Eli found nothing to do in this one.</div>'}
+      ${(e.deliverables || []).length ? `<div class="mlqs"><b>To produce</b> <span class="bsub">(goes on the drawing list, numbered like the existing ones)</span><ul>${e.deliverables.map(d => `<li>${esc(d.title || d.type)}${(+d.qty || 1) > 1 ? ' ×' + (+d.qty) : ''}</li>`).join('')}</ul></div>` : ''}
+      ${(e.inputs || []).length || (e.missingInputs || []).length ? `<div class="mlqs"><b>Inputs</b><ul>${(e.inputs || []).map(x => `<li>${esc(x.name)}${x.rev ? ' rev ' + esc(x.rev) : ''}${x.what ? ' · ' + esc(x.what) : ''}</li>`).join('')}${(e.missingInputs || []).map(x => `<li style="color:#e8590c">Not sent: ${esc(x)} (becomes an RFI)</li>`).join('')}</ul></div>` : ''}
+      ${Object.entries(e.desk || {}).map(([jid, r]) => deskLine(jid, r)).join('')}
       ${(e.clientQuestions || []).length ? `<div class="mlqs"><b>Still needed from the client</b><ul>${e.clientQuestions.map(q => `<li>${esc(q)}</li>`).join('')}</ul></div>` : ''}
       ${e.reply ? `<div class="mlreply"><b>Suggested reply${e.replyTo ? ' to ' + esc(e.replyTo) : ''}</b><pre>${esc(e.reply)}</pre><button id="mlCopy">Copy reply</button> <button id="mlOpenE">Open the email files</button></div>` : ''}`;
     m.querySelectorAll('[data-yes]').forEach(b => b.addEventListener('click', () => { startOpen = +b.dataset.yes; render(); fillStart(+b.dataset.yes); }));
@@ -62,6 +67,14 @@ export function initMailUI({ api, office, getAgents, onStart, goBack }) {
     m.querySelectorAll('[data-show]').forEach(b => b.addEventListener('click', () => api.showItem(b.dataset.show)));
     const cp = $('#mlCopy'); if (cp) cp.onclick = () => { navigator.clipboard.writeText(e.reply).catch(() => {}); cp.textContent = 'Copied'; };
     const oe = $('#mlOpenE'); if (oe) oe.onclick = () => api.mail.open({ id: e.id });
+    m.querySelectorAll('[data-mkreg]').forEach(b => b.addEventListener('click', async () => { b.disabled = true; try { const r = await api.desk.makeRegister({ jobId: b.dataset.mkreg }); cur.desk[b.dataset.mkreg].register = { found: true, file: r.path, made: true }; render(); } catch (err) { $('#mlErr').textContent = clean(err); b.disabled = false; } }));
+    m.querySelectorAll('[data-desk]').forEach(b => b.addEventListener('click', () => onDesk && onDesk(b.dataset.desk)));
+  }
+  const jobName = (id) => { const j = (jobs || []).find(x => x.id === id); return j ? j.number + ' ' + (j.name || '') : 'this job'; };
+  function deskLine(jid, r) {
+    const reg = r.register || {};
+    const regTxt = reg.error ? 'Register: ' + esc(reg.error) : reg.found ? `${reg.made ? 'Made the drawing register' : 'Drawing register found'}: <span class="bp">${esc(String(reg.file || '').split(/[\\/]/).pop())}</span>${reg.read ? ' · ' + reg.read + ' drawings read' : ''}` : `No drawing register in the job folder. <button data-mkreg="${jid}">Make one</button>`;
+    return `<div class="mljob"><b>Job admin (${esc(jobName(jid))})</b><br>${regTxt}${(r.deliverables || []).length ? '<br>Added to the drawing list: ' + r.deliverables.map(d => esc(d.no)).join(', ') : ''}${r.rfis ? `<br>${r.rfis} RFI${r.rfis === 1 ? '' : 's'} drafted` : ''}${r.comments ? `<br>${r.comments} comment${r.comments === 1 ? '' : 's'} on the comment response sheet` : ''}<br><button data-desk="${jid}">Open the job desk</button></div>`;
   }
   function askCard(a, i) {
     const who = a.status === 'proposed'

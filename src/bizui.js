@@ -116,10 +116,12 @@ export function initBizUI({ api, getSettings, openSettings }) {
     out.innerHTML = `<div class="headline ${r.ok ? (r.warns ? 'warn' : 'good') : 'warn'}" style="margin-top:14px">${r.ok ? (r.warns ? `Nothing blocking. ${r.warns} to look at.` : 'Clean. Nothing found.') : `${r.fails} to fix before this goes out${r.warns ? `, ${r.warns} to look at` : ''}.`}</div>
       ${Object.entries(groups).map(([g, list]) => `<div class="grp"><h4>${esc(g)} <span>${list.length}</span></h4><ul>${list.map(f => `<li class="${f.level === 'fail' ? 'bad' : 'confirm'}"><b>${f.level === 'fail' ? 'FIX' : 'LOOK'}</b> ${esc(f.text)}${f.file ? `<div class="why">${esc(f.file)}</div>` : ''}</li>`).join('')}</ul></div>`).join('')}
       <div class="grp cov"><h4>What was checked</h4><ul>${r.coverage.map(c => `<li class="${/NOT/.test(c) ? 'confirm' : ''}">${esc(c)}</li>`).join('')}</ul>${(r.notes || []).length ? `<ul>${r.notes.map(n => `<li class="confirm">${esc(n)}</li>`).join('')}</ul>` : ''}</div>
+      ${r.coverEmail ? `<div class="grp"><h4>Cover email (drafted by Eli, you send it)</h4><pre style="white-space:pre-wrap;font-size:12px">${esc(r.coverEmail)}</pre><button class="btn" id="qCopyMail">Copy email</button></div>` : ''}
       <div class="grid2"><div><label>Issued to</label><input id="qTo" placeholder="Client or contact" /></div><div><label>Purpose</label><input id="qPurpose" value="Issued for review" /></div>
       <div><label>Revision of transmittal</label><input id="qRev" value="P01" /></div><div><label>Prepared by</label><input id="qBy" list="bizPeople" /></div></div>${peopleList()}
       <div class="err" id="qErr" style="margin-top:8px"></div>
       <div class="row" style="margin-top:10px"><span style="flex:1" class="hint">${r.ok ? 'Queues a copy for your approval. Your folder is not changed.' : 'Fix the folder, then check again. Iris will not queue an issue with open fixes.'}</span><button class="btn primary" id="qGo" ${r.ok ? '' : 'disabled'}>Queue for approval</button></div>`;
+    const cm = $('#qCopyMail'); if (cm) cm.onclick = () => { navigator.clipboard.writeText(r.coverEmail).catch(() => {}); cm.textContent = 'Copied'; };
     $('#qGo').addEventListener('click', async () => { try { V = await api.biz.issueQueue({ report: r, jobId: r.jobId, to: $('#qTo').value, purpose: $('#qPurpose').value, prepared: $('#qBy').value, revision: $('#qRev').value }); report = null; go('approvals'); } catch (e) { $('#qErr').textContent = err(e); } });
   }
 

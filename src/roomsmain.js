@@ -30,6 +30,7 @@ function register({ ipcMain, dialog, getWin, loadSettings, saveSettings, userDir
     const out = library.importSkills([r.filePaths[0]]);
     return { done: out.done, skipped: out.skipped };
   }));
+  ipcMain.handle('library:newClient', ok((_e, a) => library.newClient(a || {})));
   ipcMain.handle('library:newSkill', ok((_e, a) => library.newSkill(a || {})));
   ipcMain.handle('library:setRulebook', ok((_e, { agentId, text }) => library.setRulebook(agentId, text)));
   // what an agent is given from the library right now (the same functions its prompt is built from)

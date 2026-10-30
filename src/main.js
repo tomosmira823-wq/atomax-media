@@ -228,8 +228,8 @@ function createWindow() {
   if (process.env.AMO_SCREENSHOT) {
     win.webContents.on('console-message', (_e, level, msg, line, src) => console.error('[page]', level, msg, src + ':' + line));
     win.webContents.once('did-finish-load', () => setTimeout(async () => {
-      if (['run', 'drawing', 'dex', 'model', 'fp', 'biz', 'mo', 'pc', 'theo', 'layout', 'rooms', 'email', 'msg', 'o365', 'dexkind'].includes(process.env.AMO_SCENARIO)) {
-        const script = fs.readFileSync(path.join(__dirname, '..', 'test', ({ drawing: 'scenario-drawing.js', dex: 'scenario-dex.js', model: 'scenario-model.js', fp: 'scenario-fp.js', biz: 'scenario-biz.js', mo: 'scenario-mo.js', pc: 'scenario-pc.js', theo: 'scenario-theo.js', layout: 'scenario-layout.js', rooms: 'scenario-rooms.js', email: 'scenario-email.js', msg: 'scenario-msg.js', o365: 'scenario-o365.js', dexkind: 'scenario-dexkind.js' }[process.env.AMO_SCENARIO] || 'scenario-run.js')), 'utf8').replace(/__AMO_DIR__/g, (process.env.AMO_PICK_DIR || '').replace(/\\/g, '/'));
+      if (['run', 'drawing', 'dex', 'model', 'fp', 'biz', 'mo', 'pc', 'theo', 'layout', 'rooms', 'email', 'msg', 'o365', 'dexkind', 'desk'].includes(process.env.AMO_SCENARIO)) {
+        const script = fs.readFileSync(path.join(__dirname, '..', 'test', ({ drawing: 'scenario-drawing.js', dex: 'scenario-dex.js', model: 'scenario-model.js', fp: 'scenario-fp.js', biz: 'scenario-biz.js', mo: 'scenario-mo.js', pc: 'scenario-pc.js', theo: 'scenario-theo.js', layout: 'scenario-layout.js', rooms: 'scenario-rooms.js', email: 'scenario-email.js', msg: 'scenario-msg.js', o365: 'scenario-o365.js', dexkind: 'scenario-dexkind.js', desk: 'scenario-desk.js' }[process.env.AMO_SCENARIO] || 'scenario-run.js')), 'utf8').replace(/__AMO_DIR__/g, (process.env.AMO_PICK_DIR || '').replace(/\\/g, '/'));
         await win.webContents.executeJavaScript(`window.__variant = ${JSON.stringify(process.env.AMO_VARIANT || '')}`);
         const out = await win.webContents.executeJavaScript(script);
         console.error('[scenario]', JSON.stringify(out));
@@ -386,7 +386,11 @@ const withJob = (a) => { const name = (String(a && a.system || '').match(/You ar
 roomsmain.register({ ipcMain, dialog, getWin: () => win, loadSettings, saveSettings, userDir: USER_DIR, version: () => app.getVersion(), getAgents: () => readJson(AGENTS_FILE(), DEFAULT_AGENTS) });
 const updSend = (u) => { roomsmain.setUpdate(u); win?.webContents.send('update:status', u); };
 BIZ = bizmain.register({ ipcMain, dialog, shell, Notification, getWin: () => win, userDir: USER_DIR, claudeFull: (a) => claudeFull(a.docKind ? { ...a, who: 'documents' } : a), checker, getSettings: () => loadSettings() });
+{ const NAME_ID = { Dex: 'dex', Cal: 'cal', Lex: 'excel', Wren: 'word', Eli: 'email', Ada: 'engineer', Dot: 'documents', Milo: 'milo', Theo: 'theo', Vera: 'vera' };
+  const raw = BIZ.log;
+  BIZ.log = (e) => { raw(e); try { const id = e && e.jobId && NAME_ID[e.who]; const ms = id && AGENT_MS[id]; if (ms > 0) { AGENT_MS[id] = 0; BIZ.data().hours.unshift({ id: 'h' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), jobId: e.jobId, date: new Date().toISOString().slice(0, 10), hours: Math.max(0.01, Math.round(ms / 36000) / 100), who: e.who, note: 'Agent time (auto): ' + e.action, auto: true }); BIZ.store.save(); } } catch {} }; }
 require('./o365main').register({ ipcMain, claudeFull: (a) => claudeFull(a), BIZ, checker, userDir: USER_DIR, projects: require('./projects') });
+require('./jobdeskmain').register({ ipcMain, dialog, getWin: () => win, claudeFull: (a) => claudeFull(a), BIZ, checker, userDir: USER_DIR, library, writeXlsx: require('./o365main').writeXlsx, shell });
 require('./intake').register({ ipcMain, dialog, shell, getWin: () => win, userDir: USER_DIR, claudeFull: (a) => claudeFull(a), checker, BIZ, loadSettings, saveSettings });
 modmain.register({ ipcMain, dialog, getWin: () => win, userDir: USER_DIR, claudeFull: (a) => claudeFull(withJob(a)), checker, log: (e) => BIZ.log(e), outputDirFor: (id, k) => BIZ.outputDirFor(id, k) });
 require('./pcmain.js').register({ ipcMain, BrowserWindow, desktopCapturer, screen, globalShortcut, getWin: () => win, loadSettings, anthropicBase: ANTHROPIC, log: (e) => BIZ.log(e), jobContext: (who) => { try { return BIZ.contextFor(undefined, who); } catch { return ''; } }, mock: process.env.AMO_PC_MOCK === '1' });
@@ -623,10 +627,12 @@ ipcMain.handle('file:saveText', async (_e, { text, name }) => {
 
 // ---------- Claude (Anthropic) ----------
 // every Claude call goes through here: the monthly cap check, the library (rulebook + ticked files for `who`), and the usage log
+// agent working time since its last logged action, so the time lands on the job it was working on (auto timesheet lines)
+const AGENT_MS = {};
 async function claudeFull({ system, messages, maxTokens = 4000, model, tools, who = '', test = false, skills }) {
   const s = loadSettings();
   const useModel = model || s.claudeModel;
-  let tIn = 0, tOut = 0;
+  let tIn = 0, tOut = 0; const t0 = Date.now();
   try {
     if (!s.anthropicKey) throw new Error('No Claude API key. Add it in Settings.');
     if (!test) usage.guard('claude', s);
@@ -650,6 +656,7 @@ async function claudeFull({ system, messages, maxTokens = 4000, model, tools, wh
       msgs = [...msgs, { role: 'assistant', content: parts }];
     }
     usage.record({ provider: 'claude', who, model: useModel, tokensIn: tIn, tokensOut: tOut });
+    if (who && !test) AGENT_MS[who] = (AGENT_MS[who] || 0) + (Date.now() - t0);
     return { text, stop, searches };
   } catch (e) {
     usage.record({ provider: 'claude', who, model: useModel, tokensIn: tIn, tokensOut: tOut, error: e.message || String(e) });

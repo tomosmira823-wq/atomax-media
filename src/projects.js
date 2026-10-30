@@ -14,11 +14,12 @@ const TEXT = new Set(['.txt', '.md', '.csv', '.tsv', '.json', '.eml']);
 
 // where to look for project folders: the folders Tom set, otherwise his OneDrive / SharePoint / Documents / Desktop
 function searchRoots() {
+  // the folders Tom listed (server shares, SharePoint sync) first, then the usual ones in his home folder
   const set = (getSettings().projectRoots || []).filter(p => { try { return fs.statSync(p).isDirectory(); } catch { return false; } });
-  if (set.length) return set;
   const home = os.homedir(), out = [];
   try { for (const e of fs.readdirSync(home, { withFileTypes: true })) if (e.isDirectory() && /onedrive|atomax|sharepoint|documents|desktop|projects|jobs|dropbox/i.test(e.name)) out.push(path.join(home, e.name)); } catch {}
-  return out.length ? out : [home];
+  const all = [...set, ...out.filter(o => !set.some(r => o.toLowerCase().startsWith(r.toLowerCase())))];
+  return all.length ? all : [home];
 }
 
 const words = (s) => String(s || '').toLowerCase().split(/[^a-z0-9]+/).filter(w => w.length >= 4 && !['site', 'job', 'project', 'the', 'and', 'with', 'from', 'drawing', 'drawings'].includes(w));
@@ -164,11 +165,10 @@ function jobParent(known = []) {
 }
 // the next free job number: highest of Tom's jobs and the job folders in the jobs folder, plus one
 function nextJobNumber(known = [], jobsFolder = '') {
-  const re = jobPattern(known), all = [];
-  for (const n of known) { const m = String(n).trim().match(re); if (m) all.push({ prefix: m[1], n: m[2] }); }
-  if (jobsFolder) { try { for (const e of fs.readdirSync(jobsFolder, { withFileTypes: true })) { const m = e.isDirectory() && e.name.match(re); if (m) all.push({ prefix: m[1], n: m[2] }); } } catch {} }
-  const top = all.sort((a, b) => Number(b.n) - Number(a.n))[0];
-  return top ? top.prefix.toUpperCase() + String(Number(top.n) + 1).padStart(top.n.length, '0') : '';
+  // Atomax QS 006: the project reference is X + the date (DDMMYY); jobs already in the jobs folder count as taken
+  const taken = [...known];
+  if (jobsFolder) { try { for (const e of fs.readdirSync(jobsFolder, { withFileTypes: true })) if (e.isDirectory()) { const m = e.name.match(/^X\d{4,6}(?:-\d{2})?/i); if (m) taken.push(m[0]); } } catch {} }
+  return require('./docnumber').jobNumber(taken);
 }
 // make a project folder for a new job, with the usual subfolders
 function createJobFolder(parent, number, name) {

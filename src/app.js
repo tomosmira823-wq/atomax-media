@@ -147,12 +147,14 @@ function fillSettings() {
   fillConnections(); fillLogo();
   for (const k of ['anthropicKey', 'openaiKey', 'googleKey', 'googleImageModel', 'higgsfieldKeyId', 'higgsfieldSecret', 'claudeModel', 'openaiImageModel', 'higgsfieldModel', 'imageProvider']) $('#s_' + k).value = settings[k] || '';
   for (const k of ['name', 'about', 'audience', 'website', 'doNot', 'knowledge']) $('#c_' + k).value = settings.company[k] || '';
+  $('#s_projectRoots').value = (settings.projectRoots || []).join('\n');
   $('#siteHint').textContent = settings.company.pulledAt ? 'Last pulled ' + new Date(settings.company.pulledAt).toLocaleString('en-GB') + ' from ' + (settings.company.pages || []).length + ' pages.' : '';
 }
 $('#saveSettings').addEventListener('click', async () => {
   readConnections();
   for (const k of ['anthropicKey', 'openaiKey', 'googleKey', 'googleImageModel', 'higgsfieldKeyId', 'higgsfieldSecret', 'claudeModel', 'openaiImageModel', 'higgsfieldModel', 'imageProvider']) settings[k] = $('#s_' + k).value.trim();
   for (const k of ['name', 'about', 'audience', 'website', 'doNot', 'knowledge']) settings.company[k] = $('#c_' + k).value.trim();
+  settings.projectRoots = $('#s_projectRoots').value.split(/\r?\n/).map(x => x.trim()).filter(Boolean);
   await api.settings.set(settings);
   settings.openaiImageQuality = $('#s_openaiImageQuality').value;
   updateKeyDots(); fillImageSelects(); closeModals();
@@ -644,6 +646,7 @@ window.__roomsUI = roomsUI;
 // Dex's make mode, and Eli at reception
 const dexMake = initDexMakeUI({ api, office, bizUI, getDex: () => dexAgent() });
 const mailUI = initMailUI({ api, office, getAgents: () => agents, goBack: () => goRoom('overview'),
+  onDesk: async (jobId) => { goRoom('board'); await boardUI.show(); boardUI.selectJob(jobId); },
   onStart: ({ ask, email, task, job }) => {
     if (ask.agent === 'none' || ask.agent === 'eli' || ask.agent === 'engineer') return;   // Tom's own, Eli's admin and Ada's notes are done in the panel                                             // Tom's own task: it is on the board
     if (ask.agent === 'dex') { goRoom('drafting'); dexMake.preset({ jobId: job.id, request: ask.title + '\n' + ask.detail, email: email.id, auto: true }); return; }

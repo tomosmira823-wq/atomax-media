@@ -2,8 +2,8 @@
 // Built from the same pieces as the rest of the office (boxes, CSS2D chips, the #put() models), in the same navy, white and green.
 import * as THREE from 'three';
 
-const CAB_COLOURS = { skills: 0x40c057, templates: 0xffd43b, knowledge: 0x4dabf7, jobs: 0xb197fc, brand: 0xf783ac, rulebooks: 0x38d9a9 };
-const CAB_LABELS = { skills: 'SKILLS', templates: 'TEMPLATES', knowledge: 'COMPANY KNOWLEDGE', jobs: 'JOBS', brand: 'BRAND', rulebooks: 'AGENT RULEBOOKS' };
+const CAB_COLOURS = { skills: 0x40c057, templates: 0xffd43b, knowledge: 0x4dabf7, jobs: 0xb197fc, brand: 0xf783ac, rulebooks: 0x38d9a9, clients: 0xff922b, datasheets: 0x868e96 };
+const CAB_LABELS = { skills: 'SKILLS', templates: 'TEMPLATES', knowledge: 'COMPANY KNOWLEDGE', jobs: 'JOBS', brand: 'BRAND', rulebooks: 'AGENT RULEBOOKS', clients: 'CLIENTS', datasheets: 'CABLE DATASHEETS' };
 const CAB_ORDER = ['skills', 'templates', 'knowledge', 'jobs', 'brand', 'rulebooks'];
 const RACKS = [['claude', 'CLAUDE'], ['openai', 'OPENAI'], ['higgsfield', 'HIGGSFIELD'], ['linkedin', 'LINKEDIN'], ['meta', 'META'], ['x', 'X']];
 const LIGHT = { ok: 0x40bd00, near: 0xffa94d, error: 0xff6b6b, capped: 0xff6b6b, expiring: 0xff6b6b, nokey: 0x495266, off: 0x495266 };
@@ -44,6 +44,16 @@ export function buildFileRoom(ctx, R) {
     s.add(g); roots.push(g);
     cabs.push({ key, group: g, drawer, open: false, z });
     ctx.obstacles.push({ rect: true, x0: R.x0, x1: R.x0 + 1.5, z0: z - 0.85, z1: z + 0.85 });
+  });
+  // two more on the north wall, drawers facing south into the room
+  ['clients', 'datasheets'].forEach((key, i) => {
+    const x = R.x0 + 3.2 + i * 1.7, z = R.z1 - 0.7;
+    const { g, drawer } = cabinetBody(box, mat, x, z, CAB_COLOURS[key], key, CAB_LABELS[key], t);
+    g.rotation.y = Math.PI / 2;
+    g.traverse(o => { o.userData.cabinet = key; }); g.userData.cabinet = key;
+    s.add(g); roots.push(g);
+    cabs.push({ key, group: g, drawer, open: false, z });
+    ctx.obstacles.push({ rect: true, x0: x - 0.85, x1: x + 0.85, z0: R.z1 - 1.5, z1: R.z1 });
   });
   // a long table with six chairs for reading and sorting files
   const tc = { x: R.cx + 2.6, z: R.cz };

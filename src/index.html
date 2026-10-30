@@ -365,6 +365,20 @@ body.fp .lbl.hint{display:none}
 body.fp .panel{display:none!important}
 #modelPanel .photoOnly[hidden],#modelPanel [hidden]{display:none!important}
 body.fp canvas#scene{cursor:grab}
+
+  /* job desk on the board */
+  details.jd{border:1px solid #2c3a50;border-radius:8px;margin:6px 0;background:rgba(255,255,255,.03)}
+  details.jd>summary{cursor:pointer;padding:8px 10px;list-style:none}
+  details.jd>summary::-webkit-details-marker{display:none}
+  details.jd>summary::before{content:'▸ ';color:#868e96}
+  details.jd[open]>summary::before{content:'▾ '}
+  .jdb{padding:4px 10px 10px}
+  .jdrow{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:6px 0}
+  .jdt{width:100%;border-collapse:collapse;font-size:12px;margin:6px 0}
+  .jdt th,.jdt td{border:1px solid #2c3a50;padding:3px 5px;text-align:left;vertical-align:top}
+  .jdt th{background:rgba(255,255,255,.06);white-space:nowrap}
+  .jdt input,.jdt textarea,.jdt select{width:100%;box-sizing:border-box;font-size:12px}
+  .mljob{border-left:3px solid #4dabf7;background:rgba(77,171,247,.08);padding:6px 9px;margin:8px 0;border-radius:4px;font-size:12.5px}
 </style>
 <script type="importmap">
 { "imports": {
@@ -461,7 +475,7 @@ body.fp canvas#scene{cursor:grab}
       <label>1 · Cable schedule</label>
       <div class="drop" id="dropSched"><div class="dz-t">Drop the cable schedule here</div><div class="dz-s">Excel, CSV or PDF · one file, or click to browse</div><div id="schedFile"></div><input type="file" hidden accept=".xlsx,.csv,.pdf,.png,.jpg,.jpeg" /></div>
       <label>2 · Drawings and cross references</label>
-      <div class="drop" id="dropDwg"><div class="dz-t">Drop the drawings here</div><div class="dz-s">PDF is best · as many as you like, or click to browse</div><div id="dwgFiles"></div><input type="file" hidden accept=".pdf,.png,.jpg,.jpeg,.xlsx,.csv,.dwg,.dxf,.xls" /></div>
+      <div class="drop" id="dropDwg"><div class="dz-t">Drop the drawings here</div><div class="dz-s">PDF or DXF · as many as you like, or click to browse</div><div id="dwgFiles"></div><input type="file" hidden accept=".pdf,.png,.jpg,.jpeg,.xlsx,.csv,.dwg,.dxf,.xls" /></div>
       <label>3 · How should Cal check?</label>
       <div class="seg" id="checkMode"><button class="on" data-mode="std">Standard skill</button><button data-mode="note">Leave Cal a note</button></div>
       <textarea id="checkNote" style="display:none;margin-top:8px" placeholder="e.g. Only look at the PLC cabinet loops. Tell me if any cable types changed on revision B."></textarea>
@@ -486,8 +500,10 @@ body.fp canvas#scene{cursor:grab}
       <div id="dmFolder" class="dmfolder"></div>
       <label>What should Dex draw?</label>
       <textarea id="dmReq" rows="4" placeholder="e.g. An SLD for the Test site LV board: 1000kVA transformer, 1600A ACB incomer, six outgoing ways"></textarea>
-      <div class="hint" style="margin-top:6px">Dex makes single line diagrams and earthing schematics. He reads the job's project folder (and any SLD or schedule PDFs in it), asks if something essential is missing, and saves a DRAFT DXF into the job folder. Nothing is overwritten.</div>
+      <div class="hint" style="margin-top:6px">Dex makes single line diagrams, earthing schematics and BCDs. He reads the job's project folder (and any SLD or schedule PDFs in it), asks if something essential is missing, and saves a DRAFT DXF into the job folder. Nothing is overwritten.</div>
       <div id="dmSkills"></div>
+      <label class="dmrev"><input type="checkbox" id="dmRevOn"> New revision of a drawing Dex made before <span class="bsub">(optional: changes clouded, revision history kept)</span></label>
+      <div id="dmRevBox" hidden class="jdrow"><select id="dmRevStage"><option value="">Next revision, same stage</option><option value="preliminary">Preliminary (P)</option><option value="comment">Issued for comment (A)</option><option value="construction">For construction (C)</option><option value="asbuilt">As built (X)</option></select><input id="dmRevNote" placeholder="What changed (optional)" style="flex:1"></div>
       <div id="dmQs"></div>
       <div class="err" id="dmErr" style="margin-top:8px"></div>
       <button class="btn primary" id="dmGo" style="width:100%;margin-top:10px">Make the DXF</button>
@@ -705,6 +721,8 @@ body.fp canvas#scene{cursor:grab}
   <div class="grid2">
     <div>
       <label>Claude API key (required)</label><input type="password" id="s_anthropicKey" placeholder="sk-ant-..." />
+      <label>Folders the agents search for job files <span class="hint">(one per line: OneDrive, SharePoint sync folders, server shares such as \\atomax-dc\Projects or Z:\)</span></label>
+      <textarea id="s_projectRoots" rows="3" placeholder="Z:\Projects&#10;C:\Users\you\OneDrive - Atomax-UK"></textarea>
       <label>Claude model</label>
       <select id="s_claudeModel">
         <option value="claude-sonnet-5-5">claude-sonnet-5-5 (default)</option>

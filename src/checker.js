@@ -147,7 +147,7 @@ const IMAGE_MIME = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gi
 const MAX_FILE_BYTES = 24 * 1024 * 1024; // the API takes about 32 MB per request, base64 included
 
 function unreadReason(kind, bytes) {
-  if (kind === 'cad') return 'DWG/DXF cannot be read yet. Export it to PDF and drop that in.';
+  if (kind === 'cad') return '';   // DXF text is read directly (DWG is refused in readDrawing)
   if (kind === 'xls') return 'Old .xls files cannot be read. Save it as .xlsx and drop that in.';
   if (kind === 'other') return 'This file type is not supported (use PDF, image, .xlsx or .csv).';
   if (bytes > MAX_FILE_BYTES) return `File is ${(bytes / 1048576).toFixed(1)} MB. Over about 24 MB per file, so split it into smaller PDFs.`;
@@ -287,7 +287,13 @@ async function readDrawing(file, ctx) {
   if (bad) { out.status = 'skipped'; out.reason = bad; return out; }
   let content;
   try {
-    if (kind === 'pdf' || kind === 'image') content = [contentBlock(kind, file.name, buf), { type: 'text', text: `Document file name: ${file.name}\nExtract every sheet.` }];
+    if (kind === 'cad') {
+      // a DXF is read directly: every text item with its position (more reliable than reading a PDF), so Cal sees exactly what is written
+      if (/\.dwg$/i.test(file.name)) { out.status = 'skipped'; out.reason = 'DWG cannot be read. Save it as DXF (or plot to PDF) and drop that in.'; return out; }
+      const dxffix = require('./dxffix'), inv = dxffix.inventory(dxffix.parseDxf(buf), 3000);
+      content = [{ type: 'text', text: `Document file name: ${file.name}\nThis is a DXF drawing, given as its text items (item | type | layer | where | x,y | height | text). Texts near each other (close x,y) belong together: a cable number sits in its cable box next to its type and size, between the two blocks it joins. Treat the whole file as ONE sheet unless several title blocks / drawing numbers are present. Extract every sheet.\n\n${inv}` }];
+    }
+    else if (kind === 'pdf' || kind === 'image') content = [contentBlock(kind, file.name, buf), { type: 'text', text: `Document file name: ${file.name}\nExtract every sheet.` }];
     else content = [{ type: 'text', text: `Document file name: ${file.name}\nThis is a spreadsheet/table (a cross-reference). Each row that names a cable is a cable on this document. Treat the whole table as one sheet unless the sheets are clearly different drawings.\n\n${sheetsAsText(kind === 'xlsx' ? readXlsx(buf) : readCsv(buf.toString('utf8')))}` }];
     const r = await ask(ctx.claude, { system: extractionSystem(ctx.skill, ctx.note), content, maxTokens: 16000 });
     out.docType = r.value.docType || 'other';

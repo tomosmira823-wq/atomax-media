@@ -5,7 +5,8 @@ const fs = require('fs');
 const path = require('path');
 const zlib = require('zlib');
 
-const DRAWING_NO = /X\d{6}-\d{2}-\d{2}-\d{4}/i;
+// Atomax numbers: X123456-10-20-0042 and the longer project style X11481-02-MLT-06-71-0001
+const DRAWING_NO = /X\d{5,6}(?:-[A-Z0-9]{2,4}){1,4}-\d{3,4}/i;
 const JUNK = [/^~\$/, /\.(bak|tmp|temp|log|lnk)$/i, /^thumbs\.db$/i, /^desktop\.ini$/i, /^\.ds_store$/i, /\.dwl2?$/i, /\.sv\$$/i];
 const ISSUE_EXT = new Set(['.pdf', '.dxf', '.dwg', '.docx', '.xlsx', '.xls', '.csv']);
 const DEAD_WORDS = /\b(cancel+ed|superseded|void|obsolete|withdrawn|not for (issue|use)|struck|hatched)\b/i;
@@ -325,15 +326,13 @@ function docConfig({ kind, job, docNumber, revision = 'P01', date, drafted, prep
   };
 }
 // the next free document number for a job: <jobNumber>-<seq>, matching the X######-##-##-#### pattern when the job number is X######-##
-function nextDocNumber(data, job) {
+function nextDocNumber(data, job, kind = 'report') {
+  // Atomax QS 006 numbering when the job's area code is known (from its register); otherwise the old <job>-#### style
+  try { const used = data.docs.filter(d => d.jobId === job.id).map(d => d.docNumber); let area = ''; try { area = require('./jobdesk').load(job.id).area || ''; } catch {} const r = require('./docnumber').next(job, kind, { taken: used, area }); if (r.no) return r.no; } catch {}
   const used = data.docs.filter(d => d.jobId === job.id).map(d => d.docNumber);
-  const base = job.number.replace(/-\d{2}-\d{4}$/, '');
-  const grp = /^X\d{6}-\d{2}$/i.test(base) ? base : job.number;
-  for (let i = 1; i < 9999; i++) { const n = `${grp}-${String(i).padStart(4, '0')}`; if (!used.includes(n)) return n; }
+  for (let i = 1; i < 9999; i++) { const n = `${job.number}-${String(i).padStart(4, '0')}`; if (!used.includes(n)) return n; }
   return job.number + '-0001';
 }
-
-// ---------------- transmittal config (Atomax format) ----------------
 function transmittalConfig({ job, rows, revision = 'P01', docNumber, date, to = '', purpose = 'Issued for review', prepared = '' }) {
   const d = date || new Date().toLocaleDateString('en-GB');
   return {

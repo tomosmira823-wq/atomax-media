@@ -40,6 +40,10 @@ Who does what (use these, do not send them to "none"):
 - SLDs and other electrical drawings: "dex".
 - Fault level, load flow, reactive power capability, protection co-ordination, harmonics (G5/5), flicker and unbalance (P28 / P29), G99 / G100 compliance studies, intertripping scheme design: "engineer" for a first-pass note (say in the detail that a full study needs PowerFactory if it does).
 - A quote or fee proposal: "documents".
+Existing jobs: the list of Atomax's jobs is given below the email. If the email is about one of them (same job number, site, client or project), set "existingJob" to that job number and do not add an "eli" task to set the job up again.
+Client comments: if the email returns comments on issued drawings or documents (a comment sheet, a marked-up PDF, "please address the following"), set "commentReturn": true, list every comment under "comments" (document number, the comment as written, who made it) and make one task per document for the agent who changes it (drawings: "dex", schedules and registers: "excel", documents: "documents" or "word").
+Deliverables: list what Atomax is being asked to produce under "deliverables" (e.g. {"type":"BCD","title":"Block cable diagram - Malt RIO1","qty":2}, {"type":"cable schedule","title":"Cable schedule","qty":1}); type is one of BCD, cable schedule, SLD, earthing, loop, layout, document, other.
+Inputs: list every input document the client sent or refers to under "inputs" with its revision as written, and under "missingInputs" what is needed to do the work properly but has not been sent (e.g. instrument index, IO list, cable datasheets, latest tag list, panel GA).
 Only list real asks from the email. Do not invent work. Copy site names, job numbers, drawing numbers, ratings and dates exactly as written.
 Also work out, from the whole thread:
 - who is who: the client asking, anyone the quote or work is for or must go to, the Atomax person forwarding and what they want.
@@ -47,6 +51,7 @@ Also work out, from the whole thread:
 - what each attachment is (read it) and which tasks can use it.
 - what Atomax still needs from the client before the work can be done properly (data, drawings, site info), as short questions.
 The suggested reply goes to the person who should get it (say who), answers what was asked (turnaround, quote to follow), and asks those questions. Plain British English, short, no promises on price or dates that Tom has not given.
+${require('./docnumber').RULES_TEXT}
 Reply with JSON only, no markdown:
 {"from":"name <address>","subject":"...","date":"...","summary":"two or three lines: who wants what, for which site, and any instruction from the person forwarding","site":"site or project name, as written","jobNumber":"a job number if one is written (e.g. X11475), else empty",
 "people":[{"name":"...","company":"...","role":"e.g. client asking for the quote / the quote goes to / forwarded it at Atomax"}],
@@ -54,6 +59,10 @@ Reply with JSON only, no markdown:
 "attachmentNotes":[{"name":"file name","what":"what it is, in a line","usefulFor":"which tasks can use it"}],
 "asks":[{"title":"short task title, e.g. Draw the earthing schematic for Gwrhyd PV Farm","detail":"everything the agent needs for this task: what to produce, which attachment to use and the key data from it, what is missing","agent":"dex|engineer|documents|cal|milo|theo|eli|none","kind":"sld|earthing|dxf-fix|drawing-check|document|study|model|admin|other","due":"deadline if given, else empty"}],
 "clientQuestions":["short question for the client"],
+"existingJob":"job number from the existing jobs list if this email is about one, else empty",
+"deliverables":[{"type":"BCD|cable schedule|SLD|earthing|loop|layout|document|other","title":"...","qty":1}],
+"inputs":[{"name":"document name or number as written","rev":"revision if shown","what":"what it is"}],"missingInputs":["..."],
+"commentReturn":false,"comments":[{"doc":"document number","comment":"as written","by":"name"}],
 "replyTo":"name <address> the reply should go to","reply":"the suggested reply"}`;
 
 // ---------- reading email files ----------
@@ -143,6 +152,7 @@ function register({ ipcMain, dialog, shell, getWin, userDir, claudeFull, checker
   // the job an email is about: by job number first, then by words of the site / subject against job names and clients
   function matchJob(e) {
     const jobs = BIZ.data().jobs, hay = `${e.jobNumber} ${e.subject} ${e.site} ${e.summary}`.toLowerCase();
+    const ex = String(e.existingJob || '').trim().toLowerCase(); const byEli = ex && jobs.find(j => j.number.toLowerCase() === ex); if (byEli) return byEli.id;
     const byNo = jobs.find(j => j.number && hay.includes(j.number.toLowerCase())); if (byNo) return byNo.id;
     const words = (s) => String(s || '').toLowerCase().split(/[^a-z0-9]+/).filter(w => w.length >= 4);
     let best = null, score = 0;
@@ -170,6 +180,8 @@ function register({ ipcMain, dialog, shell, getWin, userDir, claudeFull, checker
     for (const a of attach.filter(a => IMG.test(a.mime) || a.mime === 'application/pdf').slice(0, 4)) content.push(checker.contentBlock(a.mime === 'application/pdf' ? 'pdf' : 'image', a.name, fs.readFileSync(path.join(dir, a.name))));
     if (!parts.length && !content.length) throw new Error('Drop an email (.eml, .msg), a screenshot of it, or paste its text');
     content.push({ type: 'text', text: `THE EMAIL:\n${parts.join('\n\n---\n\n').slice(0, 30000)}${attach.length ? '\n\nATTACHMENTS: ' + attach.map(a => a.name).join(', ') : ''}` });
+    const jobsList = BIZ.data().jobs.filter(j => j.status !== 'Closed').slice(0, 80).map(j => `- ${j.number} ${j.name}${j.client ? ' (' + j.client + ')' : ''}`).join('\n');
+    content.push({ type: 'text', text: 'EXISTING JOBS:\n' + (jobsList || '(none yet)') });
     let r = await claudeFull({ system: EMAIL_SYSTEM, who: 'email', skills, maxTokens: 8000, messages: [{ role: 'user', content }] });
     if (r.stop === 'max_tokens') r = await claudeFull({ system: EMAIL_SYSTEM + '\nKeep every field short: details under 60 words, the reply under 150 words.', who: 'email', skills, maxTokens: 16000, messages: [{ role: 'user', content }] });
     const reply = r.text;
@@ -178,9 +190,14 @@ function register({ ipcMain, dialog, shell, getWin, userDir, claudeFull, checker
     const email = { id, at: new Date().toISOString(), from: e.from || '', subject: e.subject || '', date: e.date || '', summary: e.summary || '', site: e.site || '', jobNumber: e.jobNumber || '', reply: e.reply || '', replyTo: e.replyTo || '',
       people: Array.isArray(e.people) ? e.people.slice(0, 8) : [], urgency: e.urgency === 'urgent' ? 'urgent' : 'normal', urgencyWhy: e.urgencyWhy || '', attachmentNotes: Array.isArray(e.attachmentNotes) ? e.attachmentNotes.slice(0, 10) : [], clientQuestions: Array.isArray(e.clientQuestions) ? e.clientQuestions.slice(0, 8).map(String) : [],
       asks: (e.asks || []).map((a, i) => ({ i, title: String(a.title || 'Task').slice(0, 160), detail: String(a.detail || ''), agent: AGENTS[a.agent] ? a.agent : 'none', kind: a.kind || 'other', due: a.due || '', status: 'proposed' })),
-      originals, attachments: attach, pasted: text || '' };
-    ensureDrafter(email, parts.join('\n'));
+      originals, attachments: attach, pasted: text || '',
+      existingJob: String(e.existingJob || ''), deliverables: Array.isArray(e.deliverables) ? e.deliverables.slice(0, 20) : [], inputs: Array.isArray(e.inputs) ? e.inputs.slice(0, 40) : [], missingInputs: Array.isArray(e.missingInputs) ? e.missingInputs.slice(0, 20).map(String) : [],
+      commentReturn: !!e.commentReturn, comments: Array.isArray(e.comments) ? e.comments.slice(0, 200) : [] };
+    if (!email.commentReturn) ensureDrafter(email, parts.join('\n'));
     email.jobId = matchJob(email);
+    // an existing job: no second "set up the job" task; a job folder on disk that is not yet a job in the office is offered for linking
+    if (email.jobId) email.asks = email.asks.filter(a => a.agent !== 'eli' || !/set ?up|new job|job number|project folder/i.test(a.title + ' ' + a.detail)).map((a, i) => ({ ...a, i }));
+    else if (email.jobNumber) { try { const f = BIZ.projects.suggest({ number: email.jobNumber }, { limitMs: 2500 }).find(x => x.why && /number/i.test(x.why)); if (f) email.folderFound = f.path; } catch {} }
     const list = load(), at = reuseId ? list.findIndex(x => x.id === reuseId) : -1;
     if (at >= 0) list[at] = email; else list.unshift(email); save(list);
     BIZ.log({ who: 'Eli', action: 'Read an email', jobId: email.jobId, detail: `${email.subject || email.summary} · ${email.asks.length} task${email.asks.length === 1 ? '' : 's'} proposed` });
@@ -225,9 +242,19 @@ function register({ ipcMain, dialog, shell, getWin, userDir, claudeFull, checker
       try { const out = BIZ.projects.outputDir(job.folder, 'email'); for (const n of [...e.originals, ...(e.attachments || []).map(x => x.name)]) { const src = path.join(DIR(), e.id, n.replace(/[\\/:*?"<>|]+/g, '_')), dst = path.join(out, n.replace(/[\\/:*?"<>|]+/g, '_')); if (fs.existsSync(src) && !fs.existsSync(dst)) fs.copyFileSync(src, dst); } } catch {}
     }
     a.status = 'started'; a.jobId = job.id; a.taskId = task.id; e.jobId = job.id;
+    // the first task started for a job files the email's job admin: register checked, deliverables listed, inputs and RFIs, client comments
+    e.desk = e.desk || {};
+    if (!e.desk[job.id]) {
+      const desk = require('./jobdesk'), r = {};
+      try { r.register = desk.checkRegister(job.id, checker); } catch (err) { r.register = { error: err.message }; }
+      try { r.deliverables = desk.addDeliverables(job.id, e.deliverables || []); } catch {}
+      try { desk.addInputs(job.id, { inputs: e.inputs || [], missing: e.missingInputs || [], questions: e.clientQuestions || [], fromEmail: e.subject || e.from }); r.rfis = (e.missingInputs || []).length + (e.clientQuestions || []).length; } catch {}
+      if (e.commentReturn && e.comments.length) { try { r.comments = desk.addComments(job.id, e.comments, e.subject || e.from).length; } catch {} }
+      e.desk[job.id] = r;
+    }
     if (a.agent === 'eli') { a.status = 'done'; a.result = { summary: job.folder ? 'Job ' + job.number + ' set up, folder ready and the email filed in it.' : 'Job ' + job.number + ' set up (no folder).', path: job.folder || '' }; BIZ.log({ who: 'Eli', action: 'Set up job', jobId: job.id, detail: job.number + (job.folder ? ' · ' + job.folder : '') }); }
     save(list);
-    return { email: e, task, job: { id: job.id, number: job.number, name: job.name, folder: job.folder || '' } };
+    return { email: e, task, desk: e.desk[job.id], job: { id: job.id, number: job.number, name: job.name, folder: job.folder || '' } };
   }));
   ipcMain.handle('mail:reassign', wrap(({ id, ask, agent }) => { const list = load(), e = list.find(x => x.id === id); if (!e || !e.asks[ask] || !AGENTS[agent]) throw new Error('Cannot change that task'); e.asks[ask].agent = agent; save(list); return e; }));
   ipcMain.handle('mail:decline', wrap(({ id, ask }) => { const list = load(), e = list.find(x => x.id === id); if (e && e.asks[ask]) { e.asks[ask].status = 'declined'; save(list); } return e; }));
@@ -269,7 +296,7 @@ EARTHING tasks: size every protective / earth conductor the drawing needs (MET t
   }));
 
   // ---------- Dex makes a DXF ----------
-  ipcMain.handle('dex:make', wrap(async ({ jobId = '', request = '', answers = [], emailId = '', skills }) => {
+  ipcMain.handle('dex:make', wrap(async ({ jobId = '', request = '', answers = [], emailId = '', skills, revision = null }) => {
     if (!String(request).trim()) throw new Error('Say what Dex should draw');
     const d = BIZ.data(), job = jobId && d.jobs.find(j => j.id === jobId);
     // his skills for MAKING a drawing: drawing skills first, fixer-only rules and spreadsheet skills only when the request needs them
@@ -300,13 +327,44 @@ EARTHING tasks: size every protective / earth conductor the drawing needs (MET t
     const text = r.text, cutOff = r.stop === 'max_tokens';
     const spec = dxfmaker.parseReply(text);
     if (spec.questions && spec.questions.length && !answers.length) return { questions: spec.questions.slice(0, 4).map(String), read: [...pdfs.map(p => path.basename(p)), ...notesRead], skills: used };
-    if (!spec.boards && !spec.busbars) throw new Error('Dex did not produce a drawing: ' + String(text).slice(0, 200));
+    if (kind === 'bcd' || (Array.isArray(spec.cables) && spec.cables.length && !spec.boards)) spec.kind = 'bcd';
+    if (spec.kind === 'bcd' ? !(spec.cables || []).length : (!spec.boards && !spec.busbars)) throw new Error('Dex did not produce a drawing: ' + String(text).slice(0, 200));
+    const desk = require('./jobdesk'), DN = require('./docnumber');
+    // a BCD made from an approved master list must carry exactly its cables (for the panels drawn): missing ones are added, extra ones flagged
+    let masterCheck = null;
+    if (spec.kind === 'bcd' && job) {
+      const m = desk.masterOf(job.id);
+      if (m && m.status === 'approved') {
+        const panels = new Set((spec.nodes || []).filter(n => /panel|rio|mcc/i.test(n.type || '')).map(n => String(n.tag).toUpperCase()));
+        const touches = (c) => panels.has(String(c.from).toUpperCase()) || panels.has(String(c.to).toUpperCase()) || (spec.cables || []).some(x => [x.from, x.to].map(v => String(v).toUpperCase()).includes(String(c.from).toUpperCase()) && [x.from, x.to].map(v => String(v).toUpperCase()).includes(String(c.to).toUpperCase()));
+        const mine = new Set(spec.cables.map(c => String(c.no).toUpperCase())), inMaster = new Set(m.cables.map(c => String(c.no).toUpperCase()));
+        const devs = new Set(spec.cables.flatMap(c => [c.from, c.to]).map(v => String(v).toUpperCase()));
+        const missing = m.cables.filter(c => !mine.has(String(c.no).toUpperCase()) && (devs.has(String(c.from).toUpperCase()) || devs.has(String(c.to).toUpperCase())));
+        const extra = spec.cables.filter(c => !inMaster.has(String(c.no).toUpperCase()));
+        missing.forEach(c => spec.cables.push({ no: c.no, from: c.from, to: c.to, type: c.type, cores: c.cores, size: c.size }));
+        if (missing.length) spec.notes = [...(spec.notes || []), `Added from the master list (Dex had left them out): ${missing.map(c => c.no).join(', ')}`];
+        if (extra.length) spec.notes = [...(spec.notes || []), `NOT ON THE MASTER LIST, check: ${extra.map(c => c.no).join(', ')}`];
+        masterCheck = { added: missing.map(c => c.no), extra: extra.map(c => c.no), touches: !!touches };
+      }
+    }
+    // the drawing number: from the job's drawing list when one matches, else the next QS 006 number for this kind
+    if (job && (!spec.drawingNumber || /tbc/i.test(spec.drawingNumber))) {
+      const want = spec.kind === 'bcd' ? /bcd|block cable/i : spec.kind === 'earthing' ? /earth/i : /single line|\bsld\b/i;
+      const onList = job.drawings.find(d => want.test(d.title) && !/^TBC-/.test(d.no) && /to do|live/i.test(d.status || 'Live'));
+      spec.drawingNumber = onList ? onList.no : (desk.proposeNumber(job, spec.kind === 'bcd' ? 'BCD' : spec.kind === 'earthing' ? 'earthing' : 'SLD', [], job.id) || 'TBC');
+    }
     const outDir = (job && BIZ.outputDirFor(job.id, 'dxf')) || path.join(userDir(), 'dxf-made');
     if (cutOff) spec.notes = [...(spec.notes || []), 'INCOMPLETE: Dex ran out of room before the end of the drawing. Parts after the last board shown are missing. Ask him again.'];
-    const kindName = spec.kind === 'earthing' ? 'EARTHING' : 'SLD';
-    const res = dxfmaker.make(spec, outDir, spec.drawingNumber && spec.drawingNumber !== 'TBC' ? spec.drawingNumber + '_' + kindName : (job ? job.number + '_' + kindName : kindName));
+    const kindName = spec.kind === 'earthing' ? 'EARTHING' : spec.kind === 'bcd' ? 'BCD' : 'SLD';
+    const base = spec.drawingNumber && spec.drawingNumber !== 'TBC' ? spec.drawingNumber + '_' + kindName : (job ? job.number + '_' + kindName : kindName);
+    // optional: a new revision of a drawing Dex made before (changes clouded on BCDs, history carried in the notes)
+    let previous = null;
+    if (revision && revision.on) { previous = dxfmaker.previousSpec(outDir, base); spec.revision = DN.nextRev(previous ? previous.spec.revision : (spec.revision || ''), revision.stage || ''); if (revision.note) spec.revisionNote = revision.note; }
+    else if (!spec.revision || /^P0?1$/i.test(spec.revision)) spec.revision = 'P1';
+    const template = job ? desk.titleBlockFor(job) : '';
+    const res = dxfmaker.make(spec, outDir, base, { template, previous });
     BIZ.log({ who: 'Dex', action: 'Drew', jobId: job ? job.id : '', detail: `${path.basename(res.path)} · ${spec.summary || spec.title || 'SLD'}${used.length ? ' · skills: ' + used.join(', ') : ' · no skills'}` });
-    return { skills: used, incomplete: cutOff, path: res.path, folder: outDir, svg: res.svg, summary: spec.summary || '', title: spec.title || '', notes: spec.notes || [], read: [...pdfs.map(p => path.basename(p)), ...notesRead], inJobFolder: !!(job && job.folder) };
+    return { masterCheck, sheets: (res.files || []).map(f => ({ path: f.path, label: f.label })), diff: res.diff, revision: spec.revision, previousFound: !!previous, titleBlock: template ? path.basename(template) : '', drawingNumber: spec.drawingNumber, skills: used, incomplete: cutOff, path: res.path, folder: outDir, svg: res.svg, summary: spec.summary || '', title: spec.title || '', notes: spec.notes || [], read: [...pdfs.map(p => path.basename(p)), ...notesRead], inJobFolder: !!(job && job.folder) };
   }));
 }
 

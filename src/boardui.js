@@ -2,6 +2,7 @@
 // Picking a job here also sets the "job in hand": every engineering agent gets that job as background in its prompts.
 const $ = (s, r = document) => r.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+import { renderJobDesk } from './jobdeskui.js';
 const NOTE_COLOURS = ['#ffe066', '#7fc8ff', '#b2f2bb', '#ffb3c1', '#d0bfff', '#ffd8a8'];
 
 export function initBoardUI({ office, api, getAgents, openAgent, openBusiness, goBack }) {
@@ -68,6 +69,7 @@ export function initBoardUI({ office, api, getAgents, openAgent, openBusiness, g
     return `<div class="bhead"><div><h2>${esc(j.number)} ${esc(j.name || '')}</h2><div class="bsub">${esc(j.client || 'No client')} · ${esc(j.status)}${j.dueDate ? ' · due ' + esc(j.dueDate) : ''}${s.budget ? ` · hours ${s.used} of ${s.budget}` : ''} · ${s.live ?? 0} live drawing${s.live === 1 ? '' : 's'}</div></div>
       <div class="brow"><button class="${j.id === cur ? 'bon' : 'bprim'}" id="bdCur">${j.id === cur ? '✓ Job in hand (all bots know it)' : 'Work on this job'}</button><button id="bdEdit">Edit details</button></div></div>
       <div class="bfolder"><label>Project folder <span class="bsub">(the agents read this folder and write their files into it)</span></label><div id="bdFolderBody" class="bsub">Checking…</div></div>
+      <div id="bdDesk"></div>
       <label>Context for the bots <span class="bsub">(what they should know: scope, client wishes, standards, anything unusual)</span></label>
       <textarea id="bdNotes" rows="4" placeholder="e.g. Existing substation, metric, 275 kV. The new rail is the one behind the tank. Client wants everything in grey.">${esc(j.notes || '')}</textarea>
       <div class="brow"><button id="bdSaveNotes">Save context</button><span class="bsub" id="bdMsg">${esc(msg)}</span></div>
@@ -107,6 +109,7 @@ export function initBoardUI({ office, api, getAgents, openAgent, openBusiness, g
     const m = $('#bdMain');
     if (!j) return;
     renderFolder(j);
+    renderJobDesk(api, $('#bdDesk'), j, { getAgents });
     $('#bdCur').addEventListener('click', async () => { cur = j.id; await api.biz.setCurrent({ id: j.id }); render(); pushToBoard(); });
     $('#bdEdit').addEventListener('click', () => openBusiness());
     $('#bdSaveNotes').addEventListener('click', async () => {
