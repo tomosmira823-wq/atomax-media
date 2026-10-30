@@ -338,16 +338,27 @@ function primsBounds(prims) {
   }
   return { x0, y0, x1, y1 };
 }
+// where a drawing goes on a sheet at 1:1: in the middle of the drawing area; if any of it would land on the CDM box it moves up (then left) just far enough.
+// null when it does not fit at 1:1.
+function placeIn(B, prims, c = primsBounds(prims)) {
+  const cb = B.box, KO = B.keepOut, W = c.x1 - c.x0, H = c.y1 - c.y0;
+  if (W > cb.x1 - cb.x0 || H > cb.y1 - cb.y0) return null;
+  const boxes = KO ? flatPrims(prims).map(p => primsBounds([p])).filter(b => Number.isFinite(b.x0)) : [];
+  const hits = (dx, dy) => KO && boxes.some(b => b.x1 + dx > KO.x0 - 2 && b.x0 + dx < KO.x1 + 2 && b.y1 + dy > KO.y0 && b.y0 + dy < KO.y1 + 2);
+  const cx = cb.x0 + (cb.x1 - cb.x0 - W) / 2 - c.x0, cy = cb.y1 - (cb.y1 - cb.y0 - H) / 2 - c.y1, top = cb.y1 - c.y1, left = cb.x0 - c.x0;
+  for (let dy = cy; dy <= top + 1e-6; dy = Math.min(top, dy + 4)) { if (!hits(cx, dy)) return { k: 1, dx: cx, dy }; if (dy >= top) break; }
+  for (let dx = cx; dx >= left - 1e-6; dx = Math.max(left, dx - 4)) { if (!hits(dx, top)) return { k: 1, dx, dy: top }; if (dx <= left) break; }
+  return null;
+}
 function borderFrame(prims, spec, sheetLabel, opts) {
   const c = primsBounds(prims), W = c.x1 - c.x0, H = c.y1 - c.y0;
   const B = opts.border && opts.border.geo ? opts.border : borderOf(opts.borderKey || opts.border, W, H), cb = B.box, f = opts.fill || {};
   // the drawing goes in the middle of the drawing area; when that would run into the CDM box it moves up (or left) clear of it
-  let area = cb; const KO = B.keepOut;
-  if (KO) { const above = { ...cb, y0: KO.y1 + 2 }, beside = { ...cb, x1: KO.x0 - 2 }, fitsA = (a) => W <= a.x1 - a.x0 && H <= a.y1 - a.y0;
-    const mid = { x0: cb.x0 + (cb.x1 - cb.x0 - W) / 2, y0: cb.y0 + (cb.y1 - cb.y0 - H) / 2 }, clash = !(mid.x0 + W < KO.x0 || mid.y0 > KO.y1);
-    if (clash) area = fitsA(above) ? above : fitsA(beside) ? beside : (W / (beside.x1 - beside.x0) < H / (above.y1 - above.y0) ? beside : above); }
-  const k = Math.min(B.maxScale || 1, (area.x1 - area.x0) / W, (area.y1 - area.y0) / H);   // 1:1 like the Atomax drawings; only reduced if it cannot fit (then said in the notes)
-  const dx = area.x0 + ((area.x1 - area.x0) - W * k) / 2 - c.x0 * k, dy = area.y1 - ((area.y1 - area.y0) - H * k) / 2 - c.y1 * k;
+  const fit = placeIn(B, prims, c) || (() => {   // too big for the sheet at 1:1: reduced to fit the area beside / above the CDM box (said in the notes)
+    const KO = B.keepOut, above = KO ? { ...cb, y0: KO.y1 + 2 } : cb, beside = KO ? { ...cb, x1: KO.x0 - 2 } : cb;
+    const sc = (a) => Math.min(1, (a.x1 - a.x0) / W, (a.y1 - a.y0) / H), area = sc(above) >= sc(beside) ? above : beside, k = Math.min(B.maxScale || 1, sc(area));
+    return { k, dx: area.x0 + ((area.x1 - area.x0) - W * k) / 2 - c.x0 * k, dy: area.y1 - ((area.y1 - area.y0) - H * k) / 2 - c.y1 * k }; })();
+  const { k, dx, dy } = fit;
   const out = place(prims, dx, dy, k);
   // the frame: the real block in the DXF, its geometry in previews
   out.push({ t: 'insert', name: B.block || '__border', x: 0, y: 0, layer: 'SLD-BORDER', prims: [...B.geo.prims.map(p => ({ ...p, layer: 'SLD-BORDER' })), ...B.geo.texts.map(t => t.t === 'mtext' ? { ...t, layer: 'SLD-BORDER' } : { t: 'text', x: t.x, y: t.y, h: t.h, text: t.text, align: t.align, rot: t.rot || 0, layer: 'SLD-BORDER' })] });
@@ -518,13 +529,20 @@ function layoutPowerBcd(spec, model, opts = {}) {
   // ports in the order of what they connect to (keeps every gap free of crossings)
   for (const p of Object.values(pts)) { p.right.sort((a, b) => pos(pts[a.to]) - pos(pts[b.to]) || a.e.i - b.e.i); p.left.sort((a, b) => pos(pts[a.from]) - pos(pts[b.from]) || a.e.i - b.e.i); }
   const blockLines = (p) => { const nd = p.node || {}, lab = String(nd.label || ''); return wrap(lab.toUpperCase().startsWith(String(p.tag).toUpperCase()) ? lab : [p.tag, lab].filter(Boolean).join('\n'), BW - 5); };
-  const portsH = (list) => list.reduce((h, sg) => h + slot(sg), 0);
-  for (const p of Object.values(pts)) {
+  // a feeder's slot on its source is at least as tall as the block it feeds, so that block can sit level with it and the cable runs straight
+  const slotOut = (sg) => { const t = pts[sg.to]; return !t.dummy && t.left.length === 1 && t.h ? Math.max(slot(sg), t.h + VGAP) : slot(sg); };
+  const size = (side) => side === 'R' ? slotOut : slot;
+  const portsH = (list, side = 'L') => list.reduce((h, sg) => h + size(side)(sg), 0);
+  const byLayer = Object.values(pts).sort((a, b) => b.layer - a.layer);   // right to left: what a block feeds is sized first
+  for (const p of byLayer) {
     if (p.dummy) { p.h = slot(p.left[0]); continue; }
-    p.h = Math.max(blockLines(p).length * LINE + 8, portsH(p.left) + 4, portsH(p.right) + 4, 16);
+    p.h = Math.max(blockLines(p).length * LINE + 8, portsH(p.left) + 4, portsH(p.right, 'R') + 4, 16);
   }
   // port heights inside a block: spread over its height, each in the middle of its slot
-  const portYs = (p, list, top) => { const tot = portsH(list), start = top - (p.h - tot) / 2; let y = start; return list.map(sg => { const s = slot(sg), py = y - s + 3 + (note(sg.e.c) ? wrap(note(sg.e.c), LABEL_MAX - 4).length * LINE : 0); y -= s; return py; }); };
+  const noteH = (sg) => note(sg.e.c) ? wrap(note(sg.e.c), LABEL_MAX - 4).length * LINE : 0;
+  const single = (sg) => { const t = pts[sg.to]; return !t.dummy && t.left.length === 1; };
+  const offIn = (t, sg) => (t.h - slot(sg)) / 2 + slot(sg) - 3 - noteH(sg);   // how far below its top a single-feed block takes its cable
+  const portYs = (p, list, top, side = 'L') => { const tot = portsH(list, side), start = top - (p.h - tot) / 2; let y = start; return list.map(sg => { const s = size(side)(sg); if (side === 'R' && single(sg)) { const py = y - offIn(pts[sg.to], sg); y -= s; return py; } const py = y - s + 3 + (note(sg.e.c) ? wrap(note(sg.e.c), LABEL_MAX - 4).length * LINE : 0); y -= s; return py; }); };
   // place the columns left to right; each block lines up with what feeds it where it can
   const yOf = {};   // port y per segment end
   cols.forEach((c, L) => {
@@ -535,7 +553,14 @@ function layoutPowerBcd(spec, model, opts = {}) {
       else top = bottom === Infinity ? 0 : bottom - VGAP;
       if (bottom !== Infinity) top = Math.min(top, bottom - VGAP);
       p.top = top; bottom = top - p.h;
-      const ly = portYs(p, p.left, top), ry = p.dummy ? ly : portYs(p, p.right, top);
+      let ly = portYs(p, p.left, top);
+      // a block fed by several cables takes each one level with where it comes from, when there is room on its side
+      if (!p.dummy && p.left.length > 1 && L > 0) {
+        const want = p.left.map(sg => yOf[sg.e.i + ':' + sg.from + '>R']), hi = top - 2, lo = top - p.h + 2, out2 = [];
+        want.forEach((y, k) => { out2.push(Math.min(y, hi, k ? out2[k - 1] - 3.5 : Infinity)); });
+        if (out2[out2.length - 1] >= lo - 1e-6) ly = out2;
+      }
+      const ry = p.dummy ? ly : portYs(p, p.right, top, 'R');
       p.left.forEach((sg, k) => { yOf[sg.e.i + ':' + sg.to + '>L'] = ly[k]; }); p.right.forEach((sg, k) => { yOf[sg.e.i + ':' + sg.from + '>R'] = p.dummy ? ly[0] : ry[k]; });
     }
   });
@@ -577,7 +602,8 @@ function layoutPowerBcd(spec, model, opts = {}) {
   if (opts.diff) for (const b of boxes) if (opts.diff.added.includes(b.no) || opts.diff.changed.includes(b.no)) revCloud(prims, b, spec.revision);
   const clash = cableClashes(prims); if (clash.length && !process.env.AMO_NOCLASH) throw new Error('BCD layout has cables that overlap or cross (' + clash.slice(0, 3).join('; ') + '). Not saved.');
   const bb = primsBounds(prims); if (process.env.AMO_DBG) console.error('power bcd size', Math.round(bb.x1 - bb.x0), Math.round(bb.y1 - bb.y0)); const key = opts.border && opts.border.geo ? opts.border : (String(opts.border || 'atomax'));
-  const B = opts.noTitle ? null : borderOf(key, bb.x1 - bb.x0, bb.y1 - bb.y0);
+  let B = opts.noTitle ? null : borderOf(key, bb.x1 - bb.x0, bb.y1 - bb.y0);
+  if (B && !(opts.border && opts.border.geo) && !/-A\d$/.test(key) && FAMILY[`${B.company}-A0`]) for (const sz of SIZES) { const C = FAMILY[`${B.company}-${sz}`]; if (C && placeIn(C, prims, bb)) { B = C; break; } }
   const f = frame(prims, spec, bb.y0 - 4, bb.y1, bb.x1, '', { fixed: true, noTitle: !!opts.noTitle, border: B, fill: { ...(opts.fill || {}), sht: '1', shtx: '1' } });
   return { prims, bounds: f.bounds, content: f.content, sheet: f.sheet, page: f.page, border: f.border, label: '', boxes, cables: cables.map(c => String(c.no || '')) };
 }
