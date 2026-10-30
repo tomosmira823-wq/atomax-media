@@ -64,10 +64,24 @@ function wrap(text, width = LABEL_W) {
 }
 
 // draw one chain (incomer or feeder) downward from (x, y); returns the y it ends at and its prims
+// National Grid SLD style (from X11395-BGN-ZZ-XX-DR-E-7262): a cable is a tag box on the conductor with its text written up the box,
+// switching devices carry their state "(OPEN)" / "(CLOSED)", and items are coloured by status: existing black, new green, for removal red.
+const STATUS_COLOUR = { new: 3, modified: 3, remove: 1, removal: 1, removed: 1, 'for removal': 1 };
+function cableTag(label) {
+  const ls = lines(label).slice(0, 3), n = Math.max(1, ls.length), bw = n * LINE + 1.2, bh = Math.max(22, Math.max(...ls.map(l => l.length), 6) * TH * 0.92 + 6);
+  const prims = [L(0, 0, 0, -3, 'SLD-CABLE'), P([[-bw / 2, -3], [bw / 2, -3], [bw / 2, -3 - bh], [-bw / 2, -3 - bh]], true, 'SLD-CABLE'), L(0, -3 - bh, 0, -6 - bh, 'SLD-CABLE')];
+  ls.forEach((l, i) => prims.push({ t: 'text', x: -bw / 2 + 0.6 + TH + i * LINE, y: -3 - bh / 2, h: TH, text: l, align: 'center', rot: 90, layer: 'SLD-TEXT' }));
+  return { len: 6 + bh, w: bw / 2, prims, tagged: true };
+}
 function drawChain(chain, x, y) {
   const prims = [];
-  for (const item of chain || []) {
-    const sym = SYMBOLS[symbolOf(item.symbol)]();
+  for (let item of chain || []) {
+    const kind = symbolOf(item.symbol), col = STATUS_COLOUR[String(item.status || '').toLowerCase().trim()] || 0;
+    const sym = kind === 'cable' && item.label ? cableTag(item.label) : SYMBOLS[kind]();
+    if (sym.tagged) { const from = prims.length; sym.prims.forEach(p => prims.push(moved(p, x, y))); if (col) for (let i = from; i < prims.length; i++) prims[i] = { ...prims[i], colour: col }; y -= sym.len; continue; }
+    const state = /^(open|closed)$/i.test(String(item.state || '').trim()) ? `(${String(item.state).trim().toUpperCase()})` : '';
+    if (state) item = { ...item, label: [item.label, state].filter(Boolean).join('\n') };
+    const from0 = prims.length;
     const label = wrap(item.label, sym.inside ? 16 : LABEL_W);
     const need = sym.inside ? 0 : label.length * LINE + 2.8;
     if (sym.inside && label.length > 2) {   // a board name over two lines: the box grows to hold it
@@ -78,6 +92,7 @@ function drawChain(chain, x, y) {
       if (sym.inside) prims.push({ t: 'mtext', x: x, y: y - 2 - (sym.len - 2) / 2, w: 17, h: TH, text: label.join('\n'), attach: 5, layer: 'SLD-TEXT' });
       else prims.push({ t: 'mtext', x: x + sym.w + 2, y: y - 1.8, w: LABEL_W, h: TH, text: label.join('\n'), attach: 1, layer: 'SLD-TEXT' });
     }
+    if (col) for (let i = from0; i < prims.length; i++) prims[i] = { ...prims[i], colour: col };
     y -= sym.len;
     if (sym.end) return { y, prims, ended: true };
     // the label is taller than the symbol: carry the conductor on so the next symbol's label cannot touch this one
@@ -152,11 +167,27 @@ function drawBoard(b, x0, y, prims, top) {
 }
 
 const SHEETS = [['A3', 420, 297], ['A2', 594, 420], ['A1', 841, 594], ['A0', 1189, 841]];
+function dashBox(prims, x0, y0, x1, y1, layer) {
+  const seg = (ax, ay, bx, by) => { const len = Math.hypot(bx - ax, by - ay), ux = (bx - ax) / len, uy = (by - ay) / len; for (let d = 0; d < len; d += 9) { const e = Math.min(len, d + 6); prims.push(L(ax + ux * d, ay + uy * d, ax + ux * e, ay + uy * e, layer)); } };
+  seg(x0, y1, x1, y1); seg(x1, y1, x1, y0); seg(x1, y0, x0, y0); seg(x0, y0, x0, y1);
+}
 function layoutSld(spec, opts = {}) {
   const prims = [], boards = spec.boards || spec.busbars || [];
   if (!boards.length) throw new Error('The drawing has no boards');
   let x0 = 0, minY = 0, maxY = 0, maxX = 0;
-  for (const b of boards) { const d = drawBoard(b, x0, 0, prims, true); minY = Math.min(minY, d.minY); maxY = Math.max(maxY, d.maxY); maxX = Math.max(maxX, d.maxX); x0 = d.maxX + 25; }
+  for (const b of boards) {
+    const from = prims.length, d = drawBoard(b, x0, 0, prims, true);
+    if (b.enclosure) {   // a dashed box round the board and its incomers, named above it (the switchroom / kiosk / generator enclosure)
+      // the box ends above the first cable on each feeder: the cables leave the room
+      const inRoom = (f) => { const { items } = chainParts(f.chain), k = items.findIndex(it => symbolOf(it.symbol) === 'cable'); return chainHeight(k >= 0 ? items.slice(0, k) : items.filter(it => !(SYMBOLS[symbolOf(it.symbol)]().end))); };
+      const depth = Math.max(8, ...(b.feeders || []).map(inRoom)), cut = -depth - 2;
+      const bb = primsBounds(prims.slice(from).filter(p => primsBounds([p]).y0 >= cut - 0.5)), m = 6, ex0 = bb.x0 - m, ex1 = bb.x1 + m, ey0 = cut, ey1 = bb.y1 + m;
+      dashBox(prims, ex0, ey0, ex1, ey1, 'SLD-ENCLOSURE');
+      prims.push({ t: 'text', x: (ex0 + ex1) / 2, y: ey1 + 2, h: TH, text: String(b.enclosure).toUpperCase(), align: 'center', layer: 'SLD-TEXT' });
+      d.maxY = Math.max(d.maxY, ey1 + 2 + TH); d.maxX = Math.max(d.maxX, ex1); x0 = Math.min(x0, ex0);
+    }
+    minY = Math.min(minY, d.minY); maxY = Math.max(maxY, d.maxY); maxX = Math.max(maxX, d.maxX); x0 = d.maxX + 25;
+  }
   const f = frame(prims, spec, minY, maxY, maxX, '', { fill: opts.fill, borderKey: opts.border });
   return { prims: f.prims || prims, bounds: f.bounds, sheet: f.sheet, page: f.page, border: f.border };
 }
@@ -255,21 +286,21 @@ const readJson = (f) => { try { return JSON.parse(fs.readFileSync(path.join(__di
 // "<COMPANY> <SIZE> BORDER" so one file can hold all three families.
 const FAMILY = {};
 function familyCfg(j) {
-  const colX = j.notes ? j.notes[0] : j.box.x1 + 8, colR = j.geo.x0 + j.geo.w - 6, colW = colR - colX;
+  const colX = j.notes ? j.notes[0] : j.box.x1 + 8, colR = j.colR || j.geo.x0 + j.geo.w - 6, colW = colR - colX;
   // the CDM box in the notes column: notes start under it
   const inCol = (t) => t.x >= colX - 2;
   const mtLines = (t) => String(t.text).split('\n').reduce((n, l) => n + Math.max(1, Math.ceil(l.length * t.h * 0.9 / Math.max(10, t.w || colW))), 0);   // MTEXT wraps at its width
   const extraBottom = Math.min(...[...j.extras.texts.filter(inCol).map(t => t.y - (t.t === 'mtext' ? mtLines(t) * t.h * 1.7 : 0)), ...j.extras.prims.filter(p => p.t === 'line' && Math.min(p.x1, p.x2) >= colX - 2).map(p => Math.min(p.y1, p.y2))].filter(Number.isFinite), j.notes ? j.notes[1] - 4 : j.box.y1);
   return {
     geo: j.geo, block: j.block, page: j.size, box: j.box, maxScale: 1, textLayer: 'E-020___T-E-Drawing Frame Text', notesLayer: 'Z-903___T-E-Notes Text',
-    attrs: j.attrs, titleWidth: Math.max(30, colW - 6), company: j.company, size: j.size, colX,
-    revbox: { prims: j.rev.prims, texts: j.rev.texts, attrs: j.rev.attrs, block: j.revBlock }, rev: { x0: j.rev.x, y: j.rev.y, pitch: j.rev.h || 8, max: 8 },
+    attrs: j.attrs, titleWidth: j.titleWidth || Math.max(30, colW - 6), company: j.company, size: j.size, colX,
+    revbox: { prims: j.rev.prims, texts: j.rev.texts, attrs: j.rev.attrs, block: j.revBlock }, rev: { x0: j.rev.x, y: j.rev.y, pitch: j.rev.h || 8, dx: j.rev.dx || 0, max: j.rev.max || 8 },
     heads: [...(j.notes ? [['NOTES', j.notes[0], j.notes[1]]] : []), ...(j.refs ? [['REFERENCE DOCUMENTS', j.refs[0], j.refs[1]]] : [])], extras: j.extras,
     notes: j.notes && { x: colX, tx: colX + 5.9, y: Math.min(j.notes[1] - 6, extraBottom - 6), pitch: 3.35, w: colW, bottom: (j.refs ? j.refs[1] : j.rev.y) + 12 },
     legendFlow: true, refs: j.refs && { x: colX, y: j.refs[1] - 6, pitch: 3.2, h: 1.75, bottom: j.rev.y + (j.rev.h || 8) * 3 + 4 },
   };
 }
-for (const c of ['atomax', 'bgen', 'pbe']) { const j = readJson('borders/' + c + '.json'); if (j) for (const k of Object.keys(j)) FAMILY[k] = familyCfg(j[k]); }
+for (const c of ['atomax', 'bgen', 'pbe', 'ng']) { const j = readJson('borders/' + c + '.json'); if (j) for (const k of Object.keys(j)) FAMILY[k] = familyCfg(j[k]); }
 const SIZES = ['A3', 'A2', 'A1', 'A0'];
 // the border for a company: the size asked for, else the smallest sheet the drawing fits at 1:1
 function resolveBorder(company = 'atomax', size = '', W = 0, H = 0) {
@@ -280,12 +311,12 @@ function resolveBorder(company = 'atomax', size = '', W = 0, H = 0) {
 }
 const BORDERS = {
   atomax: FAMILY['atomax-A1'] || (() => { const g = readJson('border-atomax-a1.json'); return g && { geo: g, block: 'ATOMAX_A1_FRAME', page: 'A1', box: { x0: 24, y0: 24, x1: 730, y1: 572 }, maxScale: 1, textLayer: 'E-020___T-E-Drawing Frame Text', notesLayer: 'Z-903___T-E-Notes Text', attrs: {}, rev: { y: 135.2, pitch: 8, max: 0 } }; })(),
-  bgen: FAMILY['bgen-A1'], pbe: FAMILY['pbe-A1'],
+  bgen: FAMILY['bgen-A1'], pbe: FAMILY['pbe-A1'], ng: FAMILY['ng-A0'],
 };
 const BORDER = BORDERS.atomax || BORDERS.bgen;
 const BORDER_NAMES = { atomax: 'Atomax', bgen: 'BGEN', pbe: 'PBE Group', ng: 'National Grid' };
 // a border key is a company ('atomax', 'bgen', 'pbe') or company-size ('bgen-A3'); a ready border object passes through
-const borderOf = (key, W, H) => { if (key && key.geo) return key; const [c, sz] = String(key || 'atomax').split('-'); return resolveBorder(FAMILY[`${c}-A1`] ? c : 'atomax', sz || '', W, H); };
+const borderOf = (key, W, H) => { if (key && key.geo) return key; const [c, sz] = String(key || 'atomax').split('-'); if (c === 'ng' && FAMILY['ng-A0']) return FAMILY['ng-A0']; return resolveBorder(FAMILY[`${c}-A1`] ? c : 'atomax', sz || '', W, H); };
 const LEGEND_TEXT = { MCCB: 'MCCB. TEXT: RATING, FRAME', MCB: 'MCB / RCBO. TEXT: RATING, POLES, TYPE', 'SWITCH DISCONNECTOR': 'SWITCH DISCONNECTOR / MAIN SWITCH / ISOLATOR', 'ISOLATOR DISCONNECTOR': 'ISOLATOR', 'FUSED SWITCH DISCONNECTOR': 'FUSED SWITCH DISCONNECTOR', FUSE: 'FUSE', CONTACTOR1: 'CONTACTOR', MOTOR: 'MOTOR', LOAD: 'FINAL CIRCUIT / LOAD', 'HV-LV TRANSFORMER': 'TRANSFORMER' };
 function primsBounds(prims) {
   prims = flatPrims(prims);
@@ -309,19 +340,21 @@ function borderFrame(prims, spec, sheetLabel, opts) {
   out.push({ t: 'insert', name: B.block || '__border', x: 0, y: 0, layer: 'SLD-BORDER', prims: [...B.geo.prims.map(p => ({ ...p, layer: 'SLD-BORDER' })), ...B.geo.texts.map(t => t.t === 'mtext' ? { ...t, layer: 'SLD-BORDER' } : { t: 'text', x: t.x, y: t.y, h: t.h, text: t.text, align: t.align, rot: t.rot || 0, layer: 'SLD-BORDER' })] });
   const title = wrap(spec.title || f.title || 'DRAWING', B.titleWidth || 76).slice(0, 4), proj = wrap(f.project || '', B.titleWidth || 76);
   const today = (() => { const d = new Date(); return [d.getDate(), d.getMonth() + 1, d.getFullYear()].map((v, i) => String(v).padStart(i < 2 ? 2 : 4, '0')).join('.'); })();
-  const val = { DRAWING_NUMBER: spec.drawingNumber || f.drawingNumber || 'TBC', REV: spec.revision || 'P01', TITLE1: title[0] || '', TITLE2: title[1] || '', TITLE3: title[2] || '', TITLE4: title[3] || '', DRN: f.drawn || 'DEX', DATE: f.date || today, SCALE: 'NTS', CHKD: f.checked || '', APRVD: f.approved || '', SHT: f.sht || '1', SHTX: f.shtx || '1', CLIENT_1: f.client || '', CLIENT_2: f.client2 || '', PROJECT_1: proj[0] || '', PROJECT_2: proj[1] || f.project2 || '' };
+  const val = { DRAWING_NUMBER: spec.drawingNumber || f.drawingNumber || 'TBC', REV: spec.revision || 'P01', TITLE1: title[0] || '', TITLE2: title[1] || '', TITLE3: title[2] || '', TITLE4: title[3] || '', DRN: f.drawn || 'DEX', DATE: f.date || today, SCALE: 'NTS', CHKD: f.checked || '', APRVD: f.approved || '', SHT: f.sht || '1', SHTX: f.shtx || '1', CLIENT_1: f.client || '', CLIENT_2: f.client2 || '', PROJECT_1: proj[0] || '', PROJECT_2: proj[1] || f.project2 || '',
+    NG_NUMBER: spec.ngNumber || f.ngNumber || 'TBC', SITE: String(f.site || f.project || '').toUpperCase().slice(0, 40), STATUS: f.status || (/^[PA]/i.test(spec.revision || 'P') ? 'S3' : '') };
   // the drawing number is shrunk until it fits between the sheet-size label and the revision box
-  const fitH = (tag, a, v) => { const h = a[2] || 2; if (tag !== 'DRAWING_NUMBER' || !B.colX || a[3] !== 'center') return h; const half = a[0] - (B.colX + 7); return Math.max(2, Math.min(h, (2 * half) / (String(v).length * 0.92))); };
+  const fitH = (tag, a, v) => { const h = a[2] || 2; if (tag !== 'DRAWING_NUMBER' || B.company === 'ng' || !B.colX || a[3] !== 'center') return h; const half = a[0] - (B.colX + 7); return Math.max(2, Math.min(h, (2 * half) / (String(v).length * 0.92))); };
   if (B.size === 'A3' || B.size === 'A2') val.DATE = val.DATE.replace(/\.(\d{2})(\d{2})$/, '.$2');   // the narrow title blocks take dd.mm.yy
   if (B.attrs.REV) val.REV = val.REV;
-  for (const [tag, a] of Object.entries(B.attrs)) if (val[tag]) out.push({ t: 'text', x: a[0], y: a[1], h: tag === 'REV' ? Math.min(a[2] || 2, 3.3) : fitH(tag, a, val[tag]), text: String(val[tag]).slice(0, 60), align: a[3] || 'left', layer: B.textLayer });
+  for (const [tag, a] of Object.entries(B.attrs)) if (val[tag]) out.push({ t: 'text', x: a[0], y: a[1], h: tag === 'REV' && B.company !== 'ng' ? Math.min(a[2] || 2, 3.3) : fitH(tag, a, val[tag]), text: String(val[tag]).slice(0, 60), align: a[3] || 'left', layer: B.textLayer });
   // revision rows, oldest at the bottom, each above the last
   const hist = spec.revHistory && spec.revHistory.length ? spec.revHistory : [{ rev: val.REV, what: /^A/i.test(val.REV) ? 'ISSUED FOR COMMENT' : 'PRELIMINARY\nDRAFT FOR CHECKING' }];
   const R = B.rev;
   hist.slice(-(R.max || 7)).forEach((r, i) => {
     const y = R.y + i * R.pitch, desc = String(r.what || '').toUpperCase().split('\n').flatMap(l => wrap(l, 40)).slice(0, 2), by = r.by || 'DEX';
     if (B.revbox) {   // the BGEN revision block
-      const ox = R.x0, oy = R.y + i * R.pitch, rv = { REV: r.rev, DATE: String(r.date || val.DATE).replace(/\.(\d{2})(\d{2})$/, '.$2'), DESC1: desc[0] || '', DESC2: desc[1] || '', DRAWN: by };
+      const ox = R.x0 + i * (R.dx || 0), oy = R.y + (R.dx ? 0 : i * R.pitch), dt = String(r.date || val.DATE).replace(/\.(\d{2})(\d{2})$/, '.$2');
+      const rv = { REV: r.rev, DATE: B.company === 'ng' ? dt.replace(/\./g, '/') : dt, DESC1: desc[0] || '', DESC2: desc[1] || '', DRAWN: by, CHECKED: r.checked || '', APPROVED: r.approved || '', INV: f.ngInvestment ? 'NG Investment No. ' + f.ngInvestment : '' };
       if (B.revbox.block) out.push({ t: 'insert', name: B.revbox.block, x: ox, y: oy, layer: 'SLD-BORDER', prims: [...B.revbox.prims.map(p => ({ ...p, layer: 'SLD-BORDER' })), ...(B.revbox.texts || []).map(t => ({ ...t, t: t.t === 'mtext' ? 'mtext' : 'text', layer: 'SLD-BORDER' }))] });
       else for (const p of B.revbox.prims) out.push(moved({ ...p, layer: 'SLD-BORDER' }, ox, oy));
       for (const [tag, a0] of Object.entries(B.revbox.attrs)) { const a = Array.isArray(a0) ? { x: a0[0], y: a0[1], h: a0[2], align: a0[3] } : a0; if (rv[tag]) out.push({ t: 'text', x: ox + a.x, y: oy + a.y - a.h / 2, h: a.h, text: rv[tag], align: a.align, layer: B.textLayer }); }
@@ -442,7 +475,7 @@ function bcdDiff(oldSpec, newSpec) {
 const ATOMAX_TPL = path.join(__dirname, 'cad', 'atomax-template.dxf');
 const TEMPLATE = () => fs.readFileSync(fs.existsSync(ATOMAX_TPL) ? ATOMAX_TPL : path.join(__dirname, 'dxf-template-r2010.dxf'), 'utf8');
 const n = (v) => (Math.round(v * 1000) / 1000).toString();
-const LAYERS = [['SLD-BUS', 1], ['SLD-CABLE', 3], ['SLD-SYMBOL', 7], ['SLD-TEXT', 7], ['SLD-BORDER', 8], ['SLD-NOTES', 30], ['BCD-BLOCK', 7], ['BCD-CABLE', 7], ['BCD-CABLEBOX', 2], ['BCD-TEXT', 7], ['BCD-REVISION', 1]];
+const LAYERS = [['SLD-BUS', 1], ['SLD-CABLE', 3], ['SLD-SYMBOL', 7], ['SLD-TEXT', 7], ['SLD-BORDER', 8], ['SLD-NOTES', 30], ['SLD-ENCLOSURE', 8], ['BCD-BLOCK', 7], ['BCD-CABLE', 7], ['BCD-CABLEBOX', 2], ['BCD-TEXT', 7], ['BCD-REVISION', 1]];
 // add any of our layers the template does not have (so a client's own title block DXF can be the template)
 function ensureLayers(tpl, h0) {
   let h = h0; const tab = tpl.match(/\n\s*0\nTABLE\n\s*2\nLAYER\n\s*5\n([0-9A-Fa-f]+)\n[\s\S]*?\n\s*0\nENDTAB\n/); if (!tab) return { tpl, h };
@@ -522,6 +555,7 @@ You can make two kinds of drawing, both described the same way:
 - "earthing": earthing schematics / earthing design drawings. The "board" is the main earth bar (MET) or an earth bar, its feeders are the earth conductors and bonds (use "cable" for the conductor, labelled with its size and type) ending at what they earth: the equipment ("board", e.g. transformer, inverter, BESS, switchgear, fence), an earth rod ("electrode") or the earth mesh ("grid"); use "link" for disconnecting / test links. Put fault levels and earth fault currents from the documents in the notes. Conductor sizes come from the documents or the engineer; if they are not given, write TBC and say in the notes that they need sizing against the earth fault current (adiabatic check) and that soil resistivity is needed for the electrode / mesh design.
 Describe them as boards (busbars), joined into ONE connected diagram: when a feeder supplies another board (e.g. MV SWB > CBL-2 > RMU-WTG2, or a transformer feeding an LV board), put that board as the LAST item of the feeder's chain as {"board": {"label": "...", "feeders": [...]}}; it is drawn underneath, joined by the feeder. Only boards with nothing above them are top-level boards. Do not repeat a name: the feeder "label" is only for something the end item does not already say (leave it out otherwise).
 In earthing drawings, nest earth bars the same way: the cable screen or earth conductor feeding another substation's earth bar ends with {"board": {...}}. If an engineer's technical note in the project files gives conductor sizes or electrode design, use those values (say "per <note name>" in the notes); otherwise sizes stay TBC. Each board has incomers (chains drawn above the busbar, ending on it) and feeders (chains drawn below it). A chain is a list of items from top to bottom, each { "symbol": one of supply, generator, transformer, breaker, isolator, switchfuse, fuse, contactor, ct, meter, ups, cable, line, link, and as the LAST item of a feeder only: board, load, motor, earth, electrode, grid, spare; "label": the text beside it }.
+National Grid / BGEN SLD conventions (use them on every SLD): put the cable on the conductor as a "cable" item whose label is the cable text (e.g. "EXISTING CABLE" or "C01\\n4C 240mm² SWA"); it is drawn as a tag box with the text up the box. Give switching devices a "state" of "open" or "closed" when the drawing shows a switching arrangement or phase (drawn as "(OPEN)" / "(CLOSED)"). Give items a "status" of "new" (drawn green) or "removal" (drawn red) when the drawing shows a stage of works; existing items need no status (black). A board in a switchroom, kiosk or generator enclosure gets "enclosure": "EXISTING LVAC SWITCHROOM" (drawn as a dashed box named above it).
 Labels: short, exactly as an engineer would write them, using what the project files say (ratings, cable sizes, tags, board names). Use a new line (\\n) between parts of a label, e.g. "Q1\\n630A TP MCCB". Do not invent ratings, cable sizes or tags that are not in the request or the files: if one is unknown write "TBC" in the label and list it in "notes".
 BCD ("bcd", block cable diagram): do NOT use boards. Give "nodes" (every panel / RIO / MCC, junction box and field device, with "type" panel|rio|mcc|jb|device and a short "label" description exactly as written) and "cables" (every cable: "no" exactly as printed, "from" and "to" node tags, "type" e.g. BS5308 / SWA / CY, "cores" e.g. 10P or 4C, "size" e.g. 0.5 or 1.5mm², and "note" for interface cables such as "LINK TO X03-MCC SEE DWG ..."). When the job context has an APPROVED MASTER DEVICE LIST, the BCD is exactly its cables and devices for the panels asked for: nothing added, nothing left out. The app lays the blocks out (panels left, JBs middle, devices right), draws each cable with its yellow cable box and splits long BCDs over sheets. For National Grid LVAC / power block diagrams also give "style":"ng", each node a "status" (energised, de-energised or new) and each cable a "status" (current = current supply cabling, new = new by BGEN, existing = existing by others).
 If something essential is missing (which boards, how many feeders, what the supply is) and the files do not say, ask: reply with {"questions": ["...", "..."]} (max 4 short questions) and nothing else.

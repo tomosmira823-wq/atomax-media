@@ -23,7 +23,7 @@ function register({ ipcMain, dialog, getWin, claudeFull, BIZ, checker, userDir, 
     const j = BIZ.data().jobs.find(x => x.id === jobId), taken = [];
     if (j) { let n = 0; for (const d of j.drawings.filter(x => /^TBC-/.test(x.no))) { const no = desk.proposeNumber(j, d.title, taken, jobId); if (no) { taken.push(no); d.no = no; n++; } } if (n) { require('./business').saveJob(BIZ.data(), j, 'Tom'); BIZ.store.save(); } }
     return desk.view(jobId); }));
-  ipcMain.handle('desk:border', wrap(({ jobId, key, size }) => { desk.setBorder(jobId, key, size); return desk.view(jobId); }));
+  ipcMain.handle('desk:border', wrap(({ jobId, key, size, ng }) => { desk.setBorder(jobId, key, size, ng); return desk.view(jobId); }));
   ipcMain.handle('desk:rfi', wrap(({ jobId, rfi }) => { desk.saveRfi(jobId, rfi); return desk.view(jobId); }));
   ipcMain.handle('desk:addRfi', wrap(({ jobId, q }) => { desk.addInputs(jobId, { questions: [q] }); return desk.view(jobId); }));
   ipcMain.handle('desk:crs', wrap(({ jobId, row }) => { desk.saveCrs(jobId, row); return desk.view(jobId); }));

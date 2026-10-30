@@ -16,6 +16,7 @@ export async function renderJobDesk(api, el, job, { getAgents } = {}) {
       <label>Discipline <select id="jdDisc"><option value="06" ${V.disc !== '05' ? 'selected' : ''}>06 Electrical</option><option value="05" ${V.disc === '05' ? 'selected' : ''}>05 Instrumentation / combined E&I</option></select></label><button id="jdNum">Save</button></div>
     <div class="jdrow"><label>Drawing border <select id="jdBorder">${[['auto', 'Automatic (by client)'], ['atomax', 'Atomax'], ['bgen', 'BGEN'], ['pbe', 'PBE Group'], ['ng', 'National Grid'], ['client', 'Client title block from the File Room']].map(([k, t]) => `<option value="${k}" ${V.border === k ? 'selected' : ''}>${t}</option>`).join('')}</select></label><label>Sheet <select id="jdSize">${[['', 'Size to fit'], ['A3', 'A3'], ['A2', 'A2'], ['A1', 'A1'], ['A0', 'A0']].map(([k, t]) => `<option value="${k}" ${(V.sheetSize || '') === k ? 'selected' : ''}>${t}</option>`).join('')}</select></label><span class="bsub">Drawings use: <b>${esc(V.borderUsed)}</b></span></div>
     ${V.borderWarning ? `<div class="err">${esc(V.borderWarning)}</div>` : ''}
+    ${/^National Grid/.test(V.borderUsed || '') ? `<div class="jdrow"><label>NG site <input id="jdNgSite" value="${esc((V.ng || {}).site || '')}" placeholder="e.g. IRONBRIDGE"></label><label>NG Investment No. <input id="jdNgInv" value="${esc((V.ng || {}).investment || '')}" placeholder="e.g. 100618-205464"></label><span class="bsub">Go in the NG title box and issue boxes. The NG drawing number comes from the request or stays TBC.</span></div>` : ''}
     <div class="bsub">Numbers follow QS 006: ${esc(V.project)}-${esc(V.area || 'AREA')}-${esc(V.disc || '06')}-type-0001 (70 SLD, 71 BCD, 72 interconnection, 73 cable routing, 74 earthing, 23 schedules).</div>
     <div class="jdrow">${V.registerFile ? `Register: <span class="bp">${esc(base(V.registerFile))}</span> <button data-show="${esc(V.registerFile)}">Show</button>` : V.registerChecked ? 'No drawing register found in the job folder.' : 'Register not checked yet.'}
       <button id="jdReg">Check the job folder for a register</button>${!V.registerFile ? '<button id="jdMkReg">Make one</button>' : '<button id="jdMkReg">Export the list as a new register</button>'}</div>
@@ -65,6 +66,8 @@ export async function renderJobDesk(api, el, job, { getAgents } = {}) {
   el.querySelectorAll('details.jd').forEach(d => d.addEventListener('toggle', () => { open[d.dataset.sec] = d.open; }));
   el.querySelectorAll('[data-show]').forEach(b => b.onclick = () => api.desk.show({ p: b.dataset.show }));
   $('#jdBorder').onchange = (e) => run(null, () => api.desk.border({ jobId: job.id, key: e.target.value }));
+  const ngSave = () => run(null, () => api.desk.border({ jobId: job.id, ng: { site: $('#jdNgSite').value, investment: $('#jdNgInv').value } }));
+  if ($('#jdNgSite')) { $('#jdNgSite').onchange = ngSave; $('#jdNgInv').onchange = ngSave; }
   $('#jdSize').onchange = (e) => run(null, () => api.desk.border({ jobId: job.id, size: e.target.value }));
   $('#jdNum').onclick = (e) => run(e.target, () => api.desk.numbering({ jobId: job.id, area: $('#jdArea').value, disc: $('#jdDisc').value }));
   $('#jdReg').onclick = (e) => run(e.target, () => api.desk.checkRegister({ jobId: job.id }));

@@ -78,12 +78,14 @@ console.log(`\n${ok} passed`);
 {
   const d = data(); const a = biz.saveJob(d, { number: 'X010126', name: 'Bustleholm', client: 'BGEN' }), n = biz.saveJob(d, { number: 'X020126', name: 'Feckenham', client: 'National Grid' }), o = biz.saveJob(d, { number: 'X030126', name: 'Other', client: 'Diageo' });
   assert.strictEqual(desk.borderFor(a).key, 'bgen'); assert.strictEqual(desk.borderFor(o).key, 'atomax');
-  const ng = desk.borderFor(n); assert.ok(ng.key === 'atomax' && /National Grid/.test(ng.warning));
+  const ng = desk.borderFor(n); assert.strictEqual(ng.key, 'ng');
   desk.setBorder(a.id, 'atomax'); assert.strictEqual(desk.borderFor(a).key, 'atomax');
   const m = require('../src/dxfmaker'), out = fs.mkdtempSync(path.join(os.tmpdir(), 'bd-'));
   const r = m.make({ kind: 'sld', title: 'T', boards: [{ label: 'B', feeders: [{ chain: [{ symbol: 'mcb', label: 'Q1' }, { symbol: 'load', label: 'L' }] }] }] }, out, 'G', { border: 'bgen' });
   assert.ok(fs.readFileSync(r.path, 'utf8').includes('BGEN A3 BORDER') && r.files[0].page === 'A3', r.files[0].page);
   const p2 = biz.saveJob(d, { number: 'X040126', name: 'P', client: 'PBE Group' }); assert.strictEqual(desk.borderFor(p2).key, 'pbe'); desk.setBorder(p2.id, null, 'A1'); assert.strictEqual(desk.borderFor(p2).key, 'pbe-A1');
+  const r2 = m.make({ kind: 'sld', title: 'T', revHistory: [{ rev: 'P01', what: 'ISSUED FOR COMMENT' }, { rev: 'P02', what: 'ISSUED FOR COMMENT' }], revision: 'P02', boards: [{ label: 'B', enclosure: 'SWITCHROOM', feeders: [{ chain: [{ symbol: 'mccb', label: 'Q1', state: 'open' }, { symbol: 'cable', label: 'EXISTING CABLE' }, { symbol: 'load', label: 'L', status: 'removal' }] }] }] }, out, 'N', { border: 'ng', fill: { site: 'IRONBRIDGE', ngInvestment: '100618-205464' } });
+  const ngd = fs.readFileSync(r2.path, 'utf8'); assert.ok(ngd.includes('NG A0 BORDER') && (ngd.match(/NG A0 ISSUEBOX/g) || []).length >= 2 && ngd.includes('IRONBRIDGE') && ngd.includes('(OPEN)') && ngd.includes('NG Investment No. 100618-205464') && r2.files[0].page === 'A0');
   console.log('ok borders by job'); ok++;
 }
 console.log(`${ok} passed (with borders)`);

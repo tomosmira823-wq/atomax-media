@@ -32,7 +32,7 @@ async function toPdf(prims, b, { page = 'A3', title = '' } = {}) {
       if (!row) return;
       const w = font.widthOfTextAtSize(row, size);
       let x = X(p.x), y = Y(p.y);
-      if (p.t === 'text') { if (p.align === 'center') x -= w / 2; else if (p.align === 'right') x -= w; }
+      if (p.t === 'text') { const sh = p.align === 'center' ? w / 2 : p.align === 'right' ? w : 0, r = (p.rot || 0) * Math.PI / 180; x -= sh * Math.cos(r); y -= sh * Math.sin(r); }
       else {
         const H = rows.length * pitch, att = p.attach || 1, col = (att - 1) % 3, rowA = Math.floor((att - 1) / 3);
         if (col === 1) x -= w / 2; else if (col === 2) x -= w;

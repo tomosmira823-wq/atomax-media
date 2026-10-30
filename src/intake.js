@@ -367,7 +367,7 @@ EARTHING tasks: size every protective / earth conductor the drawing needs (MET t
     else if (!spec.revision || /^P0?1$/i.test(spec.revision)) spec.revision = 'P1';
     const bd = job ? desk.borderFor(job) : { key: 'atomax', name: 'Atomax A1' }, template = bd.template || '';
     if (bd.warning) spec.notes = [...(spec.notes || [])];
-    const res = dxfmaker.make(spec, outDir, base, { template, border: bd.key, previous, fill: job ? { client: job.client || '', project: `${job.number} ${job.name || ''}`.trim() } : {} });
+    const res = dxfmaker.make(spec, outDir, base, { template, border: bd.key, previous, fill: job ? { client: job.client || '', project: `${job.number} ${job.name || ''}`.trim(), site: (desk.load(job.id).ng || {}).site || job.name || '', ngInvestment: (desk.load(job.id).ng || {}).investment || '' } : {} });
     // every DXF gets its monochrome PDF beside it (issues go out as DXF and PDF)
     let madePdfs = []; try { madePdfs = await require('./pdfout').writePdfs(res); } catch (e) { (res.files || []).forEach(f => delete f.prims); }
     BIZ.log({ who: 'Dex', action: 'Drew', jobId: job ? job.id : '', detail: `${path.basename(res.path)} · ${spec.summary || spec.title || 'SLD'}${used.length ? ' · skills: ' + used.join(', ') : ' · no skills'}` });
