@@ -1,7 +1,7 @@
 {
   "name": "atomax-media-office",
   "productName": "Atomax Media Office",
-  "version": "1.19.7",
+  "version": "1.19.8",
   "description": "3D AI media office that writes Atomax social posts with per-platform agents (Claude, OpenAI, Higgsfield)",
   "main": "src/main.js",
   "author": "Tom Mira",

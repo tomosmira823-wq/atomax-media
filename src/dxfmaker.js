@@ -377,10 +377,12 @@ function borderFrame(prims, spec, sheetLabel, opts) {
   if (B.attrs.REV) val.REV = val.REV;
   for (const [tag, a] of Object.entries(B.attrs)) if (val[tag]) out.push({ t: 'text', x: a[0], y: a[1], h: tag === 'REV' && B.company !== 'ng' ? Math.min(a[2] || 2, 3.3) : fitH(tag, a, val[tag]), text: String(val[tag]).slice(0, 60), align: a[3] || 'left', layer: B.textLayer });
   // revision rows, oldest at the bottom, each above the last
-  const hist = spec.revHistory && spec.revHistory.length ? spec.revHistory : [{ rev: val.REV, what: /^A/i.test(val.REV) ? 'ISSUED FOR COMMENT' : 'PRELIMINARY\nDRAFT FOR CHECKING' }];
+  const hist = spec.revHistory && spec.revHistory.length ? spec.revHistory : [{ rev: val.REV, what: /^A/i.test(val.REV) ? 'ISSUED FOR COMMENT' : 'PRELIMINARY\nFOR CHECKING' }];
+  // the description is wrapped to its own column so it never runs over the lines (narrow on A3 / A2)
+  const descW = B.company === 'ng' ? 84 : B.revbox && B.revbox.attrs && B.revbox.attrs.DRAWN ? Math.max(18, (Array.isArray(B.revbox.attrs.DRAWN) ? B.revbox.attrs.DRAWN[0] : B.revbox.attrs.DRAWN.x) - 4 - 20 - 1) : 40;
   const R = B.rev;
   hist.slice(-(R.max || 7)).forEach((r, i) => {
-    const y = R.y + i * R.pitch, desc = String(r.what || '').toUpperCase().split('\n').flatMap(l => wrap(l, 40)).slice(0, 2), by = r.by || 'DEX';
+    const y = R.y + i * R.pitch, desc = String(r.what || '').toUpperCase().split('\n').flatMap(l => wrap(l, descW)).slice(0, 2), by = r.by || 'DEX';
     if (B.revbox) {   // the BGEN revision block
       const ox = R.x0 + i * (R.dx || 0), oy = R.y + (R.dx ? 0 : i * R.pitch), dt = String(r.date || val.DATE).replace(/\.(\d{2})(\d{2})$/, '.$2');
       const rv = { REV: r.rev, DATE: B.company === 'ng' ? dt.replace(/\./g, '/') : dt, DESC1: desc[0] || '', DESC2: desc[1] || '', DRAWN: by, CHECKED: r.checked || '', APPROVED: r.approved || '', INV: f.ngInvestment ? 'NG Investment No. ' + f.ngInvestment : '' };
