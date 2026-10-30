@@ -2,7 +2,7 @@
 // The sheet is printed to fit an A3 landscape page by default (the A0 border scales down; text at height 2 x the drawing scale stays readable).
 'use strict';
 const { PDFDocument, StandardFonts, rgb, degrees } = require('pdf-lib');
-const PAGES = { A3: [1190.55, 841.89], A1: [2383.94, 1683.78], A0: [3370.39, 2383.94] };
+const PAGES = { A3: [1190.55, 841.89], A2: [1683.78, 1190.55], A1: [2383.94, 1683.78], A0: [3370.39, 2383.94] };
 
 async function toPdf(prims, b, { page = 'A3', title = '' } = {}) {
   prims = require('./dxfmaker').flatPrims(prims);

@@ -297,7 +297,7 @@ function familyCfg(j) {
   const mtLines = (t) => String(t.text).split('\n').reduce((n, l) => n + Math.max(1, Math.ceil(l.length * t.h * 0.9 / Math.max(10, t.w || colW))), 0);   // MTEXT wraps at its width
   const extraBottom = Math.min(...[...j.extras.texts.filter(inCol).map(t => t.y - (t.t === 'mtext' ? mtLines(t) * t.h * 1.7 : 0)), ...j.extras.prims.filter(p => p.t === 'line' && Math.min(p.x1, p.x2) >= colX - 2).map(p => Math.min(p.y1, p.y2))].filter(Number.isFinite), j.notes ? j.notes[1] - 4 : j.box.y1);
   return {
-    geo: j.geo, block: j.block, page: j.size, box: j.box, maxScale: 1, textLayer: 'E-020___T-E-Drawing Frame Text', notesLayer: 'Z-903___T-E-Notes Text',
+    geo: j.geo, block: j.block, page: j.size, box: j.box, keepOut: j.keepOut || null, maxScale: 1, textLayer: 'E-020___T-E-Drawing Frame Text', notesLayer: 'Z-903___T-E-Notes Text',
     attrs: j.attrs, titleWidth: j.titleWidth || Math.max(30, colW - 6), company: j.company, size: j.size, colX,
     revbox: { prims: j.rev.prims, texts: j.rev.texts, attrs: j.rev.attrs, block: j.revBlock }, rev: { x0: j.rev.x, y: j.rev.y, pitch: j.rev.h || 8, dx: j.rev.dx || 0, max: j.rev.max || 8 },
     heads: [...(j.notes ? [['NOTES', j.notes[0], j.notes[1]]] : []), ...(j.refs ? [['REFERENCE DOCUMENTS', j.refs[0], j.refs[1]]] : [])], extras: j.extras,
@@ -308,10 +308,13 @@ function familyCfg(j) {
 for (const c of ['atomax', 'bgen', 'pbe', 'ng']) { const j = readJson('borders/' + c + '.json'); if (j) for (const k of Object.keys(j)) FAMILY[k] = familyCfg(j[k]); }
 const SIZES = ['A3', 'A2', 'A1', 'A0'];
 // the border for a company: the size asked for, else the smallest sheet the drawing fits at 1:1
+// the drawing fits a sheet if it fits its drawing area, keeping clear of the CDM box (beside it, or above it)
+const fitsIn = (B, W, H) => { const bw = B.box.x1 - B.box.x0 - 4, bh = B.box.y1 - B.box.y0 - 4; if (!B.keepOut) return W <= bw && H <= bh; const k = B.keepOut; return (W <= bw && H <= B.box.y1 - k.y1 - 4) || (W <= k.x0 - B.box.x0 - 4 && H <= bh); };
 function resolveBorder(company = 'atomax', size = '', W = 0, H = 0) {
-  const fam = (sz) => FAMILY[`${company}-${sz}`] || FAMILY[`atomax-${sz}`];
+  const own = company === 'ng';   // National Grid has its own sizes only (A2, A1, A0)
+  const fam = (sz) => FAMILY[`${company}-${sz}`] || (own ? null : FAMILY[`atomax-${sz}`]);
   if (size && fam(size)) return fam(size);
-  for (const sz of SIZES) { const B = fam(sz); if (B && W <= B.box.x1 - B.box.x0 - 4 && H <= B.box.y1 - B.box.y0 - 4) return B; }
+  for (const sz of SIZES) { const B = fam(sz); if (B && fitsIn(B, W, H)) return B; }
   return fam('A0');
 }
 const BORDERS = {
@@ -321,7 +324,7 @@ const BORDERS = {
 const BORDER = BORDERS.atomax || BORDERS.bgen;
 const BORDER_NAMES = { atomax: 'Atomax', bgen: 'BGEN', pbe: 'PBE Group', ng: 'National Grid' };
 // a border key is a company ('atomax', 'bgen', 'pbe') or company-size ('bgen-A3'); a ready border object passes through
-const borderOf = (key, W, H) => { if (key && key.geo) return key; const [c, sz] = String(key || 'atomax').split('-'); if (c === 'ng' && FAMILY['ng-A0']) return FAMILY['ng-A0']; return resolveBorder(FAMILY[`${c}-A1`] ? c : 'atomax', sz || '', W, H); };
+const borderOf = (key, W, H) => { if (key && key.geo) return key; const [c, sz] = String(key || 'atomax').split('-'); if (c === 'ng' && FAMILY['ng-A0']) return resolveBorder('ng', sz || '', W, H); return resolveBorder(FAMILY[`${c}-A1`] ? c : 'atomax', sz || '', W, H); };
 const LEGEND_TEXT = { MCCB: 'MCCB. TEXT: RATING, FRAME', MCB: 'MCB / RCBO. TEXT: RATING, POLES, TYPE', 'SWITCH DISCONNECTOR': 'SWITCH DISCONNECTOR / MAIN SWITCH / ISOLATOR', 'ISOLATOR DISCONNECTOR': 'ISOLATOR', 'FUSED SWITCH DISCONNECTOR': 'FUSED SWITCH DISCONNECTOR', FUSE: 'FUSE', CONTACTOR1: 'CONTACTOR', MOTOR: 'MOTOR', LOAD: 'FINAL CIRCUIT / LOAD', 'HV-LV TRANSFORMER': 'TRANSFORMER' };
 function primsBounds(prims) {
   prims = flatPrims(prims);
@@ -338,15 +341,20 @@ function primsBounds(prims) {
 function borderFrame(prims, spec, sheetLabel, opts) {
   const c = primsBounds(prims), W = c.x1 - c.x0, H = c.y1 - c.y0;
   const B = opts.border && opts.border.geo ? opts.border : borderOf(opts.borderKey || opts.border, W, H), cb = B.box, f = opts.fill || {};
-  const k = Math.min(B.maxScale || 1, (cb.x1 - cb.x0) / W, (cb.y1 - cb.y0) / H);   // 1:1 like the Atomax drawings; only reduced if it cannot fit (then said in the notes)
-  const dx = cb.x0 + ((cb.x1 - cb.x0) - W * k) / 2 - c.x0 * k, dy = cb.y1 - ((cb.y1 - cb.y0) - H * k) / 2 - c.y1 * k;
+  // the drawing goes in the middle of the drawing area; when that would run into the CDM box it moves up (or left) clear of it
+  let area = cb; const KO = B.keepOut;
+  if (KO) { const above = { ...cb, y0: KO.y1 + 2 }, beside = { ...cb, x1: KO.x0 - 2 }, fitsA = (a) => W <= a.x1 - a.x0 && H <= a.y1 - a.y0;
+    const mid = { x0: cb.x0 + (cb.x1 - cb.x0 - W) / 2, y0: cb.y0 + (cb.y1 - cb.y0 - H) / 2 }, clash = !(mid.x0 + W < KO.x0 || mid.y0 > KO.y1);
+    if (clash) area = fitsA(above) ? above : fitsA(beside) ? beside : (W / (beside.x1 - beside.x0) < H / (above.y1 - above.y0) ? beside : above); }
+  const k = Math.min(B.maxScale || 1, (area.x1 - area.x0) / W, (area.y1 - area.y0) / H);   // 1:1 like the Atomax drawings; only reduced if it cannot fit (then said in the notes)
+  const dx = area.x0 + ((area.x1 - area.x0) - W * k) / 2 - c.x0 * k, dy = area.y1 - ((area.y1 - area.y0) - H * k) / 2 - c.y1 * k;
   const out = place(prims, dx, dy, k);
   // the frame: the real block in the DXF, its geometry in previews
   out.push({ t: 'insert', name: B.block || '__border', x: 0, y: 0, layer: 'SLD-BORDER', prims: [...B.geo.prims.map(p => ({ ...p, layer: 'SLD-BORDER' })), ...B.geo.texts.map(t => t.t === 'mtext' ? { ...t, layer: 'SLD-BORDER' } : { t: 'text', x: t.x, y: t.y, h: t.h, text: t.text, align: t.align, rot: t.rot || 0, layer: 'SLD-BORDER' })] });
   const title = wrap(spec.title || f.title || 'DRAWING', B.titleWidth || 76).slice(0, 4), proj = wrap(f.project || '', B.titleWidth || 76);
   const today = (() => { const d = new Date(); return [d.getDate(), d.getMonth() + 1, d.getFullYear()].map((v, i) => String(v).padStart(i < 2 ? 2 : 4, '0')).join('.'); })();
   const val = { DRAWING_NUMBER: spec.drawingNumber || f.drawingNumber || 'TBC', REV: spec.revision || 'P01', TITLE1: title[0] || '', TITLE2: title[1] || '', TITLE3: title[2] || '', TITLE4: title[3] || '', DRN: f.drawn || 'DEX', DATE: f.date || today, SCALE: 'NTS', CHKD: f.checked || '', APRVD: f.approved || '', SHT: f.sht || '1', SHTX: f.shtx || '1', CLIENT_1: f.client || '', CLIENT_2: f.client2 || '', PROJECT_1: proj[0] || '', PROJECT_2: proj[1] || f.project2 || '',
-    NG_NUMBER: spec.ngNumber || f.ngNumber || 'TBC', SITE: String(f.site || f.project || '').toUpperCase().slice(0, 40), STATUS: f.status || (/^[PA]/i.test(spec.revision || 'P') ? 'S3' : '') };
+    NG_NUMBER: spec.ngNumber || f.ngNumber || 'TBC', SIZE: B.size || '', SITE: String(f.site || f.project || '').toUpperCase().slice(0, 40), STATUS: f.status || (/^[PA]/i.test(spec.revision || 'P') ? 'S3' : '') };
   // the drawing number is shrunk until it fits between the sheet-size label and the revision box
   const fitH = (tag, a, v) => { const h = a[2] || 2; if (tag !== 'DRAWING_NUMBER' || B.company === 'ng' || !B.colX || a[3] !== 'center') return h; const half = a[0] - (B.colX + 7); return Math.max(2, Math.min(h, (2 * half) / (String(v).length * 0.92))); };
   if (B.size === 'A3' || B.size === 'A2') val.DATE = val.DATE.replace(/\.(\d{2})(\d{2})$/, '.$2');   // the narrow title blocks take dd.mm.yy
@@ -380,8 +388,11 @@ function borderFrame(prims, spec, sheetLabel, opts) {
   notes.forEach((nt, i) => { const ls = wrap(String(nt).toUpperCase(), N.w - (N.tx - N.x)); if (ny - ls.length * N.pitch < N.bottom) return; out.push({ t: 'text', x: N.x, y: ny, h: 2, text: (i + 1) + '.', layer: B.notesLayer }); ls.forEach(l => { out.push({ t: 'text', x: N.tx, y: ny, h: 2, text: l, layer: B.notesLayer }); ny -= N.pitch; }); ny -= 1.6; });
   if (B.legend || B.legendFlow) {
     const Lg = B.legend || { x: N.x + 6.6, tx: N.x + 18.4, y: ny - 6, bottom: N.bottom };
-    if (B.legendFlow) out.push({ t: 'text', x: N.x, y: ny - 2, h: 2.6, text: 'LEGEND', layer: B.notesLayer }), Lg.y = ny - 8;
-    const used = [...new Set(prims.filter(p => p.t === 'insert' && LEGEND_TEXT[p.name]).map(p => p.name))]; let ly = Lg.y;
+    const used = [...new Set(prims.filter(p => p.t === 'insert' && LEGEND_TEXT[p.name]).map(p => p.name))];
+    const hasExtra = prims.some(p => p.layer === 'SLD-BUS' || p.layer === 'BCD-CABLEBOX') || (spec.legend || []).length;
+    if (B.legendFlow && (used.length || hasExtra)) out.push({ t: 'text', x: N.x, y: ny - 2, h: 2.6, text: 'LEGEND', layer: B.notesLayer });   // no empty LEGEND heading (the NG BCD has its own legend on the drawing)
+    if (B.legendFlow) Lg.y = ny - 8;
+    let ly = Lg.y;
     for (const name of used) { const hs = HOUSE[name]; if (!hs || ly - 18 < Lg.bottom) continue; out.push({ t: 'insert', name, x: Lg.x, y: ly, k: 0.6, layer: 'SLD-SYMBOL', prims: hs.prims }); wrap(LEGEND_TEXT[name], 60).forEach((l, j) => out.push({ t: 'text', x: Lg.tx, y: ly - 7.8 - j * 3.4, h: 2, text: l, layer: B.notesLayer })); ly -= Math.max(19, -hs.bbox[1] * 0.6 + 4); }
     const extra = [...(prims.some(p => p.layer === 'SLD-BUS') ? [['bus', 'LV BUSBAR']] : []), ...(prims.some(p => p.layer === 'BCD-CABLEBOX') ? [['box', 'CABLE: NUMBER, CORES x SIZE, TYPE']] : []), ...(spec.legend || []).map(t => ['', String(t)])];
     for (const [kind, t] of extra) { if (ly - 6 < Lg.bottom) break; if (kind === 'bus') out.push({ ...P([[Lg.x - 6, ly - 2], [Lg.x + 6, ly - 2]], false, 'SLD-BUS', 0.8) }); if (kind === 'box') out.push(P([[Lg.x - 6, ly - 4], [Lg.x + 6, ly - 4], [Lg.x + 6, ly], [Lg.x - 6, ly]], true, 'BCD-CABLEBOX')); out.push({ t: 'text', x: Lg.tx, y: ly - 3, h: 2, text: t.toUpperCase(), layer: B.notesLayer }); ly -= 6; }
@@ -431,6 +442,7 @@ function layoutBcd(spec, opts = {}) {
   const model = bcdModel(spec);
   if (!model.cables.length) throw new Error('The BCD has no cables');
   BSTYLE = { ng: spec.style === 'ng' || spec.style === 'national-grid' };
+  if (BSTYLE.ng) return [layoutPowerBcd(spec, model, opts)];
   const { groups: raw, links } = bcdGroups(model);
   // a JB with more devices than a sheet holds carries on to the next sheet ("CONT.")
   const SHEET_ROWS = sheetRows(opts.noTitle ? null : borderOf(String(opts.border || 'atomax').includes('-') ? opts.border : `${opts.border || 'atomax'}-A1`));
@@ -459,6 +471,117 @@ function layoutBcd(spec, opts = {}) {
     return { prims, bounds: f.bounds, content: f.content, sheet: f.sheet, page: f.page, border: f.border, label, boxes, cables: [...gs.flatMap(g => [...g.up, ...g.down.map(d => d.c)]), ...(i === sheets.length - 1 ? links : [])].map(c => String(c.no || '')) };
   });
 }
+// ---------- power BCD (National Grid LVAC style): the supply chain left to right ----------
+// e.g. RMU > joint bay > transformer > LV pillar > outgoing circuits; temporary generator > distribution unit > interface box.
+// Each piece of equipment sits in a column by how far down the chain it is; a cable that skips columns runs straight through the gaps.
+// Cables leave and enter blocks at their own port and are routed in their own lane in each gap, so no two cables ever overlap or cross.
+function layoutPowerBcd(spec, model, opts = {}) {
+  const { nodes, cables } = model, BW = 48, VGAP = 8, prims = [], boxes = [];
+  const tags = [...nodes.keys()];
+  // directed edges; back edges (a control cable returning up the chain) are turned round so the chain stays left to right
+  let E = cables.map((c, i) => ({ c, i, u: c.from, v: c.to }));
+  const out = (t) => E.filter(e => e.u === t), inn = (t) => E.filter(e => e.v === t);
+  { const state = {}; const visit = (t) => { state[t] = 1; for (const e of out(t)) { if (state[e.v] === 1) { [e.u, e.v] = [e.v, e.u]; e.rev = true; } else if (!state[e.v]) visit(e.v); } state[t] = 2; };
+    // the chain starts where the schedule starts (it lists the supply first), then any other sources
+    const roots = [...new Set(cables.map(c => c.from))], free = tags.filter(t => !E.some(e => e.v === t)); for (const t of [...roots.slice(0, 1), ...free, ...roots, ...tags]) if (!state[t]) visit(t); }
+  // columns: longest chain from a source; a source sits just left of what it feeds
+  const layer = {}; tags.forEach(t => { layer[t] = 0; });
+  for (let k = 0; k < tags.length; k++) for (const e of E) if (layer[e.v] < layer[e.u] + 1) layer[e.v] = layer[e.u] + 1;
+  for (let k = 0; k < 3; k++) for (const t of tags) if (!inn(t).length && out(t).length) layer[t] = Math.max(0, Math.min(...out(t).map(e => layer[e.v])) - 1);
+  // order down each column: depth-first from the sources, in schedule order, so a tree is drawn without crossings
+  const order = {}; let n = 0; const seen = new Set();
+  const dfs = (t) => { if (seen.has(t)) return; seen.add(t); order[t] = n++; for (const e of out(t).sort((a, b) => a.i - b.i)) dfs(e.v); };
+  [...new Set([...cables.map(c => c.from), ...tags])].filter(t => !inn(t).length).forEach(dfs); tags.forEach(dfs);
+  // a cable that skips columns gets a pass-through point in each column it crosses
+  const pts = {}; tags.forEach(t => { pts[t] = { tag: t, node: nodes.get(t), layer: layer[t], ord: order[t], left: [], right: [] }; });
+  const segs = [];
+  for (const e of E) {
+    let prev = e.u;
+    for (let L = layer[e.u] + 1; L <= layer[e.v]; L++) {
+      const to = L === layer[e.v] ? e.v : `~${e.i}~${L}`;
+      if (!pts[to]) pts[to] = { tag: to, dummy: true, layer: L, ord: (order[e.u] + order[e.v]) / 2 + e.i * 1e-3, left: [], right: [] };
+      const sg = { e, from: prev, to, first: prev === e.u }; segs.push(sg); pts[prev].right.push(sg); pts[to].left.push(sg); prev = to;
+    }
+  }
+  // the cable text above the line and its note below, wrapped to the label room in the gap
+  const LABEL_MAX = 58, txt = (c) => cableText(c).replace(/\n/g, '  '), note = (c) => String(c.note || '').toUpperCase();
+  const labW = (sg) => Math.min(LABEL_MAX, Math.max(40, txt(sg.e.c).length * TH * 0.92 + 6));
+  const slot = (sg) => { const w = LABEL_MAX - 4; return (wrap(txt(sg.e.c), w).length + (note(sg.e.c) ? wrap(note(sg.e.c), w).length : 0)) * LINE + 5; };
+  const cols = []; Object.values(pts).forEach(p => { (cols[p.layer] = cols[p.layer] || []).push(p); });
+  const pos = (p) => cols[p.layer].indexOf(p);
+  cols.forEach((c, L) => {
+    if (!c) return;
+    if (L === 0) { c.sort((a, b) => a.ord - b.ord); return; }
+    const key = (p) => { if (!p.left.length) return 1e6 + p.ord; const ks = p.left.map(sg => { const src = pts[sg.from], outs = src.right.map(x => x.e.i).sort((a, b) => a - b); return pos(src) + (outs.indexOf(sg.e.i) + 1) / (outs.length + 1); }); return ks.reduce((a, b) => a + b, 0) / ks.length; };
+    const k = new Map(c.map(p => [p, key(p)])); c.sort((a, b) => k.get(a) - k.get(b) || a.ord - b.ord);
+  });
+  // ports in the order of what they connect to (keeps every gap free of crossings)
+  for (const p of Object.values(pts)) { p.right.sort((a, b) => pos(pts[a.to]) - pos(pts[b.to]) || a.e.i - b.e.i); p.left.sort((a, b) => pos(pts[a.from]) - pos(pts[b.from]) || a.e.i - b.e.i); }
+  const blockLines = (p) => { const nd = p.node || {}, lab = String(nd.label || ''); return wrap(lab.toUpperCase().startsWith(String(p.tag).toUpperCase()) ? lab : [p.tag, lab].filter(Boolean).join('\n'), BW - 5); };
+  const portsH = (list) => list.reduce((h, sg) => h + slot(sg), 0);
+  for (const p of Object.values(pts)) {
+    if (p.dummy) { p.h = slot(p.left[0]); continue; }
+    p.h = Math.max(blockLines(p).length * LINE + 8, portsH(p.left) + 4, portsH(p.right) + 4, 16);
+  }
+  // port heights inside a block: spread over its height, each in the middle of its slot
+  const portYs = (p, list, top) => { const tot = portsH(list), start = top - (p.h - tot) / 2; let y = start; return list.map(sg => { const s = slot(sg), py = y - s + 3 + (note(sg.e.c) ? wrap(note(sg.e.c), LABEL_MAX - 4).length * LINE : 0); y -= s; return py; }); };
+  // place the columns left to right; each block lines up with what feeds it where it can
+  const yOf = {};   // port y per segment end
+  cols.forEach((c, L) => {
+    let bottom = Infinity;
+    for (const p of c) {
+      let top;
+      if (p.left.length && L > 0) { const ys = p.left.map(sg => yOf[sg.e.i + ':' + sg.from + '>R']), off = portYs(p, p.left, 0); top = ys.reduce((a, y, k) => a + (y - off[k]), 0) / ys.length; }
+      else top = bottom === Infinity ? 0 : bottom - VGAP;
+      if (bottom !== Infinity) top = Math.min(top, bottom - VGAP);
+      p.top = top; bottom = top - p.h;
+      const ly = portYs(p, p.left, top), ry = p.dummy ? ly : portYs(p, p.right, top);
+      p.left.forEach((sg, k) => { yOf[sg.e.i + ':' + sg.to + '>L'] = ly[k]; }); p.right.forEach((sg, k) => { yOf[sg.e.i + ':' + sg.from + '>R'] = p.dummy ? ly[0] : ry[k]; });
+    }
+  });
+  const colX = []; { let x = 0; cols.forEach((c, L) => { colX[L] = x; const gs = segs.filter(sg => pts[sg.from].layer === L); const lanes = gs.filter(sg => Math.abs(yOf[sg.e.i + ':' + sg.from + '>R'] - yOf[sg.e.i + ':' + sg.to + '>L']) > 1e-6).length; x += BW + Math.max(40, ...gs.map(labW)) + 10 + lanes * 3.5; }); }
+  // blocks
+  for (const p of Object.values(pts)) if (!p.dummy) block(prims, colX[p.layer], p.top, BW, p.h, blockLines(p), p.node);
+  // cables: in each gap, out of the source port, along its label, then its own lane down/up to the target port
+  const draw = (pts2, c) => { const col = ngCableColour(c); for (let k = 1; k < pts2.length; k++) { const [x1, y1] = pts2[k - 1], [x2, y2] = pts2[k]; if (Math.abs(x1 - x2) < 1e-9 && Math.abs(y1 - y2) < 1e-9) continue; if (col === 82) dashedSeg(prims, x1, y1, x2, y2, col); else prims.push({ ...L(x1, y1, x2, y2, 'BCD-CABLE'), colour: col }); } };
+  cols.forEach((c, Lr) => {
+    const gs = segs.filter(sg => pts[sg.from].layer === Lr); if (!gs.length) return;
+    const xl = colX[Lr] + BW, xr = colX[Lr + 1], labRoom = Math.max(...gs.map(labW), 40);
+    const S = gs.map(sg => ({ sg, a: yOf[sg.e.i + ':' + sg.from + '>R'], b: yOf[sg.e.i + ':' + sg.to + '>L'] }));
+    const downs = S.filter(q => q.b < q.a - 1e-6).sort((p, q) => p.a - q.a), ups = S.filter(q => q.b > q.a + 1e-6).sort((p, q) => q.a - p.a);
+    const lane0 = xl + labRoom + 5; [...downs, ...ups].forEach((q, k) => { q.lx = lane0 + k * 3.5; });
+    for (const q of S) {
+      const fromDummy = pts[q.sg.from].dummy, toDummy = pts[q.sg.to].dummy, x0 = fromDummy ? colX[Lr] : xl, x1 = xr;
+      draw(q.lx ? [[x0, q.a], [q.lx, q.a], [q.lx, q.b], [x1, q.b]] : [[x0, q.a], [x1, q.b]], q.sg.e.c);
+      if (q.sg.first) {   // the cable's text, once, on its first run out of the source
+        const c = q.sg.e.c, w = labRoom - 2, tl = wrap(txt(c), w), nl = note(c) ? wrap(note(c), w) : [];
+        prims.push({ t: 'mtext', x: xl + 2, y: q.a + 1 + tl.length * LINE, w, h: TH, text: tl.join('\n'), attach: 1, layer: 'BCD-TEXT', colour: 5 });
+        if (nl.length) prims.push({ t: 'mtext', x: xl + 2, y: q.a - 1, w, h: TH, text: nl.join('\n'), attach: 1, layer: 'BCD-TEXT' });
+        boxes.push({ no: String(c.no || ''), x0: xl + 1, y0: q.a - 1 - nl.length * LINE, x1: xl + 1 + w, y1: q.a + 1 + tl.length * LINE });
+      }
+    }
+  });
+  // the legend, as on the National Grid template, right of the last column
+  // the legend goes under the drawing at the left (keeps the sheet as small as it can be)
+  const minBottom = Math.min(...Object.values(pts).map(p => p.top - p.h));
+  { const lx = 0; let ly = minBottom - 14;
+    const item = (dr, text) => { dr(lx, ly); prims.push({ t: 'mtext', x: lx + 16, y: ly, w: 50, h: TH, text, attach: 4, layer: 'BCD-TEXT' }); ly -= 7; };
+    const used = new Set(cables.map(ngCableColour));
+    if (used.has(82)) item((x, y) => dashed(prims, x, y, x + 12, 82), 'EXISTING BY OTHERS');
+    if (used.has(1)) item((x, y) => prims.push({ ...L(x, y, x + 12, y, 'BCD-CABLE'), colour: 1 }), 'NEW BY BGEN');
+    if (used.has(5)) item((x, y) => prims.push({ ...L(x, y, x + 12, y, 'BCD-CABLE'), colour: 5 }), 'CURRENT SUPPLY CABLING');
+    const sw = (colr) => (x, y) => { const b = [[x, y - 2.5], [x + 12, y - 2.5], [x + 12, y + 2.5], [x, y + 2.5]]; prims.push({ t: 'fill', pts: b, layer: 'BCD-BLOCK', colour: colr }); prims.push({ ...P(b, true, 'BCD-BLOCK'), colour: colr }); };
+    const st = new Set([...nodes.values()].map(nd => NG[String(nd.status || 'energised').toLowerCase()] || 3));
+    if (st.has(3)) item(sw(3), 'ENERGISED'); if (st.has(1)) item(sw(1), 'DE-ENERGISED / NEW');
+  }
+  if (opts.diff) for (const b of boxes) if (opts.diff.added.includes(b.no) || opts.diff.changed.includes(b.no)) revCloud(prims, b, spec.revision);
+  const clash = cableClashes(prims); if (clash.length && !process.env.AMO_NOCLASH) throw new Error('BCD layout has cables that overlap or cross (' + clash.slice(0, 3).join('; ') + '). Not saved.');
+  const bb = primsBounds(prims); if (process.env.AMO_DBG) console.error('power bcd size', Math.round(bb.x1 - bb.x0), Math.round(bb.y1 - bb.y0)); const key = opts.border && opts.border.geo ? opts.border : (String(opts.border || 'atomax'));
+  const B = opts.noTitle ? null : borderOf(key, bb.x1 - bb.x0, bb.y1 - bb.y0);
+  const f = frame(prims, spec, bb.y0 - 4, bb.y1, bb.x1, '', { fixed: true, noTitle: !!opts.noTitle, border: B, fill: { ...(opts.fill || {}), sht: '1', shtx: '1' } });
+  return { prims, bounds: f.bounds, content: f.content, sheet: f.sheet, page: f.page, border: f.border, label: '', boxes, cables: cables.map(c => String(c.no || '')) };
+}
+function dashedSeg(prims, x1, y1, x2, y2, colour) { const len = Math.hypot(x2 - x1, y2 - y1), ux = (x2 - x1) / len, uy = (y2 - y1) / len; for (let d = 0; d < len; d += 4.5) { const e = Math.min(len, d + 3); prims.push({ ...L(x1 + ux * d, y1 + uy * d, x1 + ux * e, y1 + uy * e, 'BCD-CABLE'), colour }); } }
 // revision clouds round the cable boxes that changed, with the revision triangle beside them
 function revCloud(prims, b, rev) {
   const pad = 2, x0 = b.x0 - pad, y0 = b.y0 - pad, x1 = b.x1 + pad, y1 = b.y1 + pad, r = 2;
@@ -562,7 +685,7 @@ Describe them as boards (busbars), joined into ONE connected diagram: when a fee
 In earthing drawings, nest earth bars the same way: the cable screen or earth conductor feeding another substation's earth bar ends with {"board": {...}}. If an engineer's technical note in the project files gives conductor sizes or electrode design, use those values (say "per <note name>" in the notes); otherwise sizes stay TBC. Each board has incomers (chains drawn above the busbar, ending on it) and feeders (chains drawn below it). A chain is a list of items from top to bottom, each { "symbol": one of supply, generator, transformer, breaker, isolator, switchfuse, fuse, contactor, ct, meter, ups, cable, line, link, and as the LAST item of a feeder only: board, load, motor, earth, electrode, grid, spare; "label": the text beside it }.
 National Grid / BGEN SLD conventions (use them on every SLD): put the cable on the conductor as a "cable" item whose label is the cable text (e.g. "EXISTING CABLE" or "C01\\n4C 240mm² SWA"); it is drawn as a tag box with the text up the box. Give switching devices a "state" of "open" or "closed" when the drawing shows a switching arrangement or phase (drawn as "(OPEN)" / "(CLOSED)"). Only on a PHASE drawing (the works split into phases, one sheet per phase): give "phase": 1, 2, ... and give items a "status" of "new" (drawn green) or "removal" (drawn red) for what is new or removed AT THAT PHASE; everything else is existing (black, no status). The next phase's sheet is its own drawing with its own statuses (what was green in phase 1 is existing black in phase 2). Not a phase drawing: no status at all, everything is black. A board in a switchroom, kiosk or generator enclosure gets "enclosure": "EXISTING LVAC SWITCHROOM" (drawn as a dashed box named above it).
 Labels: short, exactly as an engineer would write them, using what the project files say (ratings, cable sizes, tags, board names). Use a new line (\\n) between parts of a label, e.g. "Q1\\n630A TP MCCB". Do not invent ratings, cable sizes or tags that are not in the request or the files: if one is unknown write "TBC" in the label and list it in "notes".
-BCD ("bcd", block cable diagram): do NOT use boards. Give "nodes" (every panel / RIO / MCC, junction box and field device, with "type" panel|rio|mcc|jb|device and a short "label" description exactly as written) and "cables" (every cable: "no" exactly as printed, "from" and "to" node tags, "type" e.g. BS5308 / SWA / CY, "cores" e.g. 10P or 4C, "size" e.g. 0.5 or 1.5mm², and "note" for interface cables such as "LINK TO X03-MCC SEE DWG ..."). When the job context has an APPROVED MASTER DEVICE LIST, the BCD is exactly its cables and devices for the panels asked for: nothing added, nothing left out. The app lays the blocks out (panels left, JBs middle, devices right), draws each cable with its yellow cable box and splits long BCDs over sheets. For National Grid LVAC / power block diagrams also give "style":"ng", each node a "status" (energised, de-energised or new) and each cable a "status" (current = current supply cabling, new = new by BGEN, existing = existing by others).
+BCD ("bcd", block cable diagram): do NOT use boards. Give "nodes" (every panel / RIO / MCC, junction box and field device, with "type" panel|rio|mcc|jb|device and a short "label" description exactly as written; the node "tag" is the equipment tag exactly as printed in the documents, and where a document gives only a description (no tag), use that description as the tag: never make up a tag) and "cables" (every cable: "no" exactly as printed, "from" and "to" node tags, "type" e.g. BS5308 / SWA / CY, "cores" e.g. 10P or 4C, "size" e.g. 0.5 or 1.5mm², and "note" for interface cables such as "LINK TO X03-MCC SEE DWG ..."). When the job context has an APPROVED MASTER DEVICE LIST, the BCD is exactly its cables and devices for the panels asked for: nothing added, nothing left out. The app lays the blocks out (panels left, JBs middle, devices right), draws each cable with its yellow cable box and splits long BCDs over sheets. For National Grid LVAC / power block diagrams (a supply chain: intake / RMU > joints > transformer > LV board > circuits, generators > distribution units) the app draws the chain left to right with every cable joined to both ends; also give "style":"ng", each node a "status" (energised, de-energised or new) and each cable a "status" (current = current supply cabling, new = new by BGEN, existing = existing by others).
 If something essential is missing (which boards, how many feeders, what the supply is) and the files do not say, ask: reply with {"questions": ["...", "..."]} (max 4 short questions) and nothing else.
 Otherwise reply with JSON only, no markdown:
 {"kind":"sld, earthing or bcd","title":"...","drawingNumber":"... or TBC","revision":"P01","nodes":[only for bcd],"cables":[only for bcd],"boards":[{"label":"MAIN LV BOARD\\n400V 3PH 4W 50Hz","incomers":[{"label":"optional text above","chain":[...]}],"feeders":[{"label":"optional text under the feeder","chain":[...]}]}],"notes":["..."],"summary":"one line for the engineer: what you drew and what is TBC"}`;
