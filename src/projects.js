@@ -120,11 +120,26 @@ function contextBlock(jobId, max = 24000) {
 }
 
 // PDFs and images in the project folder that look relevant to a request (by words in the file name), for sending to Claude to read
+// Atomax files are named by their QS 006 number only (X140726-0000-06-23-0001-P01.xlsx): the type code says what the file is, and a workbook's sheet names say which schedule it is
+const TYPE_WORDS = { '23': 'schedule schedules', '70': 'single line diagram', '71': 'block cable diagram', '72': 'interconnection diagram', '73': 'cable routing layout', '74': 'earthing', '06': 'bom material take', '07': 'data sheet datasheet', '08': 'calculations', '12': 'p&id', '24': 'general arrangement', '01': 'register' };
+const sheetNames = new Map();
+function namesOf(full, f) {
+  if (!/\.xls[xm]$/i.test(full)) return '';
+  const k = full + ':' + f.mtime; if (sheetNames.has(k)) return sheetNames.get(k);
+  let n = ''; try { n = require('./checker').readXlsx(fs.readFileSync(full)).map(x => x.sheet + ' ' + (x.rows || []).slice(0, 6).map(r => (r.c || r || []).join(' ')).join(' ')).join(' ').toLowerCase(); } catch {}
+  sheetNames.set(k, n); return n;
+}
 function relevantFiles(jobId, request, { exts = ['.pdf'], max = 3 } = {}) {
   const p = load(jobId); if (!p) return [];
-  const keys = words(request);
+  const keys = words(request), DN = require('./docnumber');
+  const score = (f) => {
+    const base = path.basename(f.rel).replace(/\.[^.]+$/, '').replace(/[-_ ]?(?:REV[-_ ]?)?[PACXZ]\d{1,2}$/i, ''), qs = DN.parse(base), tw = qs ? words(TYPE_WORDS[qs.type] || '') : [];
+    let s = keys.filter(k => f.rel.toLowerCase().includes(k)).length + (/sld|single.?line/i.test(f.rel) && /sld|single.?line/i.test(request) ? 3 : 0);
+    if (qs) { s += keys.filter(k => tw.includes(k)).length; if (s > 0) { const nm = namesOf(path.join(p.folder, f.rel), f); s += keys.filter(k => nm.includes(k)).length * 0.5; } }
+    return s;
+  };
   return p.files.filter(f => exts.includes(f.ext) && f.size < 20 * 1024 * 1024)
-    .map(f => ({ f, s: keys.filter(k => f.rel.toLowerCase().includes(k)).length + (/sld|single.?line/i.test(f.rel) && /sld|single.?line/i.test(request) ? 3 : 0) }))
+    .map(f => ({ f, s: score(f) }))
     .filter(x => x.s > 0).sort((a, b) => b.s - a.s || b.f.mtime - a.f.mtime).slice(0, max).map(x => path.join(p.folder, x.f.rel));
 }
 
