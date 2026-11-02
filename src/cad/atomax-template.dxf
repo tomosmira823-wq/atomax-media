@@ -29695,30 +29695,6 @@ SWITCH DISCONNECTOR
   1
 
   0
-LWPOLYLINE
-  5
-1F5
-330
-1F2
-100
-AcDbEntity
-  8
-E-618___T-E-LV Switchgear and Power Systems Plant Text
-100
-AcDbPolyline
- 90
-2
- 70
-0
- 10
--9.0
- 20
--12.5
- 10
--3.0
- 20
--12.5
-  0
 ATTDEF
   5
 1F6
@@ -30803,30 +30779,6 @@ MCCB
   1
 
   0
-LWPOLYLINE
-  5
-222
-330
-21F
-100
-AcDbEntity
-  8
-E-618___T-E-LV Switchgear and Power Systems Plant Text
-100
-AcDbPolyline
- 90
-2
- 70
-0
- 10
--9.0
- 20
--12.5
- 10
--3.0
- 20
--12.5
-  0
 ATTDEF
   5
 223
@@ -31226,30 +31178,6 @@ ISOLATOR DISCONNECTOR
 ISOLATOR DISCONNECTOR
   1
 
-  0
-LWPOLYLINE
-  5
-22C
-330
-229
-100
-AcDbEntity
-  8
-E-618___T-E-LV Switchgear and Power Systems Plant Text
-100
-AcDbPolyline
- 90
-2
- 70
-0
- 10
--9.0
- 20
--12.5
- 10
--3.0
- 20
--12.5
   0
 ATTDEF
   5
@@ -31671,30 +31599,6 @@ AcDbPolyline
  20
 -10.37083487540115
   0
-LWPOLYLINE
-  5
-237
-330
-232
-100
-AcDbEntity
-  8
-E-618___T-E-LV Switchgear and Power Systems Plant Text
-100
-AcDbPolyline
- 90
-2
- 70
-0
- 10
--9.0
- 20
--12.5
- 10
--3.0
- 20
--12.5
-  0
 ATTDEF
   5
 238
@@ -31916,30 +31820,6 @@ COMPARTMENT
 2
 280
 1
-  0
-LWPOLYLINE
-  5
-23F
-330
-23B
-100
-AcDbEntity
-  8
-E-618___T-E-LV Switchgear and Power Systems Plant Text
-100
-AcDbPolyline
- 90
-2
- 70
-0
- 10
--9.0
- 20
--12.0
- 10
--3.0
- 20
--12.0
   0
 ATTDEF
   5
