@@ -47,31 +47,22 @@ function seed(agents, standardSkill) {
   for (const a of agents) { const f = path.join(dirOf('rulebooks'), `${a.id}.md`); if (!fs.existsSync(f)) fs.writeFileSync(f, '', 'utf8'); }
 }
 
-// Atomax house skills shipped with the app (src/skills): put in the library for Dex and Cal, and kept up to date with each release
-// unless Tom has edited one himself (then his version stays).
-const HOUSE = [
-  ['atomax-cad-house-rules.md', 'Atomax CAD house rules (every drawing)', 'Text height 2, MTEXT, no overlaps, borders by client, QS 006 numbers, P01 revisions, notes and references', ['dex']],
-  ['atomax-bcd.md', 'Atomax BCD', 'How Atomax draws block cable diagrams: panel block, cables straight down to devices, cable text, interfaces, National Grid power BCDs', ['dex']],
-  ['atomax-sld.md', 'Atomax SLD (single line diagrams)', 'How Atomax draws single line diagrams: incomer, busbar, ways, drives, cable tags, loads, phase colours, legend and holds', ['dex']],
-  ['atomax-termination.md', 'Atomax termination diagrams', 'Terminal rails, cores to terminals, cable numbers and spares (draft until the termination examples are in)', ['dex']],
-];
-function installHouse() {
-  const dir = path.join(__dirname, 'skills'), idx = readIndex('skills'), hash = (t) => require('crypto').createHash('sha1').update(t).digest('hex');
-  let changed = false;
-  for (const [file, name, description, agents] of HOUSE) {
-    let text; try { text = fs.readFileSync(path.join(dir, file), 'utf8'); } catch { continue; }
-    const target = path.join(dirOf('skills'), file), cur = idx[file];
-    if (!cur) { fs.writeFileSync(target, text, 'utf8'); idx[file] = { on: true, agents, name, description, house: hash(text) }; changed = true; continue; }
-    if (!cur.house) continue;   // a skill of Tom's with the same file name: left alone
-    let now = ''; try { now = fs.readFileSync(target, 'utf8'); } catch {}
-    if (hash(now) === cur.house && hash(text) !== cur.house) { fs.writeFileSync(target, text, 'utf8'); idx[file] = { ...cur, name, description, house: hash(text) }; changed = true; }
+// v1.20.0 put four "Atomax ..." skills in the File Room that Tom never asked for: take them out again (only if he has not edited them)
+const REMOVED_HOUSE = ['atomax-cad-house-rules.md', 'atomax-bcd.md', 'atomax-sld.md', 'atomax-termination.md'];
+function removeHouse() {
+  const idx = readIndex('skills'), hash = (t) => require('crypto').createHash('sha1').update(t).digest('hex'); let changed = false;
+  for (const file of REMOVED_HOUSE) {
+    const cur = idx[file]; if (!cur || !cur.house) continue;
+    const target = path.join(dirOf('skills'), file); let now = ''; try { now = fs.readFileSync(target, 'utf8'); } catch {}
+    if (now && hash(now) !== cur.house) { delete cur.house; changed = true; continue; }   // he edited it: it is his now, left in place
+    try { fs.unlinkSync(target); } catch {} delete idx[file]; changed = true;
   }
   if (changed) writeIndex('skills', idx);
 }
 function init(userDir, agents, standardSkill) {
   ROOT = path.join(userDir, 'library');
   seed(agents || [], standardSkill || '');
-  try { installHouse(); } catch {}
+  try { removeHouse(); } catch {}
 }
 
 function list(key) {
