@@ -11,7 +11,7 @@ contextBridge.exposeInMainWorld('office', {
   posts: { get: call('posts:get'), set: call('posts:set') },
   files: { pickImages: call('file:pickImages'), saveImage: call('file:saveImage'), saveText: call('file:saveText') },
   flow: { run: call('flow:run'), get: call('flow:get'), auto: call('flow:auto') },
-  desk: { get: call('desk:get'), setRules: call('desk:setRules'), correction: call('desk:correction'), checkRegister: call('desk:checkRegister'), makeRegister: call('desk:makeRegister'), setNumber: call('desk:setNumber'), rfi: call('desk:rfi'), numbering: call('desk:numbering'), border: call('desk:border'), addRfi: call('desk:addRfi'), crs: call('desk:crs'), export: call('desk:export'), buildMaster: call('desk:buildMaster'), exportMaster: call('desk:exportMaster'), importMaster: call('desk:importMaster'), approveMaster: call('desk:approveMaster'), open: call('desk:open'), show: call('desk:show') },
+  desk: { get: call('desk:get'), setRules: call('desk:setRules'), correction: call('desk:correction'), checkRegister: call('desk:checkRegister'), makeRegister: call('desk:makeRegister'), setNumber: call('desk:setNumber'), rfi: call('desk:rfi'), numbering: call('desk:numbering'), border: call('desk:border'), addRfi: call('desk:addRfi'), crs: call('desk:crs'), addComment: call('desk:addComment'), export: call('desk:export'), buildMaster: call('desk:buildMaster'), exportMaster: call('desk:exportMaster'), importMaster: call('desk:importMaster'), approveMaster: call('desk:approveMaster'), open: call('desk:open'), show: call('desk:show') },
   library: { cabinets: call('library:cabinets'), items: call('library:items'), read: call('library:read'), save: call('library:save'), remove: call('library:remove'), drop: call('library:drop'), importSkill: call('library:importSkill'), newSkill: call('library:newSkill'), newClient: call('library:newClient'), correction: call('library:correction'), setRulebook: call('library:setRulebook'), agentView: call('library:agentView') },
   server: { status: call('server:status'), setCap: call('server:setCap'), usage: call('server:usage') },
   ai: {
@@ -24,6 +24,7 @@ contextBridge.exposeInMainWorld('office', {
   check: { run: call('check:run'), skill: call('check:skill'), last: call('check:last'), onProgress: (fn) => ipcRenderer.on('check:progress', (_e, p) => fn(p)) },
   mail: { read: call('mail:read'), list: call('mail:list'), folders: call('mail:folders'), start: call('mail:start'), decline: call('mail:decline'), reassign: call('mail:reassign'), reread: call('mail:reread'), defaults: call('mail:defaults'), setJobsFolder: call('mail:setJobsFolder'), pickParent: call('mail:pickParent'), newJob: call('board:newJob'), engRun: call('eng:run'), open: call('mail:open') },
   dexMake: call('dex:make'),
+  jobs: { overview: call('jobs:overview'), make: call('jobs:make'), makeAll: call('jobs:makeAll'), check: call('jobs:check'), revise: call('jobs:revise'), setStatus: call('jobs:setStatus'), waiting: call('jobs:waiting') },
   o365: { excel: call('o365:excel'), word: call('o365:word') },
   proj: { info: call('proj:info'), suggest: call('proj:suggest'), pick: call('proj:pick'), setFolder: call('proj:setFolder'), gather: call('proj:gather'), open: call('proj:open') },
   biz: {

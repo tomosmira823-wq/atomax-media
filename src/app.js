@@ -1,6 +1,7 @@
 import { Office, AgentPreview, GEAR } from './office.js';
 import { initDexUI } from './dexui.js';
 import { initBoardUI } from './boardui.js';
+import { initJobsUI } from './jobsui.js';
 import { initRoomsUI } from './roomui.js';
 import { initDexMakeUI } from './dexmakeui.js';
 import { initMailUI } from './mailui.js';
@@ -567,6 +568,10 @@ const boardUI = initBoardUI({
   openBusiness: () => { bizUI.open('jobs').then(() => openModal('bizModal')); },
   openAgent: (task, job) => openAgentForTask(task, job)
 });
+// the Jobs screen: home for engineering work (opened from the top bar or the projects whiteboard)
+const jobsUI = initJobsUI({ api, getAgents: () => agents, openIssue: () => { bizUI.open('issue').then(() => openModal('bizModal')); }, onWorkOn: () => {} });
+window.__jobsUI = jobsUI;
+$('#jobsBtn').addEventListener('click', () => { if (jobsUI.isOpen()) jobsUI.hide(); else jobsUI.show(); });
 // open the agent a task was set for, with the job in hand and the task text ready as the prompt
 function openAgentForTask(task, job) {
   const ag = agents.find(a => a.id === task.agentId) || agents.find(a => a.name === task.agentName);
@@ -584,6 +589,7 @@ function openAgentForTask(task, job) {
 }
 const modelUI = initModelingUI({ office, api, getSettings: () => settings, openSettings: () => { fillSettings(); openModal('settingsModal'); } });
 function goRoom(where) {
+  if (typeof jobsUI !== 'undefined' && jobsUI.isOpen() && where !== 'board') jobsUI.hide();
   const inModel = where === 'modeling' || where === 'scan' || where === 'modeler';
   const inSide = where === 'file' || where === 'server' || where === 'email' || where === 'o365';   // the File Room and the Server Room: their own panels
   const wideView = where === 'media' || where === 'overview' || where === 'board';
@@ -605,7 +611,7 @@ function goRoom(where) {
   if (where === 'desk') { checkUI.show(); bizUI.fillJobSelect($('#checkJob')); } else checkUI.hide();
   if (where === 'drafting') { dexUI.show(); bizUI.fillJobSelect($('#dexJob')); dexMake.refresh(); } else dexUI.hide();
   if (where === 'scan') modelUI.show(); else modelUI.hide();
-  if (where === 'board') boardUI.show(); else boardUI.hide();
+  if (where === 'board') { boardUI.hide(); if (typeof jobsUI !== 'undefined') jobsUI.show(); } else boardUI.hide();
   office.focus(where);
 }
 document.querySelectorAll('#rooms button').forEach(b => b.addEventListener('click', () => goRoom(b.dataset.room)));
@@ -623,7 +629,7 @@ function routeRoomPick(what) {
   if (what.startsWith('rack:')) { goRoom('server'); return true; }
   return false;
 }
-office.onPick = (what) => { if (routeRoomPick(what)) return; if (what === 'door') goRoom('drawing'); else if (what === 'desk') { if (calAgent()) goRoom('desk'); } else if (what === 'drafting') { if (dexAgent()) goRoom('drafting'); } else if (what === 'modeldoor') goRoom('modeling'); else if (what === 'scan') goRoom('scan'); else if (what === 'board') goRoom('board'); else if (what === 'approvals') { bizUI.open('approvals').then(() => openModal('bizModal')); } else if (what === 'issue') { bizUI.open('issue').then(() => openModal('bizModal')); } else if (what === 'docs') { bizUI.open('docs').then(() => openModal('bizModal')); } else if (what === 'nextdesk') { const t = document.querySelector('[data-tab=agents]'); if (t) t.click(); } else if (what === 'modeler' || what === 'modelcheck') { if (modellerAgent()) { modellerUI.setMode('edit'); goRoom('modeler'); } } else if (what === 'builder') { if (theo()) { modellerUI.setMode('build'); goRoom('modeler'); } } };
+office.onPick = (what) => { if (routeRoomPick(what)) return; if (what === 'door') goRoom('drawing'); else if (what === 'desk') { if (calAgent()) goRoom('desk'); } else if (what === 'drafting') { if (dexAgent()) goRoom('drafting'); } else if (what === 'modeldoor') goRoom('modeling'); else if (what === 'scan') goRoom('scan'); else if (what === 'board') jobsUI.show(); else if (what === 'approvals') { bizUI.open('approvals').then(() => openModal('bizModal')); } else if (what === 'issue') { bizUI.open('issue').then(() => openModal('bizModal')); } else if (what === 'docs') { bizUI.open('docs').then(() => openModal('bizModal')); } else if (what === 'nextdesk') { const t = document.querySelector('[data-tab=agents]'); if (t) t.click(); } else if (what === 'modeler' || what === 'modelcheck') { if (modellerAgent()) { modellerUI.setMode('edit'); goRoom('modeler'); } } else if (what === 'builder') { if (theo()) { modellerUI.setMode('build'); goRoom('modeler'); } } };
 document.addEventListener('keydown', (e) => { if (e.key !== 'Escape' || document.querySelector('.modal.open')) return; if (office.room === 'desk' || office.room === 'drafting') goRoom('drawing'); else if (office.room === 'scan' || office.room === 'modeler') goRoom('modeling'); else if (office.room === 'board' || office.room === 'file' || office.room === 'server' || office.room === 'email' || office.room === 'o365') goRoom('overview'); });
 // ---- first person ----
 office.onFirstPerson = (on, room) => {

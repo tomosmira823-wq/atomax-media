@@ -26,6 +26,7 @@ function register({ ipcMain, dialog, getWin, claudeFull, BIZ, checker, userDir, 
   ipcMain.handle('desk:border', wrap(({ jobId, key, size, ng }) => { desk.setBorder(jobId, key, size, ng); return desk.view(jobId); }));
   ipcMain.handle('desk:rfi', wrap(({ jobId, rfi }) => { desk.saveRfi(jobId, rfi); return desk.view(jobId); }));
   ipcMain.handle('desk:addRfi', wrap(({ jobId, q }) => { desk.addInputs(jobId, { questions: [q] }); return desk.view(jobId); }));
+  ipcMain.handle('desk:addComment', wrap(({ jobId, doc, comment, by }) => { desk.addComments(jobId, [{ doc, comment, by: by || 'Client' }]); return desk.view(jobId); }));
   ipcMain.handle('desk:crs', wrap(({ jobId, row }) => { desk.saveCrs(jobId, row); return desk.view(jobId); }));
   ipcMain.handle('desk:export', wrap(({ jobId, kind }) => { const p = desk.exportSheet(jobId, kind, writeXlsx); shell.showItemInFolder(p); return p; }));
   ipcMain.handle('desk:buildMaster', wrap(async ({ jobId, note }) => { await desk.buildMaster(jobId, { claudeFull, projects: BIZ.projects, checker, parseReply: dxfmaker.parseReply, note }); return desk.view(jobId); }));

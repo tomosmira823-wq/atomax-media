@@ -308,7 +308,7 @@ EARTHING tasks: size every protective / earth conductor the drawing needs (MET t
   }));
 
   // ---------- Dex makes a DXF ----------
-  ipcMain.handle('dex:make', wrap(async ({ jobId = '', request = '', answers = [], emailId = '', skills, revision = null }) => {
+  ipcMain.handle('dex:make', wrap(async ({ jobId = '', request = '', answers = [], emailId = '', skills, revision = null, drawingNumber = '' }) => {
     if (!String(request).trim()) throw new Error('Say what Dex should draw');
     const d = BIZ.data(), job = jobId && d.jobs.find(j => j.id === jobId);
     // his skills for MAKING a drawing: drawing skills first, fixer-only rules and spreadsheet skills only when the request needs them
@@ -371,6 +371,7 @@ EARTHING tasks: size every protective / earth conductor the drawing needs (MET t
       }
     }
     // the drawing number: from the job's drawing list when one matches, else the next QS 006 number for this kind
+    if (drawingNumber) spec.drawingNumber = drawingNumber;   // made from the Jobs screen for a given deliverable
     if (job && (!spec.drawingNumber || /tbc/i.test(spec.drawingNumber))) {
       const want = spec.kind === 'bcd' ? /bcd|block cable/i : spec.kind === 'earthing' ? /earth/i : /single line|\bsld\b/i;
       const onList = job.drawings.find(d => want.test(d.title) && !/^TBC-/.test(d.no) && /to do|live/i.test(d.status || 'Live'));

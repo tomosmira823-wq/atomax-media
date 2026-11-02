@@ -405,6 +405,54 @@ body.fp canvas#scene{cursor:grab}
   .frow .fx { opacity: 0; transition: opacity .15s; } .frow:hover .fx { opacity: 1; } .fx:hover { color: var(--red) !important; }
   .fhead { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 6px; } .fhead h3 { margin: 0 0 2px; font-size: 18px; }
   :where(#filePanel, #boardPanel, #serverPanel, #mailPanel) button:not([class]) { background: #172034; border: 1px solid #2c3850; border-radius: 8px; padding: 6px 10px; font: inherit; font-size: 12.5px; cursor: pointer; }
+  /* ---------- Jobs screen ---------- */
+  #jobsPanel { display: none; left: 16px; right: 16px; width: auto; max-width: 1280px; margin-left: auto; z-index: 15; }
+  #jobsPanel.open { display: flex; }
+  body.jobs-open #boardPanel, body.jobs-open #brief, body.jobs-open #board { display: none !important; }
+  #jobsPanel .body { padding: 0; display: grid; grid-template-columns: 250px minmax(0, 1fr); overflow: hidden; }
+  #jbList { overflow: auto; padding: 12px; border-right: 1px solid var(--line); display: flex; flex-direction: column; gap: 6px; background: rgba(8,12,22,.5); }
+  .jbnew { border: 1px dashed #3a4760; background: transparent; color: var(--green); border-radius: 10px; padding: 9px; font: inherit; font-weight: 600; cursor: pointer; }
+  .jbnew:hover { border-color: var(--green); }
+  .jbj { text-align: left; border: 1px solid transparent; background: transparent; color: var(--text); border-radius: 10px; padding: 9px 11px; font: inherit; cursor: pointer; display: flex; flex-direction: column; gap: 1px; }
+  .jbj:hover { background: #172034; } .jbj.on { background: #1a2540; border-color: #2c3850; box-shadow: inset 3px 0 0 var(--green); }
+  .jbj b { font-size: 13.5px; } .jbj span { font-size: 12.5px; color: #cfd6e3; } .jbj i { font-style: normal; font-size: 11.5px; color: var(--muted); }
+  .jbj.home { flex-direction: row; font-weight: 600; color: var(--green); } .jblabel { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); margin: 10px 4px 2px; font-weight: 700; }
+  #jbMain { overflow: auto; padding: 18px 22px 24px; min-height: 0; }
+  .jbhead { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 12px; }
+  .jbhead h2 { margin: 0 0 3px; font-size: 20px; font-weight: 700; color: var(--text); background: none; padding: 0; border: 0; box-shadow: none; text-transform: none; letter-spacing: 0; }
+  .jbhead a { color: var(--green); }
+  .warn { color: var(--amber); font-style: normal; }
+  .jbtabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin-bottom: 14px; }
+  .jbtabs button { background: none; border: 0; border-bottom: 2px solid transparent; color: var(--muted); padding: 9px 14px; font: inherit; font-weight: 600; cursor: pointer; }
+  .jbtabs button.on { color: var(--text); border-bottom-color: var(--green); } .jbtabs button:hover { color: var(--text); }
+  .jbtabs em, .jbtabs + * em { font-style: normal; font-size: 11px; background: #22304a; border-radius: 9px; padding: 1px 7px; margin-left: 4px; color: #cfd6e3; }
+  .jbbtn { background: #1a2338; color: var(--text); border: 1px solid #2c3850; border-radius: 8px; padding: 7px 12px; font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; white-space: nowrap; }
+  .jbbtn:hover { background: #222d47; border-color: #3a4760; } .jbbtn:disabled { opacity: .4; cursor: default; }
+  .jbbtn.primary { background: var(--green); border-color: var(--green); color: #0b0f1a; } .jbbtn.primary:hover { background: #4fd60a; }
+  .jbbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 10px 0; }
+  .jbmsg { background: rgba(64,189,0,.08); border: 1px solid rgba(64,189,0,.3); color: #cfeebf; border-radius: 10px; padding: 9px 12px; margin-bottom: 12px; font-size: 13px; }
+  .jbbanner { background: rgba(255,184,77,.08); border: 1px solid rgba(255,184,77,.35); border-radius: 10px; padding: 10px 12px; display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 10px; }
+  .jbrows { display: flex; flex-direction: column; gap: 6px; }
+  .jbrow { display: grid; grid-template-columns: minmax(0, 1fr) 70px 200px 150px 110px; gap: 12px; align-items: center; background: #141c2f; border: 1px solid #243049; border-radius: 10px; padding: 11px 14px; }
+  .jbrow:hover { border-color: #33405c; }
+  .jbrow .c1 { display: flex; flex-direction: column; min-width: 0; } .jbrow .c1 b { font-size: 13px; font-family: Consolas, ui-monospace, monospace; letter-spacing: .2px; } .jbrow .c1 span { color: #cfd6e3; font-size: 13px; } .jbrow .c1 i { font-style: normal; font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .jbrow .c2 { color: #cfd6e3; font-size: 12.5px; } .jbrow .c3 { display: flex; flex-wrap: wrap; gap: 4px; } .jbrow .c4 { display: flex; flex-wrap: wrap; gap: 4px; } .jbrow .c5 { text-align: right; }
+  .st { font-size: 11.5px; font-weight: 600; border-radius: 9px; padding: 2px 8px; border: 1px solid #2c3850; color: var(--muted); }
+  .st-made { color: #b9f59a; border-color: #2a6a16; background: rgba(64,189,0,.08); } .st-working { color: #9bd1ff; border-color: #1f4a73; background: rgba(77,171,247,.08); }
+  .st-needsyou { color: #ffd59a; border-color: #6a4a12; background: rgba(255,184,77,.08); } .st-failed { color: #ffb3b3; border-color: #6a1d1d; background: rgba(255,107,107,.08); } .st-issued { color: #d0bfff; border-color: #4b3a7a; }
+  .jbfile { background: none; border: 1px solid #2c3850; color: #cfd6e3; border-radius: 6px; padding: 2px 7px; font: inherit; font-size: 11px; font-weight: 600; cursor: pointer; } .jbfile:hover { border-color: var(--green); color: var(--text); }
+  .jbq { grid-column: 1 / -1; border-top: 1px solid #243049; padding-top: 10px; display: flex; flex-direction: column; gap: 4px; } .jbq button { align-self: flex-start; margin-top: 6px; }
+  .jbcard { background: #141c2f; border: 1px solid #243049; border-radius: 10px; padding: 12px 14px; margin-bottom: 10px; } .jbcard > b { font-size: 13.5px; }
+  .jbform label:not(.plain) { margin-top: 10px; } .jbform input:not([type=radio]) { max-width: 420px; }
+  .jbhead2 { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 6px; }
+  .jbc { padding: 7px 0; border-top: 1px solid #1f2a40; font-size: 13px; } .jbc.done { opacity: .55; } .jbc .resp { color: var(--muted); margin-top: 2px; }
+  .jbempty { border: 1px dashed #2c3850; border-radius: 12px; padding: 26px; text-align: center; display: flex; flex-direction: column; gap: 6px; color: var(--muted); } .jbempty b { color: var(--text); font-size: 14px; }
+  .jbwait { display: flex; flex-direction: column; gap: 6px; }
+  .jbw { display: flex; gap: 12px; align-items: center; text-align: left; background: #141c2f; border: 1px solid #243049; border-radius: 10px; padding: 11px 14px; color: var(--text); font: inherit; cursor: pointer; }
+  .jbw:hover { border-color: #3a4760; background: #18223a; }
+  .jbw .ic { width: 28px; height: 28px; border-radius: 8px; display: grid; place-items: center; background: #1f2a40; color: var(--amber); font-weight: 700; flex: none; }
+  .jbw b { display: block; font-weight: 600; font-size: 13.5px; } .jbw i { font-style: normal; font-size: 12px; color: var(--muted); }
+  .jbw.k-master .ic, .jbw.k-check .ic { color: var(--green); } .jbw.k-failed .ic { color: var(--red); }
 </style>
 <script type="importmap">
 { "imports": {
@@ -425,7 +473,8 @@ body.fp canvas#scene{cursor:grab}
   </div>
   <div class="tabs">
     <button class="active" data-tab="office">Office</button>
-    <button data-tab="business">Business <span id="bizBadge" class="pill" style="display:none"></span></button>
+    <button id="jobsBtn">Jobs <span id="jobsBadge" class="pill" style="display:none"></span></button>
+    <button data-tab="business" style="display:none">Business <span id="bizBadge" class="pill" style="display:none"></span></button>
     <button data-tab="history">Posts</button>
     <button data-tab="agents">Agents</button>
     <button data-tab="settings">Settings</button>
@@ -557,6 +606,10 @@ body.fp canvas#scene{cursor:grab}
 
 
 <!-- Project whiteboard in the meeting room -->
+<div class="panel" id="jobsPanel">
+  <h2><span>Jobs</span><button class="collapse" id="jbBack" title="Close (Esc)">×</button></h2>
+  <div class="body"><div id="jbList"></div><div id="jbMain"></div></div>
+</div>
 <div class="panel" id="boardPanel">
   <h2><span>Projects whiteboard</span><button class="collapse" id="bdBack" title="Back to the office (Esc)">×</button></h2>
   <div class="body">

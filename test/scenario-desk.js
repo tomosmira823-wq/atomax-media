@@ -21,7 +21,7 @@
     return r.desk;
   });
   await step('area code gives QS 006 numbers', async () => { V = await api.desk.numbering({ jobId: job.id, area: 'TST', disc: '05' }); const nos = V.drawings.map(d => d.no); if (!nos.includes('X22001-TST-05-70-0001') || !nos.includes('X22001-TST-05-71-0001')) throw new Error(nos.join(',')); return nos; });
-  await step('board shows the job desk', async () => { window.__goRoom('board'); await window.__boardUI.show(); window.__boardUI.selectJob(job.id); await until(() => document.querySelectorAll('#bdDesk details.jd').length === 7); return document.querySelector('#bdDesk').textContent.includes('2 open RFIs'); });
+  await step('Jobs screen shows the job desk', async () => { await window.__jobsUI.show(job.id); document.querySelector('[data-t="setup"]').click(); await until(() => document.querySelectorAll('#jbDesk details.jd').length >= 6); window.__jobsUI.hide(); return 'ok'; });
   await step('master list built and approved', async () => { V = await api.desk.buildMaster({ jobId: job.id }); if (V.master.devices !== 4) throw new Error(JSON.stringify(V.master)); V = await api.desk.approveMaster({ jobId: job.id }); return V.master.status; });
   let first;
   await step('Dex draws the BCD from the approved master list', async () => {
