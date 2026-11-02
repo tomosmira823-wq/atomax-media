@@ -44,7 +44,7 @@ const SYMBOLS = {
   // surge protection: a box with an arrow, earthed underneath
   spd: () => ({ len: 18, w: 4, end: true, prims: [L(0, 0, 0, -2), P([[-3, -2], [3, -2], [3, -11], [-3, -11]], true), L(0, -3.5, 0, -9.5), P([[-1, -7.8], [0, -9.5], [1, -7.8]]), L(0, -11, 0, -14), L(-3, -14, 3, -14), L(-2, -15.3, 2, -15.3), L(-1, -16.6, 1, -16.6)] }),
   // power factor correction: a capacitor bank
-  pfc: () => ({ len: 12, w: 4, end: true, prims: [L(0, 0, 0, -4), L(-4, -4, 4, -4), L(-4, -6, 4, -6), L(0, -6, 0, -8), L(-1.5, -8, 1.5, -8), L(-0.8, -9.2, 0.8, -9.2)] }),
+  pfc: () => ({ len: 10, w: 4, end: true, prims: [L(0, 0, 0, -4), L(-4, -4, 4, -4), L(-4, -6, 4, -6), L(0, -6, 0, -10)] }),
 };
 function wave(x, y, w) { const pts = []; for (let i = 0; i <= 8; i++) pts.push([x + w * i / 8, y + 0.8 * Math.sin(i / 8 * 2 * Math.PI)]); return pts; }
 const ALIASES = { mcb: 'breaker', mccb: 'breaker', acb: 'breaker', cb: 'breaker', vcb: 'breaker', rcbo: 'breaker', 'circuit breaker': 'breaker', switch: 'isolator', disconnector: 'isolator', 'switch disconnector': 'isolator', 'fuse switch': 'switchfuse', 'fused switch': 'switchfuse', tx: 'transformer', 'current transformer': 'ct', kwh: 'meter', 'distribution board': 'board', db: 'board', panel: 'board', mcc: 'board', dno: 'supply', incomer: 'supply', 'mains supply': 'supply', gen: 'generator', genset: 'generator', 'diesel generator': 'generator', conductor: 'line', rod: 'electrode', 'earth rod': 'electrode', 'earth electrode': 'electrode', 'test link': 'link', 'disconnecting link': 'link', 'earth link': 'link', mesh: 'grid', 'earth mesh': 'grid', 'earth mat': 'grid', 'earth grid': 'grid', equipment: 'board', inverter: 'board', switchgear: 'board', 'earth conductor': 'cable', bond: 'cable', 'variable speed drive': 'vsd', vfd: 'vsd', drive: 'vsd', 'inverter drive': 'vsd', 'dol starter': 'dol', 'direct on line starter': 'dol', starter: 'dol', 'motor starter': 'dol', 'soft starter': 'softstarter', 'soft start': 'softstarter', 'surge protection': 'spd', 'surge protection device': 'spd', 'surge protective device': 'spd', 'surge arrester': 'spd', 'power factor correction': 'pfc', capacitor: 'pfc', 'capacitor bank': 'pfc' };
@@ -452,8 +452,8 @@ function borderFrame(prims, spec, sheetLabel, opts) {
     const kinds = spec._kinds || [];
     const own = kinds.filter(k => LEGEND_OWN[k] && SYMBOLS[k] && !SYMBOLS[k]().house);
     const entries = [
-      ...usedHouse.map(name => ({ h: -HOUSE[name].bbox[1] * 0.6, text: LEGEND_TEXT[name], draw: (x, y) => [{ t: 'insert', name, x, y, k: 0.6, layer: 'SLD-SYMBOL', prims: HOUSE[name].prims }] })),
-      ...own.map(k => { const sy = SYMBOLS[k](); return { h: Math.max(sy.len, 6), text: LEGEND_OWN[k], draw: (x, y) => place(sy.prims, x, y) }; }),
+      ...usedHouse.map(name => { const sy = Object.values(SYMBOLS).map(f => f()).find(q => q.house === name); return { h: -HOUSE[name].bbox[1] * 0.6, text: LEGEND_TEXT[name], draw: (x, y) => place(sy ? sy.prims : [{ t: 'insert', name, x: 0, y: 0, layer: 'SLD-SYMBOL', prims: HOUSE[name].prims }], x, y, 0.6) }; }),
+      ...own.map(k => { const sy = SYMBOLS[k](); return { h: Math.max(sy.len * 0.75, 6), text: LEGEND_OWN[k], draw: (x, y) => place(sy.prims, x, y, 0.75) }; }),
       ...(prims.some(p => p.layer === 'SLD-BUS') ? [{ h: 4, text: 'BUSBAR', draw: (x, y) => [P([[x - 5, y - 2], [x + 5, y - 2]], false, 'SLD-BUS', 0.8)] }] : []),
       ...(kinds.includes('cable') ? [{ h: 10, text: 'CABLE: NUMBER, CORES, SIZE, TYPE', draw: (x, y) => [P([[x - 1.6, y], [x + 1.6, y], [x + 1.6, y - 10], [x - 1.6, y - 10]], true, 'SLD-CABLE')] }] : []),
       ...(prims.some(p => p.layer === 'SLD-ENCLOSURE') ? [{ h: 4, text: 'SWITCHROOM / ENCLOSURE', draw: (x, y) => { const o = []; dashBox(o, x - 5, y - 4, x + 5, y, 'SLD-ENCLOSURE'); return o; } }] : []),
