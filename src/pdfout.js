@@ -1,7 +1,7 @@
 // A monochrome PDF of a drawing Dex made, from the same primitives as its DXF (issue drawings go out as DXF and PDF, in black and white).
 // The sheet is printed to fit an A3 landscape page by default (the A0 border scales down; text at height 2 x the drawing scale stays readable).
 'use strict';
-const { PDFDocument, StandardFonts, rgb, degrees } = require('pdf-lib');
+const { PDFDocument, StandardFonts, rgb, degrees, pushGraphicsState, popGraphicsState, concatTransformationMatrix } = require('pdf-lib');
 const PAGES = { A3: [1190.55, 841.89], A2: [1683.78, 1190.55], A1: [2383.94, 1683.78], A0: [3370.39, 2383.94] };
 
 async function toPdf(prims, b, { page = 'A3', title = '' } = {}) {
@@ -30,7 +30,7 @@ async function toPdf(prims, b, { page = 'A3', title = '' } = {}) {
     for (const line of String(p.text).split('\n').map(clean)) { if (!maxW || font.widthOfTextAtSize(line, size) <= maxW) { rows.push(line); continue; } let cur = ''; for (const w of line.split(' ')) { const t = cur ? cur + ' ' + w : w; if (cur && font.widthOfTextAtSize(t, size) > maxW) { rows.push(cur); cur = w; } else cur = t; } if (cur) rows.push(cur); }
     rows.forEach((row, i) => {
       if (!row) return;
-      const w = font.widthOfTextAtSize(row, size);
+      const wf = p.t === 'text' && p.wf && !p.rot ? p.wf : 1, w = font.widthOfTextAtSize(row, size) * wf;
       let x = X(p.x), y = Y(p.y);
       if (p.t === 'text') { const sh = p.align === 'center' ? w / 2 : p.align === 'right' ? w : 0, r = (p.rot || 0) * Math.PI / 180; x -= sh * Math.cos(r); y -= sh * Math.sin(r); }
       else {
@@ -39,7 +39,8 @@ async function toPdf(prims, b, { page = 'A3', title = '' } = {}) {
         const top = rowA === 0 ? Y(p.y) : rowA === 1 ? Y(p.y) + H / 2 : Y(p.y) + H;
         y = top - (i + 1) * pitch + (pitch - p.h * s) / 2;
       }
-      pg.drawText(row, { x, y, size, font, color: black, ...(p.rot ? { rotate: degrees(p.rot) } : {}) });
+      if (wf !== 1) { pg.pushOperators(pushGraphicsState(), concatTransformationMatrix(wf, 0, 0, 1, x * (1 - wf), 0)); pg.drawText(row, { x, y, size, font, color: black }); pg.pushOperators(popGraphicsState()); }
+      else pg.drawText(row, { x, y, size, font, color: black, ...(p.rot ? { rotate: degrees(p.rot) } : {}) });
     });
   }
   return Buffer.from(await doc.save());
