@@ -1104,7 +1104,11 @@ export class Office {
       }
       if (this.room === 'modeling' && this.modelRoom && this.ray.intersectObjects(this.modelRoom.clickRoots, true).some(h => visibleChain(h.object))) return 'scan';
       // from the overview, clicking anywhere on a room (its floor, walls or furniture) goes into it
-      if (wide) { const hit = new THREE.Vector3(); if (this.ray.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), -0.05), hit)) { const r = this.roomAt(hit.x, hit.z); if (r && r !== this.room) return r; } }
+      // from any room view (not walking round): clicking another room goes into it
+      if (!this.fp) { const hit = new THREE.Vector3(); if (this.ray.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), -0.05), hit)) {
+        const r = this.roomAt(hit.x, hit.z), home = { media: 'media', door: 'drawing', modeldoor: 'modeling', o365room: 'o365', email: 'email', docs: 'docs', board: 'board', fileroom: 'file', serverroom: 'server' }[r];
+        const here = ['desk', 'drafting'].includes(this.room) ? 'drawing' : ['scan', 'modeler', 'modeling'].includes(this.room) ? 'modeling' : this.room;
+        if (r && home !== here) return r; } }
       return null;
     };
     this.canvas.addEventListener('pointerdown', (e) => { this.down = { x: e.clientX, y: e.clientY, t: performance.now() }; if (this.tween && !this.fp) { this.tween = null; this.controls.enabled = true; } }, true);
