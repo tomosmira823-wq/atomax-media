@@ -52,7 +52,7 @@ const ALIASES = { mcb: 'breaker', mccb: 'breaker', acb: 'breaker', cb: 'breaker'
 // Atomax / BGEN house symbols, taken from the SLD symbol template (Template_MCCB.dxf): top terminal at (0,0), drawn downwards, at the template's own scale (text height 2)
 const HOUSE = (() => { try { return JSON.parse(fs.readFileSync(path.join(__dirname, 'cad', 'symbols-sld.json'), 'utf8')); } catch { return {}; } })();
 // each house symbol is written as an INSERT of the real block (the block definitions are in the Atomax DXF template); previews draw the same geometry
-const house = (name, extra = {}) => () => { const s = HOUSE[name]; const ins = { t: 'insert', name, x: 0, y: 0, layer: 'SLD-SYMBOL', prims: s.prims }; return { len: -s.bbox[1], w: Math.max(2, s.bbox[2]), house: name, ...extra, prims: extra.text ? [ins, T(0, s.bbox[1] / 2 - 0.9, extra.text, 3)] : [ins] }; };
+const house = (name, extra = {}) => () => { const s = HOUSE[name]; const ins = { t: 'insert', name, x: 0, y: 0, layer: 'SLD-SYMBOL', prims: s.prims }; return { len: -s.bbox[1], w: Math.max(2, s.bbox[2]), house: name, ...extra, prims: extra.text ? [ins, T(0, s.bbox[1] / 2 - 1.1, extra.text, 3)] : [ins] }; };
 if (HOUSE.MCCB) Object.assign(SYMBOLS, {
   breaker: house('MCCB'), mcb: house('MCB'), isolator: house('ISOLATOR DISCONNECTOR'), switch: house('SWITCH DISCONNECTOR'), switchfuse: house('FUSED SWITCH DISCONNECTOR'),
   fuse: house('FUSE'), contactor: house('CONTACTOR1'), motor: house('MOTOR', { end: true, text: 'M' }), load: house('LOAD', { end: true }),
@@ -84,7 +84,9 @@ const TAG_CHARS = 16;   // longest line written up a cable tag
 function cableTag(label) {
   const ls = wrap(label, TAG_CHARS * TH * 0.9).slice(0, 6), n = Math.max(1, ls.length), bw = n * LINE + 1.2, bh = Math.max(22, Math.max(...ls.map(l => l.length), 6) * TH * 0.92 + 6);
   const prims = [L(0, 0, 0, -3, 'SLD-CABLE'), P([[-bw / 2, -3], [bw / 2, -3], [bw / 2, -3 - bh], [-bw / 2, -3 - bh]], true, 'SLD-CABLE'), L(0, -3 - bh, 0, -6 - bh, 'SLD-CABLE')];
-  ls.forEach((l, i) => prims.push({ t: 'text', x: -bw / 2 + 0.6 + TH + i * LINE, y: -3 - bh / 2, h: TH, text: l, align: 'center', rot: 90, layer: 'SLD-TEXT' }));
+  // the lines sit in the middle of the box across its width (each line's letters run from its baseline up by the text height)
+  const first = -((n - 1) * LINE + TH) / 2 + TH;
+  ls.forEach((l, i) => prims.push({ t: 'text', x: first + i * LINE, y: -3 - bh / 2, h: TH, text: l, align: 'center', rot: 90, layer: 'SLD-TEXT' }));
   return { len: 6 + bh, w: bw / 2, prims, tagged: true };
 }
 function drawChain(chain, x, y) {
@@ -338,9 +340,20 @@ function familyCfg(j) {
   const inCol = (t) => t.x >= colX - 2;
   const mtLines = (t) => String(t.text).split('\n').reduce((n, l) => n + Math.max(1, Math.ceil(l.length * t.h * 0.9 / Math.max(10, t.w || colW))), 0);   // MTEXT wraps at its width
   const extraBottom = Math.min(...[...j.extras.texts.filter(inCol).map(t => t.y - (t.t === 'mtext' ? mtLines(t) * t.h * 1.7 : 0)), ...j.extras.prims.filter(p => p.t === 'line' && Math.min(p.x1, p.x2) >= colX - 2).map(p => Math.min(p.y1, p.y2))].filter(Number.isFinite), j.notes ? j.notes[1] - 4 : j.box.y1);
+  // the small title block values (drawn, checked, approved, date, scale) sit in the middle of their cells, worked out from the border's own lines
+  const segs = [];
+  for (const p of j.geo.prims) { if (p.t === 'line') segs.push([p.x1, p.y1, p.x2, p.y2]); else if (p.pts) for (let i = 1; i < p.pts.length; i++) segs.push([...p.pts[i - 1], ...p.pts[i]]); }
+  const vert = segs.filter(q => Math.abs(q[0] - q[2]) < 0.01);
+  const attrs = { ...j.attrs };
+  for (const tag of ['DRN', 'CHKD', 'APRVD', 'DATE', 'SCALE']) {
+    const a = attrs[tag]; if (!a) continue;
+    const y = a[1] + 1, xs = vert.filter(q => Math.min(q[1], q[3]) <= y && Math.max(q[1], q[3]) >= y).map(q => q[0]);
+    const left = Math.max(...xs.filter(x => x < a[0] - 0.5)), right = Math.min(...xs.filter(x => x > a[0] + 0.5));
+    if (Number.isFinite(left) && Number.isFinite(right) && right - left < 80) attrs[tag] = [(left + right) / 2, a[1], a[2], 'center', a[4] || 0];
+  }
   return {
     geo: j.geo, block: j.block, page: j.size, box: j.box, keepOut: j.keepOut || null, maxScale: 1, textLayer: 'E-020___T-E-Drawing Frame Text', notesLayer: 'Z-903___T-E-Notes Text',
-    attrs: j.attrs, titleWidth: j.titleWidth || Math.max(30, colW - 6), company: j.company, size: j.size, colX,
+    attrs, titleWidth: j.titleWidth || Math.max(30, colW - 6), company: j.company, size: j.size, colX,
     revbox: { prims: j.rev.prims, texts: j.rev.texts, attrs: j.rev.attrs, block: j.revBlock }, rev: { x0: j.rev.x, y: j.rev.y, pitch: j.rev.h || 8, dx: j.rev.dx || 0, max: j.rev.max || 8 },
     heads: [...(j.notes ? [['NOTES', j.notes[0], j.notes[1]]] : []), ...(j.refs ? [['REFERENCE DOCUMENTS', j.refs[0], j.refs[1]]] : [])], extras: j.extras,
     notes: j.notes && { x: colX, tx: colX + 5.9, y: Math.min(j.notes[1] - 6, extraBottom - 6), pitch: 3.35, w: colW, bottom: (j.refs ? j.refs[1] : j.rev.y) + 12 },
@@ -757,9 +770,9 @@ function toSvg(prims, b) {
     if (p.t === 'circle') return `<circle cx="${X(p.x)}" cy="${Y(p.y)}" r="${p.r}" fill="none" stroke="${col(p.layer)}" stroke-width="0.35"/>`;
     if (p.t === 'arc') { const a0 = p.a0 * Math.PI / 180, a1 = p.a1 * Math.PI / 180; return `<path d="M${X(p.x + p.r * Math.cos(a0))} ${Y(p.y + p.r * Math.sin(a0))} A${p.r} ${p.r} 0 0 0 ${X(p.x + p.r * Math.cos(a1))} ${Y(p.y + p.r * Math.sin(a1))}" fill="none" stroke="${col(p.layer)}" stroke-width="0.35"/>`; }
     if (p.t === 'pline') return `<polyline points="${p.pts.map(([x, y]) => X(x) + ',' + Y(y)).join(' ')}${p.closed ? ' ' + X(p.pts[0][0]) + ',' + Y(p.pts[0][1]) : ''}" fill="none" stroke="${col(p.layer)}" stroke-width="${p.width || 0.35}"/>`;
-    if (p.t === 'text') return `<text ${p.rot ? `transform="rotate(${-p.rot} ${X(p.x)} ${Y(p.y)})" ` : ''}x="${X(p.x)}" y="${Y(p.y)}" font-size="${p.h}" text-anchor="${p.align === 'center' ? 'middle' : 'start'}" dominant-baseline="middle" font-family="Arial">${esc(p.text)}</text>`;
+    if (p.t === 'text') return `<text ${p.rot ? `transform="rotate(${-p.rot} ${X(p.x)} ${Y(p.y)})" ` : ''}x="${X(p.x)}" y="${Y(p.y)}" font-size="${(p.h / 0.72).toFixed(2)}" text-anchor="${p.align === 'center' ? 'middle' : 'start'}" dominant-baseline="middle" font-family="Arial">${esc(p.text)}</text>`;
     if (p.t === 'fill') return `<path fill-rule="evenodd" d="${(p.rings || [p.pts]).map(r => 'M' + r.map(([x, y]) => X(x) + ' ' + Y(y)).join(' L') + ' Z').join(' ')}" fill="${p.colour === 3 ? '#40c057' : p.colour === 1 ? '#fa5252' : '#495057'}" stroke="none"/>`;
-    if (p.t === 'mtext') { const ls = String(p.text).split('\n'), mid = p.attach === 5 || p.attach === 6 || p.attach === 4; const y0 = mid ? p.y + (ls.length - 1) * LINE / 2 : p.y - p.h; return `<text font-size="${p.h}" font-family="Arial" fill="${col(p.layer)}" text-anchor="${p.attach === 5 ? 'middle' : p.attach === 6 ? 'end' : 'start'}">${ls.map((l, i) => `<tspan x="${X(p.x)}" y="${Y(y0 - i * LINE)}">${esc(l)}</tspan>`).join('')}</text>`; }
+    if (p.t === 'mtext') { const ls = String(p.text).split('\n'), mid = p.attach === 5 || p.attach === 6 || p.attach === 4; const y0 = mid ? p.y + (ls.length - 1) * LINE / 2 - p.h / 2 : p.y - p.h; return `<text font-size="${(p.h / 0.72).toFixed(2)}" font-family="Arial" fill="${col(p.layer)}" text-anchor="${p.attach === 5 ? 'middle' : p.attach === 6 ? 'end' : 'start'}">${ls.map((l, i) => `<tspan x="${X(p.x)}" y="${Y(y0 - i * LINE)}">${esc(l)}</tspan>`).join('')}</text>`; }
     return '';
   });
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${n(W)} ${n(H)}" style="background:#fff">${parts.join('')}</svg>`;
