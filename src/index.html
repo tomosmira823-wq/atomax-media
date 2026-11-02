@@ -179,7 +179,7 @@
   #fcTabs { display: flex; flex-direction: column; background: #0c1322; padding: 10px; gap: 6px; border-right: 1px solid #2c3850; }
   .fc { text-align: left; border: 0; color: var(--text); background: #172034; border-radius: 6px; padding: 9px 10px; display: flex; align-items: center; gap: 8px; font: inherit; cursor: pointer; box-shadow: inset 4px 0 0 var(--c); }
   .fc.on { outline: 2px solid #40bd00; } .fc i { display: none; } .fc span { margin-left: auto; color: #97a1b6; font-size: 12px; }
-  #fcMain { padding: 14px 16px; overflow: auto; max-height: 72vh; } .fhead { display: flex; justify-content: space-between; gap: 10px; align-items: flex-start; } .fhead h3 { margin: 0 0 2px; }
+  #fcMain { padding: 14px 16px; overflow: auto; max-height: none; height: 100%; min-height: 0; } #fcTabs { min-height: 0; overflow: auto; } .fhead { display: flex; justify-content: space-between; gap: 10px; align-items: flex-start; } .fhead h3 { margin: 0 0 2px; }
   .fbtns { display: flex; gap: 6px; flex-wrap: wrap; } .fbtns button, .fup, .scard button, .sbtns button, .sban button { font: inherit; font-size: 12.5px; padding: 6px 10px; border-radius: 6px; border: 1px solid #2c3850; background: #172034; color: #e8ecf4; cursor: pointer; }
   .fbtns .bprim, .scard .bprim, .sbtns .bprim { background: #40bd00; border-color: #40bd00; color: #fff; }
   .flist { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; } .frow { background: #172034; border: 1px solid #2c3850; border-radius: 6px; padding: 10px 12px; display: grid; grid-template-columns: 1fr auto auto auto; gap: 10px; align-items: center; cursor: pointer; }
@@ -393,6 +393,17 @@ body.fp canvas#scene{cursor:grab}
   .frow, .bfolder, .mlsum, .mlask, .scard { border-radius: 10px; }
   .frow:hover { border-color: #3a4760; }
   :where(#filePanel, #boardPanel, #serverPanel, #mailPanel) button { color: var(--text); }
+  /* File Room rows: name and what it is on the left; who uses it as small tags, a quiet + to add, the switch; delete only on hover */
+  #filePanel { width: min(980px, calc(100vw - 420px)); min-width: 620px; }
+  .frow { grid-template-columns: minmax(0, 1fr) auto auto auto; padding: 12px 14px; gap: 14px; }
+  .fmain b { font-size: 13.5px; } .fmain .bsub { margin-top: 2px; line-height: 1.45; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .fagents { max-width: 300px; justify-content: flex-end; gap: 5px; }
+  .chipA { background: #1f2a40 !important; color: var(--text); border: 1px solid #2c3850; padding: 2px 4px 2px 8px; font-weight: 500; font-size: 12px; }
+  .chipA button { background: none !important; border: 0 !important; color: var(--muted) !important; padding: 0 3px !important; font-size: 13px !important; line-height: 1; cursor: pointer; }
+  .chipA button:hover { color: var(--red) !important; }
+  .fagents select { width: auto; padding: 3px 24px 3px 9px; font-size: 12px; border: 1px dashed #3a4760; background-color: transparent; color: var(--muted); border-radius: 10px; background-position: calc(100% - 12px) 50%, calc(100% - 8px) 50%; }
+  .frow .fx { opacity: 0; transition: opacity .15s; } .frow:hover .fx { opacity: 1; } .fx:hover { color: var(--red) !important; }
+  .fhead { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 6px; } .fhead h3 { margin: 0 0 2px; font-size: 18px; }
   :where(#filePanel, #boardPanel, #serverPanel, #mailPanel) button:not([class]) { background: #172034; border: 1px solid #2c3850; border-radius: 8px; padding: 6px 10px; font: inherit; font-size: 12.5px; cursor: pointer; }
 </style>
 <script type="importmap">
