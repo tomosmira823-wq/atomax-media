@@ -1,6 +1,7 @@
 // The Jobs screen: home for engineering work. Left: the jobs. Right: "Waiting on you" across every job, or one job's flow:
 // Deliverables (each made by its agent, checked by Cal) · Inputs & setup · Comments (revisions) · Issue.
 import { renderJobDesk } from './jobdeskui.js';
+import { renderSkillPicker } from './skillpicker.js';
 const $ = (s, r = document) => r.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const clean = (e) => String(e && e.message || e).replace(/^Error invoking remote method '[^']+': (Error: )?/, '');
@@ -64,7 +65,7 @@ export function initJobsUI({ api, getAgents, openIssue, onWorkOn }) {
       ${rows.length ? `<div class="jbbar"><button class="jbbtn primary" id="jbAll" ${rows.some(r => r.agent && !r.work && (masterOk || !['bcd', 'schedule'].includes(r.kind))) ? '' : 'disabled'}>Make everything not made yet</button><button class="jbbtn" id="jbCheck" ${made ? '' : 'disabled'}>Cal: check the drawings</button><span class="bsub">Each row: the agent makes it, Cal checks it, then it goes in the issue pack.</span></div>` : ''}
       <div class="jbrows">${rows.map(r => { const w = r.work;
         return `<div class="jbrow">
-          <div class="c1"><b>${esc(r.no)}</b><span>${esc(r.title)}</span>${w && w.summary && w.status !== 'made' ? `<i>${esc(w.summary)}</i>` : ''}${w && w.warning ? `<i class="warn">${esc(w.warning)}</i>` : ''}</div>
+          <div class="c1"><b>${esc(r.num)}</b><span>${esc(r.ctitle)}</span>${w && w.summary && w.status !== 'made' ? `<i>${esc(w.summary)}</i>` : ''}${w && w.warning ? `<i class="warn">${esc(w.warning)}</i>` : ''}</div>
           <div class="c2">${r.agent ? esc(r.agent) : '<span class="bsub">by hand</span>'}</div>
           <div class="c3">${chip(w)}${w && w.rev && w.files ? `<span class="st">${esc(w.rev)}</span>` : ''}${w && w.check ? `<span class="st st-${w.check.status === 'passed' ? 'made' : w.check.status === 'working' ? 'working' : 'needsyou'}">${w.check.status === 'passed' ? 'Checked ✓' : w.check.status === 'working' ? 'Checking…' : `Check: ${w.check.count} to look at`}</span>` : ''}</div>
           <div class="c4">${files(w)}${w && w.check && w.check.markups ? `<button class="jbfile" data-show="${esc(w.check.markups)}">MARKUPS</button>` : ''}</div>
@@ -74,9 +75,25 @@ export function initJobsUI({ api, getAgents, openIssue, onWorkOn }) {
     if ($('#jbToMaster')) $('#jbToMaster').onclick = () => { tab = 'setup'; renderJob(); };
     if ($('#jbAll')) $('#jbAll').onclick = () => act(() => api.jobs.makeAll({ jobId: O.job.id }), 'Making the deliverables…');
     if ($('#jbCheck')) $('#jbCheck').onclick = () => act(async () => { const r = await api.jobs.check({ jobId: O.job.id }); msg = `Cal checked against ${r.schedule}: ${r.headline || ''} ${r.findings} to look at.`; }, 'Cal is checking…');
-    el.querySelectorAll('[data-make]').forEach(b => b.onclick = () => act(() => api.jobs.make({ jobId: O.job.id, no: b.dataset.make }), `${b.dataset.make}: on it…`));
+    el.querySelectorAll('[data-make]').forEach(b => b.onclick = () => prep(b.closest('.jbrow'), b.dataset.make));
     el.querySelectorAll('[data-answer]').forEach(b => b.onclick = () => { const box = b.closest('.jbq'), qs = O.rows.find(r => r.no === b.dataset.answer).work.questions; const answers = qs.map((q, i) => ({ q, a: box.querySelector(`[data-ans="${i}"]`).value })); act(() => api.jobs.make({ jobId: O.job.id, no: b.dataset.answer, answers }), 'Sent. Working…'); });
     wireFiles(el);
+  }
+  // before an agent starts: what it will be asked (editable), the skills it will use (tick / untick), the inputs it will read
+  async function prep(rowEl, no) {
+    document.querySelectorAll('.jbprep').forEach(x => x.remove());
+    const box = document.createElement('div'); box.className = 'jbprep'; box.innerHTML = '<div class="bsub">Getting ready…</div>'; rowEl.appendChild(box);
+    let P; try { P = await api.jobs.plan({ jobId: O.job.id, no }); } catch (e) { box.innerHTML = `<div class="bsub">${esc(clean(e))}</div>`; return; }
+    box.innerHTML = `<div class="jbprep-g"><div><label>What ${esc(P.agent)} will do</label><textarea id="jpReq" rows="3">${esc(P.request)}</textarea>
+        <div class="bsub">Drawing number: <b>${esc(P.number || 'next free QS 006 number')}</b></div>
+        <label>Inputs ${esc(P.agent)} will read from the job folder</label><div class="jpin">${P.inputs.length ? P.inputs.map(f => `<span>${esc(f)}</span>`).join('') : `<i class="warn">${P.folder ? 'Nothing matching found in the folder: add the inputs, then Read folder again in Inputs & setup' : 'No project folder linked'}</i>`}</div></div>
+      <div id="jpSkills"></div></div>
+      <div class="jbbar"><button class="jbbtn primary" id="jpGo">Start ${esc(P.agent)}</button><button class="jbbtn" id="jpCancel">Cancel</button></div>`;
+    let picker = null;   // until the skills have loaded, Start uses the agent's usual skills for this kind of drawing
+    box.querySelector('#jpCancel').onclick = () => box.remove();
+    box.querySelector('#jpGo').onclick = () => { const request = box.querySelector('#jpReq').value.trim(), skills = picker ? picker.selected() : undefined; act(() => api.jobs.make({ jobId: O.job.id, no, request, skills }), `${no}: ${P.agent} is on it…`); };
+    box.querySelector('#jpSkills').innerHTML = '<div class="skp"><div class="skp-h">Skills for this run <span>loading…</span></div></div>';
+    const DK = api.drawKinds; picker = await renderSkillPicker(api, box.querySelector('#jpSkills'), P.agentId, { uncheck: (i) => DK && ['bcd', 'sld', 'earthing'].includes(P.kind) ? !DK.skillFit(i, P.kind) : false });
   }
   function wireFiles(el) {
     el.querySelectorAll('[data-open]').forEach(b => b.onclick = () => api.desk.open({ p: b.dataset.open }));

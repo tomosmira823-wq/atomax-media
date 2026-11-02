@@ -16,6 +16,11 @@ function kindOf(d) {
   return { agent: '', kind: 'manual', verb: '' };   // termination / interconnection / layouts: not made by an agent yet
 }
 
+const QS = /X\d{4,6}(?:-[A-Z0-9]{2,4}){2,5}-\d{4}/i;   // the drawing number however the job writes it
+const realNo = (d) => /^TBC-/i.test(d.no) ? ((String(d.title).match(QS) || [])[0] || '') : d.no;
+const cleanTitle = (d) => String(d.title).replace(QS, '').replace(/\(\s*\)/g, '').replace(/\s+P\d{1,2}\s*$/i, '').replace(/\s{2,}/g, ' ').trim();
+const AGENT_ID = { Dex: 'dex', Lex: 'excel', Wren: 'word' };
+
 function register({ ipcMain, HANDLERS, BIZ }) {
   const desk = require('./jobdesk');
   const call = (ch, args) => { const h = HANDLERS[ch]; if (!h) throw new Error('Not available: ' + ch); return h({ sender: null }, args); };
@@ -25,13 +30,29 @@ function register({ ipcMain, HANDLERS, BIZ }) {
   const wrap = (fn) => async (_e, a) => { try { return await fn(a || {}); } catch (e) { throw new Error(String(e && e.message || e)); } };
 
   function overview(jobId) {
+    { // a TBC number on the list with the real drawing number written in its title: the list gets the real number
+      const job = jobOf(jobId); let changed = false; const dd = desk.load(jobId);
+      for (const d of job.drawings) { const real = realNo(d); if (/^TBC-/i.test(d.no) && real && !job.drawings.some(x => x !== d && x.no.toUpperCase() === real.toUpperCase())) { if (dd.deliv && dd.deliv[d.no]) { dd.deliv[real] = dd.deliv[d.no]; delete dd.deliv[d.no]; } d.no = real; d.title = cleanTitle(d) || d.title; changed = true; } }
+      if (changed) { desk.saveRaw(jobId, dd); require('./business').saveJob(BIZ.data(), job, 'Office'); BIZ.store.save(); }
+    }
     const job = jobOf(jobId), V = desk.view(jobId), dl = delivOf(jobId);
-    const rows = job.drawings.filter(d => !/cancel|superseded/i.test(d.status)).map(d => ({ ...d, ...kindOf(d), work: dl[d.no] || null }));
+    const rows = job.drawings.filter(d => !/cancel|superseded/i.test(d.status)).map(d => ({ ...d, ...kindOf(d), num: realNo(d) || d.no, ctitle: cleanTitle(d) || d.title, work: dl[d.no] || null }));
     return { job: { id: job.id, number: job.number, name: job.name, client: job.client, folder: job.folder, status: job.status }, desk: V, rows, needsMaster: rows.some(r => r.kind === 'bcd' || r.kind === 'schedule') };
   }
 
   // make one deliverable with the agent for its kind
-  async function make({ jobId, no, answers = [], note = '', revision = null }) {
+  // what the agent will be asked, and what it will read: shown on the row before it starts
+  function plan({ jobId, no }) {
+    const job = jobOf(jobId), d = job.drawings.find(x => x.no === no); if (!d) throw new Error('Not on the drawing list: ' + no);
+    const k = kindOf(d), num = realNo(d), title = cleanTitle(d);
+    const request = k.agent === 'Dex' ? `${k.verb}: ${title}${num ? ` (drawing ${num})` : ''}. Use the job's inputs, every item on them for this drawing and nothing else.`
+      : k.agent === 'Lex' ? `${k.verb} ${title} for job ${job.number}${num ? ` (document ${num})` : ''} from the job's inputs and the approved master device list. House template from your skill.`
+      : `${k.verb} ${title} for job ${job.number}${num ? ` (document ${num})` : ''} from the job's inputs.`;
+    const want = k.kind === 'bcd' ? 'cable schedule instrument index io list bcd' : k.kind === 'sld' ? 'single line sld load schedule cable schedule protection' : k.kind === 'earthing' ? 'earthing cable schedule' : k.kind === 'schedule' ? 'cable schedule instrument index io list' : title;
+    const inputs = job.folder ? BIZ.projects.relevantFiles(job.id, title + ' ' + want, { exts: ['.pdf', '.xlsx', '.xlsm', '.csv'], max: 6 }).map(p => path.basename(p)) : [];
+    return { agent: k.agent, agentId: AGENT_ID[k.agent] || '', kind: k.kind, number: num, title, request, inputs, folder: job.folder || '' };
+  }
+  async function make({ jobId, no, answers = [], note = '', revision = null, request: asked = '', skills }) {
     const job = jobOf(jobId), d = job.drawings.find(x => x.no === no); if (!d) throw new Error('Not on the drawing list: ' + no);
     const k = kindOf(d); if (!k.agent) throw new Error(`No agent makes ${d.title} yet. Do this one by hand.`);
     const prev = delivOf(jobId)[no] || {};
@@ -40,14 +61,14 @@ function register({ ipcMain, HANDLERS, BIZ }) {
     try {
       let r, files = [], pdfs = [];
       if (k.agent === 'Dex') {
-        r = await call('dex:make', { jobId, drawingNumber: no, request: `${k.verb}: ${d.title} (drawing ${no}). Use the job's inputs, every item on them for this drawing and nothing else.${note ? ' ' + note : ''}`, answers, revision });
+        const P = plan({ jobId, no }); r = await call('dex:make', { jobId, drawingNumber: P.number, request: (asked || P.request) + (note ? ' ' + note : ''), answers, revision, skills });
         if (r.questions) return setDeliv(jobId, no, { status: 'needs you', questions: r.questions, summary: 'Dex has questions' });
         files = (r.sheets && r.sheets.length ? r.sheets.map(s => s.path) : [r.path]).filter(Boolean); pdfs = r.pdfs || [];
       } else if (k.agent === 'Lex') {
-        r = await call('o365:excel', { jobId, request: `${k.verb} ${d.title} for job ${job.number} (document ${no}) from the job's inputs and the approved master device list. House template from your skill.${note ? ' ' + note : ''}` });
+        r = await call('o365:excel', { jobId, request: (asked || plan({ jobId, no }).request) + (note ? ' ' + note : ''), skills });
         files = [r.path].filter(Boolean);
       } else {
-        r = await call('o365:word', { jobId, request: `${k.verb} ${d.title} for job ${job.number} (document ${no}) from the job's inputs.${note ? ' ' + note : ''}` });
+        r = await call('o365:word', { jobId, request: (asked || plan({ jobId, no }).request) + (note ? ' ' + note : ''), skills });
         files = [r.path].filter(Boolean);
       }
       return setDeliv(jobId, no, { status: r.incomplete ? 'needs you' : 'made', questions: null, files, pdfs, rev: r.revision || d.rev || '', summary: (r.incomplete ? 'CUT SHORT: ' : '') + (r.summary || 'Made'), notes: r.notes || [], warning: r.borderWarning || '' });
@@ -92,6 +113,7 @@ function register({ ipcMain, HANDLERS, BIZ }) {
   }
 
   ipcMain.handle('jobs:overview', wrap(({ jobId }) => overview(jobId)));
+  ipcMain.handle('jobs:plan', wrap((a) => plan(a)));
   ipcMain.handle('jobs:make', wrap((a) => make(a)));
   ipcMain.handle('jobs:makeAll', wrap(async ({ jobId }) => { const o = overview(jobId), done = [], masterOk = o.desk.master && o.desk.master.status === 'approved'; for (const r of o.rows.filter(r => r.agent && (!r.work || ['failed'].includes(r.work.status)) && (masterOk || !['bcd', 'schedule'].includes(r.kind)))) { try { await make({ jobId, no: r.no }); done.push(r.no); } catch {} } return { done, overview: overview(jobId) }; }));
   ipcMain.handle('jobs:check', wrap((a) => check(a)));
