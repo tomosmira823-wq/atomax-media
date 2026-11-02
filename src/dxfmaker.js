@@ -20,7 +20,8 @@ const SYMBOLS = {
   contactor: () => ({ len: 14, w: 3.5, prims: [L(0, 0, 0, -3.2), { t: 'arc', x: 0, y: -4, r: 0.8, a0: 90, a1: 270, layer: 'SLD-SYMBOL' }, L(0, -10, -3, -4.6), L(0, -10, 0, -14)] }),
   fuse: () => ({ len: 14, w: 1.5, prims: [L(0, 0, 0, -3), P([[-1.2, -3], [1.2, -3], [1.2, -11], [-1.2, -11]], true), L(0, -3, 0, -11), L(0, -11, 0, -14)] }),
   switchfuse: () => ({ len: 16, w: 3.5, prims: [L(0, 0, 0, -3), L(-1.2, -3, 1.2, -3), L(0, -9, -3, -3.6), P([[-1.2, -9], [1.2, -9], [1.2, -14], [-1.2, -14]], true), L(0, -9, 0, -16)] }),
-  transformer: () => ({ len: 21, w: 5.5, prims: [L(0, 0, 0, -2), C(0, -7, 5), C(0, -14, 5), L(0, -19, 0, -21)] }),
+  // the Atomax transformer: two overlapping circles, an open delta in the HV winding and a plain star (Y) in the LV winding
+  transformer: () => ({ len: 30, w: 7, prims: [L(0, 0, 0, -2), C(0, -9, 7), C(0, -21, 7), P([[0, -6.2], [3.2, -11.4], [-3.2, -11.4]], true), L(0, -21, 0, -25), L(0, -21, -3.4, -18.9), L(0, -21, 3.4, -18.9), L(0, -28, 0, -30)] }),
   ct: () => ({ len: 8, w: 2.5, prims: [L(0, 0, 0, -8), C(0, -4, 1.8)] }),
   meter: () => ({ len: 14, w: 4.5, prims: [L(0, 0, 0, -3), C(0, -7, 4), T(0, -7.9, 'kWh', TH), L(0, -11, 0, -14)] }),
   cable: () => ({ len: 16, w: 1.5, prims: [L(0, 0, 0, -16, 'SLD-CABLE'), L(-1.2, -7, 1.2, -9, 'SLD-CABLE')] }),
@@ -54,7 +55,7 @@ const HOUSE = (() => { try { return JSON.parse(fs.readFileSync(path.join(__dirna
 const house = (name, extra = {}) => () => { const s = HOUSE[name]; const ins = { t: 'insert', name, x: 0, y: 0, layer: 'SLD-SYMBOL', prims: s.prims }; return { len: -s.bbox[1], w: Math.max(2, s.bbox[2]), house: name, ...extra, prims: extra.text ? [ins, T(0, s.bbox[1] / 2 - 0.9, extra.text, 3)] : [ins] }; };
 if (HOUSE.MCCB) Object.assign(SYMBOLS, {
   breaker: house('MCCB'), mcb: house('MCB'), isolator: house('ISOLATOR DISCONNECTOR'), switch: house('SWITCH DISCONNECTOR'), switchfuse: house('FUSED SWITCH DISCONNECTOR'),
-  fuse: house('FUSE'), contactor: house('CONTACTOR1'), motor: house('MOTOR', { end: true, text: 'M' }), load: house('LOAD', { end: true }), transformer: house('HV-LV TRANSFORMER'),
+  fuse: house('FUSE'), contactor: house('CONTACTOR1'), motor: house('MOTOR', { end: true, text: 'M' }), load: house('LOAD', { end: true }),
 });
 ALIASES.mcb = HOUSE.MCB ? 'mcb' : 'breaker'; ALIASES.switch = HOUSE.MCCB ? 'switch' : 'isolator'; ALIASES['switch disconnector'] = ALIASES.switch; ALIASES.disconnector = ALIASES.switch;
 const symbolOf = (name) => { const n = String(name || '').toLowerCase().trim(); return SYMBOLS[n] ? n : ALIASES[n] || (SYMBOLS[n.replace(/s$/, '')] ? n.replace(/s$/, '') : 'line'); };
