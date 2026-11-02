@@ -591,6 +591,7 @@ function goRoom(where) {
   document.body.classList.toggle('room-side', inSide);
   document.body.classList.toggle('room-drawing', inDraw);
   document.body.classList.toggle('room-board', where === 'board');
+  document.body.classList.toggle('room-overview', where === 'overview');
   document.body.classList.toggle('room-modeling', inModel);
   const navKey = inModel ? 'modeling' : inDraw ? 'drawing' : where === 'media' ? 'media' : where === 'file' ? 'file' : where === 'server' ? 'server' : where === 'o365' ? 'o365' : 'overview';
   document.querySelectorAll('#rooms button').forEach(b => b.classList.toggle('active', b.dataset.room === navKey));
