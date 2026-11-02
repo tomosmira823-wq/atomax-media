@@ -178,7 +178,7 @@ function importSkills(paths) {
     for (const e of ents) {
       const full = path.join(dir, e.name);
       if (e.isFile() && /\.(skill|zip)$/i.test(e.name)) fromFile(full);
-      else if (e.isDirectory() && depth < 2 && !e.name.startsWith('.')) walk(full, depth + 1);
+      else if (e.isDirectory() && depth < 2 && !/^[._]|backup|old|archive/i.test(e.name)) walk(full, depth + 1);   // backup / old copies are not imported over the real ones
     }
   };
   for (const p of [].concat(paths || [])) { let st; try { st = fs.statSync(p); } catch { continue; } if (st.isDirectory()) walk(p, 0); else fromFile(p); }
