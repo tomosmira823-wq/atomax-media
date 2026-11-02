@@ -1036,6 +1036,20 @@ export class Office {
     this.projTex.needsUpdate = true;
   }
 
+  // which room a floor point is in, as a pick name the app understands
+  roomAt(x, z) {
+    const inR = (r) => x >= r.x0 && x <= r.x1 && z >= r.z0 && z <= r.z1;
+    if (x >= -ROOM_W / 2 && x <= ROOM_W / 2 && z >= -ROOM_D / 2 && z <= ROOM_D / 2) return 'media';
+    if (inR(DRAW)) return 'door';
+    if (MODEL && x >= MODEL.x0 && x <= MODEL.x1 && z >= -ROOM_D / 2 && z <= ROOM_D / 2) return 'modeldoor';
+    if (inR(O365)) return 'o365room';
+    if (inR(RECEP)) return 'email';
+    if (inR(DOCS)) return 'docs';
+    if (inR(MEET)) return 'board';
+    if (this.newRooms && inR(FILE)) return 'fileroom';
+    if (this.newRooms && inR(SERVER)) return 'serverroom';
+    return null;
+  }
   focus(where, ms = 1100) {
     if (this.fp) this.exitFirstPerson(true);
     const [dx, dz] = DRAW_DESK;
@@ -1089,6 +1103,8 @@ export class Office {
         for (const [role, roots] of Object.entries(this.modRoots)) if (roots.length && this.ray.intersectObjects(roots, true).some(h => visibleChain(h.object))) return role === 'modeller' ? 'modeler' : role === 'builder' ? 'builder' : 'modelcheck';
       }
       if (this.room === 'modeling' && this.modelRoom && this.ray.intersectObjects(this.modelRoom.clickRoots, true).some(h => visibleChain(h.object))) return 'scan';
+      // from the overview, clicking anywhere on a room (its floor, walls or furniture) goes into it
+      if (wide) { const hit = new THREE.Vector3(); if (this.ray.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), -0.05), hit)) { const r = this.roomAt(hit.x, hit.z); if (r && r !== this.room) return r; } }
       return null;
     };
     this.canvas.addEventListener('pointerdown', (e) => { this.down = { x: e.clientX, y: e.clientY, t: performance.now() }; if (this.tween && !this.fp) { this.tween = null; this.controls.enabled = true; } }, true);

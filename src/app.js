@@ -616,6 +616,8 @@ function routeRoomPick(what) {
   if (what === 'email') { goRoom('email'); return true; }
   if (what.startsWith('o365:')) { const r = what.slice(5); goRoom('o365'); o365UI.show(r); return true; }
   if (what === 'serverroom') { goRoom('server'); return true; }
+  if (what === 'o365room') { goRoom('o365'); return true; }
+  if (what === 'media') { goRoom('media'); return true; }
   if (what.startsWith('cabinet:')) { const k = what.slice(8); goRoom('file'); roomsUI.showFile(k); office.openCabinet(k); return true; }
   if (what.startsWith('rack:')) { goRoom('server'); return true; }
   return false;
