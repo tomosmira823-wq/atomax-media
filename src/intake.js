@@ -389,8 +389,16 @@ EARTHING tasks: size every protective / earth conductor the drawing needs (MET t
     // a big site needs a long spec: give room, retry with more if it is cut off, and never pass off a cut-off spec as complete
     let r = await claudeFull({ system, who: 'dex', skills: false, maxTokens: 12000, messages: [{ role: 'user', content }] });
     if (r.stop === 'max_tokens') r = await claudeFull({ system: system + '\nKeep labels short (four lines at most) and give a feeder label only when it adds something the end item label does not say.', who: 'dex', skills: false, maxTokens: 24000, messages: [{ role: 'user', content }] });
-    const text = r.text, cutOff = r.stop === 'max_tokens';
-    const spec = dxfmaker.parseReply(text);
+    let text = r.text, cutOff = r.stop === 'max_tokens';
+    // a reply that still cannot be read (a stray quote or bracket the repair cannot place): kept for a look, and Dex is asked once to send it again as strict JSON
+    let spec;
+    try { spec = dxfmaker.parseReply(text); }
+    catch (err) {
+      try { const dd = path.join(userDir(), 'dxf-made'); fs.mkdirSync(dd, { recursive: true }); fs.writeFileSync(path.join(dd, `dex-reply-${Date.now()}.txt`), String(text || '')); } catch {}
+      const again = await claudeFull({ system, who: 'dex', skills: false, maxTokens: 24000, messages: [{ role: 'user', content }, { role: 'assistant', content: String(text || '').slice(0, 60000) }, { role: 'user', content: `That reply is not valid JSON (${String(err.message || err).slice(0, 120)}). Send the same drawing spec again as strict JSON only: escape any " inside text as \\", commas between every item, no markdown.` }] });
+      text = again.text; cutOff = again.stop === 'max_tokens';
+      try { spec = dxfmaker.parseReply(text); } catch (err2) { throw new Error(`Dex's reply could not be read twice (${String(err2.message || err2).slice(0, 100)}). Press Make again.`); }
+    }
     if (spec.questions && spec.questions.length && !answers.length) return { questions: spec.questions.slice(0, 4).map(String), read: [...pdfs.map(p => path.basename(p)), ...sheetsRead, ...notesRead], skills: used };
     if (kind === 'bcd' || (Array.isArray(spec.cables) && spec.cables.length && !spec.boards)) spec.kind = 'bcd';
     // National Grid jobs and LVAC block diagrams use the National Grid style (filled energised / de-energised blocks, coloured cable runs, legend)

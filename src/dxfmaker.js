@@ -800,17 +800,29 @@ function repairJson(raw) {
   const a = s.indexOf('{'); if (a < 0) throw new Error('no JSON in the reply');
   s = s.slice(a);
   let out = '', inStr = false, esc = false; const stack = [];
-  for (const ch of s) {
+  const lastSig = () => { for (let k = out.length - 1; k >= 0; k--) if (!/\s/.test(out[k])) return out[k]; return ''; };
+  const nextSig = (i) => { for (let k = i + 1; k < s.length; k++) if (!/\s/.test(s[k])) return s[k]; return ''; };
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i];
     if (inStr) {
       if (esc) { out += ch; esc = false; continue; }
       if (ch === '\\') { out += ch; esc = true; continue; }
-      if (ch === '"') { inStr = false; out += ch; continue; }
+      if (ch === '"') {
+        // a quote inside a label (e.g. Q1 "CLOSED") is part of the text; only a quote followed by , : } ] (or the end) closes the string
+        const n = nextSig(i);
+        let closes = n === '' || ',:}]'.includes(n);
+        if (n === '"') { const j = s.indexOf('"', i + 1), after = nextSig(j); closes = !(after === '' || ',:}]'.includes(after)); }   // ""} : the first quote is text, the second closes; "a" "b" : a missing comma
+        if (closes) { inStr = false; out += ch; } else out += '\\"';
+        continue;
+      }
       if (ch === '\n') { out += '\\n'; continue; }
       if (ch === '\r') continue;
       if (ch === '\t') { out += '\\t'; continue; }
       if (ch < ' ') continue;
       out += ch; continue;
     }
+    // a missing comma between two items ("a" "b", } {, ] [ ...)
+    if (/["{\[0-9tfn-]/.test(ch) && /["}\]0-9el]/.test(lastSig()) && !(/[0-9el]/.test(lastSig()) && /[0-9.eE+-]/.test(ch) && /[0-9.eE+-]$/.test(out))) out += ',';
     if (ch === '"') { inStr = true; out += ch; continue; }
     if (ch === '{' || ch === '[') stack.push(ch === '{' ? '}' : ']');
     else if (ch === '}' || ch === ']') { stack.pop(); out += ch; if (!stack.length) break; continue; }
