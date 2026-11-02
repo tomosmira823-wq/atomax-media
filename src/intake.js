@@ -319,6 +319,7 @@ EARTHING tasks: size every protective / earth conductor the drawing needs (MET t
     const lib = library.list('skills');
     // by default only the skills made for THIS kind of drawing (an SLD skill is not used for earthing), plus general CAD house rules; none if nothing fits
     const DK = require('./drawkinds'), kind = DK.kindOf(request);
+    if (kind === 'termination') throw new Error('Dex cannot draw termination diagrams yet. The Atomax termination skill is in the File Room ready for when he can (send Claude your termination examples).');
     const picked = (Array.isArray(skills) ? skills.map(f => { const i = lib.find(x => x.file === f); return i ? { name: i.name, file: i.file, text: library.readText('skills', i.file).trim() } : null; }).filter(x => x && x.text) : all.filter(sk => { const fit = DK.skillFit({ ...sk, description: (lib.find(x => x.file === sk.file) || {}).description }, kind); return fit || (wantsFix && /fix/i.test(sk.name) && !DK.skillKinds(sk).some(k => k !== kind)) || (wantsSheets && /excel|xlsx|spreadsheet/i.test(sk.name + ' ' + sk.file)); })).sort((a, b) => rank(a) - rank(b));
     let room = 30000; const used = [];
     const skillText = picked.map(sk => { if (room <= 0) return ''; const t = sk.text.slice(0, room); room -= t.length; used.push(sk.name + (t.length < sk.text.length ? ' (cut short)' : '')); return `--- SKILL: ${sk.name} ---\n${t}`; }).filter(Boolean).join('\n\n');

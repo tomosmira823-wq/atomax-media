@@ -5,6 +5,7 @@ const KINDS = [
   ['loop', /\bloop\b/i, 'loop diagram'],
   ['layout', /layout|general arrangement|\bga\b|cable route/i, 'layout'],
   ['sld', /\bsld\b|single.?line|one.?line/i, 'single line diagram'],
+  ['termination', /terminat/i, 'termination diagram'],
 ];
 const GENERAL = /dxf|cad|drawing|layer|title block|text height/i;
 const kindOf = (text) => (KINDS.find(k => k[1].test(text || '')) || KINDS.find(k => k[0] === 'sld'))[0];
