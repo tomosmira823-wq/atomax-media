@@ -50,18 +50,21 @@ function register({ ipcMain, HANDLERS, BIZ }) {
       : `${k.verb} ${title} for job ${job.number}${num ? ` (document ${num})` : ''} from the job's inputs.`;
     const want = k.kind === 'bcd' ? 'cable schedule instrument index io list bcd' : k.kind === 'sld' ? 'single line sld load schedule cable schedule protection' : k.kind === 'earthing' ? 'earthing cable schedule' : k.kind === 'schedule' ? 'cable schedule instrument index io list' : title;
     const inputs = job.folder ? BIZ.projects.relevantFiles(job.id, title + ' ' + want, { exts: ['.pdf', '.xlsx', '.xlsm', '.csv'], max: 6 }).map(p => path.basename(p)) : [];
-    return { agent: k.agent, agentId: AGENT_ID[k.agent] || '', kind: k.kind, number: num, title, request, inputs, folder: job.folder || '' };
+    // drawn / checked / approved: this drawing's from last time, else the last ones used on the job
+    const dl = delivOf(jobId), people = (dl[no] || {}).people || Object.values(dl).map(x => x.people).filter(Boolean).pop() || null;
+    return { agent: k.agent, agentId: AGENT_ID[k.agent] || '', kind: k.kind, number: num, title, request, inputs, folder: job.folder || '', people };
   }
-  async function make({ jobId, no, answers = [], note = '', revision = null, request: asked = '', skills }) {
+  async function make({ jobId, no, answers = [], note = '', revision = null, request: asked = '', skills, people }) {
     const job = jobOf(jobId), d = job.drawings.find(x => x.no === no); if (!d) throw new Error('Not on the drawing list: ' + no);
     const k = kindOf(d); if (!k.agent) throw new Error(`No agent makes ${d.title} yet. Do this one by hand.`);
     const prev = delivOf(jobId)[no] || {};
     if (answers && answers.length) answers = [...(prev.answers || []).filter(p => !answers.some(a => a.q === p.q)), ...answers]; else answers = prev.answers || [];   // answers given once are kept for remakes and revisions
-    setDeliv(jobId, no, { status: 'working', agent: k.agent, summary: `${k.agent} is on it`, answers });
+    people = people || prev.people || {};   // drawn / checked / approved, kept for remakes and revisions
+    setDeliv(jobId, no, { status: 'working', agent: k.agent, summary: `${k.agent} is on it`, answers, people });
     try {
       let r, files = [], pdfs = [];
       if (k.agent === 'Dex') {
-        const P = plan({ jobId, no }); r = await call('dex:make', { jobId, drawingNumber: P.number, request: (asked || P.request) + (note ? ' ' + note : ''), answers, revision, skills });
+        const P = plan({ jobId, no }); r = await call('dex:make', { jobId, drawingNumber: P.number, request: (asked || P.request) + (note ? ' ' + note : ''), answers, revision, skills, drawn: people.drawn || '', checked: people.checked || '', approved: people.approved || '' });
         if (r.questions) return setDeliv(jobId, no, { status: 'needs you', questions: r.questions, summary: 'Dex has questions' });
         files = (r.sheets && r.sheets.length ? r.sheets.map(s => s.path) : [r.path]).filter(Boolean); pdfs = r.pdfs || [];
       } else if (k.agent === 'Lex') {

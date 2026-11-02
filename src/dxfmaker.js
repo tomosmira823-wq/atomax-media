@@ -37,8 +37,17 @@ const SYMBOLS = {
   link: () => ({ len: 12, w: 2, prims: [L(0, 0, 0, -3), C(0, -3.8, 0.8), C(0, -8.2, 0.8), L(0.8, -3.8, 0.8, -8.2), L(0, -9, 0, -12)] }),
   grid: () => ({ len: 10, w: 5.5, end: true, prims: [L(0, 0, 0, -2), P([[-5, -2], [5, -2], [5, -10], [-5, -10]], true), L(-1.67, -2, -1.67, -10), L(1.67, -2, 1.67, -10), L(-5, -4.67, 5, -4.67), L(-5, -7.33, 5, -7.33)] }),
   line: () => ({ len: 8, w: 1, prims: [L(0, 0, 0, -8)] }),
+  // drives and starters: a box in the way between the protective device and the isolator / motor
+  vsd: () => ({ len: 16, w: 6, prims: [L(0, 0, 0, -2), P([[-6, -2], [6, -2], [6, -14], [-6, -14]], true), L(-6, -14, 6, -2), P(wave(-4.8, -5.4, 4)), P(wave(0.8, -11.2, 4)), L(0, -14, 0, -16)] }),
+  dol: () => ({ len: 16, w: 6, prims: [L(0, 0, 0, -2), P([[-6, -2], [6, -2], [6, -14], [-6, -14]], true), T(0, -9, 'DOL', TH), L(0, -14, 0, -16)] }),
+  softstarter: () => ({ len: 16, w: 6, prims: [L(0, 0, 0, -2), P([[-6, -2], [6, -2], [6, -14], [-6, -14]], true), T(0, -9, 'SS', TH), L(0, -14, 0, -16)] }),
+  // surge protection: a box with an arrow, earthed underneath
+  spd: () => ({ len: 18, w: 4, end: true, prims: [L(0, 0, 0, -2), P([[-3, -2], [3, -2], [3, -11], [-3, -11]], true), L(0, -3.5, 0, -9.5), P([[-1, -7.8], [0, -9.5], [1, -7.8]]), L(0, -11, 0, -14), L(-3, -14, 3, -14), L(-2, -15.3, 2, -15.3), L(-1, -16.6, 1, -16.6)] }),
+  // power factor correction: a capacitor bank
+  pfc: () => ({ len: 12, w: 4, end: true, prims: [L(0, 0, 0, -4), L(-4, -4, 4, -4), L(-4, -6, 4, -6), L(0, -6, 0, -8), L(-1.5, -8, 1.5, -8), L(-0.8, -9.2, 0.8, -9.2)] }),
 };
-const ALIASES = { mcb: 'breaker', mccb: 'breaker', acb: 'breaker', cb: 'breaker', vcb: 'breaker', rcbo: 'breaker', 'circuit breaker': 'breaker', switch: 'isolator', disconnector: 'isolator', 'switch disconnector': 'isolator', 'fuse switch': 'switchfuse', 'fused switch': 'switchfuse', tx: 'transformer', 'current transformer': 'ct', kwh: 'meter', 'distribution board': 'board', db: 'board', panel: 'board', mcc: 'board', dno: 'supply', incomer: 'supply', 'mains supply': 'supply', gen: 'generator', genset: 'generator', 'diesel generator': 'generator', conductor: 'line', rod: 'electrode', 'earth rod': 'electrode', 'earth electrode': 'electrode', 'test link': 'link', 'disconnecting link': 'link', 'earth link': 'link', mesh: 'grid', 'earth mesh': 'grid', 'earth mat': 'grid', 'earth grid': 'grid', equipment: 'board', inverter: 'board', switchgear: 'board', 'earth conductor': 'cable', bond: 'cable' };
+function wave(x, y, w) { const pts = []; for (let i = 0; i <= 8; i++) pts.push([x + w * i / 8, y + 0.8 * Math.sin(i / 8 * 2 * Math.PI)]); return pts; }
+const ALIASES = { mcb: 'breaker', mccb: 'breaker', acb: 'breaker', cb: 'breaker', vcb: 'breaker', rcbo: 'breaker', 'circuit breaker': 'breaker', switch: 'isolator', disconnector: 'isolator', 'switch disconnector': 'isolator', 'fuse switch': 'switchfuse', 'fused switch': 'switchfuse', tx: 'transformer', 'current transformer': 'ct', kwh: 'meter', 'distribution board': 'board', db: 'board', panel: 'board', mcc: 'board', dno: 'supply', incomer: 'supply', 'mains supply': 'supply', gen: 'generator', genset: 'generator', 'diesel generator': 'generator', conductor: 'line', rod: 'electrode', 'earth rod': 'electrode', 'earth electrode': 'electrode', 'test link': 'link', 'disconnecting link': 'link', 'earth link': 'link', mesh: 'grid', 'earth mesh': 'grid', 'earth mat': 'grid', 'earth grid': 'grid', equipment: 'board', inverter: 'board', switchgear: 'board', 'earth conductor': 'cable', bond: 'cable', 'variable speed drive': 'vsd', vfd: 'vsd', drive: 'vsd', 'inverter drive': 'vsd', 'dol starter': 'dol', 'direct on line starter': 'dol', starter: 'dol', 'motor starter': 'dol', 'soft starter': 'softstarter', 'soft start': 'softstarter', 'surge protection': 'spd', 'surge protection device': 'spd', 'surge protective device': 'spd', 'surge arrester': 'spd', 'power factor correction': 'pfc', capacitor: 'pfc', 'capacitor bank': 'pfc' };
 // Atomax / BGEN house symbols, taken from the SLD symbol template (Template_MCCB.dxf): top terminal at (0,0), drawn downwards, at the template's own scale (text height 2)
 const HOUSE = (() => { try { return JSON.parse(fs.readFileSync(path.join(__dirname, 'cad', 'symbols-sld.json'), 'utf8')); } catch { return {}; } })();
 // each house symbol is written as an INSERT of the real block (the block definitions are in the Atomax DXF template); previews draw the same geometry
@@ -79,6 +88,7 @@ function cableTag(label) {
 function drawChain(chain, x, y) {
   const prims = [];
   for (let item of chain || []) {
+    if (item.gap) { prims.push(L(x, y, x, y - item.gap, 'SLD-CABLE')); y -= item.gap; continue; }
     const kind = symbolOf(item.symbol), col = !PHASED ? 0 : STATUS_COLOUR[String(item.status || '').toLowerCase().trim()] || 0;
     const sym = kind === 'cable' && item.label ? cableTag(item.label) : SYMBOLS[kind]();
     if (sym.tagged) { const from = prims.length; sym.prims.forEach(p => prims.push(moved(p, x, y))); if (col) for (let i = from; i < prims.length; i++) prims[i] = { ...prims[i], colour: col }; y -= sym.len; continue; }
@@ -96,8 +106,9 @@ function drawChain(chain, x, y) {
       else prims.push({ t: 'mtext', x: x + sym.w + 2, y: y - 1.8, w: LABEL_W, h: TH, text: label.join('\n'), attach: 1, layer: 'SLD-TEXT' });
     }
     if (col) for (let i = from0; i < prims.length; i++) prims[i] = { ...prims[i], colour: col };
+    const labelBottom = label.length && !sym.inside ? y - 1.8 - label.length * LINE : y;
     y -= sym.len;
-    if (sym.end) return { y, prims, ended: true };
+    if (sym.end) return { y: Math.min(y, labelBottom - 1), prims, ended: true };
     // the label is taller than the symbol: carry the conductor on so the next symbol's label cannot touch this one
     const extra = Math.max(0, need - sym.len);
     if (extra > 0) { prims.push(L(x, y, x, y - extra, 'SLD-CABLE')); y -= extra; }
@@ -124,31 +135,46 @@ function feederLabelAdds(f) {
   return !(el.includes(fl) || fl.includes(firstTwo(el)) || el.includes(firstTwo(fl)));
 }
 
+// a feeder with no board under it, drawn at (fx, y): its chain, then its own label underneath when that adds something
+function drawSimple(f, fx, y, prims) {
+  const { items } = chainParts(f.chain), r = drawChain(items, fx, y); prims.push(...r.prims);
+  let yEnd = r.y;
+  if (feederLabelAdds(f)) { const tl = wrap(f.label, FEED - 6); prims.push({ t: 'mtext', x: fx - 3, y: yEnd - 3, w: FEED - 6, h: TH, text: tl.join('\n'), attach: 1, layer: 'SLD-TEXT' }); yEnd -= 4 + tl.length * LINE; }
+  return { yEnd, ended: r.ended, chainEnd: r.y };
+}
 function drawBoard(b, x0, y, prims, top) {
-  const w = boardWidth(b), bx1 = x0 + w;
-  let minY = y, maxY = y, maxX = bx1; const ixs = [];
-  // feeders, left to right in their slots
-  let cx = x0 + 5; const fxs = [];
-  for (const f of b.feeders || []) {
-    const fw = feederWidth(f), fx = cx + 10; fxs.push(fx);
-    const { items, sub } = chainParts(f.chain);
+  let minY = y, maxY = y, maxX = x0 + FEED + 20; const ixs = [];
+  // feeders, left to right at the feeder pitch. A board fed by a feeder (an MCC, a DB) is drawn underneath, reaching across under the
+  // neighbouring feeders and dropped below the deepest of them, so the drawing stays compact (it does not stretch the main board).
+  // A feeder that has its own board under it starts past the end of the board before it, so two sub-boards never share the space.
+  const fs = b.feeders || [], fxs = [], subs = [];
+  let cx = x0 + 5;
+  for (const f of fs) {
+    const { sub } = chainParts(f.chain);
+    if (sub) { const busy = subs.reduce((m, s) => Math.max(m, s.x1), -Infinity); if (busy > cx) cx = busy + 6; }
+    const fx = cx + 10; fxs.push(fx);
+    if (sub) { const sx0 = Math.min(cx, fx - 6); subs.push({ i: fxs.length - 1, x0: sx0, x1: sx0 + boardWidth(sub) }); }
+    cx += FEED;
+  }
+  // depths of the simple feeders (drawn into scratch to measure them)
+  const ext = fs.map((f, i) => { if (chainParts(f.chain).sub) return null; const tmp = [], d = drawSimple(f, fxs[i], y, tmp), bb = primsBounds(tmp); return { x0: Math.min(bb.x0, fxs[i] - 10), x1: Math.max(bb.x1, fxs[i] + 10), y0: Math.min(bb.y0, d.yEnd) }; });
+  fs.forEach((f, i) => {
+    const fx = fxs[i], { items, sub } = chainParts(f.chain);
+    if (!sub) { const d = drawSimple(f, fx, y, prims); minY = Math.min(minY, d.yEnd); maxX = Math.max(maxX, ext[i].x1); return; }
     const r = drawChain(items, fx, y); prims.push(...r.prims);
     let yEnd = r.y;
-    if (sub && !r.ended) {
-      // the conductor carries on down to the board it feeds; that board's name sits beside the conductor in the gap
-      const sl = wrap(sub.label || 'BOARD', Math.max(24, fw - 20));
-      const gap = Math.max(SUB_GAP_MIN, sl.length * LINE + 4);
-      prims.push(L(fx, yEnd, fx, yEnd - gap, 'SLD-CABLE'));
-      prims.push({ t: 'mtext', x: fx + 3, y: yEnd - 1.5, w: Math.max(24, fw - 20), h: TH, text: sl.join('\n'), attach: 1, layer: 'SLD-TEXT' });
-      const subX0 = Math.min(cx, fx - 6), d = drawBoard({ ...sub, label: '' }, subX0, yEnd - gap, prims, false);
-      yEnd = d.minY; maxX = Math.max(maxX, d.maxX);
-    } else if (feederLabelAdds(f)) {
-      const tl = wrap(f.label, FEED - 6); prims.push({ t: 'mtext', x: fx - 3, y: yEnd - 3, w: FEED - 6, h: TH, text: tl.join('\n'), attach: 1, layer: 'SLD-TEXT' });
-      yEnd -= 4 + tl.length * LINE;
+    if (!r.ended) {
+      // the conductor carries on down to the board it feeds; that board's name sits beside the conductor
+      const sl = wrap(sub.label || 'BOARD', 30);
+      const S = subs.find(s => s.i === i), under = ext.filter(e => e && e.x1 > S.x0 && e.x0 < S.x1);
+      const natural = yEnd - Math.max(SUB_GAP_MIN, sl.length * LINE + 4), subY = Math.min(natural, ...under.map(e => e.y0 - 10));
+      prims.push(L(fx, yEnd, fx, subY, 'SLD-CABLE'));
+      prims.push({ t: 'mtext', x: fx + 3, y: subY + 2 + sl.length * LINE, w: 30, h: TH, text: sl.join('\n'), attach: 1, layer: 'SLD-TEXT' });
+      const d = drawBoard({ ...sub, label: '' }, S.x0, subY, prims, false);
+      yEnd = d.minY; maxX = Math.max(maxX, d.maxX, S.x1);
     }
     minY = Math.min(minY, yEnd);
-    cx += fw;
-  }
+  });
   // incomers (top-level boards only) land on the bus clear of every feeder
   (b.incomers || []).forEach((c, i) => {
     let ix = (fxs.length ? (fxs[0] + fxs[fxs.length - 1]) / 2 : x0 + 20) + i * FEED; while (fxs.some(fx => Math.abs(fx - ix) < 8)) ix += 8; ixs.push(ix);
@@ -166,7 +192,7 @@ function drawBoard(b, x0, y, prims, top) {
     else prims.push({ t: 'mtext', x: busL - 3, y, w: 44, h: TH, text: bl.join('\n'), attach: 6, layer: 'SLD-TEXT' });   // left of the busbar, clear of the feeder labels on the right
     maxY = Math.max(maxY, y + 2 + bl.length * LINE);
   }
-  return { minY, maxY, maxX, w };
+  return { minY, maxY, maxX, w: maxX - x0 };
 }
 
 const SHEETS = [['A3', 420, 297], ['A2', 594, 420], ['A1', 841, 594], ['A0', 1189, 841]];
@@ -179,14 +205,23 @@ function layoutSld(spec, opts = {}) {
   if (PHASED && spec.phase && !/\bphase\b/i.test(spec.title || '')) spec.title = `${spec.title || ''} - PHASE ${String(spec.phase).replace(/^phase\s*/i, '')}`.trim();
   const prims = [], boards = spec.boards || spec.busbars || [];
   if (!boards.length) throw new Error('The drawing has no boards');
+  const kinds = new Set(), walk = (b) => { for (const c of [...(b.incomers || []), ...(b.feeders || [])]) for (const it of c.chain || []) { if (it.board) walk(it.board); else if (!it.gap) kinds.add(symbolOf(it.symbol)); } };
+  boards.forEach(walk); spec._kinds = [...kinds];
   let x0 = 0, minY = 0, maxY = 0, maxX = 0;
-  for (const b of boards) {
+  for (let b of boards) {
+    // in a switchroom / kiosk: every cable leaves the room at the same level, a little below the deepest item inside, so the dashed wall
+    // only ever crosses bare conductor (never a cable tag, a label or a symbol). Feeders with no cable stay wholly inside.
+    let wall = null;
+    if (b.enclosure) {
+      const firstCable = (items) => items.findIndex(it => !it.gap && symbolOf(it.symbol) === 'cable');
+      const depthOf = (items) => { if (!items.length) return 0; const r = drawChain(items, 0, 0), bb = primsBounds(r.prims); return Math.max(-r.y, Number.isFinite(bb.y0) ? -bb.y0 : 0); };
+      const D = Math.max(8, ...(b.feeders || []).map(f => { const { items } = chainParts(f.chain), k = firstCable(items); return depthOf(k >= 0 ? items.slice(0, k) : items); }));
+      wall = -D - 3;
+      b = { ...b, feeders: (b.feeders || []).map(f => { const chain = [...(f.chain || [])], { items } = chainParts(chain), k = firstCable(items); if (k < 0) return f; const h = k ? chainHeight(items.slice(0, k)) : 0; chain.splice(k, 0, { gap: D + 6 - h }); return { ...f, chain }; }) };
+    }
     const from = prims.length, d = drawBoard(b, x0, 0, prims, true);
-    if (b.enclosure) {   // a dashed box round the board and its incomers, named above it (the switchroom / kiosk / generator enclosure)
-      // the box ends above the first cable on each feeder: the cables leave the room
-      const inRoom = (f) => { const { items } = chainParts(f.chain), k = items.findIndex(it => symbolOf(it.symbol) === 'cable'); return chainHeight(k >= 0 ? items.slice(0, k) : items.filter(it => !(SYMBOLS[symbolOf(it.symbol)]().end))); };
-      const depth = Math.max(8, ...(b.feeders || []).map(inRoom)), cut = -depth - 2;
-      const bb = primsBounds(prims.slice(from).filter(p => primsBounds([p]).y0 >= cut - 0.5)), m = 6, ex0 = bb.x0 - m, ex1 = bb.x1 + m, ey0 = cut, ey1 = bb.y1 + m;
+    if (wall !== null) {   // a dashed box round the board and its incomers, named above it
+      const bb = primsBounds(prims.slice(from).filter(p => primsBounds([p]).y0 >= wall - 0.5)), m = 6, ex0 = bb.x0 - m, ex1 = bb.x1 + m, ey0 = wall, ey1 = bb.y1 + m;
       dashBox(prims, ex0, ey0, ex1, ey1, 'SLD-ENCLOSURE');
       prims.push({ t: 'text', x: (ex0 + ex1) / 2, y: ey1 + 2, h: TH, text: String(b.enclosure).toUpperCase(), align: 'center', layer: 'SLD-TEXT' });
       d.maxY = Math.max(d.maxY, ey1 + 2 + TH); d.maxX = Math.max(d.maxX, ex1); x0 = Math.min(x0, ex0);
@@ -292,6 +327,9 @@ const readJson = (f) => { try { return JSON.parse(fs.readFileSync(path.join(__di
 const FAMILY = {};
 function familyCfg(j) {
   const colX = j.notes ? j.notes[0] : j.box.x1 + 8, colR = j.colR || j.geo.x0 + j.geo.w - 6, colW = colR - colX;
+  // the CDM 2015 box (Boulting Group wording, BS 7671:2008) is left off every border: only the column divider stays
+  const cdm = (j.extras.texts || []).some(t => /CDM|BOULTING/i.test(String(t.text)));
+  if (cdm) j = { ...j, extras: { texts: [], prims: (j.extras.prims || []).filter(p => p.t === 'line' && Math.max(p.x1, p.x2) < colX - 2) } };
   // the CDM box in the notes column: notes start under it
   const inCol = (t) => t.x >= colX - 2;
   const mtLines = (t) => String(t.text).split('\n').reduce((n, l) => n + Math.max(1, Math.ceil(l.length * t.h * 0.9 / Math.max(10, t.w || colW))), 0);   // MTEXT wraps at its width
@@ -326,6 +364,7 @@ const BORDER_NAMES = { atomax: 'Atomax', bgen: 'BGEN', pbe: 'PBE Group', ng: 'Na
 // a border key is a company ('atomax', 'bgen', 'pbe') or company-size ('bgen-A3'); a ready border object passes through
 const borderOf = (key, W, H) => { if (key && key.geo) return key; const [c, sz] = String(key || 'atomax').split('-'); if (c === 'ng' && FAMILY['ng-A0']) return resolveBorder('ng', sz || '', W, H); return resolveBorder(FAMILY[`${c}-A1`] ? c : 'atomax', sz || '', W, H); };
 const LEGEND_TEXT = { MCCB: 'MCCB. TEXT: RATING, FRAME', MCB: 'MCB / RCBO. TEXT: RATING, POLES, TYPE', 'SWITCH DISCONNECTOR': 'SWITCH DISCONNECTOR / MAIN SWITCH / ISOLATOR', 'ISOLATOR DISCONNECTOR': 'ISOLATOR', 'FUSED SWITCH DISCONNECTOR': 'FUSED SWITCH DISCONNECTOR', FUSE: 'FUSE', CONTACTOR1: 'CONTACTOR', MOTOR: 'MOTOR', LOAD: 'FINAL CIRCUIT / LOAD', 'HV-LV TRANSFORMER': 'TRANSFORMER' };
+const LEGEND_OWN = { breaker: 'CIRCUIT BREAKER', isolator: 'ISOLATOR', fuse: 'FUSE', switchfuse: 'FUSE SWITCH', contactor: 'CONTACTOR', transformer: 'TRANSFORMER', ct: 'CURRENT TRANSFORMER', meter: 'MULTIFUNCTION METER (kWh)', supply: 'SUPPLY', generator: 'GENERATOR', ups: 'UPS', vsd: 'VARIABLE SPEED DRIVE', dol: 'DOL STARTER', softstarter: 'SOFT STARTER', spd: 'SURGE PROTECTION DEVICE', pfc: 'POWER FACTOR CORRECTION', load: 'LOAD', motor: 'MOTOR', board: 'DISTRIBUTION BOARD / PANEL', earth: 'EARTH', electrode: 'EARTH ELECTRODE', link: 'TEST / DISCONNECTING LINK', grid: 'EARTH MESH' };
 function primsBounds(prims) {
   prims = flatPrims(prims);
   let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity; const add = (x, y) => { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; };
@@ -369,7 +408,7 @@ function borderFrame(prims, spec, sheetLabel, opts) {
   out.push({ t: 'insert', name: B.block || '__border', x: 0, y: 0, layer: 'SLD-BORDER', prims: [...B.geo.prims.map(p => ({ ...p, layer: 'SLD-BORDER' })), ...B.geo.texts.map(t => t.t === 'mtext' ? { ...t, layer: 'SLD-BORDER' } : { t: 'text', x: t.x, y: t.y, h: t.h, text: t.text, align: t.align, rot: t.rot || 0, layer: 'SLD-BORDER' })] });
   const title = wrap(spec.title || f.title || 'DRAWING', B.titleWidth || 76).slice(0, 4), proj = wrap(f.project || '', B.titleWidth || 76);
   const today = (() => { const d = new Date(); return [d.getDate(), d.getMonth() + 1, d.getFullYear()].map((v, i) => String(v).padStart(i < 2 ? 2 : 4, '0')).join('.'); })();
-  const val = { DRAWING_NUMBER: spec.drawingNumber || f.drawingNumber || 'TBC', REV: spec.revision || 'P01', TITLE1: title[0] || '', TITLE2: title[1] || '', TITLE3: title[2] || '', TITLE4: title[3] || '', DRN: f.drawn || 'DEX', DATE: f.date || today, SCALE: 'NTS', CHKD: f.checked || '', APRVD: f.approved || '', SHT: f.sht || '1', SHTX: f.shtx || '1', CLIENT_1: f.client || '', CLIENT_2: f.client2 || '', PROJECT_1: proj[0] || '', PROJECT_2: proj[1] || f.project2 || '',
+  const val = { DRAWING_NUMBER: spec.drawingNumber || f.drawingNumber || 'TBC', REV: spec.revision || 'P01', TITLE1: title[0] || '', TITLE2: title[1] || '', TITLE3: title[2] || '', TITLE4: title[3] || '', DRN: f.drawn || '', DATE: f.date || today, SCALE: 'NTS', CHKD: f.checked || '', APRVD: f.approved || '', SHT: f.sht || '1', SHTX: f.shtx || '1', CLIENT_1: f.client || '', CLIENT_2: f.client2 || '', PROJECT_1: proj[0] || '', PROJECT_2: proj[1] || f.project2 || '',
     NG_NUMBER: spec.ngNumber || f.ngNumber || 'TBC', SIZE: B.size || '', SITE: String(f.site || f.project || '').toUpperCase().slice(0, 40), STATUS: f.status || (/^[PA]/i.test(spec.revision || 'P') ? 'S3' : '') };
   // the drawing number is shrunk until it fits between the sheet-size label and the revision box
   const fitH = (tag, a, v) => { const h = a[2] || 2; if (tag !== 'DRAWING_NUMBER' || B.company === 'ng' || !B.colX || a[3] !== 'center') return h; const half = a[0] - (B.colX + 7); return Math.max(2, Math.min(h, (2 * half) / (String(v).length * 0.92))); };
@@ -382,10 +421,10 @@ function borderFrame(prims, spec, sheetLabel, opts) {
   const descW = B.company === 'ng' ? 84 : B.revbox && B.revbox.attrs && B.revbox.attrs.DRAWN ? Math.max(18, (Array.isArray(B.revbox.attrs.DRAWN) ? B.revbox.attrs.DRAWN[0] : B.revbox.attrs.DRAWN.x) - 4 - 20 - 1) : 40;
   const R = B.rev;
   hist.slice(-(R.max || 7)).forEach((r, i) => {
-    const y = R.y + i * R.pitch, desc = String(r.what || '').toUpperCase().split('\n').flatMap(l => wrap(l, descW)).slice(0, 2), by = r.by || 'DEX';
+    const y = R.y + i * R.pitch, desc = String(r.what || '').toUpperCase().split('\n').flatMap(l => wrap(l, descW)).slice(0, 2), by = r.by || f.drawn || '';
     if (B.revbox) {   // the BGEN revision block
       const ox = R.x0 + i * (R.dx || 0), oy = R.y + (R.dx ? 0 : i * R.pitch), dt = String(r.date || val.DATE).replace(/\.(\d{2})(\d{2})$/, '.$2');
-      const rv = { REV: r.rev, DATE: B.company === 'ng' ? dt.replace(/\./g, '/') : dt, DESC1: desc[0] || '', DESC2: desc[1] || '', DRAWN: by, CHECKED: r.checked || '', APPROVED: r.approved || '', INV: f.ngInvestment ? 'NG Investment No. ' + f.ngInvestment : '' };
+      const rv = { REV: r.rev, DATE: B.company === 'ng' ? dt.replace(/\./g, '/') : dt, DESC1: desc[0] || '', DESC2: desc[1] || '', DRAWN: by, CHECKED: r.checked || f.checked || '', APPROVED: r.approved || f.approved || '', INV: f.ngInvestment ? 'NG Investment No. ' + f.ngInvestment : '' };
       if (B.revbox.block) out.push({ t: 'insert', name: B.revbox.block, x: ox, y: oy, layer: 'SLD-BORDER', prims: [...B.revbox.prims.map(p => ({ ...p, layer: 'SLD-BORDER' })), ...(B.revbox.texts || []).map(t => ({ ...t, t: t.t === 'mtext' ? 'mtext' : 'text', layer: 'SLD-BORDER' }))] });
       else for (const p of B.revbox.prims) out.push(moved({ ...p, layer: 'SLD-BORDER' }, ox, oy));
       for (const [tag, a0] of Object.entries(B.revbox.attrs)) { const a = Array.isArray(a0) ? { x: a0[0], y: a0[1], h: a0[2], align: a0[3] } : a0; if (rv[tag]) out.push({ t: 'text', x: ox + a.x, y: oy + a.y - a.h / 2, h: a.h, text: rv[tag], align: a.align, layer: B.textLayer }); }
@@ -395,31 +434,48 @@ function borderFrame(prims, spec, sheetLabel, opts) {
     const tx = (x, text, h = R.h, yy = y - h / 2) => out.push({ t: 'text', x, y: yy, h, text, align: 'center', layer: B.textLayer });
     tx(R.REV, r.rev); tx(R.DATE, String(r.date || val.DATE).replace(/\.(\d{2})(\d{2})$/, '.$2'), R.descH);
     if (desc.length > 1) { tx(R.DESC, desc[0], R.descH, y + 0.95); tx(R.DESC, desc[1], R.descH, y - 2.65); } else tx(R.DESC, desc[0] || '', R.descH);
-    tx(R.DRAWN, by); tx(R.CHECKED, r.checked || ''); tx(R.APPROVED, r.approved || '');
+    tx(R.DRAWN, by); tx(R.CHECKED, r.checked || f.checked || ''); tx(R.APPROVED, r.approved || f.approved || '');
   });
   // the template's own headings and the CDM box (its XXXXX placeholders get the project number and job title)
   for (const [t, x, y] of (B.heads || [])) out.push({ t: 'text', x, y: y - 2, h: 2.6, text: t, layer: B.notesLayer });
   if (B.extras) { let n = 0; out.push(...B.extras.prims.map(p => ({ ...p, layer: 'SLD-BORDER' }))); for (const t of B.extras.texts) { const txt = /^X{4,}$/.test(String(t.text).trim()) ? (n++ === 0 ? (f.projectNo || f.project || '').split(' ')[0] : (f.jobTitle || f.project || '').replace(/^\S+\s*/, '')) : t.text; out.push({ ...t, text: txt, layer: B.notesLayer }); } }
   // NOTES, then the LEGEND of the symbols used, then REFERENCE DOCUMENTS
-  const N = B.notes, notes = [...(spec.notes || []).map(String).filter(Boolean), ...(k < 1 ? [`DRAWING REDUCED TO ${Math.round(k * 100)}% TO FIT THE SHEET.`] : []), 'DRAFT BY DEX (ATOMAX MEDIA OFFICE) FOR CHECKING.'];
+  const N = B.notes, notes = [...(spec.notes || []).map(x => String(x).replace(/^\s*(?:note\s*)?\d+\s*[.):-]\s*/i, '').trim()).filter(x => x && !/^draft by dex/i.test(x)), ...(k < 1 ? [`DRAWING REDUCED TO ${Math.round(k * 100)}% TO FIT THE SHEET.`] : [])];
   let ny = N.y;
   notes.forEach((nt, i) => { const ls = wrap(String(nt).toUpperCase(), N.w - (N.tx - N.x)); if (ny - ls.length * N.pitch < N.bottom) return; out.push({ t: 'text', x: N.x, y: ny, h: 2, text: (i + 1) + '.', layer: B.notesLayer }); ls.forEach(l => { out.push({ t: 'text', x: N.tx, y: ny, h: 2, text: l, layer: B.notesLayer }); ny -= N.pitch; }); ny -= 1.6; });
   if (B.legend || B.legendFlow) {
     const Lg = B.legend || { x: N.x + 6.6, tx: N.x + 18.4, y: ny - 6, bottom: N.bottom };
-    const used = [...new Set(prims.filter(p => p.t === 'insert' && LEGEND_TEXT[p.name]).map(p => p.name))];
-    const hasExtra = prims.some(p => p.layer === 'SLD-BUS' || p.layer === 'BCD-CABLEBOX') || (spec.legend || []).length || (spec.ngLegend || []).length;
-    if (B.legendFlow && (used.length || hasExtra)) out.push({ t: 'text', x: N.x, y: ny - 2, h: 2.6, text: 'LEGEND', layer: B.notesLayer });   // no empty LEGEND heading (the NG BCD has its own legend on the drawing)
-    if (B.legendFlow) Lg.y = ny - 8;
+    const usedHouse = [...new Set(prims.filter(p => p.t === 'insert' && LEGEND_TEXT[p.name]).map(p => p.name))];
+    const kinds = spec._kinds || [];
+    const own = kinds.filter(k => LEGEND_OWN[k] && SYMBOLS[k] && !SYMBOLS[k]().house);
+    const entries = [
+      ...usedHouse.map(name => ({ h: -HOUSE[name].bbox[1] * 0.6, text: LEGEND_TEXT[name], draw: (x, y) => [{ t: 'insert', name, x, y, k: 0.6, layer: 'SLD-SYMBOL', prims: HOUSE[name].prims }] })),
+      ...own.map(k => { const sy = SYMBOLS[k](); return { h: Math.max(sy.len, 6), text: LEGEND_OWN[k], draw: (x, y) => place(sy.prims, x, y) }; }),
+      ...(prims.some(p => p.layer === 'SLD-BUS') ? [{ h: 4, text: 'BUSBAR', draw: (x, y) => [P([[x - 5, y - 2], [x + 5, y - 2]], false, 'SLD-BUS', 0.8)] }] : []),
+      ...(kinds.includes('cable') ? [{ h: 10, text: 'CABLE: NUMBER, CORES, SIZE, TYPE', draw: (x, y) => [P([[x - 1.6, y], [x + 1.6, y], [x + 1.6, y - 10], [x - 1.6, y - 10]], true, 'SLD-CABLE')] }] : []),
+      ...(prims.some(p => p.layer === 'SLD-ENCLOSURE') ? [{ h: 4, text: 'SWITCHROOM / ENCLOSURE', draw: (x, y) => { const o = []; dashBox(o, x - 5, y - 4, x + 5, y, 'SLD-ENCLOSURE'); return o; } }] : []),
+      ...(prims.some(p => p.layer === 'BCD-CABLEBOX') ? [{ h: 4, text: 'CABLE: NUMBER, CORES x SIZE, TYPE', draw: (x, y) => [P([[x - 6, y - 4], [x + 6, y - 4], [x + 6, y], [x - 6, y]], true, 'BCD-CABLEBOX')] }] : []),
+    ];
+    const hasExtra = entries.length || (spec.legend || []).length || (spec.ngLegend || []).length;
+    if (B.legendFlow && hasExtra) out.push({ t: 'text', x: N.x, y: ny - 2, h: 2.6, text: 'LEGEND', layer: B.notesLayer });   // no empty LEGEND heading (the NG BCD has its own legend on the drawing)
+    if (B.legendFlow) Lg.y = ny - 7;
     let ly = Lg.y;
-    for (const name of used) { const hs = HOUSE[name]; if (!hs || ly - 18 < Lg.bottom) continue; out.push({ t: 'insert', name, x: Lg.x, y: ly, k: 0.6, layer: 'SLD-SYMBOL', prims: hs.prims }); wrap(LEGEND_TEXT[name], 60).forEach((l, j) => out.push({ t: 'text', x: Lg.tx, y: ly - 7.8 - j * 3.4, h: 2, text: l, layer: B.notesLayer })); ly -= Math.max(19, -hs.bbox[1] * 0.6 + 4); }
-    const extra = [...(prims.some(p => p.layer === 'SLD-BUS') ? [['bus', 'LV BUSBAR']] : []), ...(prims.some(p => p.layer === 'BCD-CABLEBOX') ? [['box', 'CABLE: NUMBER, CORES x SIZE, TYPE']] : []), ...(spec.legend || []).map(t => ['', String(t)])];
+    // two columns: symbol, then its words wrapped beside it; each row as tall as its taller entry
+    const colW = Math.max(30, (N.w || 80) / 2), textW = colW - 15;
+    for (let i = 0; i < entries.length; i += 2) {
+      const row = entries.slice(i, i + 2).map(e => ({ ...e, ls: wrap(e.text, textW) }));
+      const rh = Math.max(...row.map(e => Math.max(e.h, e.ls.length * 3.4))) + 4;
+      if (ly - rh < Lg.bottom) break;
+      row.forEach((e, j) => { const sx = N.x + 5 + j * colW, tx = sx + 9; out.push(...e.draw(sx, ly)); const mid = ly - Math.max(e.h, e.ls.length * 3.4) / 2; e.ls.forEach((l, q) => out.push({ t: 'text', x: tx, y: mid + (e.ls.length / 2 - q - 1) * 3.4 + 0.7, h: 2, text: l, layer: B.notesLayer })); });
+      ly -= rh;
+    }
     for (const [kind, t] of (spec.ngLegend || [])) {   // the National Grid key: cable colours and equipment states
       if (ly - 6 < Lg.bottom) break; const x0 = Lg.x - 6, x1 = Lg.x + 6, y = ly - 3;
       if (kind === 'dash82') dashed(out, x0, y, x1, 82); else if (kind.startsWith('line')) out.push({ ...L(x0, y, x1, y, 'BCD-CABLE'), colour: +kind.slice(4) });
       else { const b = [[x0, y - 2], [x1, y - 2], [x1, y + 2], [x0, y + 2]], col = +kind.slice(4); out.push({ t: 'fill', pts: b, layer: 'BCD-BLOCK', colour: col }); out.push({ ...P(b, true, 'BCD-BLOCK'), colour: col }); }
       out.push({ t: 'text', x: Lg.tx, y: ly - 4, h: 2, text: t, layer: B.notesLayer }); ly -= 6;
     }
-    for (const [kind, t] of extra) { if (ly - 6 < Lg.bottom) break; if (kind === 'bus') out.push({ ...P([[Lg.x - 6, ly - 2], [Lg.x + 6, ly - 2]], false, 'SLD-BUS', 0.8) }); if (kind === 'box') out.push(P([[Lg.x - 6, ly - 4], [Lg.x + 6, ly - 4], [Lg.x + 6, ly], [Lg.x - 6, ly]], true, 'BCD-CABLEBOX')); out.push({ t: 'text', x: Lg.tx, y: ly - 3, h: 2, text: t.toUpperCase(), layer: B.notesLayer }); ly -= 6; }
+    for (const t of (spec.legend || [])) { if (ly - 6 < Lg.bottom) break; out.push({ t: 'text', x: Lg.tx, y: ly - 3, h: 2, text: String(t).toUpperCase(), layer: B.notesLayer }); ly -= 6; }
   }
   if (B.refs) { let ry = B.refs.y; for (const r of (spec.references || []).map(String).filter(Boolean)) { if (ry < B.refs.bottom) break; out.push({ t: 'text', x: B.refs.x, y: ry, h: B.refs.h, text: r.toUpperCase().slice(0, 70), layer: B.notesLayer }); ry -= B.refs.pitch; } }
   if (sheetLabel && !B.attrs.SHT) out.push({ t: 'text', x: 1112, y: 128 + hist.length * 8, h: TH, text: sheetLabel, align: 'center', layer: B.textLayer });
@@ -712,13 +768,13 @@ You can make two kinds of drawing, both described the same way:
 - "sld": single line diagrams.
 - "earthing": earthing schematics / earthing design drawings. The "board" is the main earth bar (MET) or an earth bar, its feeders are the earth conductors and bonds (use "cable" for the conductor, labelled with its size and type) ending at what they earth: the equipment ("board", e.g. transformer, inverter, BESS, switchgear, fence), an earth rod ("electrode") or the earth mesh ("grid"); use "link" for disconnecting / test links. Put fault levels and earth fault currents from the documents in the notes. Conductor sizes come from the documents or the engineer; if they are not given, write TBC and say in the notes that they need sizing against the earth fault current (adiabatic check) and that soil resistivity is needed for the electrode / mesh design.
 Describe them as boards (busbars), joined into ONE connected diagram: when a feeder supplies another board (e.g. MV SWB > CBL-2 > RMU-WTG2, or a transformer feeding an LV board), put that board as the LAST item of the feeder's chain as {"board": {"label": "...", "feeders": [...]}}; it is drawn underneath, joined by the feeder. Only boards with nothing above them are top-level boards. Do not repeat a name: the feeder "label" is only for something the end item does not already say (leave it out otherwise).
-In earthing drawings, nest earth bars the same way: the cable screen or earth conductor feeding another substation's earth bar ends with {"board": {...}}. If an engineer's technical note in the project files gives conductor sizes or electrode design, use those values (say "per <note name>" in the notes); otherwise sizes stay TBC. Each board has incomers (chains drawn above the busbar, ending on it) and feeders (chains drawn below it). A chain is a list of items from top to bottom, each { "symbol": one of supply, generator, transformer, breaker, isolator, switchfuse, fuse, contactor, ct, meter, ups, cable, line, link, and as the LAST item of a feeder only: board, load, motor, earth, electrode, grid, spare; "label": the text beside it }.
+In earthing drawings, nest earth bars the same way: the cable screen or earth conductor feeding another substation's earth bar ends with {"board": {...}}. If an engineer's technical note in the project files gives conductor sizes or electrode design, use those values (say "per <note name>" in the notes); otherwise sizes stay TBC. Each board has incomers (chains drawn above the busbar, ending on it) and feeders (chains drawn below it). A chain is a list of items from top to bottom, each { "symbol": one of supply, generator, transformer, breaker, isolator, switchfuse, fuse, contactor, ct, meter, ups, vsd (variable speed drive), dol (DOL starter), softstarter, cable, line, link, and as the LAST item of a feeder only: board, load, motor, earth, electrode, grid, spare, spd (surge protection device), pfc (power factor correction); "label": the text beside it }. A drive or starter is always its own item in the way (breaker, then vsd / dol / softstarter, then the isolator, then the motor), never just words in another item's label.
 National Grid / BGEN SLD conventions (use them on every SLD): put the cable on the conductor as a "cable" item whose label is the cable text (e.g. "EXISTING CABLE" or "C01\\n4C 240mm² SWA"); it is drawn as a tag box with the text up the box. Give switching devices a "state" of "open" or "closed" when the drawing shows a switching arrangement or phase (drawn as "(OPEN)" / "(CLOSED)"). Only on a PHASE drawing (the works split into phases, one sheet per phase): give "phase": 1, 2, ... and give items a "status" of "new" (drawn green) or "removal" (drawn red) for what is new or removed AT THAT PHASE; everything else is existing (black, no status). The next phase's sheet is its own drawing with its own statuses (what was green in phase 1 is existing black in phase 2). Not a phase drawing: no status at all, everything is black. A board in a switchroom, kiosk or generator enclosure gets "enclosure": "EXISTING LVAC SWITCHROOM" (drawn as a dashed box named above it).
 Labels: short, exactly as an engineer would write them, using what the project files say (ratings, cable sizes, tags, board names). Use a new line (\\n) between parts of a label, e.g. "Q1\\n630A TP MCCB". Do not invent ratings, cable sizes or tags that are not in the request or the files: if one is unknown write "TBC" in the label and list it in "notes".
 BCD ("bcd", block cable diagram): do NOT use boards. Give "nodes" (every panel / RIO / MCC, junction box and field device, with "type" panel|rio|mcc|jb|device and a short "label" description exactly as written; the node "tag" is the equipment tag exactly as printed in the documents, and where a document gives only a description (no tag), use that description as the tag: never make up a tag) and "cables" (every cable: "no" exactly as printed, "from" and "to" node tags, "type" e.g. BS5308 / SWA / CY, "cores" e.g. 10P or 4C, "size" e.g. 0.5 or 1.5mm², and "note" for interface cables such as "LINK TO X03-MCC SEE DWG ..."). When the job context has an APPROVED MASTER DEVICE LIST, the BCD is exactly its cables and devices for the panels asked for: nothing added, nothing left out. The app lays the blocks out (panels left, JBs middle, devices right), draws each cable with its yellow cable box and splits long BCDs over sheets. For National Grid LVAC / power block diagrams (a supply chain: intake / RMU > joints > transformer > LV board > circuits, generators > distribution units) the app draws the chain left to right with every cable joined to both ends; also give "style":"ng", each node a "status" (energised, de-energised or new) and each cable a "status" (current = current supply cabling, new = new by BGEN, existing = existing by others).
 If something essential is missing (which boards, how many feeders, what the supply is) and the files do not say, ask: reply with {"questions": ["...", "..."]} (max 4 short questions) and nothing else.
 Otherwise reply with JSON only, no markdown:
-{"kind":"sld, earthing or bcd","title":"...","drawingNumber":"... or TBC","revision":"P01","nodes":[only for bcd],"cables":[only for bcd],"boards":[{"label":"MAIN LV BOARD\\n400V 3PH 4W 50Hz","incomers":[{"label":"optional text above","chain":[...]}],"feeders":[{"label":"optional text under the feeder","chain":[...]}]}],"notes":["..."],"summary":"one line for the engineer: what you drew and what is TBC"}`;
+{"kind":"sld, earthing or bcd","title":"...","drawingNumber":"... or TBC","revision":"P01","nodes":[only for bcd],"cables":[only for bcd],"boards":[{"label":"MAIN LV BOARD\\n400V 3PH 4W 50Hz","incomers":[{"label":"optional text above","chain":[...]}],"feeders":[{"label":"optional text under the feeder","chain":[...]}]}],"client":"the client company, from the request, the email signature or the schedule (e.g. PEAKDALE WATER SERVICES)","notes":["note text only, no numbers in front (the border numbers them); never a note saying who drafted it"],"summary":"one line for the engineer: what you drew and what is TBC"}`;
 
 // Claude's JSON is not always strict: real line breaks inside strings (a multi-line reply), a trailing comma, or a reply cut off at the length limit.
 // Repair those, then parse.

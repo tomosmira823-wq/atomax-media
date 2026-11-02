@@ -86,15 +86,26 @@ export function initJobsUI({ api, getAgents, openIssue, onWorkOn }) {
     let P; try { P = await api.jobs.plan({ jobId: O.job.id, no }); } catch (e) { box.innerHTML = `<div class="bsub">${esc(clean(e))}</div>`; return; }
     box.innerHTML = `<div class="jbprep-g"><div><label>What ${esc(P.agent)} will do</label><textarea id="jpReq" rows="3">${esc(P.request)}</textarea>
         <div class="bsub">Drawing number: <b>${esc(P.number || 'next free QS 006 number')}</b></div>
+        ${P.agent === 'Dex' ? `<label>Title block</label><div class="jppeople">${['drawn', 'checked', 'approved'].map(k => `<span><i>${k[0].toUpperCase() + k.slice(1)}</i><input id="jp_${k}" maxlength="24" placeholder="initials" value="${esc(((P.people || lastPeople())[k]) || '')}"></span>`).join('')}</div>` : ''}
         <label>Inputs ${esc(P.agent)} will read from the job folder</label><div class="jpin">${P.inputs.length ? P.inputs.map(f => `<span>${esc(f)}</span>`).join('') : `<i class="warn">${P.folder ? 'Nothing matching found in the folder: add the inputs, then Read folder again in Inputs & setup' : 'No project folder linked'}</i>`}</div></div>
       <div id="jpSkills"></div></div>
       <div class="jbbar"><button class="jbbtn primary" id="jpGo">Start ${esc(P.agent)}</button><button class="jbbtn" id="jpCancel">Cancel</button></div>`;
     let picker = null;   // until the skills have loaded, Start uses the agent's usual skills for this kind of drawing
     box.querySelector('#jpCancel').onclick = () => box.remove();
-    box.querySelector('#jpGo').onclick = () => { const request = box.querySelector('#jpReq').value.trim(), skills = picker ? picker.selected() : undefined; act(() => api.jobs.make({ jobId: O.job.id, no, request, skills }), `${no}: ${P.agent} is on it…`); };
+    box.querySelector('#jpGo').onclick = () => {
+      const request = box.querySelector('#jpReq').value.trim(), skills = picker ? picker.selected() : undefined;
+      let people;
+      if (P.agent === 'Dex') {
+        people = Object.fromEntries(['drawn', 'checked', 'approved'].map(k => [k, box.querySelector('#jp_' + k).value.trim().toUpperCase()]));
+        if (!people.drawn) { const f = box.querySelector('#jp_drawn'); f.focus(); f.classList.add('need'); f.placeholder = 'who drew it'; return; }
+        try { localStorage.setItem('amo.people', JSON.stringify(people)); } catch {}
+      }
+      act(() => api.jobs.make({ jobId: O.job.id, no, request, skills, people }), `${no}: ${P.agent} is on it…`);
+    };
     box.querySelector('#jpSkills').innerHTML = '<div class="skp"><div class="skp-h">Skills for this run <span>loading…</span></div></div>';
     const DK = api.drawKinds; picker = await renderSkillPicker(api, box.querySelector('#jpSkills'), P.agentId, { uncheck: (i) => DK && ['bcd', 'sld', 'earthing'].includes(P.kind) ? !DK.skillFit(i, P.kind) : false });
   }
+  function lastPeople() { try { return JSON.parse(localStorage.getItem('amo.people') || '{}') || {}; } catch { return {}; } }
   function wireFiles(el) {
     el.querySelectorAll('[data-open]').forEach(b => b.onclick = () => api.desk.open({ p: b.dataset.open }));
     el.querySelectorAll('[data-show]').forEach(b => b.onclick = () => api.desk.show({ p: b.dataset.show }));

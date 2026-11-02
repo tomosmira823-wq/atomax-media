@@ -57,15 +57,20 @@ export function initDexMakeUI({ api, office, bizUI, getDex }) {
     $('#dmGo').textContent = questions.length ? 'Answer and make the DXF' : 'Make the DXF';
   }
 
+  try { const pp = JSON.parse(localStorage.getItem('amo.people') || '{}') || {}; for (const k of ['drawn', 'checked', 'approved']) { const el = document.getElementById('dm_' + k); if (el && pp[k]) el.value = pp[k]; } } catch {}
   async function go() {
     if (busy) return;
     const request = $('#dmReq').value.trim(); if (!request) { $('#dmErr').textContent = 'Say what Dex should draw.'; return; }
     const answers = questions.map((q, i) => ({ q, a: (document.querySelector(`[data-q="${i}"]`) || {}).value || 'TBC' }));
+    // the title block's drawn / checked / approved come from the engineer, asked before every drawing (remembered for next time)
+    const people = Object.fromEntries(['drawn', 'checked', 'approved'].map(k => [k, ($('#dm_' + k).value || '').trim().toUpperCase()]));
+    if (!people.drawn) { $('#dmErr').textContent = 'Put who drew it (initials) in the title block boxes.'; $('#dm_drawn').focus(); return; }
+    try { localStorage.setItem('amo.people', JSON.stringify(people)); } catch {}
     busy = true; $('#dmErr').textContent = ''; $('#dmOut').innerHTML = ''; $('#dmRun').hidden = false; $('#dmGo').disabled = true;
     $('#dmMsg').textContent = answers.length ? 'Dex is drawing it' : 'Dex is reading the project files';
     const dex = getDex(); if (dex) office.setState(dex.id, 'working', 'drawing an SLD');
     try {
-      const r = await api.dexMake({ jobId: $('#dmJob').value, request, answers, emailId, skills: picker ? picker.selected() : undefined, revision: $('#dmRevOn').checked ? { on: true, stage: $('#dmRevStage').value, note: $('#dmRevNote').value } : null });
+      const r = await api.dexMake({ jobId: $('#dmJob').value, request, answers, emailId, ...people, skills: picker ? picker.selected() : undefined, revision: $('#dmRevOn').checked ? { on: true, stage: $('#dmRevStage').value, note: $('#dmRevNote').value } : null });
       if (r.questions) { questions = r.questions; renderQuestions(); if (dex) office.setState(dex.id, 'idle'); return; }
       questions = []; renderQuestions();
       $('#dmOut').innerHTML = `<div class="headline good" style="margin-top:12px">Saved ${esc(r.path.split(/[\\/]/).pop())}</div>

@@ -308,7 +308,7 @@ EARTHING tasks: size every protective / earth conductor the drawing needs (MET t
   }));
 
   // ---------- Dex makes a DXF ----------
-  ipcMain.handle('dex:make', wrap(async ({ jobId = '', request = '', answers = [], emailId = '', skills, revision = null, drawingNumber = '' }) => {
+  ipcMain.handle('dex:make', wrap(async ({ jobId = '', request = '', answers = [], emailId = '', skills, revision = null, drawingNumber = '', drawn = '', checked = '', approved = '' }) => {
     if (!String(request).trim()) throw new Error('Say what Dex should draw');
     const d = BIZ.data(), job = jobId && d.jobs.find(j => j.id === jobId);
     // his skills for MAKING a drawing: drawing skills first, fixer-only rules and spreadsheet skills only when the request needs them
@@ -390,7 +390,7 @@ EARTHING tasks: size every protective / earth conductor the drawing needs (MET t
     spec.revision = String(spec.revision).toUpperCase().replace(/^([A-Z])(\d)$/, '$10$2');   // two digits: P01
     const bd = job ? desk.borderFor(job) : { key: 'atomax', name: 'Atomax A1' }, template = bd.template || '';
     if (bd.warning) spec.notes = [...(spec.notes || [])];
-    const res = dxfmaker.make(spec, outDir, base, { template, border: bd.key, previous, fill: job ? { client: job.client || '', project: `${job.number} ${job.name || ''}`.trim(), site: (desk.load(job.id).ng || {}).site || job.name || '', ngInvestment: (desk.load(job.id).ng || {}).investment || '' } : {} });
+    const res = dxfmaker.make(spec, outDir, base, { template, border: bd.key, previous, fill: job ? { drawn, checked, approved, client: job.client || spec.client || '', project: `${job.number} ${job.name || ''}`.trim(), site: (desk.load(job.id).ng || {}).site || job.name || '', ngInvestment: (desk.load(job.id).ng || {}).investment || '' } : { drawn, checked, approved, client: spec.client || '' } });
     // every DXF gets its monochrome PDF beside it (issues go out as DXF and PDF)
     let madePdfs = []; try { madePdfs = await require('./pdfout').writePdfs(res); } catch (e) { (res.files || []).forEach(f => delete f.prims); }
     BIZ.log({ who: 'Dex', action: 'Drew', jobId: job ? job.id : '', detail: `${path.basename(res.path)} · ${spec.summary || spec.title || 'SLD'}${used.length ? ' · skills: ' + used.join(', ') : ' · no skills'}` });

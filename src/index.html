@@ -452,6 +452,8 @@ body.fp canvas#scene{cursor:grab}
   .jbw:hover { border-color: #3a4760; background: #18223a; }
   .jbw .ic { width: 28px; height: 28px; border-radius: 8px; display: grid; place-items: center; background: #1f2a40; color: var(--amber); font-weight: 700; flex: none; }
   .jbw b { display: block; font-weight: 600; font-size: 13.5px; } .jbw i { font-style: normal; font-size: 12px; color: var(--muted); }
+  .jppeople { display: flex; gap: 8px; margin-top: 2px; } .jppeople span { flex: 1; min-width: 0; } .jppeople i { display: block; font-style: normal; font-size: 11px; color: var(--muted); margin-bottom: 2px; }
+  .jppeople input { width: 100%; box-sizing: border-box; text-transform: uppercase; } .jppeople input.need { border-color: #e0a040; }
   .jbprep { grid-column: 1 / -1; border-top: 1px solid #243049; padding-top: 12px; margin-top: 2px; }
   .jbprep-g { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: 18px; } .jbprep label:not(.skp-r) { margin-top: 4px; }
   .jpin { display: flex; flex-wrap: wrap; gap: 5px; } .jpin span { font-size: 12px; background: #1f2a40; border: 1px solid #2c3850; border-radius: 6px; padding: 2px 8px; }
@@ -580,6 +582,8 @@ body.fp canvas#scene{cursor:grab}
       <label>What should Dex draw?</label>
       <textarea id="dmReq" rows="4" placeholder="e.g. An SLD for the Test site LV board: 1000kVA transformer, 1600A ACB incomer, six outgoing ways"></textarea>
       <div class="hint" style="margin-top:6px">Dex makes single line diagrams, earthing schematics and BCDs. He reads the job's project folder (and any SLD or schedule PDFs in it), asks if something essential is missing, and saves a DRAFT DXF into the job folder. Nothing is overwritten.</div>
+      <label>Title block</label>
+      <div class="jppeople"><span><i>Drawn</i><input id="dm_drawn" maxlength="24" placeholder="initials"></span><span><i>Checked</i><input id="dm_checked" maxlength="24" placeholder="initials"></span><span><i>Approved</i><input id="dm_approved" maxlength="24" placeholder="initials"></span></div>
       <div id="dmSkills"></div>
       <label class="dmrev"><input type="checkbox" id="dmRevOn"> New revision of a drawing Dex made before <span class="bsub">(optional: changes clouded, revision history kept)</span></label>
       <div id="dmRevBox" hidden class="jdrow"><select id="dmRevStage"><option value="">Next revision, same stage</option><option value="preliminary">Preliminary (P)</option><option value="comment">Issued for comment (A)</option><option value="construction">For construction (C)</option><option value="asbuilt">As built (X)</option></select><input id="dmRevNote" placeholder="What changed (optional)" style="flex:1"></div>
