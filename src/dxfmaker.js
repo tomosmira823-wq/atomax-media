@@ -7,7 +7,7 @@ const path = require('path');
 const TH = 2;            // standard text height (Tom's house rule: 2, never smaller)
 const LINE = TH * 1.7;   // MTEXT line pitch at height 2
 const FEED = 50;         // spacing between feeders on a busbar (house symbols carry an operating handle to the left)
-const LABEL_W = 30;      // label width beside a symbol
+const LABEL_W = 34;      // label width beside a symbol
 
 // ---------- symbols: drawn downwards from a top terminal at (0,0); `len` is where the bottom terminal is (0,-len); `end` = no bottom terminal ----------
 const L = (x1, y1, x2, y2, layer = 'SLD-SYMBOL') => ({ t: 'line', x1, y1, x2, y2, layer });
@@ -79,8 +79,9 @@ const STATUS_COLOUR = { new: 3, modified: 3, remove: 1, removal: 1, removed: 1, 
 // the colours only mean something on a phase drawing (PHASE 1, PHASE 2 ...): each phase's sheet shows what is new / removed at THAT phase. Any other SLD is all black.
 let PHASED = false;
 const isPhased = (spec) => !!(spec.phase || /\bphase\s*\d+/i.test(String(spec.title || '')));
+const TAG_CHARS = 16;   // longest line written up a cable tag
 function cableTag(label) {
-  const ls = lines(label).slice(0, 3), n = Math.max(1, ls.length), bw = n * LINE + 1.2, bh = Math.max(22, Math.max(...ls.map(l => l.length), 6) * TH * 0.92 + 6);
+  const ls = wrap(label, TAG_CHARS * TH * 0.9).slice(0, 6), n = Math.max(1, ls.length), bw = n * LINE + 1.2, bh = Math.max(22, Math.max(...ls.map(l => l.length), 6) * TH * 0.92 + 6);
   const prims = [L(0, 0, 0, -3, 'SLD-CABLE'), P([[-bw / 2, -3], [bw / 2, -3], [bw / 2, -3 - bh], [-bw / 2, -3 - bh]], true, 'SLD-CABLE'), L(0, -3 - bh, 0, -6 - bh, 'SLD-CABLE')];
   ls.forEach((l, i) => prims.push({ t: 'text', x: -bw / 2 + 0.6 + TH + i * LINE, y: -3 - bh / 2, h: TH, text: l, align: 'center', rot: 90, layer: 'SLD-TEXT' }));
   return { len: 6 + bh, w: bw / 2, prims, tagged: true };
@@ -91,6 +92,7 @@ function drawChain(chain, x, y) {
     if (item.gap) { prims.push(L(x, y, x, y - item.gap, 'SLD-CABLE')); y -= item.gap; continue; }
     const kind = symbolOf(item.symbol), col = !PHASED ? 0 : STATUS_COLOUR[String(item.status || '').toLowerCase().trim()] || 0;
     const sym = kind === 'cable' && item.label ? cableTag(item.label) : SYMBOLS[kind]();
+    if (kind === 'meter' && !sym.house) { const k = /ammeter/i.test(item.label || '') ? 'A' : /voltmeter/i.test(item.label || '') ? 'V' : ''; if (k) sym.prims = sym.prims.map(p => p.t === 'text' && p.text === 'kWh' ? { ...p, text: k, h: 3, y: p.y - 0.4 } : p); }
     if (sym.tagged) { const from = prims.length; sym.prims.forEach(p => prims.push(moved(p, x, y))); if (col) for (let i = from; i < prims.length; i++) prims[i] = { ...prims[i], colour: col }; y -= sym.len; continue; }
     const state = /^(open|closed)$/i.test(String(item.state || '').trim()) ? `(${String(item.state).trim().toUpperCase()})` : '';
     if (state) item = { ...item, label: [item.label, state].filter(Boolean).join('\n') };
@@ -161,7 +163,8 @@ function drawBoard(b, x0, y, prims, top) {
   fs.forEach((f, i) => {
     const fx = fxs[i], { items, sub } = chainParts(f.chain);
     if (!sub) { const d = drawSimple(f, fx, y, prims); minY = Math.min(minY, d.yEnd); maxX = Math.max(maxX, ext[i].x1); return; }
-    const r = drawChain(items, fx, y); prims.push(...r.prims);
+    const inc = (sub.incomers || []).flatMap(c => c.chain || []);
+    const r = drawChain([...items, ...inc], fx, y); prims.push(...r.prims);
     let yEnd = r.y;
     if (!r.ended) {
       // the conductor carries on down to the board it feeds; that board's name sits beside the conductor
@@ -170,7 +173,7 @@ function drawBoard(b, x0, y, prims, top) {
       const natural = yEnd - Math.max(SUB_GAP_MIN, sl.length * LINE + 4), subY = Math.min(natural, ...under.map(e => e.y0 - 10));
       prims.push(L(fx, yEnd, fx, subY, 'SLD-CABLE'));
       prims.push({ t: 'mtext', x: fx + 3, y: subY + 2 + sl.length * LINE, w: 30, h: TH, text: sl.join('\n'), attach: 1, layer: 'SLD-TEXT' });
-      const d = drawBoard({ ...sub, label: '' }, S.x0, subY, prims, false);
+      const d = drawBoard({ ...sub, label: '', incomers: [] }, S.x0, subY, prims, false);
       yEnd = d.minY; maxX = Math.max(maxX, d.maxX, S.x1);
     }
     minY = Math.min(minY, yEnd);
@@ -862,4 +865,4 @@ function previousSpec(outDir, baseName) {
   try { const c = fs.readdirSync(outDir).filter(f => f.startsWith(stem) && f.endsWith('.spec.json')).map(f => ({ f, t: fs.statSync(path.join(outDir, f)).mtimeMs })).sort((a, b) => b.t - a.t)[0]; return c ? { file: c.f, spec: JSON.parse(fs.readFileSync(path.join(outDir, c.f), 'utf8')) } : null; } catch { return null; }
 }
 
-module.exports = { BORDER_NAMES, flatPrims, BORDERS, cableClashes, previousSpec, layoutBcd, bcdDiff, SYSTEM, ALIASES, SYMBOLS, symbolOf, layoutSld, writeDxf, toSvg, parseReply, make };
+module.exports = { primsBounds, BORDER_NAMES, flatPrims, BORDERS, cableClashes, previousSpec, layoutBcd, bcdDiff, SYSTEM, ALIASES, SYMBOLS, symbolOf, layoutSld, writeDxf, toSvg, parseReply, make };
