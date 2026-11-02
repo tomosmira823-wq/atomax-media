@@ -52,7 +52,8 @@ function register({ ipcMain, HANDLERS, BIZ }) {
     const inputs = job.folder ? BIZ.projects.relevantFiles(job.id, title + ' ' + want, { exts: ['.pdf', '.xlsx', '.xlsm', '.csv'], max: 6 }).map(p => path.basename(p)) : [];
     // drawn / checked / approved: this drawing's from last time, else the last ones used on the job
     const dl = delivOf(jobId), people = (dl[no] || {}).people || Object.values(dl).map(x => x.people).filter(Boolean).pop() || null;
-    return { agent: k.agent, agentId: AGENT_ID[k.agent] || '', kind: k.kind, number: num, title, request, inputs, folder: job.folder || '', people };
+    const rev = (dl[no] || {}).files ? ((dl[no] || {}).rev || 'P01') : '';
+    return { agent: k.agent, agentId: AGENT_ID[k.agent] || '', kind: k.kind, number: num, title, request, inputs, folder: job.folder || '', people, rev, nextRev: rev ? require('./docnumber').nextRev(rev) : 'P01' };
   }
   async function make({ jobId, no, answers = [], note = '', revision = null, request: asked = '', skills, people }) {
     const job = jobOf(jobId), d = job.drawings.find(x => x.no === no); if (!d) throw new Error('Not on the drawing list: ' + no);
@@ -74,7 +75,7 @@ function register({ ipcMain, HANDLERS, BIZ }) {
         r = await call('o365:word', { jobId, request: (asked || plan({ jobId, no }).request) + (note ? ' ' + note : ''), skills });
         files = [r.path].filter(Boolean);
       }
-      return setDeliv(jobId, no, { status: r.incomplete ? 'needs you' : 'made', questions: null, files, pdfs, rev: r.revision || d.rev || '', summary: (r.incomplete ? 'CUT SHORT: ' : '') + (r.summary || 'Made'), notes: r.notes || [], warning: r.borderWarning || '' });
+      return setDeliv(jobId, no, { status: r.incomplete ? 'needs you' : 'made', questions: null, check: null, files, pdfs, rev: r.revision || d.rev || '', archived: r.archived || 0, summary: (r.incomplete ? 'CUT SHORT: ' : '') + (r.summary || 'Made'), notes: r.notes || [], warning: r.borderWarning || '' });
     } catch (e) { setDeliv(jobId, no, { status: 'failed', summary: String(e.message || e).slice(0, 300) }); throw e; }
   }
 
@@ -120,7 +121,16 @@ function register({ ipcMain, HANDLERS, BIZ }) {
   ipcMain.handle('jobs:make', wrap((a) => make(a)));
   ipcMain.handle('jobs:makeAll', wrap(async ({ jobId }) => { const o = overview(jobId), done = [], masterOk = o.desk.master && o.desk.master.status === 'approved'; for (const r of o.rows.filter(r => r.agent && (!r.work || ['failed'].includes(r.work.status)) && (masterOk || !['bcd', 'schedule'].includes(r.kind)))) { try { await make({ jobId, no: r.no }); done.push(r.no); } catch {} } return { done, overview: overview(jobId) }; }));
   ipcMain.handle('jobs:check', wrap((a) => check(a)));
-  ipcMain.handle('jobs:revise', wrap(({ jobId, no, comments }) => make({ jobId, no, revision: { on: true, stage: 'comment', note: String(comments || '').slice(0, 2000) }, note: comments ? `Client comments to address: ${comments}` : '' })));
+  ipcMain.handle('jobs:revise', wrap(({ jobId, no, comments }) => make({ jobId, no, revision: { on: true, stage: '', note: String(comments || '').slice(0, 2000) }, note: comments ? `Client comments to address: ${comments}` : '' })));
+  // the revision asked for: typed in the box (e.g. C01), or said in the note ("move to C01"), else the next one at the same stage
+  const askedRev = (to, note) => { const t = String(to || '').trim().toUpperCase().replace(/^([A-Z])(\d)$/, '$10$2'); if (/^[PACX]\d{2}$/.test(t)) return t; const m = String(note || '').match(/\b(?:moved?\s+(?:up\s+)?to|go(?:ing)?\s+to|up\s+to|rev(?:ision)?|issue[d]?\s+(?:as|at))\s*([PACX])\s?0?(\d{1,2})\b/i); return m ? m[1].toUpperCase() + m[2].padStart(2, '0') : ''; };
+  ipcMain.handle('jobs:revision', wrap(async ({ jobId, no, note = '', to = '', people }) => {
+    const desk = require('./jobdesk'), V = desk.load(jobId), open = (V.crs || []).filter(c => c.doc === no && !/responded|closed/i.test(c.status || ''));
+    const said = String(note || '').trim(), rev = askedRev(to, said);
+    const r = await make({ jobId, no, people, revision: { on: true, to: rev, stage: '', note: said.slice(0, 2000) }, note: said ? `Changes for this revision: ${said}` : 'New revision: no other changes asked for.' });
+    if (r && r.status === 'made') for (const c of open) { try { desk.saveCrs(jobId, { no: c.no, status: 'Responded', response: `Revised in ${r.rev}` }); } catch {} }
+    return r;
+  }));
   ipcMain.handle('jobs:setStatus', wrap(({ jobId, no, status }) => setDeliv(jobId, no, { status })));
   ipcMain.handle('jobs:waiting', wrap(() => waiting()));
   return { overview, make, check, waiting, kindOf };

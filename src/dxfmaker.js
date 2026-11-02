@@ -433,7 +433,7 @@ function borderFrame(prims, spec, sheetLabel, opts) {
   if (B.attrs.REV) val.REV = val.REV;
   for (const [tag, a] of Object.entries(B.attrs)) if (val[tag]) out.push({ t: 'text', x: a[0], y: a[1], h: tag === 'REV' && B.company !== 'ng' ? Math.min(a[2] || 2, 3.3) : fitH(tag, a, val[tag]), text: String(val[tag]).slice(0, 60), align: a[3] || 'left', layer: B.textLayer });
   // revision rows, oldest at the bottom, each above the last
-  const hist = spec.revHistory && spec.revHistory.length ? spec.revHistory : [{ rev: val.REV, what: /^A/i.test(val.REV) ? 'ISSUED FOR COMMENT' : 'PRELIMINARY\nFOR CHECKING' }];
+  const hist = spec.revHistory && spec.revHistory.length ? spec.revHistory : [{ rev: val.REV, what: stageWords(val.REV) }];
   // the description is wrapped to its own column so it never runs over the lines (narrow on A3 / A2)
   const descW = B.company === 'ng' ? 84 : B.revbox && B.revbox.attrs && B.revbox.attrs.DRAWN ? Math.max(18, (Array.isArray(B.revbox.attrs.DRAWN) ? B.revbox.attrs.DRAWN[0] : B.revbox.attrs.DRAWN.x) - 4 - 20 - 1) : 40;
   const R = B.rev;
@@ -837,22 +837,51 @@ function place(prims, dx, dy, k = 1) {
 // block inserts expanded to plain geometry (for previews, PDFs and measuring)
 function flatPrims(prims) { const out = []; for (const p of prims) { if (p.t === 'insert') out.push(...flatPrims(place(p.prims.map(q => ({ ...q, layer: q.layer || p.layer })), p.x, p.y, p.k || 1))); else out.push(p); } return out; }
 const safeName = (s) => String(s).replace(/[\\/:*?"<>|]+/g, '_').replace(/\s+/g, '_').slice(0, 60);
+// older versions of a drawing (any revision, any earlier naming) move into an Archive folder beside it before the new one is written,
+// so the folder only ever holds the current revision. Nothing is deleted: a name already in the archive gets a time stamp.
+const ARCHIVE_EXT = /\.(dxf|pdf|spec\.json|svg)$/i;
+function archiveOld(outDir, prefix) {
+  if (!prefix) return [];
+  const moved = [], arch = path.join(outDir, 'Archive');
+  let list = []; try { list = fs.readdirSync(outDir); } catch { return moved; }
+  for (const f of list) {
+    const full = path.join(outDir, f);
+    if (!f.toUpperCase().startsWith(prefix.toUpperCase()) || !/^[_. ]/.test(f.slice(prefix.length)) || !ARCHIVE_EXT.test(f)) continue;   // this drawing only (not -00011)
+    try { if (!fs.statSync(full).isFile()) continue; } catch { continue; }
+    fs.mkdirSync(arch, { recursive: true });
+    let dst = path.join(arch, f);
+    if (fs.existsSync(dst)) { const m = f.match(ARCHIVE_EXT), stamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\..+/, '').replace('T', '-'); dst = path.join(arch, f.slice(0, m.index) + '_' + stamp + m[0]); }
+    try { fs.renameSync(full, dst); moved.push(dst); } catch {}
+  }
+  return moved;
+}
 const uniquePath = (dir, stem, ext) => { let f = path.join(dir, stem + ext), i = 2; while (fs.existsSync(f)) f = path.join(dir, `${stem}_${i++}${ext}`); return f; };
 
 // spec -> files on disk; returns paths and a preview. opts: { template: client title block DXF, previous: { spec } for a new revision }
+// the words in the revision box for a revision: P = preliminary, A = issued for comment, C = issued for construction, X = as built
+function stageWords(rev, later = false) {
+  const L = String(rev || 'P').toUpperCase()[0];
+  return L === 'A' ? 'ISSUED FOR COMMENT' : L === 'C' ? 'ISSUED FOR\nCONSTRUCTION' : L === 'X' ? 'AS BUILT' : later ? 'PRELIMINARY\nREVISED' : 'PRELIMINARY\nFOR CHECKING';
+}
 function make(spec, outDir, baseName, opts = {}) {
   if (spec.revision) spec.revision = String(spec.revision).toUpperCase().replace(/^([A-Z])(\d)$/, '$10$2');   // Atomax revisions are two digits: P01
   (spec.revHistory || []).forEach(r => { if (r.rev) r.rev = String(r.rev).toUpperCase().replace(/^([A-Z])(\d)$/, '$10$2'); });
   fs.mkdirSync(outDir, { recursive: true });
   const stem = safeName(baseName || spec.drawingNumber || spec.title || 'SLD');
+  // a drawing with its real number is saved as NUMBER_REV (e.g. X021126-01-70-0001_P02), the older versions moved to Archive first
+  const archived = opts.exact ? archiveOld(outDir, opts.archivePrefix || stem) : [];
   // a new revision: what changed against the previous spec, the history carried on, clouds round changed cable boxes (BCDs)
   let diff = null;
   if (opts.previous && opts.previous.spec) {
     const old = opts.previous.spec;
     diff = spec.kind === 'bcd' ? bcdDiff(old, spec) : null;
     const said = diff ? [diff.added.length ? 'added ' + diff.added.join(', ') : '', diff.removed.length ? 'removed ' + diff.removed.join(', ') : '', diff.changed.length ? 'changed ' + diff.changed.join(', ') : ''].filter(Boolean).join('; ') : (spec.revisionNote || 'revised');
-    spec.revHistory = [...(old.revHistory || [{ rev: old.revision || 'P01', what: 'First issue' }]), { rev: spec.revision, what: (spec.revisionNote ? spec.revisionNote + '. ' : '') + (said || 'no cable changes') }];
-    spec.notes = [...(spec.notes || []), 'REVISION HISTORY: ' + spec.revHistory.map(r => `${r.rev} ${r.what}`).join(' / ')];
+    // each row of the revision box keeps its own description, date and initials; what changed goes in the notes
+    const op = old.people || {}, np = spec.people || {};
+    const first = old.revHistory && old.revHistory.length ? old.revHistory : [{ rev: old.revision || 'P01', what: stageWords(old.revision || 'P01'), date: op.date || '', by: op.drawn || '', checked: op.checked || '', approved: op.approved || '' }];
+    spec.revHistory = [...first.filter(r => r.rev !== spec.revision), { rev: spec.revision, what: spec.revisionDesc || stageWords(spec.revision, true), date: np.date || '', by: np.drawn || '', checked: np.checked || '', approved: np.approved || '' }];
+    const why = [spec.revisionNote, said].filter(Boolean).join('. ');
+    if (why) spec.notes = [...(spec.notes || []), `${spec.revision}: ${why}`];
   }
   const sheets = spec.kind === 'bcd' ? layoutBcd(spec, { noTitle: !!opts.template, diff, fill: opts.fill, border: opts.border }) : [(() => { const r = layoutSld(spec, { fill: opts.fill, border: opts.border }); return { ...r, label: '' }; })()];
   const files = [];
@@ -864,19 +893,21 @@ function make(spec, outDir, baseName, opts = {}) {
       const k = Math.min(1, aw / W, ah / H);
       prims = place(prims, ext.x0 + 15 - c.x0 * k, ext.y1 - 15 - c.y1 * k, k); bounds = ext;
     }
-    const dxf = writeDxf(prims, bounds, { template: opts.template, fill: { title: spec.title || '', drawingNumber: spec.drawingNumber || 'TBC', revision: spec.revision || 'P01', date: new Date().toISOString().slice(0, 10), sheet: sh.label || '', drawn: 'Dex' } });
-    const file = uniquePath(outDir, `${stem}${sheets.length > 1 ? '_SH' + (i + 1) : ''}_DRAFT`, '.dxf');
+    const dxf = writeDxf(prims, bounds, { template: opts.template, fill: { title: spec.title || '', drawingNumber: spec.drawingNumber || 'TBC', revision: spec.revision || 'P01', date: new Date().toISOString().slice(0, 10), sheet: sh.label || '', drawn: (opts.fill && opts.fill.drawn) || '' } });
+    const file = opts.exact ? path.join(outDir, `${stem}${sheets.length > 1 ? '_SH' + (i + 1) : ''}.dxf`) : uniquePath(outDir, `${stem}${sheets.length > 1 ? '_SH' + (i + 1) : ''}_DRAFT`, '.dxf');
     fs.writeFileSync(file, dxf, 'utf8');
     files.push({ path: file, svg: toSvg(prims, bounds), entities: prims.length, label: sh.label, cables: sh.cables || [], prims, bounds, page: sh.page || (opts.template ? 'A3' : 'A1'), border: sh.border || '' });
   });
   // the spec is kept next to the drawing so the next revision can be compared with it
   try { fs.writeFileSync(files[0].path.replace(/\.dxf$/i, '.spec.json'), JSON.stringify(spec, null, 1)); } catch {}
-  return { path: files[0].path, svg: files[0].svg, entities: files.reduce((n, f) => n + f.entities, 0), files, diff };
+  return { path: files[0].path, svg: files[0].svg, entities: files.reduce((n, f) => n + f.entities, 0), files, diff, archived };
 }
 // the most recent spec saved for a drawing stem in a folder (for "new revision")
 function previousSpec(outDir, baseName) {
-  const stem = safeName(baseName);
-  try { const c = fs.readdirSync(outDir).filter(f => f.startsWith(stem) && f.endsWith('.spec.json')).map(f => ({ f, t: fs.statSync(path.join(outDir, f)).mtimeMs })).sort((a, b) => b.t - a.t)[0]; return c ? { file: c.f, spec: JSON.parse(fs.readFileSync(path.join(outDir, c.f), 'utf8')) } : null; } catch { return null; }
+  const stem = safeName(baseName).toUpperCase(), all = [];
+  for (const dir of [outDir, path.join(outDir, 'Archive')]) { try { for (const f of fs.readdirSync(dir)) if (f.toUpperCase().startsWith(stem) && f.endsWith('.spec.json')) all.push({ f: path.join(dir, f), t: fs.statSync(path.join(dir, f)).mtimeMs }); } catch {} }
+  const c = all.sort((a, b) => b.t - a.t)[0];
+  try { return c ? { file: path.basename(c.f), spec: JSON.parse(fs.readFileSync(c.f, 'utf8')) } : null; } catch { return null; }
 }
 
 module.exports = { primsBounds, BORDER_NAMES, flatPrims, BORDERS, cableClashes, previousSpec, layoutBcd, bcdDiff, SYSTEM, ALIASES, SYMBOLS, symbolOf, layoutSld, writeDxf, toSvg, parseReply, make };

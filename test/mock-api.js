@@ -16,6 +16,8 @@ function claudeReply(body) {
   // ---- Eli (email checker) ----
   if (/You are Eli, the email checker/.test(sys)) {
     calls.push({ eli: true, images: (userText.match(/"type":"image"/g) || []).length, pdfs: (userText.match(/"type":"document"/g) || []).length, hasBody: /SLD|single line/i.test(userText), earthing: /Earthing Design/.test(userText), forwardNote: /dummy folder/i.test(userText) });
+    if (/F3 is now 125A/.test(userText)) return JSON.stringify({ from: 'Sam Client <sam@client.co.uk>', subject: 'RE: Test site SLD', date: '2 Nov 2026', summary: 'Sam asks for two changes on the SLD.', site: 'Test site', jobNumber: 'X22001', asks: [{ title: 'Update the SLD', detail: 'Two changes', agent: 'dex', kind: 'sld' }],
+      people: [{ name: 'Sam', company: 'Sam Client Ltd', role: 'client asking' }], commentReturn: true, comments: [{ doc: 'SLD', comment: 'F3 is now 125A', by: 'Sam' }, { doc: 'SLD', comment: 'Add a spare 63A way', by: 'Sam' }], deliverables: [], inputs: [], missingInputs: [] });
     return JSON.stringify({ from: 'Sam Client <sam@client.co.uk>', subject: 'Test site SLD', date: '29 Oct 2026', summary: 'Sam needs a single line diagram for the LV board at the Test site by Friday.', site: 'Test site', jobNumber: 'X22001',
       asks: [{ title: 'Draw an SLD for the Test site LV board', detail: '1000kVA transformer, 1600A ACB incomer, three outgoing ways (DB-01 250A, pump 160A, spare 63A).', agent: 'dex', kind: 'sld', due: 'Friday' },
              { title: 'Confirm the price for the SLD', detail: 'Sam asks what it will cost.', agent: 'none', kind: 'other', due: '' },

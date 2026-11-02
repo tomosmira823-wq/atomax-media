@@ -41,7 +41,7 @@ Who does what (use these, do not send them to "none"):
 - Fault level, load flow, reactive power capability, protection co-ordination, harmonics (G5/5), flicker and unbalance (P28 / P29), G99 / G100 compliance studies, intertripping scheme design: "engineer" for a first-pass note (say in the detail that a full study needs PowerFactory if it does).
 - A quote or fee proposal: "documents".
 Existing jobs: the list of Atomax's jobs is given below the email. If the email is about one of them (same job number, site, client or project), set "existingJob" to that job number and do not add an "eli" task to set the job up again.
-Client comments: if the email returns comments on issued drawings or documents (a comment sheet, a marked-up PDF, "please address the following"), set "commentReturn": true, list every comment under "comments" (document number, the comment as written, who made it) and make one task per document for the agent who changes it (drawings: "dex", schedules and registers: "excel", documents: "documents" or "word").
+Client comments and changes: if the email returns comments on issued drawings or documents (a comment sheet, a marked-up PDF, "please address the following") OR asks for changes to drawings / documents Atomax has already made, even informally ("can you change F3 to 125A on the SLD", "the generator is now 600kVA"), set "commentReturn": true, list every comment under "comments" (document number, or its title when no number is given, e.g. "SLD"; the comment or change as written; who made it) and make one task per document for the agent who changes it (drawings: "dex", schedules and registers: "excel", documents: "documents" or "word").
 Deliverables: list what Atomax is being asked to produce under "deliverables" (e.g. {"type":"BCD","title":"Block cable diagram - Malt RIO1","qty":2}, {"type":"cable schedule","title":"Cable schedule","qty":1}); type is one of BCD, cable schedule, SLD, earthing, loop, layout, document, other.
 Inputs: list every input document the client sent or refers to under "inputs" with its revision as written, and under "missingInputs" what is needed to do the work properly but has not been sent (e.g. instrument index, IO list, cable datasheets, latest tag list, panel GA).
 Only list real asks from the email. Do not invent work. Copy site names, job numbers, drawing numbers, ratings and dates exactly as written.
@@ -214,6 +214,50 @@ function register({ ipcMain, dialog, shell, getWin, userDir, claudeFull, checker
     return e;
   }));
   ipcMain.handle('mail:list', wrap(() => load().slice(0, 30)));
+  // Eli reads it; on a job's page the job is that job
+  ipcMain.handle('jobs:addEmail', wrap(async ({ files = [], text = '', jobId = '' }) => {
+    const e = await readEmail({ files, text });
+    if (jobId) { e.jobId = jobId; const list = load(), i = list.findIndex(x => x.id === e.id); if (i >= 0) { list[i] = e; save(list); } }
+    const job = e.jobId && BIZ.data().jobs.find(j => j.id === e.jobId);
+    const company = (e.people || []).find(p => /client|asking|from/i.test(p.role || '') && p.company && !/atomax/i.test(p.company)) || (e.people || []).find(p => p.company && !/atomax/i.test(p.company));
+    let D = {}; try { D = BIZ.projects ? { nextNumber: BIZ.projects.nextJobNumber(BIZ.data().jobs.map(j => j.number), (loadSettings && loadSettings().jobsFolder) || BIZ.projects.jobParent(BIZ.data().jobs.map(j => j.number))) } : {}; } catch {}
+    return { email: e, job: job ? { id: job.id, number: job.number, name: job.name, client: job.client || '' } : null, suggest: { number: String(e.jobNumber || D.nextNumber || '').toUpperCase(), name: e.site || e.subject || '', client: company ? company.company : '', folderFound: e.folderFound || '' } };
+  }));
+  // file it: on the job (new one made if asked), its deliverables added, its changes logged against the drawings they are for, a copy kept in the job folder
+  ipcMain.handle('jobs:applyEmail', wrap(({ emailId, jobId = '', newJob = null, client = '' }) => {
+    const list = load(), e = list.find(x => x.id === emailId); if (!e) throw new Error('That email is gone');
+    const d = BIZ.data(), desk = require('./jobdesk');
+    let job = jobId && d.jobs.find(j => j.id === jobId);
+    if (!job) {
+      if (!newJob || !String(newJob.number || '').trim()) throw new Error('Give the new job a number');
+      const number = String(newJob.number).trim().toUpperCase();
+      if (d.jobs.some(j => String(j.number).toUpperCase() === number)) throw new Error(number + ' is already a job: pick it instead');
+      let folder = '';
+      if (newJob.mode === 'create') { const s = loadSettings ? loadSettings() : {}; const parent = newJob.folder || s.jobsFolder; if (!parent || !fs.existsSync(parent)) throw new Error('Choose where your job folders live'); if (saveSettings && s.jobsFolder !== parent) saveSettings({ ...s, jobsFolder: parent }); folder = BIZ.projects.createJobFolder(parent, number, newJob.name || ''); }
+      else if (newJob.mode === 'link') { if (!newJob.folder || !fs.existsSync(newJob.folder)) throw new Error('Choose the job folder'); folder = newJob.folder; }
+      job = biz.saveJob(d, { number, name: String(newJob.name || e.site || e.subject || '').trim(), client: String(newJob.client || client || '').trim(), folder, notes: `From email: ${e.subject}\n${e.summary}` }, 'Eli');
+    }
+    if (!job.client && client) job.client = String(client).trim();
+    BIZ.store.save();
+    if (job.folder) { try { BIZ.projects.gather(job.id, job.folder, { checker, dxffix: require('./dxffix') }); } catch {} }
+    // changes / comments go against the drawing they are for: by number, else by its title (SLD, BCD, cable schedule ...)
+    const WORDS = { SLD: 'single line', BCD: 'block cable', 'CABLE SCHEDULE': 'cable schedule', EARTHING: 'earthing' };
+    const docOf = (doc) => { const t = String(doc || '').trim(); if (!t) return ''; const up = t.toUpperCase(); const ds = job.drawings || [];
+      const exact = ds.find(x => String(x.no).toUpperCase() === up) || ds.find(x => up.includes(String(x.no).toUpperCase()) && x.no.length > 6); if (exact) return exact.no;
+      const CODE = { SLD: '70', 'SINGLE LINE': '70', 'SINGLE LINE DIAGRAM': '70', BCD: '71', 'BLOCK CABLE DIAGRAM': '71', EARTHING: '74' }, code = CODE[up];   // QS 006 type code in the number
+      const byCode = code && ds.filter(x => new RegExp('-' + code + '-\\d{3,4}$').test(String(x.no))); if (byCode && byCode.length === 1) return byCode[0].no;
+      const want = (WORDS[up] || t).toLowerCase(), raw = t.toLowerCase(), words = want.split(/[^a-z0-9]+/).filter(w => w.length > 2);
+      let best = null, score = 0; for (const x of ds) { const tl = String(x.title || '').toLowerCase(); const sc = tl.includes(want) || new RegExp('\\b' + raw.replace(/[^a-z0-9 ]/g, '') + '\\b').test(tl) ? 99 : words.filter(w => tl.includes(w)).length; if (sc > score) { score = sc; best = x; } }
+      return best && score >= Math.min(2, words.length) ? best.no : t; };
+    const r = { job: { id: job.id, number: job.number }, deliverables: 0, comments: 0, docs: [] };
+    try { r.deliverables = (desk.addDeliverables(job.id, e.deliverables || []) || []).length; } catch {}
+    try { desk.addInputs(job.id, { inputs: e.inputs || [], missing: e.missingInputs || [], questions: e.clientQuestions || [], fromEmail: e.subject || e.from }); } catch {}
+    if (e.comments && e.comments.length) { const cs = e.comments.map(c => ({ ...c, doc: docOf(c.doc) })); try { r.comments = desk.addComments(job.id, cs, e.subject || e.from).length; } catch {} r.docs = [...new Set(cs.map(c => c.doc).filter(Boolean))]; }
+    if (job.folder) { try { const out = BIZ.projects.outputDir(job.folder, 'email'); for (const n of [...(e.originals || []), ...(e.attachments || []).map(x => x.name)]) { const src = path.join(DIR(), e.id, n.replace(/[\\/:*?"<>|]+/g, '_')), dst = path.join(out, n.replace(/[\\/:*?"<>|]+/g, '_')); if (fs.existsSync(src) && !fs.existsSync(dst)) fs.copyFileSync(src, dst); } } catch {} }
+    e.jobId = job.id; e.desk = { ...(e.desk || {}), [job.id]: r }; save(list);
+    BIZ.log({ who: 'Eli', action: 'Filed an email on the job', jobId: job.id, detail: `${e.subject || e.summary} · ${r.deliverables} deliverable(s) added · ${r.comments} change(s) logged` });
+    return r;
+  }));
   ipcMain.handle('mail:folders', wrap(({ id, jobId }) => { const e = load().find(x => x.id === id); const j = jobId && BIZ.data().jobs.find(x => x.id === jobId); return BIZ.projects.suggest({ number: j ? j.number : e && e.jobNumber, name: j ? j.name : '', text: e ? `${e.site} ${e.subject}` : '' }); }));
 
   // Tom says yes: job (existing or new), folder, task on the board, email filed in the job folder
@@ -384,17 +428,32 @@ EARTHING tasks: size every protective / earth conductor the drawing needs (MET t
     const kindName = spec.kind === 'earthing' ? 'EARTHING' : spec.kind === 'bcd' ? 'BCD' : 'SLD';
     const base = spec.drawingNumber && spec.drawingNumber !== 'TBC' ? spec.drawingNumber + '_' + kindName : (job ? job.number + '_' + kindName : kindName);
     // optional: a new revision of a drawing Dex made before (changes clouded on BCDs, history carried in the notes)
+    // the drawing as it is now (its last saved spec, in the folder or its Archive)
+    const realNo = spec.drawingNumber && !/^TBC/i.test(spec.drawingNumber) ? spec.drawingNumber : '';
+    const prior = dxfmaker.previousSpec(outDir, realNo || base);
     let previous = null;
-    if (revision && revision.on) { previous = dxfmaker.previousSpec(outDir, base); spec.revision = DN.nextRev(previous ? previous.spec.revision : (spec.revision || ''), revision.stage || ''); if (revision.note) spec.revisionNote = revision.note; }
-    else if (!spec.revision || /^P0?1$/i.test(spec.revision)) spec.revision = 'P01';
+    if (revision && revision.on) {
+      // a revision: the next one at the same stage (P01 > P02), or the one asked for (e.g. "C01")
+      previous = prior;
+      const to = String(revision.to || '').toUpperCase().replace(/^([A-Z])(\d)$/, '$10$2');
+      spec.revision = /^[A-Z]\d{2}$/.test(to) ? to : DN.nextRev(prior ? prior.spec.revision : 'P01', revision.stage || '');
+      if (revision.note) spec.revisionNote = revision.note;
+    } else {
+      // make again: the same revision the drawing has now (P01 for a first make), its revision history kept
+      spec.revision = prior ? prior.spec.revision : 'P01';
+      if (prior && prior.spec.revHistory) spec.revHistory = prior.spec.revHistory;
+    }
     spec.revision = String(spec.revision).toUpperCase().replace(/^([A-Z])(\d)$/, '$10$2');   // two digits: P01
+    const today = (() => { const d = new Date(); return [d.getDate(), d.getMonth() + 1, d.getFullYear()].map((v, i) => String(v).padStart(i < 2 ? 2 : 4, '0')).join('.'); })();
+    spec.people = { drawn, checked, approved, date: today };
     const bd = job ? desk.borderFor(job) : { key: 'atomax', name: 'Atomax A1' }, template = bd.template || '';
     if (bd.warning) spec.notes = [...(spec.notes || [])];
-    const res = dxfmaker.make(spec, outDir, base, { template, border: bd.key, previous, fill: job ? { drawn, checked, approved, client: job.client || spec.client || '', project: `${job.number} ${job.name || ''}`.trim(), site: (desk.load(job.id).ng || {}).site || job.name || '', ngInvestment: (desk.load(job.id).ng || {}).investment || '' } : { drawn, checked, approved, client: spec.client || '' } });
+    // saved as NUMBER_REV (older versions moved to Archive); a drawing with no real number yet keeps the old draft naming
+    const res = dxfmaker.make(spec, outDir, realNo ? realNo + '_' + spec.revision : base, { exact: !!realNo, archivePrefix: realNo, template, border: bd.key, previous, fill: job ? { drawn, checked, approved, client: job.client || spec.client || '', project: `${job.number} ${job.name || ''}`.trim(), site: (desk.load(job.id).ng || {}).site || job.name || '', ngInvestment: (desk.load(job.id).ng || {}).investment || '' } : { drawn, checked, approved, client: spec.client || '' } });
     // every DXF gets its monochrome PDF beside it (issues go out as DXF and PDF)
     let madePdfs = []; try { madePdfs = await require('./pdfout').writePdfs(res); } catch (e) { (res.files || []).forEach(f => delete f.prims); }
     BIZ.log({ who: 'Dex', action: 'Drew', jobId: job ? job.id : '', detail: `${path.basename(res.path)} · ${spec.summary || spec.title || 'SLD'}${used.length ? ' · skills: ' + used.join(', ') : ' · no skills'}` });
-    return { border: bd.name, borderWarning: bd.warning || '', pdfs: madePdfs, masterCheck, sheets: (res.files || []).map(f => ({ path: f.path, pdf: f.pdf || '', label: f.label })), diff: res.diff, revision: spec.revision, previousFound: !!previous, titleBlock: template ? path.basename(template) : '', drawingNumber: spec.drawingNumber, skills: used, incomplete: cutOff, path: res.path, folder: outDir, svg: res.svg, summary: spec.summary || '', title: spec.title || '', notes: spec.notes || [], read: [...pdfs.map(p => path.basename(p)), ...sheetsRead, ...notesRead], inJobFolder: !!(job && job.folder) };
+    return { archived: (res.archived || []).length, border: bd.name, borderWarning: bd.warning || '', pdfs: madePdfs, masterCheck, sheets: (res.files || []).map(f => ({ path: f.path, pdf: f.pdf || '', label: f.label })), diff: res.diff, revision: spec.revision, previousFound: !!previous, titleBlock: template ? path.basename(template) : '', drawingNumber: spec.drawingNumber, skills: used, incomplete: cutOff, path: res.path, folder: outDir, svg: res.svg, summary: spec.summary || '', title: spec.title || '', notes: spec.notes || [], read: [...pdfs.map(p => path.basename(p)), ...sheetsRead, ...notesRead], inJobFolder: !!(job && job.folder) };
   }));
 }
 
