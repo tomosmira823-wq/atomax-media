@@ -156,7 +156,7 @@ function mergeRoles(a, b) {   // shortest common supersequence of two role lists
 function itemH(it) { if (it.gap) return it.gap; const r = drawChain([it], 0, 0); return -r.y; }
 function alignFeeders(feeders) {
   // feeders made of the same kinds of item in the same order (e.g. breaker, drive, cable, isolator, cable, motor) line up row for row
-  const sig = (f) => chainParts(f.chain).items.map(ROLE_OF).filter(Boolean).join('>') + (chainParts(f.chain).sub ? '>board' : '');
+  const sig = (f) => chainParts(f.chain).items.map(ROLE_OF).filter(Boolean).join('>') + (chainParts(f.chain).sub ? '>board' : '') + (f._inRoom ? '>inroom' : '');   // a feeder kept inside the room is not pulled down to its neighbours' level
   const groups = {}; feeders.forEach((f, i) => (groups[sig(f)] = groups[sig(f)] || []).push(i));
   const out = [...feeders];
   for (const idx of Object.values(groups)) if (idx.length > 1) alignGroup(idx.map(i => feeders[i])).forEach((f, k) => { out[idx[k]] = f; });
@@ -197,6 +197,12 @@ function drawSimple(f, fx, y, prims) {
   if (feederLabelAdds(f)) { const tl = wrap(f.label, UNDER_W); prims.push({ t: 'mtext', x: fx, y: yEnd - 2, w: UNDER_W, h: TH, text: tl.join('\n'), attach: 2, layer: 'SLD-TEXT' }); yEnd -= 3 + tl.length * LINE; }
   return { yEnd, ended: r.ended, chainEnd: r.y };
 }
+// an earthing feeder (only cable / earth / electrode / link items, ending in an earth): drawn off the board's EARTH BAR, a separate bar
+// under the busbar, never off the phase busbar (TN-S: separate PE throughout)
+const EARTH_SYMS = ['cable', 'earth', 'electrode', 'grid', 'link'];
+const isEarthFeeder = (f) => { const { items, sub } = chainParts(f.chain || []); const syms = items.filter(it => !it.gap).map(it => symbolOf(it.symbol)); return !sub && syms.length > 0 && syms.every(x => EARTH_SYMS.includes(x)) && syms.some(x => ['earth', 'electrode', 'grid'].includes(x)); };
+const EARTH_BAR = 8;
+let SUBLOG = null;   // filled while measuring a switchroom: where each sub-board in the room lands
 function drawBoard(b, x0, y, prims, top, over = null) {
   let minY = y, maxY = y, maxX = x0 + FEED + 20; const ixs = [];
   // feeders, left to right at the feeder pitch. A board fed by a feeder (an MCC, a DB) is drawn underneath, reaching across under the
@@ -212,10 +218,11 @@ function drawBoard(b, x0, y, prims, top, over = null) {
     cx += FEED;
   }
   // depths of the simple feeders (drawn into scratch to measure them)
-  const ext = fs.map((f, i) => { if (chainParts(f.chain).sub) return null; const tmp = [], d = drawSimple(f, fxs[i], y, tmp), bb = primsBounds(tmp); return { x0: Math.min(bb.x0, fxs[i] - 10), x1: Math.max(bb.x1, fxs[i] + 10), y0: Math.min(bb.y0, d.yEnd) }; });
+  const fy = (f) => isEarthFeeder(f) ? y - EARTH_BAR : y;
+  const ext = fs.map((f, i) => { if (chainParts(f.chain).sub) return null; const tmp = [], d = drawSimple(f, fxs[i], fy(f), tmp), bb = primsBounds(tmp); return { x0: Math.min(bb.x0, fxs[i] - 10), x1: Math.max(bb.x1, fxs[i] + 10), y0: Math.min(bb.y0, d.yEnd) }; });
   fs.forEach((f, i) => {
     const fx = fxs[i], { items, sub } = chainParts(f.chain);
-    if (!sub) { const d = drawSimple(f, fx, y, prims); minY = Math.min(minY, d.yEnd); maxX = Math.max(maxX, ext[i].x1); return; }
+    if (!sub) { const d = drawSimple(f, fx, fy(f), prims); minY = Math.min(minY, d.yEnd); maxX = Math.max(maxX, ext[i].x1); return; }
     const inc = (sub.incomers || []).flatMap(c => c.chain || []);
     const r = drawChain([...items, ...inc], fx, y); prims.push(...r.prims);
     let yEnd = r.y;
@@ -225,6 +232,7 @@ function drawBoard(b, x0, y, prims, top, over = null) {
       const S = subs.find(s => s.i === i), under = ext.filter(e => e && e.x1 > S.x0 && e.x0 < S.x1);
       const natural = yEnd - SUB_GAP_MIN, subY = Math.min(natural, ...under.map(e => e.y0 - 10));
       prims.push(L(fx, yEnd, fx, subY, 'SLD-CABLE'));
+      if (SUBLOG && sub._room) SUBLOG.push({ id: sub._room, y: subY });
       const d = drawBoard({ ...sub, incomers: [] }, S.x0, subY, prims, false, [...under, { x0: fx - 10, x1: fx + 6 + LABEL_W + 4, y0: -1e9 }]);   // its own feed (and that feed's labels) too
       yEnd = d.minY; maxX = Math.max(maxX, d.maxX, S.x1);
     }
@@ -240,6 +248,10 @@ function drawBoard(b, x0, y, prims, top, over = null) {
   // the busbar spans its own feeders and incomers only
   const xs = [...fxs, ...ixs], busL = xs.length ? Math.min(...xs) - 8 : x0, busR = Math.max(xs.length ? Math.max(...xs) + 14 : x0 + 30, busL + 30);
   prims.push(P([[busL, y], [busR, y]], false, 'SLD-BUS', 0.8));
+  { const ex = fs.map((f, i) => isEarthFeeder(f) ? fxs[i] : null).filter(v => v !== null);
+    if (ex.length) { const e0 = Math.min(...ex) - 6, e1 = Math.max(...ex) + 6, tag = String(b.label || '').split(/\n|\\n/)[0].trim();
+      prims.push(P([[e0, y - EARTH_BAR], [e1, y - EARTH_BAR]], false, 'SLD-EARTH', 0.5));
+      prims.push({ t: 'text', x: e0, y: y - EARTH_BAR + 1.6, h: TH, text: `${tag ? tag + ' ' : ''}EARTH BAR`.toUpperCase(), layer: 'SLD-TEXT' }); } }
   // a board fed from a feeder: its name above the right-hand end of its busbar, kept clear of the feeders drawn over it
   if (!top && over && b.label) {
     const bl = wrap(b.label, 44), h = bl.length * LINE, clearX = Math.max(busL + 10, ...over.map(e => e.x1 + 3)), w = Math.min(44, Math.max(30, busR - clearX));
@@ -259,8 +271,8 @@ function drawBoard(b, x0, y, prims, top, over = null) {
 }
 
 const SHEETS = [['A3', 420, 297], ['A2', 594, 420], ['A1', 841, 594], ['A0', 1189, 841]];
-function dashPath(prims, pts, layer) {   // a closed dashed outline through the points
-  for (let i = 0; i < pts.length; i++) { const [ax, ay] = pts[i], [bx, by] = pts[(i + 1) % pts.length], len = Math.hypot(bx - ax, by - ay); if (len < 1e-6) continue; const ux = (bx - ax) / len, uy = (by - ay) / len; for (let d = 0; d < len; d += 9) { const e = Math.min(len, d + 6); prims.push(L(ax + ux * d, ay + uy * d, ax + ux * e, ay + uy * e, layer)); } }
+function dashPath(prims, pts, layer, open = false) {   // a dashed outline through the points (closed unless open)
+  for (let i = 0; i < pts.length - (open ? 1 : 0); i++) { const [ax, ay] = pts[i], [bx, by] = pts[(i + 1) % pts.length], len = Math.hypot(bx - ax, by - ay); if (len < 1e-6) continue; const ux = (bx - ax) / len, uy = (by - ay) / len; for (let d = 0; d < len; d += 9) { const e = Math.min(len, d + 6); prims.push(L(ax + ux * d, ay + uy * d, ax + ux * e, ay + uy * e, layer)); } }
 }
 function dashBox(prims, x0, y0, x1, y1, layer) {
   const seg = (ax, ay, bx, by) => { const len = Math.hypot(bx - ax, by - ay), ux = (bx - ax) / len, uy = (by - ay) / len; for (let d = 0; d < len; d += 9) { const e = Math.min(len, d + 6); prims.push(L(ax + ux * d, ay + uy * d, ax + ux * e, ay + uy * e, layer)); } };
@@ -277,12 +289,32 @@ function layoutSld(spec, opts = {}) {
   for (let b of boards) {
     // in a switchroom / kiosk: every cable leaves the room at the same level, a little below the deepest item inside, so the dashed wall
     // only ever crosses bare conductor (never a cable tag, a label or a symbol). Feeders with no cable stay wholly inside.
-    let wall = null, wallTop = null;
+    let wall = null, wallTop = null, roomSubs = false;
     if (b.enclosure) {
       const firstCable = (items) => items.findIndex(it => !it.gap && symbolOf(it.symbol) === 'cable');
       const depthOf = (items) => { if (!items.length) return 0; const r = drawChain(items, 0, 0), bb = primsBounds(r.prims); return Math.max(-r.y, Number.isFinite(bb.y0) ? -bb.y0 : 0); };
-      const D = Math.max(8, ...(b.feeders || []).map(f => { const { items } = chainParts(f.chain), k = firstCable(items); return depthOf(k >= 0 ? items.slice(0, k) : items); }));
+      // a feeder with no cable stays wholly inside: its depth includes the words under it (and the earth bar drop)
+      const fDepth = (f) => { const { items } = chainParts(f.chain), k = firstCable(items), off = isEarthFeeder(f) ? EARTH_BAR : 0; if (k >= 0) return off + depthOf(items.slice(0, k)); const tmp = [], d = drawSimple(f, 0, -off, tmp), bb = primsBounds(tmp); return Math.max(-d.yEnd, Number.isFinite(bb.y0) ? -bb.y0 : 0); };
+      const gapIn = (f, Dw) => { const chain = [...(f.chain || [])], { items } = chainParts(chain), k = firstCable(items); if (k < 0) return f; const off = isEarthFeeder(f) ? EARTH_BAR : 0, h = off + (k ? chainHeight(items.slice(0, k)) : 0); chain.splice(k, 0, { gap: Dw + 5 - h }); return { ...f, chain }; };
+      const room = String(b.enclosure).toUpperCase().trim(), inRoom = (sb) => sb && String(sb.enclosure || '').toUpperCase().trim() === room;
+      const D = Math.max(8, ...(b.feeders || []).map(fDepth));
       wall = -D - 3;
+      roomSubs = (b.feeders || []).some(f => inRoom(chainParts(f.chain).sub));
+      if (roomSubs) {
+        // boards in the same room (MCC, DBs): measured once to find where each lands, then every one of their cables leaves at one level
+        // a feeder ending at something in the same room (e.g. DB-03 to the MCC-01 PLC section) stays wholly inside: the wall goes under it
+        const tagOf = (t) => String(t || '').split(/\n|\\n|\s/)[0].trim().toUpperCase();
+        const roomTags = new Set([tagOf(b.label), ...(b.feeders || []).map(f => chainParts(f.chain).sub).filter(inRoom).map(sb => tagOf(sb.label))].filter(Boolean));
+        const endsInRoom = (g) => { const { items } = chainParts(g.chain || []), last = items.filter(it => !it.gap).slice(-1)[0]; return !!last && (inRoom(last) || roomTags.has(tagOf(last.label))); };
+        const fullDepth = (g) => { const tmp = [], d = drawSimple(g, 0, isEarthFeeder(g) ? -EARTH_BAR : 0, tmp), bb = primsBounds(tmp); return Math.max(-d.yEnd, Number.isFinite(bb.y0) ? -bb.y0 : 0); };
+        const subD = (sb) => Math.max(8, ...(sb.feeders || []).map(g => endsInRoom(g) ? fullDepth(g) : fDepth(g)));
+        let n = 0; const tagged = { ...b, feeders: (b.feeders || []).map(f => { const chain = (f.chain || []).map(it => it.board && inRoom(it.board) ? { ...it, board: { ...it.board, _room: 'r' + (n++) } } : it); return { ...f, chain }; }) };
+        SUBLOG = []; drawBoard(tagged, 0, 0, [], true); const at = new Map(SUBLOG.map(e => [e.id, e.y])); SUBLOG = null;
+        const subsT = tagged.feeders.map(f => chainParts(f.chain).sub).filter(sb => sb && sb._room);
+        const bottom = Math.min(...subsT.map(sb => at.get(sb._room) - subD(sb) - 3));
+        wall = bottom;
+        b = { ...tagged, feeders: tagged.feeders.map(f => ({ ...f, chain: (f.chain || []).map(it => it.board && it.board._room ? { ...it, board: { ...it.board, feeders: (it.board.feeders || []).map(g => endsInRoom(g) ? { ...g, _inRoom: true } : gapIn(g, at.get(it.board._room) - 3 - bottom)) } } : it) })) };
+      }
       // incomers from another place (a transformer in its compound, a generator in its enclosure): their cable crosses the top wall
       // the same way, so what feeds the board in sits outside the room
       const lastCable = (items) => { let k = -1; items.forEach((it, i) => { if (!it.gap && symbolOf(it.symbol) === 'cable') k = i; }); return k; };
@@ -291,7 +323,7 @@ function layoutSld(spec, opts = {}) {
         const U = Math.max(8, ...ins0.filter(Boolean).map(x => x.h)); wallTop = U + 3;
         b = { ...b, incomers: (b.incomers || []).map((c, i) => { const x = ins0[i]; if (!x) return c; const chain = [...c.chain]; chain.splice(x.k + 1, 0, { gap: U + 5 - x.h }); return { ...c, chain }; }) };
       }
-      b = { ...b, feeders: (b.feeders || []).map(f => { const chain = [...(f.chain || [])], { items } = chainParts(chain), k = firstCable(items); if (k < 0) return f; const h = k ? chainHeight(items.slice(0, k)) : 0; chain.splice(k, 0, { gap: D + 5 - h }); return { ...f, chain }; }) };
+      if (!roomSubs) b = { ...b, feeders: (b.feeders || []).map(f => gapIn(f, D)) };
     }
     const from = prims.length, d = drawBoard(b, x0, 0, prims, true);
     if (wall !== null) {   // a dashed box round the board and its incomers, named above it
@@ -463,12 +495,47 @@ const INTERNAL_NOTE = [
   /\btruncated\b|\bin the workbook\b|\bworkbook (cells?|rows?|notes?)\b|\b(rows?|cells?) [A-Z]?\d+\b|\bR\d+ TO R\d+\b|\bawaiting client confirmation\b/i,
 ];
 const isInternalNote = (t) => INTERNAL_NOTE.some(re => re.test(String(t)));
-const cleanLabel = (t) => String(t).replace(/\s*[([]?\s*(?:SEE|REF(?:ER)?(?: TO)?|PER)\s+(?:TQ|RFI)[\s-]*[\w/-]*\s*[)\]]?/gi, '').replace(/\s*[([]\s*(?:TQ|RFI)[\s-]*\d+[\w/ -]*[)\]]/gi, '').replace(/[ \t]+\n/g, '\n').trim();
+const cleanLabel = (t) => units(String(t).replace(/\bPFC\s+(?=\d+(?:\.\d+)?\s*kA)/gi, 'PROSPECTIVE FAULT ')).replace(/\s*[([]?\s*(?:SEE|REF(?:ER)?(?: TO)?|PER)\s+(?:TQ|RFI)[\s-]*[\w/-]*\s*[)\]]?/gi, '').replace(/\s*[([]\s*(?:TQ|RFI)[\s-]*\d+[\w/ -]*[)\]]/gi, '').replace(/[ \t]+\n/g, '\n').trim();
 function cleanLabels(spec) {   // every label on an SLD / BCD spec, in place
   const walk = (b) => { if (!b) return; if (b.label) b.label = cleanLabel(b.label); for (const c of [...(b.incomers || []), ...(b.feeders || [])]) { if (c.label) c.label = cleanLabel(c.label); for (const it of c.chain || []) { if (it.label) it.label = cleanLabel(it.label); if (it.board) walk(it.board); } } };
   (spec.boards || spec.busbars || []).forEach(walk);
   for (const n of spec.nodes || []) if (n.label) n.label = cleanLabel(n.label);
   for (const c of spec.cables || []) if (c.note) c.note = cleanLabel(c.note);
+}
+// the schedule is the source: each BCD cable's type (with its voltage), cores, size and length, and each item's location, are copied
+// straight from the workbook's own columns, so nothing Dex retyped (a dropped "11kV") reaches the drawing. Returns what changed.
+function fromSchedule(spec, sheets) {
+  const norm = (v) => String(v ?? '').trim(), key = (v) => norm(v).toUpperCase().replace(/\s+/g, ''), changed = [];
+  const tables = (want) => { const out = []; for (const sh of sheets || []) { const rows = sh.rows || []; for (let i = 0; i < Math.min(rows.length, 15); i++) { const h = (rows[i].c || []).map(x => norm(x).toLowerCase()); const col = {}; for (const [k, re] of Object.entries(want)) col[k] = h.findIndex(x => re.test(x)); if (col.id >= 0 && Object.entries(col).filter(([k, v]) => k !== 'id' && v >= 0).length) { out.push({ col, rows: rows.slice(i + 1) }); break; } } } return out; };
+  const cabs = new Map();
+  for (const t of tables({ id: /^cable\s*(no|number|ref|tag)\b|^cable$/, type: /^cable\s*type$|^type$/, cores: /cores?/, size: /csa|^size/, volt: /^voltage|rated voltage/, len: /^length/ }))
+    for (const r of t.rows) { const c = r.c || [], id = key(c[t.col.id]); if (id && !cabs.has(id) && !(r.st || []).some(Boolean)) cabs.set(id, { type: norm(c[t.col.type]), cores: norm(c[t.col.cores]), size: norm(c[t.col.size]), volt: norm(c[t.col.volt]), len: norm(c[t.col.len]) }); }
+  for (const cb of spec.cables || []) {
+    const s0 = cabs.get(key(cb.no)); if (!s0) continue;
+    const hasV = (t) => /\d(?:\.\d+)?\s*k?V\b/i.test(t), vt = s0.volt && s0.volt !== '-' && !key(s0.type).includes(key(s0.volt)) ? s0.volt : '';
+    const want = { type: s0.type ? (vt ? s0.type + (hasV(s0.type) ? ', ' : ' ') + vt : s0.type) : '', cores: s0.cores && s0.cores !== '-' ? s0.cores : '', size: s0.size && s0.size !== '-' ? s0.size : '', length: s0.len && s0.len !== '-' ? s0.len.replace(/\s*m$/i, '') : '' };
+    const same = (k, a, b) => { const f = (x) => { let t = key(x); if (k === 'size') t = t.replace(/MM²|MM2|MM$/, ''); if (k === 'cores') t = t.replace(/(PAIRS?|PRS?|P)$/, 'P').replace(/(CORES?|C)$/, ''); if (k === 'length') t = t.replace(/M$/, ''); return t.replace(/^(\d+)\.0$/, '$1'); }; return f(a) === f(b); };
+    for (const [k, v] of Object.entries(want)) if (v && !same(k, cb[k], v)) { changed.push(`${cb.no} ${k}: ${norm(cb[k]) || '(none)'} -> ${v}`); cb[k] = v; }
+  }
+  // SLD cable labels ("C-001\n3C 95mm² XLPE/SWA/PVC 6.35/11kV ..."): the type and voltage put back as the schedule writes them
+  const fixType = (lab) => {
+    const lines = String(lab || '').split(/\n|\\n/), no = key((lines[0] || '').split(/[\s/]/)[0].replace(/[A-Z]$/i, m => m)), s0 = cabs.get(no) || cabs.get(key((lines[0] || '').split(/\s/)[0]).split('/')[0]);
+    if (!s0 || !s0.type) return lab;
+    const vt = s0.volt && s0.volt !== '-' && !key(s0.type).includes(key(s0.volt)) ? s0.volt : '', T = vt ? s0.type + (/\d(?:\.\d+)?\s*k?V\b/i.test(s0.type) ? ', ' : ' ') + vt : s0.type;
+    if (key(lab).includes(key(T))) return lab;
+    // only a type Dex wrote with a voltage that differs from the schedule's is replaced (the rest of the label, e.g. its length, kept)
+    const first = s0.type.split(/\s+/)[0].toUpperCase(), li = lines.findIndex(l => l.toUpperCase().includes(first)); if (li < 0) return lab;
+    const line = lines[li], pos = line.toUpperCase().indexOf(first), seg = line.slice(pos), cut = seg.search(/\s+\d+(?:\.\d+)?\s*m\b|\s+\(/i), part = cut < 0 ? seg : seg.slice(0, cut);
+    if (!/\d(?:\.\d+)?\s*k?V\b/i.test(part) || key(part) === key(T)) return lab;
+    lines[li] = line.slice(0, pos) + T + (cut < 0 ? '' : seg.slice(cut));
+    return lines.join('\n');
+  };
+  const walk = (b) => { if (!b) return; for (const f of [...(b.incomers || []), ...(b.feeders || [])]) for (const it of f.chain || []) { if (it.board) walk(it.board); else if (symbolOf(it.symbol) === 'cable' && it.label) { const nl = fixType(it.label); if (nl !== it.label) { changed.push(`${String(it.label).split(/\n|\\n/)[0]} type: -> ${nl.split(/\n|\\n/).slice(1).join(' ')}`); it.label = nl; } } } };
+  (spec.boards || spec.busbars || []).forEach(walk);
+  const locs = new Map();
+  for (const t of tables({ id: /^(equipment\s*)?tag$/, loc: /^location$/ })) for (const r of t.rows) { const c = r.c || [], loc = norm(c[t.col.loc]); if (loc) for (const tg of norm(c[t.col.id]).split(/\s*[,;\/]\s*|\s+&\s+/)) if (tg) locs.set(key(tg), loc); }
+  for (const n of spec.nodes || []) { const l = locs.get(key(n.tag)); if (l && norm(n.location) !== l) { changed.push(`${n.tag} location: ${norm(n.location) || '(none)'} -> ${l}`); n.location = l; } }
+  return changed;
 }
 function clientNotes(spec) {
   const keep = [], moved = [];
@@ -480,8 +547,8 @@ const notesOf = (spec, k = 1) => [...clientNotes(spec).notes.filter(n => noteLin
 // a note's lines in the notes column; a list of abbreviations ("VSD - VARIABLE SPEED DRIVE. DOL - DIRECT ON LINE.") puts each one on its
 // own line, never split at its dash
 // units written normally even in capitals (11kV, 1000kVA, 75kW, 200kVAr, 50kA 1s, 95mm²), as on the SLD
-const UNIT = { KVAR: 'kVAr', KVA: 'kVA', KV: 'kV', KW: 'kW', KA: 'kA', MVA: 'MVA', MW: 'MW', 'MM²': 'mm²', MM2: 'mm²', MM: 'mm' };
-const units = (s) => String(s).replace(/(\d)\s?(KVAR|KVA|KV|KW|KA|MVA|MW|MM²|MM2|MM)(?![A-Z0-9])/gi, (m, d, u) => d + (UNIT[u.toUpperCase()] || u)).replace(/(kA,?\s*\d+(?:\.\d+)?)S(?![A-Z])/g, '$1s');
+const UNIT = { HZ: 'Hz', KVAR: 'kVAr', KVA: 'kVA', KV: 'kV', KW: 'kW', KA: 'kA', MVA: 'MVA', MW: 'MW', 'MM²': 'mm²', MM2: 'mm²', MM: 'mm' };
+const units = (s) => String(s).replace(/\b(YN|ZN|D|Y|Z)(YN|ZN|Y|D|Z)(\d{1,2})\b/g, (m, a, b, n) => a + b.toLowerCase() + n).replace(/(\d)\s?(HZ|KVAR|KVA|KV|KW|KA|MVA|MW|MM²|MM2|MM)(?![A-Z0-9])/gi, (m, d, u) => d + (UNIT[u.toUpperCase()] || u)).replace(/(kA,?\s*\d+(?:\.\d+)?)S(?![A-Z])/g, '$1s');
 // the words written on the drawing itself (not the border or notes): an abbreviation only goes in the key when it is used
 function usedWords(prims) { const w = new Set(); for (const p of flatPrims(prims)) if ((p.t === 'text' || p.t === 'mtext') && !/BORDER|NOTES/i.test(p.layer || '')) for (const m of String(p.text).toUpperCase().matchAll(/[A-Z0-9/&]+/g)) { w.add(m[0]); m[0].split('/').forEach(x => x && w.add(x)); } return w; }
 const abbrUsed = (a, used) => !(used instanceof Set) || used.has(a) || [...used].some(x => (x.startsWith(a) && /^\d/.test(x.slice(a.length))) || (x.endsWith(a) && /^[\d.]+$/.test(x.slice(0, -a.length))));   // a word, a tag starting with it (LIS-P01, LIS01) or a size ending in it (2PR)
@@ -896,31 +963,39 @@ function layoutPanelBcd(spec, model, opts = {}) {
             const u = boxOf([...A.items, ...group.flatMap(B => B.items)]); if (clusters.some(Cl => Cl !== A && !group.includes(Cl) && hit(u, Cl.box, 3))) continue;
             A.items.push(...group.flatMap(B => B.items)); A.box = u; group.forEach(B => clusters.splice(clusters.indexOf(B), 1)); changed = true; break outer; } }
       }
-      // a row in the same place that cannot join as a rectangle (other areas beside it) joins as a tab: the box steps down (or up) round it
+      // a row in the same place that cannot join as a rectangle (other areas beside it) still joins: its box and a strip up (or down)
+      // to the part of the area holding what feeds it are added, so the outline steps round it (a link label to a board in the same
+      // room, e.g. DB-03 to MCC-01, stays inside the room)
+      clusters.forEach(c => { c.rects = [c.box]; });
       for (let changed = true; changed;) {
         changed = false;
         tabs: for (const A of clusters) { if (!A.loc) continue; for (const B of clusters) {
-          if (A === B || B.key !== A.key || B.tabs || B.items.every(i => i.link) || !B.items.every(i => A.items.includes(i.parent))) continue;
-          const down = B.box.y1 <= A.box.y0, upw = B.box.y0 >= A.box.y1; if (!down && !upw) continue;
-          if (B.box.x0 < A.box.x0 + 3 || B.box.x1 > A.box.x1 - 3 || (A.tabs || []).some(t => t.down === down && t.x0 < B.box.x1 + 3 && t.x1 > B.box.x0 - 3)) continue;
-          const strip = down ? { x0: B.box.x0, x1: B.box.x1, y0: B.box.y1, y1: A.box.y0 } : { x0: B.box.x0, x1: B.box.x1, y0: A.box.y1, y1: B.box.y0 };
-          if (clusters.some(Cl => Cl !== A && Cl !== B && hit(strip, Cl.box, 3))) continue;
-          A.tabs = [...(A.tabs || []), { x0: B.box.x0, y0: B.box.y0, x1: B.box.x1, y1: B.box.y1, down }]; A.items.push(...B.items); clusters.splice(clusters.indexOf(B), 1); changed = true; break tabs; } }
+          if (A === B || B.key !== A.key || !B.items.every(i => A.items.includes(i.parent))) continue;
+          const b = B.box, over = A.rects.filter(R => R.x0 < b.x1 - 1 && R.x1 > b.x0 + 1);
+          const above = over.filter(R => R.y0 >= b.y1).sort((p, q) => p.y0 - q.y0)[0], below = over.filter(R => R.y1 <= b.y0).sort((p, q) => q.y1 - p.y1)[0], R = above || below;
+          if (!R) continue;
+          const strip = above ? { x0: Math.max(b.x0, R.x0), x1: Math.min(b.x1, R.x1), y0: b.y1, y1: R.y0 } : { x0: Math.max(b.x0, R.x0), x1: Math.min(b.x1, R.x1), y0: R.y1, y1: b.y0 };
+          if (clusters.some(Cl => Cl !== A && Cl !== B && (Cl.rects || [Cl.box]).some(r => hit(strip, r, 3) || hit(b, r, 3)))) continue;
+          A.rects.push(strip, b); A.items.push(...B.items); clusters.splice(clusters.indexOf(B), 1); changed = true; break tabs; } }
       }
       // a link label on its own is not boxed: that panel's area is drawn on its own sheet
       clusters.forEach(c => { if (c.items.every(i => i.link)) c.loc = ''; });
       const shown = clusters.filter(c => c.loc);
-      shown.forEach((a, i) => shown.slice(i + 1).forEach(b => { if (hit(a.box, b.box)) warn(`sheet ${si + 1}: the ${a.loc} and ${b.loc} areas overlap`); }));
+      shown.forEach((a, i) => shown.slice(i + 1).forEach(b => { if (a.rects.some(r => b.rects.some(q => hit(r, q)))) warn(`sheet ${si + 1}: the ${a.loc} and ${b.loc} areas overlap`); }));
     }
     const areas = clusters.filter(c => c.loc);
-    // an area's outline: its box, stepping round any tabs
-    const outline = (c) => { const b = c.box, ts = c.tabs || [], ups = ts.filter(t => !t.down).sort((p, q) => p.x0 - q.x0), dns = ts.filter(t => t.down).sort((p, q) => q.x0 - p.x0), pts = [[b.x0, b.y1]];
-      for (const t of ups) pts.push([t.x0, b.y1], [t.x0, t.y1], [t.x1, t.y1], [t.x1, b.y1]);
-      pts.push([b.x1, b.y1], [b.x1, b.y0]); for (const t of dns) pts.push([t.x1, b.y0], [t.x1, t.y0], [t.x0, t.y0], [t.x0, b.y0]); pts.push([b.x0, b.y0]); return pts; };
-    const segsOf = (pts) => pts.map((p, i) => [p, pts[(i + 1) % pts.length]]);
-    const outlineRects = (c) => segsOf(outline(c)).map(([a, b]) => ({ x0: Math.min(a[0], b[0]), y0: Math.min(a[1], b[1]), x1: Math.max(a[0], b[0]), y1: Math.max(a[1], b[1]) }));
-    const hEdgesOf = (c) => segsOf(outline(c)).filter(([a, b]) => Math.abs(a[1] - b[1]) < 1e-9).map(([a, b]) => ({ x0: Math.min(a[0], b[0]), x1: Math.max(a[0], b[0]), y: a[1] }));
-    const boxesOf = (c) => [c.box, ...(c.tabs || [])];
+    // an area's outline: the edge of the union of its rectangles (its box plus any rows joined below / above it)
+    const segsOfArea = (c) => {
+      const rs = c.rects || [c.box], xs = [...new Set(rs.flatMap(r => [r.x0, r.x1]))].sort((a, b) => a - b), ys = [...new Set(rs.flatMap(r => [r.y0, r.y1]))].sort((a, b) => a - b);
+      const inside = (i, j) => i >= 0 && j >= 0 && i < xs.length - 1 && j < ys.length - 1 && rs.some(r => (xs[i] + xs[i + 1]) / 2 > r.x0 && (xs[i] + xs[i + 1]) / 2 < r.x1 && (ys[j] + ys[j + 1]) / 2 > r.y0 && (ys[j] + ys[j + 1]) / 2 < r.y1);
+      const out = [];
+      for (let j = 0; j < ys.length; j++) { let run = null; for (let i = 0; i < xs.length - 1; i++) { const e = inside(i, j) !== inside(i, j - 1); if (e && run) run.x1 = xs[i + 1]; else if (e) run = { x0: xs[i], y0: ys[j], x1: xs[i + 1], y1: ys[j] }; if (!e && run) { out.push(run); run = null; } } if (run) out.push(run); }
+      for (let i = 0; i < xs.length; i++) { let run = null; for (let j = 0; j < ys.length - 1; j++) { const e = inside(i, j) !== inside(i - 1, j); if (e && run) run.y1 = ys[j + 1]; else if (e) run = { x0: xs[i], y0: ys[j], x1: xs[i], y1: ys[j + 1] }; if (!e && run) { out.push(run); run = null; } } if (run) out.push(run); }
+      return out; };
+    const outlineRects = (c) => segsOfArea(c);
+    const hEdgesOf = (c) => segsOfArea(c).filter(g => g.y0 === g.y1).map(g => ({ x0: g.x0, x1: g.x1, y: g.y0 }));
+    const drawArea = (c, layer) => { for (const g of segsOfArea(c)) dashPath(prims, [[g.x0, g.y0], [g.x1, g.y1]], layer, true); };
+    const boxesOf = (c) => c.rects || [c.box];
     // the scope: dashed round everything that is ours; items by others (DNO / ICP) stay outside it
     const site = String(spec.area || (opts.fill && (opts.fill.site || opts.fill.project)) || '').toUpperCase();
     const mine = items.filter(i => !i.others), theirs = items.filter(i => i.others);
@@ -960,7 +1035,7 @@ function layoutPanelBcd(spec, model, opts = {}) {
       if (at) prims.push({ t: 'text', x: at.x, y: at.y, h: H, text: name, layer: 'BCD-TEXT' }); else warn(`sheet ${si + 1}: no clear place for the name ${name}`);
     };
     for (const c of areas) nameBox(c, c.loc, areas);   // the scope box is redrawn round them afterwards
-    for (const c of areas) dashPath(prims, outline(c), 'BCD-AREA');
+    for (const c of areas) drawArea(c, 'BCD-AREA');
     if (scope) {   // the scope takes in any area box that widened
       const m = hasAreas ? 6 : 12, inA = areas.filter(c => !c.others).map(c => c.box);
       if (inA.length) { scope.x0 = Math.min(scope.x0, ...inA.map(b => b.x0 - m)); scope.x1 = Math.max(scope.x1, ...inA.map(b => b.x1 + m)); }
@@ -1209,7 +1284,7 @@ You can make two kinds of drawing, both described the same way:
 Describe them as boards (busbars), joined into ONE connected diagram: when a feeder supplies another board (e.g. MV SWB > CBL-2 > RMU-WTG2, or a transformer feeding an LV board), put that board as the LAST item of the feeder's chain as {"board": {"label": "...", "feeders": [...]}}; it is drawn underneath, joined by the feeder. Only boards with nothing above them are top-level boards. Do not repeat a name: the feeder "label" is only for something the end item does not already say (leave it out otherwise).
 In earthing drawings, nest earth bars the same way: the cable screen or earth conductor feeding another substation's earth bar ends with {"board": {...}}. If an engineer's technical note in the project files gives conductor sizes or electrode design, use those values (say "per <note name>" in the notes); otherwise sizes stay TBC. Each board has incomers (chains drawn above the busbar, ending on it) and feeders (chains drawn below it). A chain is a list of items from top to bottom, each { "symbol": one of supply, generator, transformer, breaker, isolator, switchfuse, fuse, contactor, ct, meter, ups, vsd (variable speed drive), dol (DOL starter), softstarter, cable, line, link, and as the LAST item of a feeder only: board, load, motor, earth, electrode, grid, spare, spd (surge protection device), pfc (power factor correction); "label": the text beside it }. A drive or starter is always its own item in the way (breaker, then vsd / dol / softstarter, then the isolator, then the motor), never just words in another item's label.
 National Grid / BGEN SLD conventions (use them on every SLD): put the cable on the conductor as a "cable" item whose label is the cable text (e.g. "EXISTING CABLE" or "C01\\n4C 240mm² SWA"); it is drawn as a tag box with the text up the box. Give switching devices a "state" of "open" or "closed" when the drawing shows a switching arrangement or phase (drawn as "(OPEN)" / "(CLOSED)"). Only on a PHASE drawing (the works split into phases, one sheet per phase): give "phase": 1, 2, ... and give items a "status" of "new" (drawn green) or "removal" (drawn red) for what is new or removed AT THAT PHASE; everything else is existing (black, no status). The next phase's sheet is its own drawing with its own statuses (what was green in phase 1 is existing black in phase 2). Not a phase drawing: no status at all, everything is black. A board in a switchroom, kiosk or generator enclosure gets "enclosure": "EXISTING LVAC SWITCHROOM" (drawn as a dashed box named above it).
-Labels: short, exactly as an engineer would write them, using what the project files say (ratings, cable sizes, tags, board names). An unknown value is just TBC: never "SEE TQ" or an RFI number in a label (questions go in "queries"). Every cable on the schedule between items on the drawing is drawn as a cable, including earthing / neutral-earth conductors such as a transformer star point to the main earth bar: never put a cable only in a note. An "enclosure" goes only round a board that is itself in that place (per the equipment list); what feeds it from another place (a transformer compound, a generator enclosure, the DNO) sits outside, its cable crossing the wall. Use a new line (\\n) between parts of a label, e.g. "Q1\\n630A TP MCCB". Do not invent ratings, cable sizes or tags that are not in the request or the files: if one is unknown write "TBC" in the label and list it in "notes".
+Labels: short, exactly as an engineer would write them, using what the project files say (ratings, cable sizes, tags, board names). An unknown value is just TBC: never "SEE TQ" or an RFI number in a label (questions go in "queries"). Every cable on the schedule between items on the drawing is drawn as a cable, including earthing / neutral-earth conductors such as a transformer star point to the main earth bar: never put a cable only in a note. Give "enclosure" (the room name exactly as the equipment list writes it, e.g. "LV SWITCHROOM") to the main board AND to every board fed from it that is in the same room (an MCC, DBs): the app draws one room box round them all, with what feeds them from another place (transformer compound, generator enclosure, DNO) outside and the cables to other places crossing its wall. Earthing: an earth conductor (e.g. transformer star point to the main earth bar, main earth bar to the MET) is a feeder whose chain is just the cable then an "earth" item; the app hangs it off the board's own EARTH BAR, never the phase busbar. Write prospective fault current as "PROSPECTIVE FAULT 31.5kA" (never "PFC", which is power factor correction) and frequencies as 50Hz. Use a new line (\\n) between parts of a label, e.g. "Q1\\n630A TP MCCB". Do not invent ratings, cable sizes or tags that are not in the request or the files: if one is unknown write "TBC" in the label and list it in "notes".
 BCD ("bcd", block cable diagram): do NOT use boards. Give "nodes" (every panel / RIO / MCC, junction box and field device, with "type" panel|rio|mcc|jb|device and a short "label" description exactly as written; the node "tag" is the equipment tag exactly as printed in the documents, and where a document gives only a description (no tag), use that description as the tag: never make up a tag) and "cables" (every cable: "no" exactly as printed, "from" and "to" node tags, "type" e.g. BS5308 / SWA / CY, "cores" e.g. 4C, or 2PR for pairs (power BCDs write pairs as PR, never P; an abbreviations note says "PR - PAIR"), "size" e.g. 0.5 or 1.5mm², "length" in metres exactly as the schedule gives it (number only, e.g. "55"; leave it out only when no document gives lengths), and "note" for interface cables such as "LINK TO X03-MCC SEE DWG ..."). Give every node its "location" exactly as the equipment list / schedule writes it (e.g. "HV Room", "Pump Hall", "Wet Well"): the app draws a dashed area box for each location. Anything the email or documents say is by others or outside our scope (e.g. DNO / ICP equipment and cables) gets "byOthers": true on the node and the cable: the app draws it outside the scope boundary. When the job context has an APPROVED MASTER DEVICE LIST, the BCD is exactly its cables and devices for the panels asked for: nothing added, nothing left out. The app lays the blocks out (panels left, JBs middle, devices right), draws each cable with its yellow cable box and splits long BCDs over sheets. For National Grid LVAC / power block diagrams (a supply chain: intake / RMU > joints > transformer > LV board > circuits, generators > distribution units) the app draws the chain left to right with every cable joined to both ends; also give "style":"ng", each node a "status" (energised, de-energised or new) and each cable a "status" (current = current supply cabling, new = new by BGEN, existing = existing by others).
 If something essential is missing (which boards, how many feeders, what the supply is) and the files do not say, ask: reply with {"questions": ["...", "..."]} (max 4 short questions) and nothing else.
 Otherwise reply with JSON only, no markdown:
@@ -1274,7 +1349,8 @@ const safeName = (s) => String(s).replace(/[\\/:*?"<>|]+/g, '_').replace(/\s+/g,
 // older versions of a drawing (any revision, any earlier naming) move into an Archive folder beside it before the new one is written,
 // so the folder only ever holds the current revision. Nothing is deleted: a name already in the archive gets a time stamp.
 const ARCHIVE_EXT = /\.(dxf|pdf|spec\.json|svg)$/i;
-function archiveOld(outDir, prefix) {
+// an older copy of the SAME revision (made again before issue) is archived as _SUPERSEDED, so there are never two different P01s side by side
+function archiveOld(outDir, prefix, rev = '') {
   if (!prefix) return [];
   const moved = [], arch = path.join(outDir, 'Archive');
   let list = []; try { list = fs.readdirSync(outDir); } catch { return moved; }
@@ -1283,7 +1359,9 @@ function archiveOld(outDir, prefix) {
     if (!f.toUpperCase().startsWith(prefix.toUpperCase()) || !/^[_. ]/.test(f.slice(prefix.length)) || !ARCHIVE_EXT.test(f)) continue;   // this drawing only (not -00011)
     try { if (!fs.statSync(full).isFile()) continue; } catch { continue; }
     fs.mkdirSync(arch, { recursive: true });
-    let dst = path.join(arch, f);
+    const m0 = f.match(ARCHIVE_EXT), same = rev && new RegExp('_' + rev + '(?![0-9])', 'i').test(f.slice(0, m0.index));
+    const stamp0 = new Date().toISOString().replace(/[-:]/g, '').replace(/\..+/, '').replace('T', '-');
+    let dst = path.join(arch, same ? f.slice(0, m0.index) + '_SUPERSEDED_' + stamp0 + m0[0] : f);
     if (fs.existsSync(dst)) { const m = f.match(ARCHIVE_EXT), stamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\..+/, '').replace('T', '-'); dst = path.join(arch, f.slice(0, m.index) + '_' + stamp + m[0]); }
     try { fs.renameSync(full, dst); moved.push(dst); } catch {}
   }
@@ -1304,7 +1382,7 @@ function make(spec, outDir, baseName, opts = {}) {
   fs.mkdirSync(outDir, { recursive: true });
   const stem = safeName(baseName || spec.drawingNumber || spec.title || 'SLD');
   // a drawing with its real number is saved as NUMBER_REV (e.g. X021126-01-70-0001_P02), the older versions moved to Archive first
-  const archived = opts.exact ? archiveOld(outDir, opts.archivePrefix || stem) : [];
+  const archived = opts.exact ? archiveOld(outDir, opts.archivePrefix || stem, spec.revision) : [];
   // a new revision: what changed against the previous spec, the history carried on, clouds round changed cable boxes (BCDs)
   let diff = null;
   if (opts.previous && opts.previous.spec) {
@@ -1354,4 +1432,4 @@ function previousSpec(outDir, baseName) {
   try { return c ? { file: path.basename(c.f), spec: JSON.parse(fs.readFileSync(c.f, 'utf8')) } : null; } catch { return null; }
 }
 
-module.exports = { cleanLabels, cleanLabel, noteLines, clientNotes, isInternalNote, notesFit, primsBounds, BORDER_NAMES, flatPrims, BORDERS, cableClashes, previousSpec, layoutBcd, bcdDiff, SYSTEM, ALIASES, SYMBOLS, symbolOf, layoutSld, writeDxf, toSvg, parseReply, make };
+module.exports = { fromSchedule, cleanLabels, cleanLabel, noteLines, clientNotes, isInternalNote, notesFit, primsBounds, BORDER_NAMES, flatPrims, BORDERS, cableClashes, previousSpec, layoutBcd, bcdDiff, SYSTEM, ALIASES, SYMBOLS, symbolOf, layoutSld, writeDxf, toSvg, parseReply, make };

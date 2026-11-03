@@ -68,6 +68,18 @@ console.log('bcd ok: no overlapping or crossing cables');
     assert.ok(!/\d(KV|KVA|KW|MM²)\b/.test(all) && /1000kVA/.test(all) && /mm²/.test(all), 'kV / kVA / mm² written normally'); assert.deepStrictEqual(sp._warnings || [], [], 'run 3 no warnings');
     const title = sh[0].prims.filter(p => p.t === 'text').map(p => p.text); assert.ok(title.includes('MSB-01 MAIN LV SWITCHBOARD'), 'short panel name in the title'); }
   console.log('panel bcd one sheet ok, per-panel split ok');
+  // markup R2: the schedule is the source (C-001 had lost "11kV" from its type), locations from the equipment list; Dyn11 keeps its case
+  { const sp = { cables: [{ no: 'C-001', type: 'XLPE/SWA/PVC 6.35/11kV', cores: '3C', size: '95mm²', length: '18' }, { no: 'C-023', type: 'Instrument PVC/SWA/LSZH OS 300/500V', cores: '2PR', size: '1.0', length: '48' }], nodes: [{ tag: 'LIS-P02' }] };
+    const wb = [{ sheet: 'Cable Schedule', rows: [{ c: ['CABLE SCHEDULE'] }, { c: ['Cable No', 'From Tag', 'To Tag', 'Cable Type', 'No. of Cores', 'CSA (mm²)', 'Voltage', 'Length (m)'] }, { c: ['C-001', 'RMU-01', 'TX01', 'XLPE/SWA/PVC 11kV', '3', '95', '6.35/11kV', '18'] }, { c: ['C-023', 'MCC-01', 'LT-01', 'Instrument PVC/SWA/LSZH OS', '2 pair', '1.0', '300/500V', '48'] }] },
+      { sheet: 'Equipment List', rows: [{ c: ['Tag', 'Description', 'Location'] }, { c: ['LIS-P01, LIS-P02', 'Local Isolators', 'Pump Hall'] }] }];
+    assert.deepStrictEqual(m.fromSchedule(sp, wb), ['C-001 type: XLPE/SWA/PVC 6.35/11kV -> XLPE/SWA/PVC 11kV, 6.35/11kV', 'LIS-P02 location: (none) -> Pump Hall']); }
+  { const o = m.layoutBcd(JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'hollins-bcd-run3.json'), 'utf8')), { border: 'atomax' });
+    const tx = o[0].prims.filter(p => p.t === 'mtext').map(p => p.text).join(' '); assert.ok(/Dyn11/.test(tx) && !/DYN11/.test(tx), 'Dyn11 keeps its case'); }
+  // markup R2: making P01 again archives the old P01 as SUPERSEDED, never two P01s side by side
+  { const os = require('os'), d = fs.mkdtempSync(path.join(os.tmpdir(), 'sup-')); fs.writeFileSync(path.join(d, 'X1-01-71-0001_P01.dxf'), 'old'); fs.writeFileSync(path.join(d, 'X1-01-71-0001_P01.pdf'), 'old');
+    const sp = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'hollins-bcd.json'), 'utf8')); sp.revision = 'P01';
+    m.make(sp, d, 'X1-01-71-0001_P01', { exact: true, archivePrefix: 'X1-01-71-0001' });
+    const arch = fs.readdirSync(path.join(d, 'Archive')); assert.ok(arch.length >= 2 && arch.every(f => /_P01_SUPERSEDED_\d{8}-\d{6}\./.test(f)), 'old P01 superseded: ' + arch.join(', ')); }
   // check report X021126: no TQ pointers in labels, our workbook reading never a note (117, 118, 120)
   assert.strictEqual(m.cleanLabel('VSD 90kW\nRATING TBC (SEE TQ)'), 'VSD 90kW\nRATING TBC');
   assert.deepStrictEqual(m.clientNotes({ notes: ['CABLE SCHEDULE NOTES R39 TO R41 ARE TRUNCATED IN THE WORKBOOK.', 'DNO/ICP DETAILS AWAITED (RFI-001 / RFI-005).', 'HOLD: UPS-01 OUTPUT MCB POLES NOT GIVEN.'] }).notes, ['HOLD: UPS-01 OUTPUT MCB POLES NOT GIVEN.']);

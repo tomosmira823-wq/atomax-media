@@ -373,11 +373,11 @@ EARTHING tasks: size every protective / earth conductor the drawing needs (MET t
     const pdfs = job ? BIZ.projects.relevantFiles(job.id, request, { exts: ['.pdf'], max: 3 }) : [];
     for (const p of pdfs) { try { content.push({ type: 'text', text: 'Project file: ' + path.basename(p) }); content.push(checker.contentBlock('pdf', p, fs.readFileSync(p))); } catch {} }
     // the job's spreadsheets: a BCD or SLD is usually drawn from the cable schedule / load schedule / IO list (files named by their QS 006 number are found by type code and sheet names)
-    const sheetsRead = [];
+    const sheetsRead = [], workbooks = [];
     if (job && /bcd|sld|block|single.?line|cable|earthing/i.test(request + ' ' + kind)) {
       const want = kind === 'bcd' ? 'cable schedule instrument index io list tag list' : kind === 'earthing' ? 'earthing conductors cable schedule' : 'cable schedule load schedule protection settings';
       for (const p of BIZ.projects.relevantFiles(job.id, request + ' ' + want, { exts: ['.xlsx', '.xlsm', '.csv'], max: 3 }).filter(p => !/register/i.test(path.basename(p)))) {
-        try { const b = fs.readFileSync(p); content.push({ type: 'text', text: `PROJECT WORKBOOK ${path.basename(p)} (copy cable numbers, from / to, cores, sizes and types exactly as written; TBC stays TBC):\n` + checker.sheetsAsText(/\.csv$/i.test(p) ? checker.readCsv(b.toString('utf8')) : checker.readXlsx(b), 40000) }); sheetsRead.push(path.basename(p)); } catch {}
+        try { const b = fs.readFileSync(p), wb = /\.csv$/i.test(p) ? checker.readCsv(b.toString('utf8')) : checker.readXlsx(b); workbooks.push(...wb); content.push({ type: 'text', text: `PROJECT WORKBOOK ${path.basename(p)} (copy cable numbers, from / to, cores, sizes, types, voltages, lengths and locations exactly as written; TBC stays TBC):\n` + checker.sheetsAsText(wb, 40000) }); sheetsRead.push(path.basename(p)); } catch {}
       }
     }
     const em = emailId && load().find(x => x.id === emailId);
@@ -433,6 +433,9 @@ EARTHING tasks: size every protective / earth conductor the drawing needs (MET t
       }
     }
     // the notes go to the client: questions, TQs and our own working come off the drawing and go to the job's RFI register
+    // the schedule is the source: cable type (with voltage), cores, size, length and locations copied from its own columns
+    const fromSched = workbooks.length ? dxfmaker.fromSchedule(spec, workbooks) : [];
+    if (fromSched.length) BIZ.log({ who: 'Dex', action: 'Matched the BCD to the schedule', jobId: job ? job.id : '', detail: fromSched.slice(0, 12).join('; ') + (fromSched.length > 12 ? ' …' : '') });
     dxfmaker.cleanLabels(spec);   // no SEE TQ / RFI pointers in labels: TBC is enough, the question is in the RFI register
     const cn = dxfmaker.clientNotes(spec), queries = [...new Set([...(Array.isArray(spec.queries) ? spec.queries : []), ...cn.moved].map(q => String(q || '').trim()).filter(Boolean))];
     spec.notes = cn.notes; delete spec.queries;
@@ -476,7 +479,7 @@ EARTHING tasks: size every protective / earth conductor the drawing needs (MET t
     // every DXF gets its monochrome PDF beside it (issues go out as DXF and PDF)
     let madePdfs = []; try { madePdfs = await require('./pdfout').writePdfs(res); } catch (e) { (res.files || []).forEach(f => delete f.prims); }
     BIZ.log({ who: 'Dex', action: 'Drew', jobId: job ? job.id : '', detail: `${path.basename(res.path)} · ${spec.summary || spec.title || 'SLD'}${used.length ? ' · skills: ' + used.join(', ') : ' · no skills'}` });
-    return { queries, warnings: spec._warnings || [], archived: (res.archived || []).length, border: bd.name, borderWarning: bd.warning || '', pdfs: madePdfs, masterCheck, sheets: (res.files || []).map(f => ({ path: f.path, pdf: f.pdf || '', label: f.label })), diff: res.diff, revision: spec.revision, previousFound: !!previous, titleBlock: template ? path.basename(template) : '', drawingNumber: spec.drawingNumber, skills: used, incomplete: cutOff, path: res.path, folder: outDir, svg: res.svg, summary: spec.summary || '', title: spec.title || '', notes: spec.notes || [], read: [...pdfs.map(p => path.basename(p)), ...sheetsRead, ...notesRead], inJobFolder: !!(job && job.folder) };
+    return { fromSchedule: fromSched, queries, warnings: spec._warnings || [], archived: (res.archived || []).length, border: bd.name, borderWarning: bd.warning || '', pdfs: madePdfs, masterCheck, sheets: (res.files || []).map(f => ({ path: f.path, pdf: f.pdf || '', label: f.label })), diff: res.diff, revision: spec.revision, previousFound: !!previous, titleBlock: template ? path.basename(template) : '', drawingNumber: spec.drawingNumber, skills: used, incomplete: cutOff, path: res.path, folder: outDir, svg: res.svg, summary: spec.summary || '', title: spec.title || '', notes: spec.notes || [], read: [...pdfs.map(p => path.basename(p)), ...sheetsRead, ...notesRead], inJobFolder: !!(job && job.folder) };
   }));
 }
 

@@ -15,4 +15,14 @@ const worst = +(ce.match(/worst offset ([\d.]+)/) || [])[1]; if (!(worst <= 0.3)
   const box = D.primsBounds(P.filter(p => p.layer === 'SLD-ENCLOSURE')), at = (re) => P.find(p => (p.t === 'mtext' || p.t === 'text') && re.test(p.text));
   for (const re of [/^TX01\n/, /^RMU-01\n/, /^GEN-01\n/]) { const t = at(re); if (!t) throw new Error('no label ' + re); if (t.y <= box.y1) throw new Error(re + ' is inside the switchroom box'); }
   const q1 = at(/^Q1/); if (!q1 || q1.y > box.y1 || q1.y < box.y0) throw new Error('Q1 should be inside the switchroom box'); }
+// markup R2 (SLD): boards in the same room inside the room box, a feeder ending in the room (DB-03 to MCC-01 PLC) inside too,
+// field cables leaving through the bottom wall; earthing off its own earth bar
+{ const L = D.layoutSld(JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'hollins-sld-room.json'), 'utf8')), { border: 'atomax', fill: {} }), P = D.flatPrims(L.prims);
+  const box = D.primsBounds(P.filter(p => p.layer === 'SLD-ENCLOSURE')), at = (re) => P.find(p => (p.t === 'mtext' || p.t === 'text') && re.test(p.text));
+  for (const re of [/^MCC-01\n/, /^DB-03/, /^MCC-01 PLC/, /^MET-01/, /^DB-01\n/]) { const t = at(re); if (!t || t.y < box.y0 || t.y > box.y1) throw new Error(re + ' should be inside the room box'); }
+  for (const re of [/^M-P01/, /^FT-01/, /^TX01\n/]) { const t = at(re); if (!t || (t.y >= box.y0 && t.y <= box.y1)) throw new Error(re + ' should be outside the room box'); }
+  if (!at(/EARTH BAR$/) || !P.some(p => p.layer === 'SLD-EARTH')) throw new Error('no earth bar');
+  if (D.cleanLabel('400V 3PH+N 50HZ\nPFC 31.5kA 3PH SYM') !== '400V 3PH+N 50Hz\nPROSPECTIVE FAULT 31.5kA 3PH SYM') throw new Error('Hz / prospective fault');
+  const tmp = fs.mkdtempSync(path.join(require('os').tmpdir(), 'sldr-')); const made = D.make(JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'hollins-sld-room.json'), 'utf8')), tmp, 'R', { border: 'atomax', fill: {} });
+  const r = require('child_process').spawnSync('python3', [path.join(__dirname, 'dxf-overlaps.py'), made.path || made.files[0].path], { encoding: 'utf8' }); if (!/ 0 problems/.test(r.stdout)) throw new Error('room SLD overlaps: ' + r.stdout.slice(-300)); }
 console.log('sld ok: A1, no overlaps, text centred');
