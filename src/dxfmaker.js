@@ -598,11 +598,22 @@ function cableClashes(prims) {
   return out;
 }
 const sheetRows = (B) => B ? Math.floor((B.box.y1 - B.box.y0 - 20) / 22) : 10;   // device rows per sheet (A0 border at 1:1, or the old A3 frame)
+function isPowerBcd(spec, model) {
+  if (spec.layout === 'power') return true; if (spec.layout === 'instrument') return false;
+  const nodes = [...model.nodes.values()];
+  if (nodes.some(n => /^(rio|jb)$/i.test(n.type || ''))) return false;
+  const instr = (c) => /BS\s?5308|instrument|\bpairs?\b|\bCY\b|\b\d+\s?P\b|screened\s+pair/i.test(`${c.type || ''} ${c.cores || ''}`);
+  const power = (c) => /SWA|XLPE|LSZH|\bkV\b|G\/Y|\d+\s?C\b/i.test(`${c.type || ''} ${c.cores || ''}`) || /^\d+$/.test(String(c.cores || '').trim());
+  const p = model.cables.filter(c => power(c) && !instr(c)).length, i = model.cables.filter(instr).length;
+  const tags = nodes.map(n => String(n.tag || '')).join(' ');
+  return p > i || /\b(TX|MSB|SWB|MCC|DB|UPS|GEN|RMU|PFC)[-\d]/i.test(tags) && p >= i;
+}
 function layoutBcd(spec, opts = {}) {
   const model = bcdModel(spec);
   if (!model.cables.length) throw new Error('The BCD has no cables');
   BSTYLE = { ng: spec.style === 'ng' || spec.style === 'national-grid' };
-  if (BSTYLE.ng) return [layoutPowerBcd(spec, model, opts)];
+  // a power BCD (boards, transformers, MCCs, DBs on SWA / XLPE cable) uses the block layout with cable runs; RIO / JB / field-device BCDs keep the instrument layout
+  if (BSTYLE.ng || isPowerBcd(spec, model)) return [layoutPowerBcd(spec, model, opts)];
   const { groups: raw, links } = bcdGroups(model);
   // a JB with more devices than a sheet holds carries on to the next sheet ("CONT.")
   const SHEET_ROWS = sheetRows(opts.noTitle ? null : borderOf(String(opts.border || 'atomax').includes('-') ? opts.border : `${opts.border || 'atomax'}-A1`));
@@ -717,7 +728,7 @@ function layoutPowerBcd(spec, model, opts = {}) {
   // blocks
   for (const p of Object.values(pts)) if (!p.dummy) block(prims, colX[p.layer], p.top, BW, p.h, blockLines(p), p.node);
   // cables: in each gap, out of the source port, along its label, then its own lane down/up to the target port
-  const draw = (pts2, c) => { const col = ngCableColour(c); for (let k = 1; k < pts2.length; k++) { const [x1, y1] = pts2[k - 1], [x2, y2] = pts2[k]; if (Math.abs(x1 - x2) < 1e-9 && Math.abs(y1 - y2) < 1e-9) continue; if (col === 82) dashedSeg(prims, x1, y1, x2, y2, col); else prims.push({ ...L(x1, y1, x2, y2, 'BCD-CABLE'), colour: col }); } };
+  const draw = (pts2, c) => { const col = BSTYLE.ng ? ngCableColour(c) : 0; for (let k = 1; k < pts2.length; k++) { const [x1, y1] = pts2[k - 1], [x2, y2] = pts2[k]; if (Math.abs(x1 - x2) < 1e-9 && Math.abs(y1 - y2) < 1e-9) continue; if (col === 82) dashedSeg(prims, x1, y1, x2, y2, col); else prims.push({ ...L(x1, y1, x2, y2, 'BCD-CABLE'), colour: col }); } };
   cols.forEach((c, Lr) => {
     const gs = segs.filter(sg => pts[sg.from].layer === Lr); if (!gs.length) return;
     const xl = colX[Lr] + BW, xr = colX[Lr + 1], labRoom = Math.max(...gs.map(labW), 40);
@@ -729,7 +740,7 @@ function layoutPowerBcd(spec, model, opts = {}) {
       draw(q.lx ? [[x0, q.a], [q.lx, q.a], [q.lx, q.b], [x1, q.b]] : [[x0, q.a], [x1, q.b]], q.sg.e.c);
       if (q.sg.first) {   // the cable's text, once, on its first run out of the source
         const c = q.sg.e.c, w = labRoom - 2, tl = wrap(txt(c), w), nl = note(c) ? wrap(note(c), w) : [];
-        prims.push({ t: 'mtext', x: xl + 2, y: q.a + 1 + tl.length * LINE, w, h: TH, text: tl.join('\n'), attach: 1, layer: 'BCD-TEXT', colour: 5 });
+        prims.push({ t: 'mtext', x: xl + 2, y: q.a + 1 + tl.length * LINE, w, h: TH, text: tl.join('\n'), attach: 1, layer: 'BCD-TEXT', ...(BSTYLE.ng ? { colour: 5 } : {}) });
         if (nl.length) prims.push({ t: 'mtext', x: xl + 2, y: q.a - 1, w, h: TH, text: nl.join('\n'), attach: 1, layer: 'BCD-TEXT' });
         boxes.push({ no: String(c.no || ''), x0: xl + 1, y0: q.a - 1 - nl.length * LINE, x1: xl + 1 + w, y1: q.a + 1 + tl.length * LINE });
       }
@@ -737,7 +748,7 @@ function layoutPowerBcd(spec, model, opts = {}) {
   });
   // the legend, as on the National Grid template, right of the last column
   // the legend (key) goes in the notes column under the notes, as on the National Grid drawings
-  { const used = new Set(cables.map(ngCableColour)), st = new Set([...nodes.values()].map(nd => NG[String(nd.status || 'energised').toLowerCase()] || 3));
+  if (BSTYLE.ng) { const used = new Set(cables.map(ngCableColour)), st = new Set([...nodes.values()].map(nd => NG[String(nd.status || 'energised').toLowerCase()] || 3));
     spec.ngLegend = [...(used.has(82) ? [['dash82', 'EXISTING BY OTHERS']] : []), ...(used.has(1) ? [['line1', 'NEW BY BGEN']] : []), ...(used.has(5) ? [['line5', 'CURRENT SUPPLY CABLING']] : []), ...(st.has(3) ? [['fill3', 'ENERGISED']] : []), ...(st.has(1) ? [['fill1', 'DE-ENERGISED / NEW']] : [])]; }
   if (opts.diff) for (const b of boxes) if (opts.diff.added.includes(b.no) || opts.diff.changed.includes(b.no)) revCloud(prims, b, spec.revision);
   const clash = cableClashes(prims); if (clash.length && !process.env.AMO_NOCLASH) throw new Error('BCD layout has cables that overlap or cross (' + clash.slice(0, 3).join('; ') + '). Not saved.');
