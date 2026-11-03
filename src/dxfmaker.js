@@ -458,6 +458,9 @@ function clientNotes(spec) {
 const notesOf = (spec, k = 1) => [...clientNotes(spec).notes.filter(n => noteLines(n, 200, spec._used).length), ...(k < 1 ? [`DRAWING REDUCED TO ${Math.round(k * 100)}% TO FIT THE SHEET.`] : [])];
 // a note's lines in the notes column; a list of abbreviations ("VSD - VARIABLE SPEED DRIVE. DOL - DIRECT ON LINE.") puts each one on its
 // own line, never split at its dash
+// units written normally even in capitals (11kV, 1000kVA, 75kW, 200kVAr, 50kA 1s, 95mm²), as on the SLD
+const UNIT = { KVAR: 'kVAr', KVA: 'kVA', KV: 'kV', KW: 'kW', KA: 'kA', MVA: 'MVA', MW: 'MW', 'MM²': 'mm²', MM2: 'mm²', MM: 'mm' };
+const units = (s) => String(s).replace(/(\d)\s?(KVAR|KVA|KV|KW|KA|MVA|MW|MM²|MM2|MM)(?![A-Z0-9])/gi, (m, d, u) => d + (UNIT[u.toUpperCase()] || u)).replace(/(kA,?\s*\d+(?:\.\d+)?)S(?![A-Z])/g, '$1s');
 // the words written on the drawing itself (not the border or notes): an abbreviation only goes in the key when it is used
 function usedWords(prims) { const w = new Set(); for (const p of flatPrims(prims)) if ((p.t === 'text' || p.t === 'mtext') && !/BORDER|NOTES/i.test(p.layer || '')) for (const m of String(p.text).toUpperCase().matchAll(/[A-Z0-9/&]+/g)) { w.add(m[0]); m[0].split('/').forEach(x => x && w.add(x)); } return w; }
 const abbrUsed = (a, used) => !(used instanceof Set) || used.has(a) || [...used].some(x => (x.startsWith(a) && /^\d/.test(x.slice(a.length))) || (x.endsWith(a) && /^[\d.]+$/.test(x.slice(0, -a.length))));   // a word, a tag starting with it (LIS-P01, LIS01) or a size ending in it (2PR)
@@ -471,9 +474,9 @@ function noteLines(nt, width, used) {
   if (ents.length >= 2 && ents.length >= parts.length * (head ? 0.6 : 0.9)) {
     const keep = ents.filter(m => abbrUsed(m[1], used)); if (!keep.length) return [];
     const glue = ([, a, b]) => wrap(b, width - (a.length + 3) * TH * 0.9).map((l, i) => (i ? ' '.repeat(a.length + 3) : a + ' - ') + l);
-    return ['ABBREVIATIONS:', ...keep.flatMap(glue)];
+    return ['ABBREVIATIONS:', ...keep.flatMap(glue).map(units)];
   }
-  return wrap(t, width);
+  return wrap(t, width).map(units);
 }
 function notesFit(B, spec) {
   const N = B && B.notes; if (!N) return true;
@@ -702,6 +705,17 @@ function layoutBcd(spec, opts = {}) {
 // Locations (HV room, pump hall, wet well ...) from the equipment list are dashed area boxes, each named top left; devices in the same
 // place sit side by side. A dashed scope box goes round it all, the site named top left; anything by others (DNO / ICP) is left outside it.
 function layoutPanelBcd(spec, model, opts = {}) {
+  // a cable drawn on two sheets (panel to panel, or through a device shown on both) is labelled in full on one sheet only, the other
+  // sheet gives its number and SEE SHEET n: on the sheet where it does not end at a link label, else on its source panel's sheet
+  const ABBR = new Map();
+  if (!opts._dry) {
+    const saved = spec._warnings, on = layoutPanelBcd(spec, model, { ...opts, _dry: true }); spec._warnings = saved;
+    for (const [no, list] of on.drawnOn) if (list.length > 1) {
+      const c = model.cables.find(x => String(x.no) === no), src = list.find(e => !e.link) || list.find(e => e.si === on.panels.indexOf(c.from)) || list[0];
+      for (const e of list) if (e !== src) ABBR.set(e.si + '|' + no, src.si + 1);
+    }
+  }
+  const drawnOn = new Map(); let curSi = 0;
   const { nodes, cables } = model, H = 2.5, LH = H * 1.7, wrapH = (t, w) => wrap(t, w * TH / (H * HOUSE_WF)), CP = 25, MOTOR_R = 12.5, BOX_H = 16, DESC_W = 40, COL_MIN = 62;
   const warn = (m) => { spec._warnings = [...(spec._warnings || []), m]; };
   const loc = (t) => String((nodes.get(t) || {}).location || '').toUpperCase().replace(/\s+/g, ' ').trim();
@@ -718,19 +732,20 @@ function layoutPanelBcd(spec, model, opts = {}) {
   if (!panels.length) panels = [firstSeen.find(t => outs(t).length) || firstSeen[0]];
   const sheetOf = (t) => panels.indexOf(t);
   const isMotor = (t) => { const n = nodes.get(t) || {}; return /^M[-_]/i.test(t) || /\bmotor\b|\bpump\b|\bfan\b|\bdrive motor\b/i.test(n.label || '') && !/control station|isolator|starter|panel/i.test(n.label || ''); };
-  const label = (t) => { const n = nodes.get(t) || {}; return String(n.label || '').toUpperCase(); };
+  const label = (t) => { const n = nodes.get(t) || {}; return units(String(n.label || '').toUpperCase()); };
   // the short name (the description before its ratings): for the title block and the links to other sheets; the full text stays in the panel box
   const shortName = (t) => { const out = []; for (const w of label(t).split(',')[0].split(/\s+/)) { if (out.length && /\d/.test(w)) break; out.push(w); } return out.join(' ').trim(); };
   // cable text: number | cores x size | type - length (the length only when the schedule gives lengths)
   // cores as Atomax writes them: 4C for cores, 2PR for pairs (never 2P)
   const coresTxt = (v) => { const s = String(v || '').trim().toUpperCase(); return /^\d+$/.test(s) ? s + 'C' : s.replace(/^(\d+)\s*(?:PAIRS?|PRS?|P)$/, '$1PR').replace(/\s*CORES?$/, 'C'); };
-  const sizeTxt = (c) => { const sz = String(c.size || '').trim().toUpperCase().replace(/\s*MM2?²?$/, '').trim(); return [coresTxt(c.cores), sz ? (/^[\d.]+$/.test(sz) ? sz + 'MM²' : sz) : ''].filter(Boolean).join(' '); };
+  const sizeTxt = (c) => { const sz = String(c.size || '').trim().toUpperCase().replace(/\s*MM2?²?$/, '').trim(); return units([coresTxt(c.cores), sz ? (/^[\d.]+$/.test(sz) ? sz + 'MM²' : sz) : ''].filter(Boolean).join(' ')); };
   const anyLen = cables.some(c => String(c.length ?? '').trim());
-  const lenTxt = (c) => { const v = String(c.length ?? '').trim().toUpperCase().replace(/\s*M$/, ''); return v ? v + 'M' : anyLen ? 'LENGTH TBC' : ''; };
+  const lenTxt = (c) => { const v = String(c.length ?? '').trim().toUpperCase().replace(/\s*M$/, ''); return v ? v + 'm' : anyLen ? 'LENGTH TBC' : ''; };
   // a type line too long for the drop is split over two lines (type, then the rest with the length), so the drops stay short
   const LINE_MAX = 62;
   const cabLines = (c) => {
-    const base = [String(c.no || 'TBC'), sizeTxt(c) || 'TBC'], ty = String(c.type || '').toUpperCase().replace(/\s+/g, ' ').trim(), ln = lenTxt(c), one = [ty, ln].filter(Boolean).join(' - ');
+    const ab = ABBR.get(curSi + '|' + c.no); if (ab) return [String(c.no || 'TBC'), `SEE SHEET ${ab}`];   // labelled in full on that sheet only
+    const base = [String(c.no || 'TBC'), sizeTxt(c) || 'TBC'], ty = units(String(c.type || '').toUpperCase().replace(/\s+/g, ' ').trim()), ln = lenTxt(c), one = [ty, ln].filter(Boolean).join(' - ');
     if (!one) return base; if (tw(one) <= LINE_MAX) return [...base, one];
     const words = ty.split(' '); let a = ''; while (words.length && (!a || tw(a + ' ' + words[0]) <= LINE_MAX)) a = (a + ' ' + words.shift()).trim();
     return [...base, a, [words.join(' '), ln].filter(Boolean).join(' - ')].filter(Boolean); };
@@ -746,6 +761,7 @@ function layoutPanelBcd(spec, model, opts = {}) {
   const hit = (a, b, g = 0) => a.x0 < b.x1 + g && a.x1 > b.x0 - g && a.y0 < b.y1 + g && a.y1 > b.y0 - g;
   const sheets = [], allDrawn = new Set();
   panels.forEach((PN, si) => {
+    curSi = si;
     const prims = [], boxes = [], drawn = new Set(), placedHere = new Set([PN]), items = [], rows = [], pending = [], textRects = [];
     // the trees: down (what P feeds, through devices that are not panels) and up (what feeds P)
     const downKids = (t) => { const kids = []; for (const c of outs(t).sort((a, b) => order.get(a) - order.get(b))) { if (c.to === PN || placedHere.has(c.to) && !kids.some(k => k.tag === c.to)) { if (!kids.some(k => k.tag === c.to)) continue; } let k = kids.find(x => x.tag === c.to); if (!k) { k = { tag: c.to, link: sheetOf(c.to) >= 0 && c.to !== PN, cables: [], kids: [] }; kids.push(k); placedHere.add(c.to); } k.cables.push(c); } for (const k of kids) if (!k.link) k.kids = downKids(k.tag); return byLoc(kids); };
@@ -811,6 +827,7 @@ function layoutPanelBcd(spec, model, opts = {}) {
         const cx = x + k.w / 2, j0 = prims.length, r = drawNode(k, cx, startY + dir * DROP, dir);
         const it = { tag: k.tag, loc: loc(k.tag), others: others(k.tag), bb: primsBounds(prims.slice(j0)), parent, link: !!k.link }; items.push(it); row.push(it);
         k.cables.forEach((c, i) => {
+          const no = String(c.no || ''); drawnOn.set(no, [...(drawnOn.get(no) || []), { si, link: !!k.link }]);
           const [lx, ly, sideX] = r.lands[i];
           if (sideX !== undefined) cableRun(c, [[lx, startY], [lx, ly], [sideX, ly]], lx);   // beside a motor, turning in to its side
           else cableRun(c, [[lx, startY], [lx, ly]], lx);
@@ -895,6 +912,7 @@ function layoutPanelBcd(spec, model, opts = {}) {
   // every cable on a sheet (a cable between two devices that are on no panel's sheet is reported, never left off quietly)
   const missing = cables.filter(c => !allDrawn.has(c));
   if (missing.length) warn(`NOT DRAWN (NO PANEL): ${missing.map(c => c.no).join(', ')}`);
+  if (opts._dry) return { drawnOn, panels };
   const baseTitle = String(spec.title || 'BLOCK CABLE DIAGRAM').split('\n');
   spec._used = usedWords(sheets.flatMap(sh => sh.prims));   // the abbreviations key is the same on every sheet
   return sheets.map((sh, i) => {

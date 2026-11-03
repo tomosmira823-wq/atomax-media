@@ -24,8 +24,8 @@ console.log('bcd ok: no overlapping or crossing cables');
   console.log(`panel bcd ok: ${sheets.length} sheets, all ${spec.cables.length} cables, no crossings`);
   // the client's asks: type and length on every cable, an area box per location, by-others items outside the scope box
   const texts = sheets.flatMap(s => m.flatPrims(s.prims)).filter(p => p.t === 'text').map(p => String(p.text));
-  assert.ok(texts.includes('XLPE/SWA/LSZH EMC - 55M'), 'C-012 type and length');
-  for (const c of spec.cables) assert.ok(texts.some(t => t.endsWith(' - ' + c.length + 'M') || t === c.length + 'M'), 'length on ' + c.no);
+  assert.ok(texts.includes('XLPE/SWA/LSZH EMC - 55m'), 'C-012 type and length');
+  for (const c of spec.cables) assert.ok(texts.some(t => t.endsWith(' - ' + c.length + 'm') || t === c.length + 'm'), 'length on ' + c.no);
   for (const l of ['HV ROOM', 'TRANSFORMER COMPOUND', 'GENERATOR ENCLOSURE', 'LV SWITCHROOM', 'PUMP HALL', 'WET WELL', 'VALVE CHAMBER']) assert.ok(texts.includes(l), 'area named: ' + l);
   assert.deepStrictEqual(spec._warnings || [], [], 'no layout warnings');
   const s1 = m.flatPrims(sheets[0].prims), scope = m.primsBounds(s1.filter(p => p.layer === 'BCD-SCOPE'));
@@ -36,7 +36,7 @@ console.log('bcd ok: no overlapping or crossing cables');
   // pairs are written PR, never P (Tom, X021126 C-025), and the abbreviations note matches
   { const sp = JSON.parse(JSON.stringify(spec)); sp.cables.find(c => c.no === 'C-025').cores = '2P'; sp.cables.find(c => c.no === 'C-023').cores = '2 pair';
     const tx = m.layoutBcd(sp, { border: 'atomax' }).flatMap(s => s.prims).filter(p => p.t === 'text').map(p => p.text);
-    assert.strictEqual(tx.filter(t => /^2PR 1\.0MM²$/.test(t)).length, 2, 'pairs as 2PR'); assert.ok(!tx.some(t => /^\d+P /.test(t)), 'no 2P');
+    assert.strictEqual(tx.filter(t => /^2PR 1\.0mm²$/.test(t)).length, 2, 'pairs as 2PR'); assert.ok(!tx.some(t => /^\d+P /.test(t)), 'no 2P');
     assert.deepStrictEqual(m.clientNotes({ notes: ['OS - OVERALL SCREENED. P - PAIR.'] }).notes, ['OS - OVERALL SCREENED. PR - PAIR.']); }
   // an abbreviations note: one per line under a heading, never split at its dash
   assert.deepStrictEqual(m.noteLines('VSD - VARIABLE SPEED DRIVE. LIS - LOCAL ISOLATOR SWITCH. PR - PAIR.', 70), ['ABBREVIATIONS:', 'VSD - VARIABLE SPEED DRIVE', 'LIS - LOCAL ISOLATOR SWITCH', 'PR - PAIR']);
@@ -50,10 +50,16 @@ console.log('bcd ok: no overlapping or crossing cables');
   // a long type (with voltage) splits over two lines so the drops stay short
   { const sp = JSON.parse(JSON.stringify(spec)); sp.cables.forEach(c => { if (/EMC/.test(c.type)) c.type = 'XLPE/SWA/LSZH EMC SCREENED 600/1000V'; });
     const tx = m.layoutBcd(sp, { border: 'atomax' }).flatMap(s => s.prims).filter(p => p.t === 'text').map(p => p.text);
-    assert.ok(tx.includes('XLPE/SWA/LSZH EMC SCREENED') && tx.includes('600/1000V - 55M'), 'long type split'); }
+    assert.ok(tx.includes('XLPE/SWA/LSZH EMC SCREENED') && tx.includes('600/1000V - 55m'), 'long type split'); }
   // Tom's third X021126 run (types with voltages, Dex's long descriptions, 14 notes): every sheet on A1, nothing reported
   { const sp = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'hollins-bcd-run3.json'), 'utf8')), sh = m.layoutBcd(sp, { border: 'atomax' });
-    assert.deepStrictEqual(sh.map(s => s.page), ['A1', 'A1', 'A1'], 'run 3 sheets all A1'); assert.deepStrictEqual(sp._warnings || [], [], 'run 3 no warnings');
+    assert.ok(sh.every(s => s.page !== 'A0'), 'run 3: no sheet on A0');
+    // a cable on two sheets is labelled in full once; the other sheet says SEE SHEET n (check report 062)
+    const see = sh.map(s => s.prims.filter(p => p.t === 'text' && p.rot && /^SEE SHEET \d$/.test(p.text)).map(p => p.text));
+    assert.deepStrictEqual(see, [['SEE SHEET 3'], ['SEE SHEET 1', 'SEE SHEET 1', 'SEE SHEET 3'], ['SEE SHEET 1']], 'one full label per cable');
+    // units written normally (check report 108)
+    const all = sh.flatMap(s => s.prims).filter(p => p.t === 'text' || p.t === 'mtext').map(p => p.text).join(' ');
+    assert.ok(!/\d(KV|KVA|KW|MM²)\b/.test(all) && /1000kVA/.test(all) && /mm²/.test(all), 'kV / kVA / mm² written normally'); assert.deepStrictEqual(sp._warnings || [], [], 'run 3 no warnings');
     const title = sh[0].prims.filter(p => p.t === 'text').map(p => p.text); assert.ok(title.includes('MSB-01 MAIN LV SWITCHBOARD'), 'short panel name in the title'); }
   console.log('panel bcd client asks ok: lengths, areas, scope, client notes');
 }
