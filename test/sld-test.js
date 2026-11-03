@@ -10,4 +10,9 @@ const ce = execFileSync('python3', [path.join(__dirname, 'dxf-centring.py'), r.p
 console.log(ov); console.log(ce);
 if (!/ 0 problems$/.test(ov)) { console.log('FAIL: overlaps'); process.exit(1); }
 const worst = +(ce.match(/worst offset ([\d.]+)/) || [])[1]; if (!(worst <= 0.3)) { console.log('FAIL: text not centred'); process.exit(1); }
+// check report X021126 (106): the LV SWITCHROOM box holds the switchboard; the RMU, transformer and generator feeding it sit outside, their cables crossing the wall
+{ const L = D.layoutSld(JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'hollins-sld.json'), 'utf8')), { border: 'atomax', fill: {} }), P = D.flatPrims(L.prims);
+  const box = D.primsBounds(P.filter(p => p.layer === 'SLD-ENCLOSURE')), at = (re) => P.find(p => (p.t === 'mtext' || p.t === 'text') && re.test(p.text));
+  for (const re of [/^TX01\n/, /^RMU-01\n/, /^GEN-01\n/]) { const t = at(re); if (!t) throw new Error('no label ' + re); if (t.y <= box.y1) throw new Error(re + ' is inside the switchroom box'); }
+  const q1 = at(/^Q1/); if (!q1 || q1.y > box.y1 || q1.y < box.y0) throw new Error('Q1 should be inside the switchroom box'); }
 console.log('sld ok: A1, no overlaps, text centred');

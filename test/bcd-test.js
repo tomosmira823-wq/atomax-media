@@ -12,12 +12,12 @@ for (const n of [1, 3, 7, 10, 15, 30]) {
 }
 assert.ok(m.cableClashes([{ t: 'pline', layer: 'BCD-CABLE', pts: [[0, 0], [10, 0], [10, -10]] }, { t: 'line', layer: 'BCD-CABLE', x1: 5, y1: 5, x2: 5, y2: -5 }]).length === 1);
 console.log('bcd ok: no overlapping or crossing cables');
-// the Atomax panel BCD (one sheet per panel, going down): every cable on a sheet, no crossings
+// the Atomax panel BCD (going down): the whole site on ONE sheet when it fits A0 (Tom: as simple as it can be), every cable once, no crossings
 {
   const fs = require('fs'), path = require('path');
   const spec = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'hollins-bcd.json'), 'utf8'));
   const sheets = m.layoutBcd(spec, { border: 'atomax' });
-  assert.ok(sheets.length >= 2, 'one sheet per panel');
+  assert.strictEqual(sheets.length, 1, 'one sheet'); assert.strictEqual(new Set(sheets[0].cables).size, sheets[0].cables.length, 'each cable drawn once');
   const onSheets = new Set(sheets.flatMap(s => s.cables));
   for (const c of spec.cables) assert.ok(onSheets.has(c.no), 'cable on a sheet: ' + c.no);
   for (const s of sheets) assert.deepStrictEqual(m.cableClashes(s.prims), [], 'panel sheet clashes');
@@ -52,8 +52,14 @@ console.log('bcd ok: no overlapping or crossing cables');
     const tx = m.layoutBcd(sp, { border: 'atomax' }).flatMap(s => s.prims).filter(p => p.t === 'text').map(p => p.text);
     assert.ok(tx.includes('XLPE/SWA/LSZH EMC SCREENED') && tx.includes('600/1000V - 55m'), 'long type split'); }
   // Tom's third X021126 run (types with voltages, Dex's long descriptions, 14 notes): every sheet on A1, nothing reported
-  { const sp = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'hollins-bcd-run3.json'), 'utf8')), sh = m.layoutBcd(sp, { border: 'atomax' });
-    assert.ok(sh.every(s => s.page !== 'A0'), 'run 3: no sheet on A0');
+  { const one = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'hollins-bcd-run3.json'), 'utf8')), o = m.layoutBcd(one, { border: 'atomax' });
+    assert.strictEqual(o.length, 1, 'run 3 on one sheet'); assert.deepStrictEqual(one._warnings || [], [], 'run 3 one sheet no warnings');
+    const ot = o[0].prims.filter(p => p.t === 'mtext').map(p => p.text.replace(/\n/g, ' '));
+    assert.ok(ot.some(t => /TO FT-01 OUTLET FLOW METER/.test(t) && /SHOWN UNDER MCC-01/.test(t)), 'cross-branch cable ends at a label naming where the item is shown');
+    assert.ok(!o[0].prims.some(p => p.t === 'circle' && p.layer === 'BCD-BLOCK' && Math.abs(p.r - 12.5) < 1e-6 && o[0].prims.some(q => q.t === 'mtext' && q.text === 'MCC-01' && Math.hypot(q.x - p.x, q.y - p.y) < 1)), 'MCC-01 is a board, not a motor');
+    // with spec.layout "per-panel" (a job too big for A0) it splits one sheet per panel
+    const sp = { ...JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'hollins-bcd-run3.json'), 'utf8')), layout: 'per-panel' }, sh = m.layoutBcd(sp, { border: 'atomax' });
+    assert.ok(sh.length === 3 && sh.every(s => s.page !== 'A0'), 'per panel: 3 sheets, none on A0');
     // a cable on two sheets is labelled in full once; the other sheet says SEE SHEET n (check report 062)
     const see = sh.map(s => s.prims.filter(p => p.t === 'text' && p.rot && /^SEE SHEET \d$/.test(p.text)).map(p => p.text));
     assert.deepStrictEqual(see, [['SEE SHEET 3'], ['SEE SHEET 1', 'SEE SHEET 1', 'SEE SHEET 3'], ['SEE SHEET 1']], 'one full label per cable');
@@ -61,5 +67,9 @@ console.log('bcd ok: no overlapping or crossing cables');
     const all = sh.flatMap(s => s.prims).filter(p => p.t === 'text' || p.t === 'mtext').map(p => p.text).join(' ');
     assert.ok(!/\d(KV|KVA|KW|MM²)\b/.test(all) && /1000kVA/.test(all) && /mm²/.test(all), 'kV / kVA / mm² written normally'); assert.deepStrictEqual(sp._warnings || [], [], 'run 3 no warnings');
     const title = sh[0].prims.filter(p => p.t === 'text').map(p => p.text); assert.ok(title.includes('MSB-01 MAIN LV SWITCHBOARD'), 'short panel name in the title'); }
+  console.log('panel bcd one sheet ok, per-panel split ok');
+  // check report X021126: no TQ pointers in labels, our workbook reading never a note (117, 118, 120)
+  assert.strictEqual(m.cleanLabel('VSD 90kW\nRATING TBC (SEE TQ)'), 'VSD 90kW\nRATING TBC');
+  assert.deepStrictEqual(m.clientNotes({ notes: ['CABLE SCHEDULE NOTES R39 TO R41 ARE TRUNCATED IN THE WORKBOOK.', 'DNO/ICP DETAILS AWAITED (RFI-001 / RFI-005).', 'HOLD: UPS-01 OUTPUT MCB POLES NOT GIVEN.'] }).notes, ['HOLD: UPS-01 OUTPUT MCB POLES NOT GIVEN.']);
   console.log('panel bcd client asks ok: lengths, areas, scope, client notes');
 }

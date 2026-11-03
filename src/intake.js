@@ -433,6 +433,7 @@ EARTHING tasks: size every protective / earth conductor the drawing needs (MET t
       }
     }
     // the notes go to the client: questions, TQs and our own working come off the drawing and go to the job's RFI register
+    dxfmaker.cleanLabels(spec);   // no SEE TQ / RFI pointers in labels: TBC is enough, the question is in the RFI register
     const cn = dxfmaker.clientNotes(spec), queries = [...new Set([...(Array.isArray(spec.queries) ? spec.queries : []), ...cn.moved].map(q => String(q || '').trim()).filter(Boolean))];
     spec.notes = cn.notes; delete spec.queries;
     // the drawing number: from the job's drawing list when one matches, else the next QS 006 number for this kind
