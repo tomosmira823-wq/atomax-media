@@ -1096,8 +1096,9 @@ function make(spec, outDir, baseName, opts = {}) {
     if (why) spec.notes = [...(spec.notes || []), `${spec.revision}: ${why}`];
   }
   const sheets = spec.kind === 'bcd' ? layoutBcd(spec, { noTitle: !!opts.template, diff, fill: opts.fill, border: opts.border }) : [(() => { const r = layoutSld(spec, { fill: opts.fill, border: opts.border }); return { ...r, label: '' }; })()];
-  const files = [];
-  sheets.forEach((sh, i) => {
+  // every sheet framed in its border; a drawing of several sheets is ONE DXF (the sheets side by side in model space, 50mm apart)
+  // and ONE PDF (a page per sheet)
+  const framed = sheets.map((sh) => {
     let prims = sh.prims, bounds = sh.bounds;
     if (opts.template) {   // the client's own title block: our content scaled (never up) into the space left of / above it
       const tpl = fs.readFileSync(opts.template, 'utf8'), ext = templateExtents(tpl) || { x0: 0, y0: 0, x1: 420, y1: 297 };
@@ -1105,11 +1106,19 @@ function make(spec, outDir, baseName, opts = {}) {
       const k = Math.min(1, aw / W, ah / H);
       prims = place(prims, ext.x0 + 15 - c.x0 * k, ext.y1 - 15 - c.y1 * k, k); bounds = ext;
     }
-    const dxf = writeDxf(prims, bounds, { template: opts.template, fill: { title: spec.title || '', drawingNumber: spec.drawingNumber || 'TBC', revision: spec.revision || 'P01', date: new Date().toISOString().slice(0, 10), sheet: sh.label || '', drawn: (opts.fill && opts.fill.drawn) || '' } });
-    const file = opts.exact ? path.join(outDir, `${stem}${sheets.length > 1 ? '_SH' + (i + 1) : ''}.dxf`) : uniquePath(outDir, `${stem}${sheets.length > 1 ? '_SH' + (i + 1) : ''}_DRAFT`, '.dxf');
-    fs.writeFileSync(file, dxf, 'utf8');
-    files.push({ path: file, svg: toSvg(prims, bounds), entities: prims.length, label: sh.label, cables: sh.cables || [], prims, bounds, page: sh.page || (opts.template ? 'A3' : 'A1'), border: sh.border || '' });
+    return { sh, prims, bounds, page: sh.page || (opts.template ? 'A3' : 'A1') };
   });
+  let all = framed[0].prims, allB = framed[0].bounds;
+  if (framed.length > 1) {
+    all = []; let x = 0; const y0 = Math.min(...framed.map(f => f.bounds.y0));
+    for (const f of framed) { const dx = x - f.bounds.x0, dy = y0 - f.bounds.y0; all.push(...place(f.prims, dx, dy)); x += (f.bounds.x1 - f.bounds.x0) + 50; }
+    allB = { x0: 0, y0, x1: x - 50, y1: y0 + Math.max(...framed.map(f => f.bounds.y1 - f.bounds.y0)) };
+  }
+  const label = framed.length > 1 ? `${framed.length} SHEETS` : (framed[0].sh.label || '');
+  const dxf = writeDxf(all, allB, { template: framed.length > 1 ? '' : opts.template, fill: { title: spec.title || '', drawingNumber: spec.drawingNumber || 'TBC', revision: spec.revision || 'P01', date: new Date().toISOString().slice(0, 10), sheet: label, drawn: (opts.fill && opts.fill.drawn) || '' } });
+  const file = opts.exact ? path.join(outDir, `${stem}.dxf`) : uniquePath(outDir, `${stem}_DRAFT`, '.dxf');
+  fs.writeFileSync(file, dxf, 'utf8');
+  const files = [{ path: file, svg: toSvg(framed[0].prims, framed[0].bounds), entities: all.length, label, sheets: framed.length, cables: [...new Set(framed.flatMap(f => f.sh.cables || []))], prims: all, bounds: allB, pages: framed.map(f => ({ prims: f.prims, bounds: f.bounds, page: f.page })), page: framed[0].page, border: framed[0].sh.border || '' }];
   // the spec is kept next to the drawing so the next revision can be compared with it
   try { fs.writeFileSync(files[0].path.replace(/\.dxf$/i, '.spec.json'), JSON.stringify(spec, null, 1)); } catch {}
   return { path: files[0].path, svg: files[0].svg, entities: files.reduce((n, f) => n + f.entities, 0), files, diff, archived };

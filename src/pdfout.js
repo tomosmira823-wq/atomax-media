@@ -4,12 +4,17 @@
 const { PDFDocument, StandardFonts, rgb, degrees, pushGraphicsState, popGraphicsState, concatTransformationMatrix } = require('pdf-lib');
 const PAGES = { A3: [1190.55, 841.89], A2: [1683.78, 1190.55], A1: [2383.94, 1683.78], A0: [3370.39, 2383.94] };
 
-async function toPdf(prims, b, { page = 'A3', title = '' } = {}) {
-  prims = require('./dxfmaker').flatPrims(prims);
+// one PDF, one page per sheet (a drawing of several sheets goes out as one combined PDF)
+async function toPdfPages(pages, { title = '' } = {}) {
   const doc = await PDFDocument.create(); if (title) doc.setTitle(title); doc.setProducer('Atomax Media Office (Dex)');
-  const [PW, PH] = PAGES[page] || PAGES.A3, pg = doc.addPage([PW, PH]);
-  // an embedded Arial-width font, so every character (², °, Ω) draws in any viewer; Helvetica only if it cannot be loaded
   let font; try { doc.registerFontkit(require('@pdf-lib/fontkit')); font = await doc.embedFont(require('fs').readFileSync(require('path').join(__dirname, 'assets', 'fonts', 'LiberationSans-Regular.ttf')), { subset: true }); } catch { font = await doc.embedFont(StandardFonts.Helvetica); }
+  for (const pgd of pages) drawPage(doc, font, pgd.prims, pgd.bounds, pgd.page);
+  return Buffer.from(await doc.save());
+}
+async function toPdf(prims, b, { page = 'A3', title = '' } = {}) { return toPdfPages([{ prims, bounds: b, page }], { title }); }
+function drawPage(doc, font, prims, b, page) {
+  prims = require('./dxfmaker').flatPrims(prims);
+  const [PW, PH] = PAGES[page] || PAGES.A3, pg = doc.addPage([PW, PH]);
   const m = 14, s = Math.min((PW - 2 * m) / (b.x1 - b.x0), (PH - 2 * m) / (b.y1 - b.y0));
   const ox = m + ((PW - 2 * m) - (b.x1 - b.x0) * s) / 2, oy = m + ((PH - 2 * m) - (b.y1 - b.y0) * s) / 2;
   const X = (x) => ox + (x - b.x0) * s, Y = (y) => oy + (y - b.y0) * s, black = rgb(0, 0, 0), lw = (p) => Math.max(0.35, (p.width || 0) * s) * (p.layer === 'SLD-BUS' ? 2 : 1) * (p.colour === 1 ? 2.4 : 1);   // red (new) runs print thick in black and white
@@ -46,12 +51,11 @@ async function toPdf(prims, b, { page = 'A3', title = '' } = {}) {
       pg.pushOperators(pushGraphicsState(), concatTransformationMatrix(cs * wf, sn * wf, -sn, cs, x, y)); pg.drawText(row, { x: 0, y: 0, size, font, color: black }); pg.pushOperators(popGraphicsState());
     });
   }
-  return Buffer.from(await doc.save());
 }
 // the PDF next to each DXF of a make() result (same name, .pdf)
 async function writePdfs(res, opts = {}) {
   const fs = require('fs'), out = [];
-  for (const f of res.files || []) { if (!f.prims) continue; const p = f.path.replace(/\.dxf$/i, '.pdf'); fs.writeFileSync(p, await toPdf(f.prims, f.bounds, { page: f.page, ...opts })); out.push(p); f.pdf = p; delete f.prims; }
+  for (const f of res.files || []) { if (!f.prims && !f.pages) continue; const p = f.path.replace(/\.dxf$/i, '.pdf'); fs.writeFileSync(p, await toPdfPages(f.pages || [{ prims: f.prims, bounds: f.bounds, page: f.page }], opts)); out.push(p); f.pdf = p; delete f.prims; delete f.pages; }
   return out;
 }
-module.exports = { toPdf, writePdfs };
+module.exports = { toPdf, toPdfPages, writePdfs };
