@@ -414,7 +414,7 @@ EARTHING tasks: size every protective / earth conductor the drawing needs (MET t
         if (no ? has(no) : has(stem)) continue;
         refs.push(no ? `${no} - ${stem.replace(no, '').replace(/^[\s_-]+|[\s_-]+$/g, '').replace(/[_]+/g, ' ') || 'INPUT'}` : stem.replace(/[_]+/g, ' '));
       }
-      spec.references = refs.filter(r => !spec.drawingNumber || !r.toUpperCase().startsWith(String(spec.drawingNumber).toUpperCase()));   // never itself
+      spec.references = refs.filter(r => (!spec.drawingNumber || !r.toUpperCase().startsWith(String(spec.drawingNumber).toUpperCase())) && !/master (device )?list/i.test(r));   // never itself, never our internal lists
     }
     // a BCD made from an approved master list must carry exactly its cables (for the panels drawn): missing ones are added, extra ones flagged
     let masterCheck = null;
@@ -428,11 +428,13 @@ EARTHING tasks: size every protective / earth conductor the drawing needs (MET t
         const missing = m.cables.filter(c => !mine.has(String(c.no).toUpperCase()) && (devs.has(String(c.from).toUpperCase()) || devs.has(String(c.to).toUpperCase())));
         const extra = spec.cables.filter(c => !inMaster.has(String(c.no).toUpperCase()));
         missing.forEach(c => spec.cables.push({ no: c.no, from: c.from, to: c.to, type: c.type, cores: c.cores, size: c.size }));
-        if (missing.length) spec.notes = [...(spec.notes || []), `Added from the master list (Dex had left them out): ${missing.map(c => c.no).join(', ')}`];
-        if (extra.length) spec.notes = [...(spec.notes || []), `NOT ON THE MASTER LIST, check: ${extra.map(c => c.no).join(', ')}`];
+        // reported back to Tom (masterCheck), never written on the client's drawing
         masterCheck = { added: missing.map(c => c.no), extra: extra.map(c => c.no), touches: !!touches };
       }
     }
+    // the notes go to the client: questions, TQs and our own working come off the drawing and go to the job's RFI register
+    const cn = dxfmaker.clientNotes(spec), queries = [...new Set([...(Array.isArray(spec.queries) ? spec.queries : []), ...cn.moved].map(q => String(q || '').trim()).filter(Boolean))];
+    spec.notes = cn.notes; delete spec.queries;
     // the drawing number: from the job's drawing list when one matches, else the next QS 006 number for this kind
     if (drawingNumber) spec.drawingNumber = drawingNumber;   // made from the Jobs screen for a given deliverable
     if (job && (!spec.drawingNumber || /tbc/i.test(spec.drawingNumber))) {
@@ -440,6 +442,7 @@ EARTHING tasks: size every protective / earth conductor the drawing needs (MET t
       const onList = job.drawings.find(d => want.test(d.title) && !/^TBC-/.test(d.no) && /to do|live/i.test(d.status || 'Live'));
       spec.drawingNumber = onList ? onList.no : (desk.proposeNumber(job, spec.kind === 'bcd' ? 'BCD' : spec.kind === 'earthing' ? 'earthing' : 'SLD', [], job.id) || 'TBC');
     }
+    if (job && queries.length) { try { desk.addInputs(job.id, { questions: queries, fromEmail: 'Dex (drawing ' + (spec.drawingNumber || spec.title || '') + ')' }); } catch {} }
     // the drawing's own place in an Atomax project folder (7.3 Block Diagrams, 7.4 Single Line Diagrams, 6.3 for instrument BCDs ...)
     const outKind = spec.kind === 'bcd' ? ((job && /^05$/.test(require('./jobdesk').load(job.id).disc || '')) || /instrument|\bRIO\b|loop/i.test(request) ? 'bcd-instrument' : 'bcd') : spec.kind === 'earthing' ? 'earthing' : 'sld';
     const outDir = (job && BIZ.outputDirFor(job.id, outKind)) || path.join(userDir(), 'dxf-made');
@@ -472,7 +475,7 @@ EARTHING tasks: size every protective / earth conductor the drawing needs (MET t
     // every DXF gets its monochrome PDF beside it (issues go out as DXF and PDF)
     let madePdfs = []; try { madePdfs = await require('./pdfout').writePdfs(res); } catch (e) { (res.files || []).forEach(f => delete f.prims); }
     BIZ.log({ who: 'Dex', action: 'Drew', jobId: job ? job.id : '', detail: `${path.basename(res.path)} · ${spec.summary || spec.title || 'SLD'}${used.length ? ' · skills: ' + used.join(', ') : ' · no skills'}` });
-    return { archived: (res.archived || []).length, border: bd.name, borderWarning: bd.warning || '', pdfs: madePdfs, masterCheck, sheets: (res.files || []).map(f => ({ path: f.path, pdf: f.pdf || '', label: f.label })), diff: res.diff, revision: spec.revision, previousFound: !!previous, titleBlock: template ? path.basename(template) : '', drawingNumber: spec.drawingNumber, skills: used, incomplete: cutOff, path: res.path, folder: outDir, svg: res.svg, summary: spec.summary || '', title: spec.title || '', notes: spec.notes || [], read: [...pdfs.map(p => path.basename(p)), ...sheetsRead, ...notesRead], inJobFolder: !!(job && job.folder) };
+    return { queries, warnings: spec._warnings || [], archived: (res.archived || []).length, border: bd.name, borderWarning: bd.warning || '', pdfs: madePdfs, masterCheck, sheets: (res.files || []).map(f => ({ path: f.path, pdf: f.pdf || '', label: f.label })), diff: res.diff, revision: spec.revision, previousFound: !!previous, titleBlock: template ? path.basename(template) : '', drawingNumber: spec.drawingNumber, skills: used, incomplete: cutOff, path: res.path, folder: outDir, svg: res.svg, summary: spec.summary || '', title: spec.title || '', notes: spec.notes || [], read: [...pdfs.map(p => path.basename(p)), ...sheetsRead, ...notesRead], inJobFolder: !!(job && job.folder) };
   }));
 }
 

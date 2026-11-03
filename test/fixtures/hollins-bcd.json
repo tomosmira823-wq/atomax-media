@@ -1,1 +1,464 @@
-{"kind": "bcd", "title": "BLOCK CABLE DIAGRAM\nHOLLINS LANE PS - NEW LV SUPPLY & PUMP UPGRADE", "drawingNumber": "X021126-01-71-0001", "revision": "P01", "client": "PEAKDALE WATER SERVICES", "nodes": [{"tag": "RMU-01", "type": "panel", "label": "RING MAIN UNIT (DNO)"}, {"tag": "TX01", "type": "device", "label": "1000kVA TRANSFORMER"}, {"tag": "MSB-01", "type": "panel", "label": "MAIN LV SWITCHBOARD"}, {"tag": "GEN-01", "type": "device", "label": "500kVA STANDBY GENERATOR"}, {"tag": "MCC-01", "type": "panel", "label": "PUMP MCC"}, {"tag": "DB-01", "type": "panel", "label": "SMALL POWER DB"}, {"tag": "DB-02", "type": "panel", "label": "LIGHTING DB"}, {"tag": "UPS-01", "type": "device", "label": "30kVA UPS"}, {"tag": "DB-03", "type": "panel", "label": "UPS DB"}, {"tag": "PFC-01", "type": "device", "label": "PFC UNIT"}, {"tag": "LIS-P01", "type": "device", "label": "LOCAL ISOLATOR"}, {"tag": "M-P01", "type": "device", "label": "DUTY PUMP 75kW"}, {"tag": "LIS-P02", "type": "device", "label": "LOCAL ISOLATOR"}, {"tag": "M-P02", "type": "device", "label": "STANDBY PUMP 75kW"}, {"tag": "LIS-F01", "type": "device", "label": "LOCAL ISOLATOR"}, {"tag": "M-F01", "type": "device", "label": "VENT FAN 11kW"}, {"tag": "LIS-S01", "type": "device", "label": "LOCAL ISOLATOR"}, {"tag": "M-S01", "type": "device", "label": "SUMP PUMP 4kW"}, {"tag": "LCS-P01", "type": "device", "label": "LOCAL CONTROL STATION"}, {"tag": "LCS-P02", "type": "device", "label": "LOCAL CONTROL STATION"}, {"tag": "LCS-F01", "type": "device", "label": "LOCAL CONTROL STATION"}, {"tag": "LT-01", "type": "device", "label": "LEVEL TRANSMITTER"}, {"tag": "LSH-01", "type": "device", "label": "HIGH LEVEL SWITCH"}, {"tag": "FT-01", "type": "device", "label": "OUTLET FLOW METER"}, {"tag": "MET-01", "type": "device", "label": "MAIN EARTH TERMINAL"}], "cables": [{"no": "C-001", "from": "RMU-01", "to": "TX01", "type": "XLPE/SWA/PVC 11kV", "cores": "3C", "size": "95mm²"}, {"no": "C-002A", "from": "TX01", "to": "MSB-01", "type": "XLPE/SWA/LSZH", "cores": "4C", "size": "300mm²"}, {"no": "C-002B", "from": "TX01", "to": "MSB-01", "type": "XLPE/SWA/LSZH", "cores": "4C", "size": "300mm²"}, {"no": "C-002C", "from": "TX01", "to": "MSB-01", "type": "XLPE/SWA/LSZH", "cores": "4C", "size": "300mm²"}, {"no": "C-003", "from": "TX01", "to": "MSB-01", "type": "LSZH 1C G/Y", "cores": "1C", "size": "240mm²"}, {"no": "C-004A", "from": "GEN-01", "to": "MSB-01", "type": "XLPE/SWA/LSZH", "cores": "4C", "size": "240mm²"}, {"no": "C-004B", "from": "GEN-01", "to": "MSB-01", "type": "XLPE/SWA/LSZH", "cores": "4C", "size": "240mm²"}, {"no": "C-005", "from": "GEN-01", "to": "MSB-01", "type": "XLPE/SWA/LSZH", "cores": "12C", "size": "1.5mm²"}, {"no": "C-006A", "from": "MSB-01", "to": "MCC-01", "type": "XLPE/SWA/LSZH", "cores": "4C", "size": "185mm²"}, {"no": "C-006B", "from": "MSB-01", "to": "MCC-01", "type": "XLPE/SWA/LSZH", "cores": "4C", "size": "185mm²"}, {"no": "C-007", "from": "MSB-01", "to": "DB-01", "type": "XLPE/SWA/LSZH", "cores": "4C", "size": "70mm²"}, {"no": "C-008", "from": "MSB-01", "to": "DB-02", "type": "XLPE/SWA/LSZH", "cores": "4C", "size": "35mm²"}, {"no": "C-009", "from": "MSB-01", "to": "UPS-01", "type": "XLPE/SWA/LSZH", "cores": "4C", "size": "50mm²"}, {"no": "C-010", "from": "UPS-01", "to": "DB-03", "type": "XLPE/SWA/LSZH", "cores": "4C", "size": "16mm²"}, {"no": "C-011", "from": "MSB-01", "to": "PFC-01", "type": "XLPE/SWA/LSZH", "cores": "4C", "size": "120mm²"}, {"no": "C-012", "from": "MCC-01", "to": "LIS-P01", "type": "XLPE/SWA/LSZH EMC", "cores": "4C", "size": "50mm²"}, {"no": "C-013", "from": "LIS-P01", "to": "M-P01", "type": "XLPE/SWA/LSZH EMC", "cores": "4C", "size": "50mm²"}, {"no": "C-014", "from": "MCC-01", "to": "LIS-P02", "type": "XLPE/SWA/LSZH EMC", "cores": "4C", "size": "50mm²"}, {"no": "C-015", "from": "LIS-P02", "to": "M-P02", "type": "XLPE/SWA/LSZH EMC", "cores": "4C", "size": "50mm²"}, {"no": "C-016", "from": "MCC-01", "to": "LIS-F01", "type": "XLPE/SWA/LSZH", "cores": "4C", "size": "4mm²"}, {"no": "C-017", "from": "LIS-F01", "to": "M-F01", "type": "XLPE/SWA/LSZH", "cores": "4C", "size": "4mm²"}, {"no": "C-018", "from": "MCC-01", "to": "LIS-S01", "type": "XLPE/SWA/LSZH", "cores": "4C", "size": "2.5mm²"}, {"no": "C-019", "from": "LIS-S01", "to": "M-S01", "type": "XLPE/SWA/LSZH", "cores": "4C", "size": "2.5mm²"}, {"no": "C-020", "from": "MCC-01", "to": "LCS-P01", "type": "XLPE/SWA/LSZH", "cores": "12C", "size": "1.5mm²"}, {"no": "C-021", "from": "MCC-01", "to": "LCS-P02", "type": "XLPE/SWA/LSZH", "cores": "12C", "size": "1.5mm²"}, {"no": "C-022", "from": "MCC-01", "to": "LCS-F01", "type": "XLPE/SWA/LSZH", "cores": "7C", "size": "1.5mm²"}, {"no": "C-023", "from": "MCC-01", "to": "LT-01", "type": "Instrument PVC/SWA/LSZH OS", "cores": "2 pair", "size": "1.0mm²"}, {"no": "C-024", "from": "MCC-01", "to": "LSH-01", "type": "Instrument PVC/SWA/LSZH OS", "cores": "1 pair", "size": "1.0mm²"}, {"no": "C-025", "from": "MCC-01", "to": "FT-01", "type": "Instrument PVC/SWA/LSZH OS", "cores": "2 pair", "size": "1.0mm²"}, {"no": "C-026", "from": "DB-03", "to": "FT-01", "type": "XLPE/SWA/LSZH", "cores": "3C", "size": "2.5mm²"}, {"no": "C-027", "from": "DB-03", "to": "MCC-01", "type": "XLPE/SWA/LSZH", "cores": "3C", "size": "2.5mm²"}, {"no": "C-028", "from": "MSB-01", "to": "MET-01", "type": "LSZH 1C G/Y", "cores": "1C", "size": "120mm²"}], "notes": ["INFORMATION TAKEN FROM X021126-01-SCH-0001 CABLE SCHEDULE."], "references": ["X021126-01-SCH-0001 - CABLE SCHEDULE", "X021126-01-70-0001 - SINGLE LINE DIAGRAM"]}
+{
+ "kind": "bcd",
+ "title": "BLOCK CABLE DIAGRAM\nHOLLINS LANE PS - NEW LV SUPPLY & PUMP UPGRADE",
+ "drawingNumber": "X021126-01-71-0001",
+ "revision": "P01",
+ "client": "PEAKDALE WATER SERVICES",
+ "nodes": [
+  {
+   "tag": "RMU-01",
+   "type": "panel",
+   "label": "RING MAIN UNIT (DNO)",
+   "location": "HV Room",
+   "byOthers": true
+  },
+  {
+   "tag": "TX01",
+   "type": "device",
+   "label": "1000kVA TRANSFORMER",
+   "location": "Transformer Compound"
+  },
+  {
+   "tag": "MSB-01",
+   "type": "panel",
+   "label": "MAIN LV SWITCHBOARD",
+   "location": "LV Switchroom"
+  },
+  {
+   "tag": "GEN-01",
+   "type": "device",
+   "label": "500kVA STANDBY GENERATOR",
+   "location": "Generator Enclosure"
+  },
+  {
+   "tag": "MCC-01",
+   "type": "panel",
+   "label": "PUMP MCC",
+   "location": "LV Switchroom"
+  },
+  {
+   "tag": "DB-01",
+   "type": "panel",
+   "label": "SMALL POWER DB",
+   "location": "LV Switchroom"
+  },
+  {
+   "tag": "DB-02",
+   "type": "panel",
+   "label": "LIGHTING DB",
+   "location": "LV Switchroom"
+  },
+  {
+   "tag": "UPS-01",
+   "type": "device",
+   "label": "30kVA UPS",
+   "location": "LV Switchroom"
+  },
+  {
+   "tag": "DB-03",
+   "type": "panel",
+   "label": "UPS DB",
+   "location": "LV Switchroom"
+  },
+  {
+   "tag": "PFC-01",
+   "type": "device",
+   "label": "PFC UNIT",
+   "location": "LV Switchroom"
+  },
+  {
+   "tag": "LIS-P01",
+   "type": "device",
+   "label": "LOCAL ISOLATOR",
+   "location": "Pump Hall"
+  },
+  {
+   "tag": "M-P01",
+   "type": "device",
+   "label": "DUTY PUMP 75kW",
+   "location": "Pump Hall"
+  },
+  {
+   "tag": "LIS-P02",
+   "type": "device",
+   "label": "LOCAL ISOLATOR",
+   "location": "Pump Hall"
+  },
+  {
+   "tag": "M-P02",
+   "type": "device",
+   "label": "STANDBY PUMP 75kW",
+   "location": "Pump Hall"
+  },
+  {
+   "tag": "LIS-F01",
+   "type": "device",
+   "label": "LOCAL ISOLATOR",
+   "location": "Pump Hall"
+  },
+  {
+   "tag": "M-F01",
+   "type": "device",
+   "label": "VENT FAN 11kW",
+   "location": "Pump Hall"
+  },
+  {
+   "tag": "LIS-S01",
+   "type": "device",
+   "label": "LOCAL ISOLATOR",
+   "location": "Wet Well"
+  },
+  {
+   "tag": "M-S01",
+   "type": "device",
+   "label": "SUMP PUMP 4kW",
+   "location": "Wet Well"
+  },
+  {
+   "tag": "LCS-P01",
+   "type": "device",
+   "label": "LOCAL CONTROL STATION",
+   "location": "Pump Hall"
+  },
+  {
+   "tag": "LCS-P02",
+   "type": "device",
+   "label": "LOCAL CONTROL STATION",
+   "location": "Pump Hall"
+  },
+  {
+   "tag": "LCS-F01",
+   "type": "device",
+   "label": "LOCAL CONTROL STATION",
+   "location": "Pump Hall"
+  },
+  {
+   "tag": "LT-01",
+   "type": "device",
+   "label": "LEVEL TRANSMITTER",
+   "location": "Wet Well"
+  },
+  {
+   "tag": "LSH-01",
+   "type": "device",
+   "label": "HIGH LEVEL SWITCH",
+   "location": "Wet Well"
+  },
+  {
+   "tag": "FT-01",
+   "type": "device",
+   "label": "OUTLET FLOW METER",
+   "location": "Valve Chamber"
+  },
+  {
+   "tag": "MET-01",
+   "type": "device",
+   "label": "MAIN EARTH TERMINAL",
+   "location": "LV Switchroom"
+  }
+ ],
+ "cables": [
+  {
+   "no": "C-001",
+   "from": "RMU-01",
+   "to": "TX01",
+   "type": "XLPE/SWA/PVC 11kV",
+   "cores": "3C",
+   "size": "95mm²",
+   "length": "18",
+   "byOthers": true
+  },
+  {
+   "no": "C-002A",
+   "from": "TX01",
+   "to": "MSB-01",
+   "type": "XLPE/SWA/LSZH",
+   "cores": "4C",
+   "size": "300mm²",
+   "length": "22"
+  },
+  {
+   "no": "C-002B",
+   "from": "TX01",
+   "to": "MSB-01",
+   "type": "XLPE/SWA/LSZH",
+   "cores": "4C",
+   "size": "300mm²",
+   "length": "22"
+  },
+  {
+   "no": "C-002C",
+   "from": "TX01",
+   "to": "MSB-01",
+   "type": "XLPE/SWA/LSZH",
+   "cores": "4C",
+   "size": "300mm²",
+   "length": "22"
+  },
+  {
+   "no": "C-003",
+   "from": "TX01",
+   "to": "MSB-01",
+   "type": "LSZH 1C G/Y",
+   "cores": "1C",
+   "size": "240mm²",
+   "length": "22"
+  },
+  {
+   "no": "C-004A",
+   "from": "GEN-01",
+   "to": "MSB-01",
+   "type": "XLPE/SWA/LSZH",
+   "cores": "4C",
+   "size": "240mm²",
+   "length": "35"
+  },
+  {
+   "no": "C-004B",
+   "from": "GEN-01",
+   "to": "MSB-01",
+   "type": "XLPE/SWA/LSZH",
+   "cores": "4C",
+   "size": "240mm²",
+   "length": "35"
+  },
+  {
+   "no": "C-005",
+   "from": "GEN-01",
+   "to": "MSB-01",
+   "type": "XLPE/SWA/LSZH",
+   "cores": "12C",
+   "size": "1.5mm²",
+   "length": "35"
+  },
+  {
+   "no": "C-006A",
+   "from": "MSB-01",
+   "to": "MCC-01",
+   "type": "XLPE/SWA/LSZH",
+   "cores": "4C",
+   "size": "185mm²",
+   "length": "15"
+  },
+  {
+   "no": "C-006B",
+   "from": "MSB-01",
+   "to": "MCC-01",
+   "type": "XLPE/SWA/LSZH",
+   "cores": "4C",
+   "size": "185mm²",
+   "length": "15"
+  },
+  {
+   "no": "C-007",
+   "from": "MSB-01",
+   "to": "DB-01",
+   "type": "XLPE/SWA/LSZH",
+   "cores": "4C",
+   "size": "70mm²",
+   "length": "40"
+  },
+  {
+   "no": "C-008",
+   "from": "MSB-01",
+   "to": "DB-02",
+   "type": "XLPE/SWA/LSZH",
+   "cores": "4C",
+   "size": "35mm²",
+   "length": "45"
+  },
+  {
+   "no": "C-009",
+   "from": "MSB-01",
+   "to": "UPS-01",
+   "type": "XLPE/SWA/LSZH",
+   "cores": "4C",
+   "size": "50mm²",
+   "length": "12"
+  },
+  {
+   "no": "C-010",
+   "from": "UPS-01",
+   "to": "DB-03",
+   "type": "XLPE/SWA/LSZH",
+   "cores": "4C",
+   "size": "16mm²",
+   "length": "8"
+  },
+  {
+   "no": "C-011",
+   "from": "MSB-01",
+   "to": "PFC-01",
+   "type": "XLPE/SWA/LSZH",
+   "cores": "4C",
+   "size": "120mm²",
+   "length": "6"
+  },
+  {
+   "no": "C-012",
+   "from": "MCC-01",
+   "to": "LIS-P01",
+   "type": "XLPE/SWA/LSZH EMC",
+   "cores": "4C",
+   "size": "50mm²",
+   "length": "55"
+  },
+  {
+   "no": "C-013",
+   "from": "LIS-P01",
+   "to": "M-P01",
+   "type": "XLPE/SWA/LSZH EMC",
+   "cores": "4C",
+   "size": "50mm²",
+   "length": "5"
+  },
+  {
+   "no": "C-014",
+   "from": "MCC-01",
+   "to": "LIS-P02",
+   "type": "XLPE/SWA/LSZH EMC",
+   "cores": "4C",
+   "size": "50mm²",
+   "length": "58"
+  },
+  {
+   "no": "C-015",
+   "from": "LIS-P02",
+   "to": "M-P02",
+   "type": "XLPE/SWA/LSZH EMC",
+   "cores": "4C",
+   "size": "50mm²",
+   "length": "5"
+  },
+  {
+   "no": "C-016",
+   "from": "MCC-01",
+   "to": "LIS-F01",
+   "type": "XLPE/SWA/LSZH",
+   "cores": "4C",
+   "size": "4mm²",
+   "length": "30"
+  },
+  {
+   "no": "C-017",
+   "from": "LIS-F01",
+   "to": "M-F01",
+   "type": "XLPE/SWA/LSZH",
+   "cores": "4C",
+   "size": "4mm²",
+   "length": "4"
+  },
+  {
+   "no": "C-018",
+   "from": "MCC-01",
+   "to": "LIS-S01",
+   "type": "XLPE/SWA/LSZH",
+   "cores": "4C",
+   "size": "2.5mm²",
+   "length": "42"
+  },
+  {
+   "no": "C-019",
+   "from": "LIS-S01",
+   "to": "M-S01",
+   "type": "XLPE/SWA/LSZH",
+   "cores": "4C",
+   "size": "2.5mm²",
+   "length": "4"
+  },
+  {
+   "no": "C-020",
+   "from": "MCC-01",
+   "to": "LCS-P01",
+   "type": "XLPE/SWA/LSZH",
+   "cores": "12C",
+   "size": "1.5mm²",
+   "length": "55"
+  },
+  {
+   "no": "C-021",
+   "from": "MCC-01",
+   "to": "LCS-P02",
+   "type": "XLPE/SWA/LSZH",
+   "cores": "12C",
+   "size": "1.5mm²",
+   "length": "58"
+  },
+  {
+   "no": "C-022",
+   "from": "MCC-01",
+   "to": "LCS-F01",
+   "type": "XLPE/SWA/LSZH",
+   "cores": "7C",
+   "size": "1.5mm²",
+   "length": "30"
+  },
+  {
+   "no": "C-023",
+   "from": "MCC-01",
+   "to": "LT-01",
+   "type": "Instrument PVC/SWA/LSZH OS",
+   "cores": "2 pair",
+   "size": "1.0mm²",
+   "length": "48"
+  },
+  {
+   "no": "C-024",
+   "from": "MCC-01",
+   "to": "LSH-01",
+   "type": "Instrument PVC/SWA/LSZH OS",
+   "cores": "1 pair",
+   "size": "1.0mm²",
+   "length": "48"
+  },
+  {
+   "no": "C-025",
+   "from": "MCC-01",
+   "to": "FT-01",
+   "type": "Instrument PVC/SWA/LSZH OS",
+   "cores": "2 pair",
+   "size": "1.0mm²",
+   "length": "62"
+  },
+  {
+   "no": "C-026",
+   "from": "DB-03",
+   "to": "FT-01",
+   "type": "XLPE/SWA/LSZH",
+   "cores": "3C",
+   "size": "2.5mm²",
+   "length": "62"
+  },
+  {
+   "no": "C-027",
+   "from": "DB-03",
+   "to": "MCC-01",
+   "type": "XLPE/SWA/LSZH",
+   "cores": "3C",
+   "size": "2.5mm²",
+   "length": "10"
+  },
+  {
+   "no": "C-028",
+   "from": "MSB-01",
+   "to": "MET-01",
+   "type": "LSZH 1C G/Y",
+   "cores": "1C",
+   "size": "120mm²",
+   "length": "10"
+  }
+ ],
+ "notes": [
+  "C-001 AND RMU-01 ARE BY THE DNO / ICP AND ARE SHOWN FOR INFORMATION ONLY, OUTSIDE THE SCOPE BOUNDARY.",
+  "ALL LV CABLES ARE COPPER. SWA IS EARTHED AT BOTH ENDS VIA CW GLANDS WITH EARTH TAGS UNLESS NOTED.",
+  "CABLE LENGTHS ARE ESTIMATED ROUTE LENGTHS INCLUDING A 10% ALLOWANCE.",
+  "PARALLEL RUNS ARE SHOWN INDIVIDUALLY.",
+  "INSTRUMENT CABLE SCREENS ARE EARTHED AT THE MCC END ONLY.",
+  "DO NOT SCALE FROM THIS DRAWING."
+ ],
+ "references": [
+  "X021126-01-SCH-0001 - CABLE SCHEDULE",
+  "X021126-01-70-0001 - SINGLE LINE DIAGRAM"
+ ],
+ "area": "HOLLINS LANE PUMPING STATION"
+}

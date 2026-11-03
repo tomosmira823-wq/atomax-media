@@ -22,4 +22,16 @@ console.log('bcd ok: no overlapping or crossing cables');
   for (const c of spec.cables) assert.ok(onSheets.has(c.no), 'cable on a sheet: ' + c.no);
   for (const s of sheets) assert.deepStrictEqual(m.cableClashes(s.prims), [], 'panel sheet clashes');
   console.log(`panel bcd ok: ${sheets.length} sheets, all ${spec.cables.length} cables, no crossings`);
+  // the client's asks: type and length on every cable, an area box per location, by-others items outside the scope box
+  const texts = sheets.flatMap(s => m.flatPrims(s.prims)).filter(p => p.t === 'text').map(p => String(p.text));
+  assert.ok(texts.includes('XLPE/SWA/LSZH EMC - 55M'), 'C-012 type and length');
+  for (const c of spec.cables) assert.ok(texts.some(t => t.endsWith(' - ' + c.length + 'M')), 'length on ' + c.no);
+  for (const l of ['HV ROOM', 'TRANSFORMER COMPOUND', 'GENERATOR ENCLOSURE', 'LV SWITCHROOM', 'PUMP HALL', 'WET WELL', 'VALVE CHAMBER']) assert.ok(texts.includes(l), 'area named: ' + l);
+  assert.deepStrictEqual(spec._warnings || [], [], 'no layout warnings');
+  const s1 = m.flatPrims(sheets[0].prims), scope = m.primsBounds(s1.filter(p => p.layer === 'BCD-SCOPE'));
+  const rmu = s1.find(p => p.t === 'mtext' && /RMU-01/.test(p.text)); assert.ok(rmu && rmu.y > scope.y1, 'RMU-01 outside the scope box');
+  // notes: our working never reaches the client
+  const cn = m.clientNotes({ notes: ['APPROVED X021126 MASTER DEVICE LIST (25 DEVICES, 32 CABLES).', 'TQ-03: CONFIRM GLAND SIZE', 'DRAWING NUMBER, REVISION AND DRAWN BY ARE TBC.', 'NO SEPARATE TAGS ARE GIVEN FOR THE ISOLATORS SO THEY ARE SHOWN ON THE MOTOR LINE.', 'ALL LV CABLES ARE COPPER.'] });
+  assert.deepStrictEqual(cn.notes, ['ALL LV CABLES ARE COPPER.']); assert.strictEqual(cn.moved.length, 4);
+  console.log('panel bcd client asks ok: lengths, areas, scope, client notes');
 }
