@@ -692,8 +692,10 @@ function layoutPanelBcd(spec, model, opts = {}) {
       prims.push(P(pts, false, 'BCD-CABLE'));
       // the text centred halfway along the cable's vertical run
       const ls = cabLines(c), len = Math.max(...ls.map(l => l.length)) * H * 0.92 * HOUSE_WF, yc = (pts[0][1] + pts[1][1]) / 2;
-      ls.forEach((l, i) => prims.push({ t: 'text', x: lx - 1.2 - (ls.length - 1 - i) * LH, y: yc, h: H, text: l, rot: 90, align: 'center', layer: 'BCD-TEXT' }));
-      boxes.push({ no: String(c.no || ''), x0: lx - 1.5 - ls.length * LH, y0: yc - len / 2 - 1, x1: lx - 0.5, y1: yc + len / 2 + 1 });
+      // the line runs between the two lines of text: the cable number just left of it, cores x size just right of it (text up the page: its letters stand to the left of its baseline)
+      const xs = ls.length > 1 ? [lx - 1.2, lx + 1.2 + H] : [lx - 1.2];
+      ls.forEach((l, i) => prims.push({ t: 'text', x: xs[Math.min(i, xs.length - 1)], y: yc, h: H, text: l, rot: 90, align: 'center', layer: 'BCD-TEXT' }));
+      boxes.push({ no: String(c.no || ''), x0: lx - 1.5 - H, y0: yc - len / 2 - 1, x1: lx + 1.5 + (ls.length > 1 ? H : 0), y1: yc + len / 2 + 1 });
       drawn.add(c); allDrawn.add(c);
     };
     const linkText = (k, dir) => [dir < 0 ? 'LINK TO' : 'SUPPLY FROM', [k.tag, label(k.tag)].filter(Boolean).join(' '), `SEE SHEET ${sheetOf(k.tag) + 1}`].join('\n');
