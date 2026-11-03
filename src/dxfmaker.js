@@ -459,16 +459,19 @@ const notesOf = (spec, k = 1) => [...clientNotes(spec).notes.filter(n => noteLin
 // a note's lines in the notes column; a list of abbreviations ("VSD - VARIABLE SPEED DRIVE. DOL - DIRECT ON LINE.") puts each one on its
 // own line, never split at its dash
 // the words written on the drawing itself (not the border or notes): an abbreviation only goes in the key when it is used
-function usedWords(prims) { const w = new Set(); for (const p of flatPrims(prims)) if ((p.t === 'text' || p.t === 'mtext') && !/BORDER|NOTES/i.test(p.layer || '')) for (const m of String(p.text).toUpperCase().matchAll(/[A-Z0-9/&]+/g)) w.add(m[0]); return w; }
+function usedWords(prims) { const w = new Set(); for (const p of flatPrims(prims)) if ((p.t === 'text' || p.t === 'mtext') && !/BORDER|NOTES/i.test(p.layer || '')) for (const m of String(p.text).toUpperCase().matchAll(/[A-Z0-9/&]+/g)) { w.add(m[0]); m[0].split('/').forEach(x => x && w.add(x)); } return w; }
 const abbrUsed = (a, used) => !(used instanceof Set) || used.has(a) || [...used].some(x => (x.startsWith(a) && /^\d/.test(x.slice(a.length))) || (x.endsWith(a) && /^[\d.]+$/.test(x.slice(0, -a.length))));   // a word, a tag starting with it (LIS-P01, LIS01) or a size ending in it (2PR)
 function noteLines(nt, width, used) {
-  const t = String(nt).toUpperCase().trim(), re = /([A-Z0-9][A-Z0-9/&]{0,7})\s+[-–=]\s+([^.;]+?)\s*[.;](?=\s|$)/g, ents = [];
-  let m, len = 0; while ((m = re.exec(t))) { ents.push([m[1], `${m[1]} - ${m[2].trim()}`]); len += m[0].length; }
-  const lead = ents.length ? t.slice(0, t.search(new RegExp(re.source))).trim() : '';
-  if (ents.length >= 2 && len + lead.length >= t.replace(/\s+/g, ' ').length * 0.85) {
-    const keep = ents.filter(([a]) => abbrUsed(a, used)).map(e => e[1]); if (!keep.length) return [];
-    const glue = (e) => { const [a, b] = e.split(' - '); const ls = wrap(b, width - (a.length + 3) * TH * 0.9); return ls.map((l, i) => (i ? ' '.repeat(a.length + 3) : a + ' - ') + l); };
-    return [...wrap(lead || 'ABBREVIATIONS:', width), ...keep.flatMap(glue)];
+  // a list of abbreviations, however Dex wrote it ("ABBREVIATIONS: PR - PAIR, C - CORE" or "VSD - VARIABLE SPEED DRIVE. DOL - DIRECT ON LINE."):
+  // under ABBREVIATIONS:, one per line, never split at its dash, only the ones written on the drawing
+  const t = String(nt).toUpperCase().replace(/\s+/g, ' ').trim(), head = t.match(/^(ABBREVIATIONS?|KEY TO ABBREVIATIONS)\s*[:\-–]?\s*/);
+  const body = head ? t.slice(head[0].length) : t, parts = body.split(/\s*[,;]\s+|\.\s+|\.$/).map(x => x.trim()).filter(Boolean);
+  // under an ABBREVIATIONS heading a missing dash is fine ("SWA STEEL WIRE ARMOURED"): nothing Dex listed is lost
+  const ents = parts.map(x => x.match(/^([A-Z0-9][A-Z0-9/&]{0,7})\s*(?:\s[-–=:]\s|\s+-\s*|\s*-\s+)\s*(.+)$/) || (head && x.match(/^([A-Z0-9][A-Z0-9/&]{0,7})\s+([A-Z].+)$/))).filter(Boolean);
+  if (ents.length >= 2 && ents.length >= parts.length * (head ? 0.6 : 0.9)) {
+    const keep = ents.filter(m => abbrUsed(m[1], used)); if (!keep.length) return [];
+    const glue = ([, a, b]) => wrap(b, width - (a.length + 3) * TH * 0.9).map((l, i) => (i ? ' '.repeat(a.length + 3) : a + ' - ') + l);
+    return ['ABBREVIATIONS:', ...keep.flatMap(glue)];
   }
   return wrap(t, width);
 }
@@ -494,7 +497,7 @@ function primsBounds(prims) {
     if (p.t === 'line') { add(p.x1, p.y1); add(p.x2, p.y2); }
     else if (p.pts) p.pts.forEach(([x, y]) => add(x, y));
     else if (p.t === 'circle' || p.t === 'arc') { add(p.x - p.r, p.y - p.r); add(p.x + p.r, p.y + p.r); }
-    else if (p.t === 'mtext') { const n = String(p.text).split('\n').length, h = n * LINE, w = p.w || 30; const col = ((p.attach || 1) - 1) % 3, xl = col === 1 ? p.x - w / 2 : col === 2 ? p.x - w : p.x; const yt = p.attach >= 4 && p.attach <= 6 ? p.y + h / 2 : p.y; add(xl, yt); add(xl + w, yt - h); }
+    else if (p.t === 'mtext') { const n = String(p.text).split('\n').length, h = n * (p.h || TH) * 1.7, w = p.w || 30; const col = ((p.attach || 1) - 1) % 3, xl = col === 1 ? p.x - w / 2 : col === 2 ? p.x - w : p.x; const yt = p.attach >= 4 && p.attach <= 6 ? p.y + h / 2 : p.y; add(xl, yt); add(xl + w, yt - h); }
     else if (p.t === 'text') { const w = String(p.text).length * p.h * 0.9; add(p.align === 'center' ? p.x - w / 2 : p.x, p.y); add(p.align === 'center' ? p.x + w / 2 : p.x + w, p.y + p.h); }
   }
   return { x0, y0, x1, y1 };
@@ -716,17 +719,26 @@ function layoutPanelBcd(spec, model, opts = {}) {
   const sheetOf = (t) => panels.indexOf(t);
   const isMotor = (t) => { const n = nodes.get(t) || {}; return /^M[-_]/i.test(t) || /\bmotor\b|\bpump\b|\bfan\b|\bdrive motor\b/i.test(n.label || '') && !/control station|isolator|starter|panel/i.test(n.label || ''); };
   const label = (t) => { const n = nodes.get(t) || {}; return String(n.label || '').toUpperCase(); };
+  // the short name (the description before its ratings): for the title block and the links to other sheets; the full text stays in the panel box
+  const shortName = (t) => { const out = []; for (const w of label(t).split(',')[0].split(/\s+/)) { if (out.length && /\d/.test(w)) break; out.push(w); } return out.join(' ').trim(); };
   // cable text: number | cores x size | type - length (the length only when the schedule gives lengths)
   // cores as Atomax writes them: 4C for cores, 2PR for pairs (never 2P)
   const coresTxt = (v) => { const s = String(v || '').trim().toUpperCase(); return /^\d+$/.test(s) ? s + 'C' : s.replace(/^(\d+)\s*(?:PAIRS?|PRS?|P)$/, '$1PR').replace(/\s*CORES?$/, 'C'); };
   const sizeTxt = (c) => { const sz = String(c.size || '').trim().toUpperCase().replace(/\s*MM2?²?$/, '').trim(); return [coresTxt(c.cores), sz ? (/^[\d.]+$/.test(sz) ? sz + 'MM²' : sz) : ''].filter(Boolean).join(' '); };
   const anyLen = cables.some(c => String(c.length ?? '').trim());
   const lenTxt = (c) => { const v = String(c.length ?? '').trim().toUpperCase().replace(/\s*M$/, ''); return v ? v + 'M' : anyLen ? 'LENGTH TBC' : ''; };
-  const cabLines = (c) => { const r2 = [String(c.type || '').toUpperCase().trim(), lenTxt(c)].filter(Boolean).join(' - '); return [String(c.no || 'TBC'), sizeTxt(c) || 'TBC', ...(r2 ? [r2] : [])]; };
-  const textX = (lx, i) => [lx - 1.2, lx + 1.2 + H, lx + 2.4 + 2 * H][i];   // text up the page: its letters stand left of its baseline
+  // a type line too long for the drop is split over two lines (type, then the rest with the length), so the drops stay short
+  const LINE_MAX = 62;
+  const cabLines = (c) => {
+    const base = [String(c.no || 'TBC'), sizeTxt(c) || 'TBC'], ty = String(c.type || '').toUpperCase().replace(/\s+/g, ' ').trim(), ln = lenTxt(c), one = [ty, ln].filter(Boolean).join(' - ');
+    if (!one) return base; if (tw(one) <= LINE_MAX) return [...base, one];
+    const words = ty.split(' '); let a = ''; while (words.length && (!a || tw(a + ' ' + words[0]) <= LINE_MAX)) a = (a + ' ' + words.shift()).trim();
+    return [...base, a, [words.join(' '), ln].filter(Boolean).join(' - ')].filter(Boolean); };
+  const textX = (lx, i) => i === 0 ? lx - 1.2 : lx + i * (1.2 + H);   // text up the page: its letters stand left of its baseline
   // the drop from a panel / device to the next is long enough for the longest cable text, clear of the area boxes
-  const maxLen = Math.max(...cables.map(c => Math.max(...cabLines(c).map(tw))));
-  const DROP = Math.max(72, Math.ceil(maxLen + (hasAreas ? 30 : 16)));
+  // each level of a sheet (going up or down from the panel) has its own drop, long enough for the longest cable text on that level
+  const dropFor = (len) => Math.max(72, Math.ceil(len + (hasAreas ? 30 : 16)));
+  const textLen = (c) => Math.max(...cabLines(c).map(tw));
   // devices in the same place go side by side (first place first), so each area is one box
   const byLoc = (kids) => { if (!hasAreas) return kids; const seen = []; kids.forEach(k => { if (!seen.includes(loc(k.tag))) seen.push(loc(k.tag)); }); return kids.map((k, i) => [k, i]).sort((a, b) => seen.indexOf(loc(a[0].tag)) - seen.indexOf(loc(b[0].tag)) || a[1] - b[1]).map(x => x[0]); };
   const pad = (b) => ({ x0: b.x0 - AP, y0: b.y0 - AP, x1: b.x1 + AP, y1: b.y1 + AP + BAND });
@@ -758,7 +770,7 @@ function layoutPanelBcd(spec, model, opts = {}) {
     items.push(panelItem); rows.push([panelItem]);
     // one cable: its line now, its text once the area boxes are known (centred in the clear part of its run)
     const cableRun = (c, pts, lx) => { prims.push(P(pts, false, 'BCD-CABLE')); pending.push({ c, lx, ya: pts[0][1], yb: pts[1][1] }); drawn.add(c); allDrawn.add(c); };
-    const linkText = (k, dir) => [dir < 0 ? 'LINK TO' : 'SUPPLY FROM', [k.tag, label(k.tag)].filter(Boolean).join(' '), `SEE SHEET ${sheetOf(k.tag) + 1}`].join('\n');
+    const linkText = (k, dir) => [dir < 0 ? 'LINK TO' : 'SUPPLY FROM', [k.tag, shortName(k.tag)].filter(Boolean).join(' '), `SEE SHEET ${sheetOf(k.tag) + 1}`].join('\n');
     // a device (or a link label) whose near edge is at yEdge (top when going down, bottom when going up), centred at cx.
     // Returns where each of its cables lands, and where cables going on past it leave from.
     const drawNode = (k, cx, yEdge, dir) => {
@@ -789,7 +801,10 @@ function layoutPanelBcd(spec, model, opts = {}) {
       return { lands, far };
     };
     // a row of a tree, going down (dir -1) or up (dir +1); each child's cables start at startY directly over (or under) it
-    const placeRow = (kids, x0, startY, dir, parent) => {
+    const levels = {}; const measure = (kids, dir, depth) =>  /* a level crossing the scope boundary (by others) needs room for that edge and its name too */ { for (const k of kids) { const key = dir + ':' + depth; levels[key] = Math.max(levels[key] || 0, ...k.cables.map(c => textLen(c) + (others(k.tag) || c.byOthers ? 18 : 0))); if (!k.link) measure(k.kids, dir, depth + 1); } };
+    measure(down, -1, 0); measure(up, 1, 0);
+    const placeRow = (kids, x0, startY, dir, parent, depth = 0) => {
+      const DROP = dropFor(levels[dir + ':' + depth] || 0);
       const row = []; rows.push(row);
       let x = x0;
       for (const k of kids) {
@@ -800,7 +815,7 @@ function layoutPanelBcd(spec, model, opts = {}) {
           if (sideX !== undefined) cableRun(c, [[lx, startY], [lx, ly], [sideX, ly]], lx);   // beside a motor, turning in to its side
           else cableRun(c, [[lx, startY], [lx, ly]], lx);
         });
-        if (k.kids.length && !k.link) placeRow(k.kids, x + (k.w - k.kids.reduce((n, q) => n + q.w, 0)) / 2, r.far, dir, it);
+        if (k.kids.length && !k.link) placeRow(k.kids, x + (k.w - k.kids.reduce((n, q) => n + q.w, 0)) / 2, r.far, dir, it, depth + 1);
         x += k.w;
       }
     };
@@ -887,7 +902,7 @@ function layoutPanelBcd(spec, model, opts = {}) {
     let B = opts.noTitle ? null : borderOf(key, bb.x1 - bb.x0, bb.y1 - bb.y0);
     // the smallest sheet the drawing AND its notes fit
     if (B && !(opts.border && opts.border.geo) && !/-A\d$/.test(key) && FAMILY[`${B.company}-A0`]) for (const sz of SIZES) { const Cb = FAMILY[`${B.company}-${sz}`]; if (Cb && placeIn(Cb, sh.prims, bb) && notesFit(Cb, spec)) { B = Cb; break; } }
-    const sspec = { ...spec, title: [baseTitle[0] || 'BLOCK CABLE DIAGRAM', ...baseTitle.slice(1, 2), [sh.P, label(sh.P)].filter(Boolean).join(' '), sheets.length > 1 ? `SHEET ${i + 1}` : ''].filter(Boolean).join('\n') };
+    const sspec = { ...spec, title: [baseTitle[0] || 'BLOCK CABLE DIAGRAM', ...baseTitle.slice(1, 2), [sh.P, shortName(sh.P)].filter(Boolean).join(' '), sheets.length > 1 ? `SHEET ${i + 1}` : ''].filter(Boolean).join('\n') };
     const f = frame(sh.prims, sspec, bb.y0 - 4, bb.y1, bb.x1, '', { fixed: true, noTitle: !!opts.noTitle, border: B, fill: { ...(opts.fill || {}), sht: String(i + 1), shtx: String(sheets.length) } });
     return { prims: sh.prims, bounds: f.bounds, content: f.content, sheet: f.sheet, page: f.page, border: f.border, label: sheets.length > 1 ? `SHEET ${i + 1} OF ${sheets.length}` : '', boxes: sh.boxes, cables: sh.cables };
   });
