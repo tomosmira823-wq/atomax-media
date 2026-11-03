@@ -357,7 +357,7 @@ function familyCfg(j) {
     revbox: { prims: j.rev.prims, texts: j.rev.texts, attrs: j.rev.attrs, block: j.revBlock }, rev: { x0: j.rev.x, y: j.rev.y, pitch: j.rev.h || 8, dx: j.rev.dx || 0, max: j.rev.max || 8 },
     heads: [...(j.notes ? [['NOTES', j.notes[0], j.notes[1]]] : []), ...(j.refs ? [['REFERENCE DOCUMENTS', j.refs[0], j.refs[1]]] : [])], extras: j.extras,
     notes: j.notes && { x: colX, tx: colX + 5.9, y: Math.min(j.notes[1] - 6, extraBottom - 6), pitch: 3.35, w: colW, bottom: (j.refs ? j.refs[1] : j.rev.y) + 12 },
-    legendFlow: true, refs: j.refs && { x: colX, y: j.refs[1] - 6, pitch: 3.2, h: 1.75, bottom: j.rev.y + (j.rev.h || 8) * 3 + 4 },
+    legendFlow: true, refs: j.refs && { x: colX, y: j.refs[1] - 6, pitch: 3.4, h: 2, w: colW, bottom: j.rev.y + (j.rev.h || 8) * 3 + 4 },
   };
 }
 for (const c of ['atomax', 'bgen', 'pbe', 'ng']) { const j = readJson('borders/' + c + '.json'); if (j) for (const k of Object.keys(j)) FAMILY[k] = familyCfg(j[k]); }
@@ -381,6 +381,14 @@ const BORDER_NAMES = { atomax: 'Atomax', bgen: 'BGEN', pbe: 'PBE Group', ng: 'Na
 // a border key is a company ('atomax', 'bgen', 'pbe') or company-size ('bgen-A3'); a ready border object passes through
 const borderOf = (key, W, H) => { if (key && key.geo) return key; const [c, sz] = String(key || 'atomax').split('-'); if (c === 'ng' && FAMILY['ng-A0']) return resolveBorder('ng', sz || '', W, H); return resolveBorder(FAMILY[`${c}-A1`] ? c : 'atomax', sz || '', W, H); };
 const LEGEND_TEXT = { MCCB: 'MCCB. TEXT: RATING, FRAME', MCB: 'MCB / RCBO. TEXT: RATING, POLES, TYPE', 'SWITCH DISCONNECTOR': 'SWITCH DISCONNECTOR / MAIN SWITCH / ISOLATOR', 'ISOLATOR DISCONNECTOR': 'ISOLATOR', 'FUSED SWITCH DISCONNECTOR': 'FUSED SWITCH DISCONNECTOR', FUSE: 'FUSE', CONTACTOR1: 'CONTACTOR', MOTOR: 'MOTOR', LOAD: 'FINAL CIRCUIT / LOAD', 'HV-LV TRANSFORMER': 'TRANSFORMER' };
+// a reference document as Atomax writes it: one line, NUMBER - SHORT TITLE (no revision, no bracketed detail), shortened at a word to fit the column
+function shortRef(r, maxC = 44) {
+  let t = String(r || '').toUpperCase().replace(/\([^)]*\)/g, ' ').replace(/\bREV(?:ISION)?\.?\s*[A-Z]?\d+\b/g, ' ').replace(/\s+/g, ' ').replace(/[\s,;:-]+$/, '').trim();
+  if (t.length <= maxC) return t;
+  const words = t.split(' '); let outS = '';
+  for (const w of words) { const n = outS ? outS + ' ' + w : w; if (n.length > maxC) break; outS = n; }
+  return (outS || t.slice(0, maxC)).replace(/[\s,;:-]+$/, '');
+}
 const LEGEND_OWN = { breaker: 'CIRCUIT BREAKER', isolator: 'ISOLATOR', fuse: 'FUSE', switchfuse: 'FUSE SWITCH', contactor: 'CONTACTOR', transformer: 'TRANSFORMER', ct: 'CURRENT TRANSFORMER', meter: 'MULTIFUNCTION METER (kWh)', supply: 'SUPPLY', generator: 'GENERATOR', ups: 'UPS', vsd: 'VARIABLE SPEED DRIVE', dol: 'DOL STARTER', softstarter: 'SOFT STARTER', spd: 'SURGE PROTECTION DEVICE', pfc: 'POWER FACTOR CORRECTION', load: 'LOAD', motor: 'MOTOR', board: 'DISTRIBUTION BOARD / PANEL', earth: 'EARTH', electrode: 'EARTH ELECTRODE', link: 'TEST / DISCONNECTING LINK', grid: 'EARTH MESH' };
 function primsBounds(prims) {
   prims = flatPrims(prims);
@@ -494,7 +502,7 @@ function borderFrame(prims, spec, sheetLabel, opts) {
     }
     for (const t of (spec.legend || [])) { if (ly - 6 < Lg.bottom) break; out.push({ t: 'text', x: Lg.tx, y: ly - 3, h: 2, text: String(t).toUpperCase(), layer: B.notesLayer }); ly -= 6; }
   }
-  if (B.refs) { let ry = B.refs.y; for (const r of (spec.references || []).map(String).filter(Boolean)) { if (ry < B.refs.bottom) break; out.push({ t: 'text', x: B.refs.x, y: ry, h: B.refs.h, text: r.toUpperCase().slice(0, 70), layer: B.notesLayer }); ry -= B.refs.pitch; } }
+  if (B.refs) { const R0 = B.rev || {}, refBottom = R0.dx ? B.refs.bottom : (R0.y || 0) + Math.max(1, hist.length) * (R0.pitch || 8) + 3; let ry = B.refs.y; const maxC = Math.floor(((B.refs.w || 80) - 2) / (B.refs.h * 0.9)); const seenNo = new Set(); for (const r of [...new Set((spec.references || []).map(x => shortRef(x, maxC)).filter(Boolean))].filter(x => { const no = (x.match(/^\S+/) || [''])[0]; if (/\d/.test(no) && seenNo.has(no)) return false; seenNo.add(no); return true; })) { if (ry < refBottom) break; out.push({ t: 'text', x: B.refs.x, y: ry, h: B.refs.h, text: r, layer: B.notesLayer }); ry -= B.refs.pitch; } }
   if (sheetLabel && !B.attrs.SHT) out.push({ t: 'text', x: 1112, y: 128 + hist.length * 8, h: TH, text: sheetLabel, align: 'center', layer: B.textLayer });
   const g = B.geo;
   return { prims: out, bounds: { x0: g.x0 - 2, y0: g.y0 - 2, x1: g.x0 + g.w + 2, y1: g.y0 + g.h + 2 }, sheet: B.page, page: B.page, content: cb, border: `${B.company || ''} ${B.page}`.trim() };
@@ -791,7 +799,7 @@ Labels: short, exactly as an engineer would write them, using what the project f
 BCD ("bcd", block cable diagram): do NOT use boards. Give "nodes" (every panel / RIO / MCC, junction box and field device, with "type" panel|rio|mcc|jb|device and a short "label" description exactly as written; the node "tag" is the equipment tag exactly as printed in the documents, and where a document gives only a description (no tag), use that description as the tag: never make up a tag) and "cables" (every cable: "no" exactly as printed, "from" and "to" node tags, "type" e.g. BS5308 / SWA / CY, "cores" e.g. 10P or 4C, "size" e.g. 0.5 or 1.5mm², and "note" for interface cables such as "LINK TO X03-MCC SEE DWG ..."). When the job context has an APPROVED MASTER DEVICE LIST, the BCD is exactly its cables and devices for the panels asked for: nothing added, nothing left out. The app lays the blocks out (panels left, JBs middle, devices right), draws each cable with its yellow cable box and splits long BCDs over sheets. For National Grid LVAC / power block diagrams (a supply chain: intake / RMU > joints > transformer > LV board > circuits, generators > distribution units) the app draws the chain left to right with every cable joined to both ends; also give "style":"ng", each node a "status" (energised, de-energised or new) and each cable a "status" (current = current supply cabling, new = new by BGEN, existing = existing by others).
 If something essential is missing (which boards, how many feeders, what the supply is) and the files do not say, ask: reply with {"questions": ["...", "..."]} (max 4 short questions) and nothing else.
 Otherwise reply with JSON only, no markdown:
-{"kind":"sld, earthing or bcd","title":"...","drawingNumber":"... or TBC","revision":"P01","nodes":[only for bcd],"cables":[only for bcd],"boards":[{"label":"MAIN LV BOARD\\n400V 3PH 4W 50Hz","incomers":[{"label":"optional text above","chain":[...]}],"feeders":[{"label":"optional text under the feeder","chain":[...]}]}],"client":"the client company, from the request, the email signature or the schedule (e.g. PEAKDALE WATER SERVICES)","notes":["note text only, no numbers in front (the border numbers them); never a note saying who drafted it"],"summary":"one line for the engineer: what you drew and what is TBC"}`;
+{"kind":"sld, earthing or bcd","title":"...","drawingNumber":"... or TBC","revision":"P01","nodes":[only for bcd],"cables":[only for bcd],"boards":[{"label":"MAIN LV BOARD\\n400V 3PH 4W 50Hz","incomers":[{"label":"optional text above","chain":[...]}],"feeders":[{"label":"optional text under the feeder","chain":[...]}]}],"references":["every document this drawing was made from or refers to, one short line each: NUMBER - SHORT TITLE, no revision or detail (e.g. X021126-01-SCH-0001 - CABLE SCHEDULE)"],"client":"the client company, from the request, the email signature or the schedule (e.g. PEAKDALE WATER SERVICES)","notes":["note text only, no numbers in front (the border numbers them); never a note saying who drafted it"],"summary":"one line for the engineer: what you drew and what is TBC"}`;
 
 // Claude's JSON is not always strict: real line breaks inside strings (a multi-line reply), a trailing comma, or a reply cut off at the length limit.
 // Repair those, then parse.

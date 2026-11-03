@@ -405,6 +405,17 @@ EARTHING tasks: size every protective / earth conductor the drawing needs (MET t
     if (spec.kind === 'bcd' && !spec.style && (/national grid|\bNGET?\b|\blvac\b/i.test(request) || (job && /national grid/i.test(job.client || '')))) spec.style = 'ng';
     if (spec.kind === 'bcd' ? !(spec.cables || []).length : (!spec.boards && !spec.busbars)) throw new Error('Dex did not produce a drawing: ' + String(text).slice(0, 200));
     const desk = require('./jobdesk'), DN = require('./docnumber');
+    // REFERENCE DOCUMENTS: what Dex says he used, plus every file he was actually given (a document he read is always referenced)
+    {
+      const refs = (Array.isArray(spec.references) ? spec.references : []).map(x => String(x).trim()).filter(Boolean);
+      const QS = /X\d{4,6}(?:-[A-Z0-9]{2,4}){2,5}-\d{4}/i, has = (n) => refs.some(r => r.toUpperCase().includes(n.toUpperCase()));
+      for (const f of [...pdfs.map(p => path.basename(p)), ...sheetsRead, ...notesRead]) {
+        const stem = f.replace(/\.[^.]+$/, ''), no = (stem.match(QS) || [])[0];
+        if (no ? has(no) : has(stem)) continue;
+        refs.push(no ? `${no} - ${stem.replace(no, '').replace(/^[\s_-]+|[\s_-]+$/g, '').replace(/[_]+/g, ' ') || 'INPUT'}` : stem.replace(/[_]+/g, ' '));
+      }
+      spec.references = refs.filter(r => !spec.drawingNumber || !r.toUpperCase().startsWith(String(spec.drawingNumber).toUpperCase()));   // never itself
+    }
     // a BCD made from an approved master list must carry exactly its cables (for the panels drawn): missing ones are added, extra ones flagged
     let masterCheck = null;
     if (spec.kind === 'bcd' && job) {
