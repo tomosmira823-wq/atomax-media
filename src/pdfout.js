@@ -26,13 +26,13 @@ async function toPdf(prims, b, { page = 'A3', title = '' } = {}) {
   }
   for (const p of prims) {
     if (p.t !== 'text' && p.t !== 'mtext') continue;
-    const size = Math.max(2, p.h * s / 0.72), pitch = p.t === 'mtext' ? p.h * 1.7 * s : 0;
+    const size = Math.max(2, p.h * s / 0.774), pitch = p.t === 'mtext' ? p.h * 1.7 * s : 0;
     // MTEXT wraps at its width, as AutoCAD does
     const maxW = p.t === 'mtext' && p.w ? p.w * s : 0, rows = [];
     for (const line of String(p.text).split('\n').map(clean)) { if (!maxW || font.widthOfTextAtSize(line, size) <= maxW) { rows.push(line); continue; } let cur = ''; for (const w of line.split(' ')) { const t = cur ? cur + ' ' + w : w; if (cur && font.widthOfTextAtSize(t, size) > maxW) { rows.push(cur); cur = w; } else cur = t; } if (cur) rows.push(cur); }
     rows.forEach((row, i) => {
       if (!row) return;
-      const wf = p.t === 'text' && p.wf && !p.rot ? p.wf : 1, w = font.widthOfTextAtSize(row, size) * wf;
+      const wf = p.wf || 0.9, w = font.widthOfTextAtSize(row, size) * wf;   // house lettering: letters at 0.9 width
       let x = X(p.x), y = Y(p.y);
       if (p.t === 'text') { const sh = p.align === 'center' ? w / 2 : p.align === 'right' ? w : 0, r = (p.rot || 0) * Math.PI / 180; x -= sh * Math.cos(r); y -= sh * Math.sin(r); }
       else {
@@ -41,8 +41,9 @@ async function toPdf(prims, b, { page = 'A3', title = '' } = {}) {
         const top = rowA === 0 ? Y(p.y) : rowA === 1 ? Y(p.y) + H / 2 : Y(p.y) + H;
         y = top - (i + 1) * pitch + (pitch - p.h * s) / 2;
       }
-      if (wf !== 1) { pg.pushOperators(pushGraphicsState(), concatTransformationMatrix(wf, 0, 0, 1, x * (1 - wf), 0)); pg.drawText(row, { x, y, size, font, color: black }); pg.pushOperators(popGraphicsState()); }
-      else pg.drawText(row, { x, y, size, font, color: black, ...(p.rot ? { rotate: degrees(p.rot) } : {}) });
+      // squeezed (and turned) about its own start point
+      const r0 = (p.t === 'text' ? p.rot || 0 : 0) * Math.PI / 180, cs = Math.cos(r0), sn = Math.sin(r0);
+      pg.pushOperators(pushGraphicsState(), concatTransformationMatrix(cs * wf, sn * wf, -sn, cs, x, y)); pg.drawText(row, { x: 0, y: 0, size, font, color: black }); pg.pushOperators(popGraphicsState());
     });
   }
   return Buffer.from(await doc.save());

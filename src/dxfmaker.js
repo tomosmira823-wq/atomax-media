@@ -4,7 +4,9 @@
 const fs = require('fs');
 const path = require('path');
 
-const TH = 2;            // standard text height (Tom's house rule: 2, never smaller)
+const TH = 2;
+// the house lettering (as the Atomax / BGEN drawings): Arial, letters at 0.9 width. The template's Standard style is txt.shx, so it is never used.
+const HOUSE_STYLE = 'BGEN ARIAL', HOUSE_WF = 0.9;            // standard text height (Tom's house rule: 2, never smaller)
 const LINE = TH * 1.7;   // MTEXT line pitch at height 2
 const FEED = 55;         // spacing between feeders on a busbar (house symbols carry an operating handle to the left)
 const LABEL_W = 33;      // label width beside a symbol
@@ -650,7 +652,7 @@ function layoutBcd(spec, opts = {}) {
 // everything else a box; each description is centred under its device; cable text is written up the cable (number, then cores x size).
 // A cable to another panel ends at a label (LINK TO / SUPPLY FROM ... SEE SHEET n). A dashed boundary goes round it all, the area named top left.
 function layoutPanelBcd(spec, model, opts = {}) {
-  const { nodes, cables } = model, CP = 25, DROP = 72, MOTOR_R = 12.5, BOX_H = 16, DESC_W = 40, COL_MIN = 62;
+  const { nodes, cables } = model, H = 2.5, LH = H * 1.7, wrapH = (t, w) => wrap(t, w * TH / (H * HOUSE_WF)), CP = 25, DROP = 72, MOTOR_R = 12.5, BOX_H = 16, DESC_W = 40, COL_MIN = 62;
   const order = new Map(cables.map((c, i) => [c, i]));
   const outs = (t) => cables.filter(c => c.from === t), ins = (t) => cables.filter(c => c.to === t);
   // the panels: anything feeding two or more different things (a board, an MCC, a DB), in the order they first appear
@@ -671,9 +673,9 @@ function layoutPanelBcd(spec, model, opts = {}) {
     const upKids = (t) => { const kids = []; for (const c of ins(t).sort((a, b) => order.get(a) - order.get(b))) { if (placedHere.has(c.from) && !kids.some(k => k.tag === c.from)) continue; let k = kids.find(x => x.tag === c.from); if (!k) { k = { tag: c.from, link: sheetOf(c.from) >= 0, cables: [], kids: [] }; kids.push(k); placedHere.add(c.from); } k.cables.push(c); } for (const k of kids) if (!k.link) k.kids = upKids(k.tag); return kids; };
     const down = downKids(PN), up = upKids(PN);
     // widths: a device's column is wide enough for its own cables and description, and for everything under it
-    const descOf = (t) => wrap(label(t), DESC_W), descW = (t) => Math.min(DESC_W, Math.max(0, ...descOf(t).map(l => l.length)) * TH * 0.92);
+    const descOf = (t) => wrapH(label(t), DESC_W), descW = (t) => Math.min(DESC_W, Math.max(0, ...descOf(t).map(l => l.length)) * H * 0.92 * HOUSE_WF);
     const beside = (k, dir) => k.kids.length > 0 || dir > 0;   // a device with a cable going on past it: its words start just right of that cable
-    const boxW = (k, dir) => Math.max(30, k.cables.length * CP + 6, String(k.tag).length * TH * 0.95 + 8, beside(k, dir) ? descW(k.tag) + 8 : 0);
+    const boxW = (k, dir) => Math.max(30, k.cables.length * CP + 6, String(k.tag).length * H * 0.95 * HOUSE_WF + 8, beside(k, dir) ? descW(k.tag) + 8 : 0);
     const ownW = (k, dir) => { const n = k.cables.length;
       if (k.link) return Math.max(COL_MIN, n * CP + 12, DESC_W + 12);
       if (isMotor(k.tag)) return Math.max(COL_MIN, descW(k.tag) + 12, 2 * ((n - 1) * CP + 9), MOTOR_R * 2 + 14);
@@ -683,14 +685,15 @@ function layoutPanelBcd(spec, model, opts = {}) {
     const PW = Math.max(dW, uW, 160) + 20, px0 = 0, px1 = PW, pTop = 0, pH = 22, pBot = -pH;
     // the panel
     prims.push(P([[px0, pBot], [px1, pBot], [px1, pTop], [px0, pTop]], true, 'BCD-BLOCK'));
-    prims.push({ t: 'mtext', x: (px0 + px1) / 2, y: pTop - pH / 2, w: PW - 10, h: 2.5, text: [PN, label(PN)].filter(Boolean).join(' ').trim(), attach: 5, layer: 'BCD-TEXT' });
+    prims.push({ t: 'mtext', x: (px0 + px1) / 2, y: pTop - pH / 2, w: PW - 10, h: H, text: [PN, label(PN)].filter(Boolean).join(' ').trim(), attach: 5, layer: 'BCD-TEXT' });
     // one cable: a polyline, its text written up the vertical part on its left (as X11481-01-WHT-06-71-0004): the cable number outermost,
     // cores x size next to the line, both centred on the same point just short of the device the cable goes to
-    const cableRun = (c, pts, lx, yNear, dir) => {
+    const cableRun = (c, pts, lx) => {
       prims.push(P(pts, false, 'BCD-CABLE'));
-      const ls = cabLines(c), len = Math.max(...ls.map(l => l.length)) * TH * 0.92, yc = dir < 0 ? yNear + 6 + len / 2 : yNear - 6 - len / 2;
-      ls.forEach((l, i) => prims.push({ t: 'text', x: lx - 1.2 - (ls.length - 1 - i) * LINE, y: yc, h: TH, text: l, rot: 90, align: 'center', layer: 'BCD-TEXT' }));
-      boxes.push({ no: String(c.no || ''), x0: lx - 1.5 - ls.length * LINE, y0: yc - len / 2 - 1, x1: lx - 0.5, y1: yc + len / 2 + 1 });
+      // the text centred halfway along the cable's vertical run
+      const ls = cabLines(c), len = Math.max(...ls.map(l => l.length)) * H * 0.92 * HOUSE_WF, yc = (pts[0][1] + pts[1][1]) / 2;
+      ls.forEach((l, i) => prims.push({ t: 'text', x: lx - 1.2 - (ls.length - 1 - i) * LH, y: yc, h: H, text: l, rot: 90, align: 'center', layer: 'BCD-TEXT' }));
+      boxes.push({ no: String(c.no || ''), x0: lx - 1.5 - ls.length * LH, y0: yc - len / 2 - 1, x1: lx - 0.5, y1: yc + len / 2 + 1 });
       drawn.add(c); allDrawn.add(c);
     };
     const linkText = (k, dir) => [dir < 0 ? 'LINK TO' : 'SUPPLY FROM', [k.tag, label(k.tag)].filter(Boolean).join(' '), `SEE SHEET ${sheetOf(k.tag) + 1}`].join('\n');
@@ -699,28 +702,28 @@ function layoutPanelBcd(spec, model, opts = {}) {
     const drawNode = (k, cx, yEdge, dir) => {
       const n = k.cables.length;
       if (k.link) {
-        const ls = wrap(linkText(k, dir), DESC_W + 6), h = ls.length * LINE;
-        prims.push({ t: 'mtext', x: cx, y: dir < 0 ? yEdge - 1.5 : yEdge + 1.5 + h, w: DESC_W + 6, h: TH, text: ls.join('\n'), attach: 2, layer: 'BCD-TEXT' });
+        const ls = wrapH(linkText(k, dir), DESC_W + 6), h = ls.length * LH;
+        prims.push({ t: 'mtext', x: cx, y: dir < 0 ? yEdge - 1.5 : yEdge + 1.5 + h, w: DESC_W + 6, h: H, text: ls.join('\n'), attach: 2, layer: 'BCD-TEXT' });
         return { lands: k.cables.map((c, i) => [cx + (i - (n - 1) / 2) * CP, yEdge]) };
       }
       const desc = descOf(k.tag), side = beside(k, dir);
       let near, far, lands;   // near: the edge the cables land on; far: the other edge (cables going on leave from it)
       if (isMotor(k.tag)) {
         const cy = yEdge + dir * MOTOR_R;
-        prims.push(C(cx, cy, MOTOR_R, 'BCD-BLOCK')); prims.push({ t: 'mtext', x: cx, y: cy, w: MOTOR_R * 2 - 2, h: TH, text: k.tag, attach: 5, layer: 'BCD-TEXT' });
+        prims.push(C(cx, cy, MOTOR_R, 'BCD-BLOCK')); prims.push({ t: 'mtext', x: cx, y: cy, w: MOTOR_R * 2 - 2, h: H, text: k.tag, attach: 5, layer: 'BCD-TEXT' });
         near = yEdge; far = cy + dir * MOTOR_R;
         lands = k.cables.map((c, i) => i === 0 ? [cx, near] : [cx + i * CP, cy, cx + MOTOR_R]);   // the next cables come down beside it and turn in to its side
       } else {
         // a device with a cable going on past it carries its description inside the box, under the tag (clear of every cable)
-        const bw = boxW(k, dir), inner = side ? [k.tag, ...desc] : [k.tag], bh = Math.max(BOX_H, inner.length * LINE + 5), top = dir < 0 ? yEdge : yEdge + bh, bot = top - bh;
+        const bw = boxW(k, dir), inner = side ? [k.tag, ...desc] : [k.tag], bh = Math.max(BOX_H, inner.length * LH + 5), top = dir < 0 ? yEdge : yEdge + bh, bot = top - bh;
         prims.push(P([[cx - bw / 2, bot], [cx + bw / 2, bot], [cx + bw / 2, top], [cx - bw / 2, top]], true, 'BCD-BLOCK'));
-        prims.push({ t: 'mtext', x: cx, y: (top + bot) / 2, w: bw - 4, h: TH, text: inner.join('\n'), attach: 5, layer: 'BCD-TEXT' });
+        prims.push({ t: 'mtext', x: cx, y: (top + bot) / 2, w: bw - 4, h: H, text: inner.join('\n'), attach: 5, layer: 'BCD-TEXT' });
         near = dir < 0 ? top : bot; far = dir < 0 ? bot : top;
         lands = k.cables.map((c, i) => [cx + (i - (n - 1) / 2) * CP, near]);
       }
       const low = Math.min(near, far);   // the device's lower edge: words go under it
       const outside = desc.length && !(side && !isMotor(k.tag));
-      if (outside) prims.push(side ? { t: 'mtext', x: cx + 4, y: low - 2, w: DESC_W, h: TH, text: desc.join('\n'), attach: 1, layer: 'BCD-TEXT' } : { t: 'mtext', x: cx, y: low - 2, w: DESC_W, h: TH, text: desc.join('\n'), attach: 2, layer: 'BCD-TEXT' });
+      if (outside) prims.push(side ? { t: 'mtext', x: cx + 4, y: low - 2, w: DESC_W, h: H, text: desc.join('\n'), attach: 1, layer: 'BCD-TEXT' } : { t: 'mtext', x: cx, y: low - 2, w: DESC_W, h: H, text: desc.join('\n'), attach: 2, layer: 'BCD-TEXT' });
       return { lands, far };
     };
     // a row of a tree, going down (dir -1) or up (dir +1); each child's cables start at startY directly over (or under) it
@@ -730,8 +733,8 @@ function layoutPanelBcd(spec, model, opts = {}) {
         const cx = x + k.w / 2, r = drawNode(k, cx, startY + dir * DROP, dir);
         k.cables.forEach((c, i) => {
           const [lx, ly, sideX] = r.lands[i];
-          if (sideX !== undefined) cableRun(c, [[lx, startY], [lx, ly], [sideX, ly]], lx, ly + (dir < 0 ? MOTOR_R : -MOTOR_R), dir);   // beside a motor: text above the motor's top
-          else cableRun(c, [[lx, startY], [lx, ly]], lx, ly, dir);
+          if (sideX !== undefined) cableRun(c, [[lx, startY], [lx, ly], [sideX, ly]], lx);   // beside a motor, turning in to its side
+          else cableRun(c, [[lx, startY], [lx, ly]], lx);
         });
         if (k.kids.length && !k.link) placeRow(k.kids, x + (k.w - k.kids.reduce((n, q) => n + q.w, 0)) / 2, r.far, dir);
         x += k.w;
@@ -744,7 +747,7 @@ function layoutPanelBcd(spec, model, opts = {}) {
     // the area: dashed round it all, named top left
     const bb = primsBounds(prims), m = 12, area = String(spec.area || (opts.fill && (opts.fill.site || opts.fill.project)) || '').toUpperCase();
     dashBox(prims, bb.x0 - m, bb.y0 - m, bb.x1 + m, bb.y1 + m + (area ? 8 : 0), 'BCD-AREA');
-    if (area) prims.push({ t: 'text', x: bb.x0 - m + 4, y: bb.y1 + m + 2, h: TH, text: area, layer: 'BCD-TEXT' });
+    if (area) prims.push({ t: 'text', x: bb.x0 - m + 4, y: bb.y1 + m + 2, h: H, text: area, layer: 'BCD-TEXT' });
     if (opts.diff) for (const b of boxes) if (opts.diff.added.includes(b.no) || opts.diff.changed.includes(b.no)) revCloud(prims, b, spec.revision);
     const clash = cableClashes(prims.map(p => p.layer === 'BCD-CABLE' ? p : p)); if (clash.length && !process.env.AMO_NOCLASH) throw new Error('BCD layout has cables that overlap or cross (' + clash.slice(0, 3).join('; ') + '). Not saved.');
     sheets.push({ P: PN, prims, boxes, cables: [...drawn].map(c => String(c.no || '')) });
@@ -941,9 +944,9 @@ function writeDxf(prims, bounds, opts = {}) {
     else if (p.t === 'circle') { head('CIRCLE', p.layer); g(100, 'AcDbCircle'); g(10, n(p.x)); g(20, n(p.y)); g(30, 0); g(40, n(p.r)); }
     else if (p.t === 'arc') { head('ARC', p.layer); g(100, 'AcDbCircle'); g(10, n(p.x)); g(20, n(p.y)); g(30, 0); g(40, n(p.r)); g(100, 'AcDbArc'); g(50, n(p.a0)); g(51, n(p.a1)); }
     else if (p.t === 'pline') { head('LWPOLYLINE', p.layer); g(100, 'AcDbPolyline'); g(90, p.pts.length); g(70, p.closed ? 1 : 0); if (p.width) g(43, n(p.width)); for (const [x, y] of p.pts) { g(10, n(x)); g(20, n(y)); } }
-    else if (p.t === 'text') { head('TEXT', p.layer); g(100, 'AcDbText'); g(10, n(p.x)); g(20, n(p.y)); g(30, 0); g(40, n(p.h)); g(1, clean(p.text)); if (p.rot) g(50, n(p.rot)); g(7, 'Standard'); if (p.align === 'center') { g(72, 1); g(11, n(p.x)); g(21, n(p.y)); g(31, 0); } g(100, 'AcDbText'); }
+    else if (p.t === 'text') { head('TEXT', p.layer); g(100, 'AcDbText'); g(10, n(p.x)); g(20, n(p.y)); g(30, 0); g(40, n(p.h)); g(1, clean(p.text)); if (p.rot) g(50, n(p.rot)); g(41, n(p.wf || HOUSE_WF)); g(7, HOUSE_STYLE); if (p.align === 'center') { g(72, 1); g(11, n(p.x)); g(21, n(p.y)); g(31, 0); } g(100, 'AcDbText'); }
     else if (p.t === 'fill' && p.pts && p.pts.length > 2) { head('HATCH', p.layer); g(100, 'AcDbHatch'); g(10, 0); g(20, 0); g(30, 0); g(210, 0); g(220, 0); g(230, 1); g(2, 'SOLID'); g(70, 1); g(71, 0); const rings = p.rings || [p.pts]; g(91, rings.length); for (const r of rings) { g(92, 2); g(72, 0); g(73, 1); g(93, r.length); for (const [x, y] of r) { g(10, n(x)); g(20, n(y)); } g(97, 0); } g(75, 0); g(76, 1); g(98, 0); }
-    else if (p.t === 'mtext') { head('MTEXT', p.layer); g(100, 'AcDbMText'); g(10, n(p.x)); g(20, n(p.y)); g(30, 0); g(40, n(p.h)); g(41, n(p.w)); g(71, p.attach || 1); g(72, 5); g(1, uni(String(p.text)).replace(/\r?\n/g, '\\P')); g(7, 'Standard'); }
+    else if (p.t === 'mtext') { head('MTEXT', p.layer); g(100, 'AcDbMText'); g(10, n(p.x)); g(20, n(p.y)); g(30, 0); g(40, n(p.h)); g(41, n(p.w)); g(71, p.attach || 1); g(72, 5); g(1, ((p.wf || HOUSE_WF) !== 1 ? `\\W${p.wf || HOUSE_WF};` : '') + uni(String(p.text)).replace(/\r?\n/g, '\\P')); g(7, HOUSE_STYLE); }
   }
   tpl = tpl.replace(/(\n\s*0\nSECTION\n\s*2\nENTITIES\n)(\s*0\nENDSEC\n)/, (_m, a, b) => a + out.join('\n') + '\n' + b);
   tpl = tpl.replace(/(\$HANDSEED\n\s*5\n)[0-9A-Fa-f]+\n/, (_m, a) => a + (h + 16).toString(16).toUpperCase() + '\n');
@@ -965,9 +968,9 @@ function toSvg(prims, b) {
     if (p.t === 'circle') return `<circle cx="${X(p.x)}" cy="${Y(p.y)}" r="${p.r}" fill="none" stroke="${col(p.layer)}" stroke-width="0.35"/>`;
     if (p.t === 'arc') { const a0 = p.a0 * Math.PI / 180, a1 = p.a1 * Math.PI / 180; return `<path d="M${X(p.x + p.r * Math.cos(a0))} ${Y(p.y + p.r * Math.sin(a0))} A${p.r} ${p.r} 0 0 0 ${X(p.x + p.r * Math.cos(a1))} ${Y(p.y + p.r * Math.sin(a1))}" fill="none" stroke="${col(p.layer)}" stroke-width="0.35"/>`; }
     if (p.t === 'pline') return `<polyline points="${p.pts.map(([x, y]) => X(x) + ',' + Y(y)).join(' ')}${p.closed ? ' ' + X(p.pts[0][0]) + ',' + Y(p.pts[0][1]) : ''}" fill="none" stroke="${col(p.layer)}" stroke-width="${p.width || 0.35}"/>`;
-    if (p.t === 'text') { const tf = [p.rot ? `rotate(${-p.rot} ${X(p.x)} ${Y(p.y)})` : '', p.wf && p.wf !== 1 ? `translate(${X(p.x)} 0) scale(${p.wf} 1) translate(${-X(p.x)} 0)` : ''].filter(Boolean).join(' '); return `<text ${tf ? `transform="${tf}" ` : ''}x="${X(p.x)}" y="${Y(p.y)}" font-size="${(p.h / 0.72).toFixed(2)}" text-anchor="${p.align === 'center' ? 'middle' : 'start'}" font-family="Arial">${esc(p.text)}</text>`; }
+    if (p.t === 'text') { const tf = [p.rot ? `rotate(${-p.rot} ${X(p.x)} ${Y(p.y)})` : '', `translate(${X(p.x)} ${Y(p.y)}) scale(${p.wf || HOUSE_WF} 1) translate(${-X(p.x)} ${-Y(p.y)})`].filter(Boolean).join(' '); return `<text ${tf ? `transform="${tf}" ` : ''}x="${X(p.x)}" y="${Y(p.y)}" font-size="${(p.h / 0.774).toFixed(2)}" text-anchor="${p.align === 'center' ? 'middle' : 'start'}" font-family="Arial">${esc(p.text)}</text>`; }
     if (p.t === 'fill') return `<path fill-rule="evenodd" d="${(p.rings || [p.pts]).map(r => 'M' + r.map(([x, y]) => X(x) + ' ' + Y(y)).join(' L') + ' Z').join(' ')}" fill="${p.colour === 3 ? '#40c057' : p.colour === 1 ? '#fa5252' : '#495057'}" stroke="none"/>`;
-    if (p.t === 'mtext') { const ls = String(p.text).split('\n'), mid = p.attach === 5 || p.attach === 6 || p.attach === 4; const y0 = mid ? p.y + (ls.length - 1) * LINE / 2 - p.h / 2 : p.y - p.h; return `<text font-size="${(p.h / 0.72).toFixed(2)}" font-family="Arial" fill="${col(p.layer)}" text-anchor="${(((p.attach || 1) - 1) % 3) === 1 ? 'middle' : (((p.attach || 1) - 1) % 3) === 2 ? 'end' : 'start'}">${ls.map((l, i) => `<tspan x="${X(p.x)}" y="${Y(y0 - i * LINE)}">${esc(l)}</tspan>`).join('')}</text>`; }
+    if (p.t === 'mtext') { const ls = String(p.text).split('\n'), mid = p.attach === 5 || p.attach === 6 || p.attach === 4; const y0 = mid ? p.y + (ls.length - 1) * LINE / 2 - p.h / 2 : p.y - p.h; return `<text transform="translate(${X(p.x)} 0) scale(${p.wf || HOUSE_WF} 1) translate(${-X(p.x)} 0)" font-size="${(p.h / 0.774).toFixed(2)}" font-family="Arial" fill="${col(p.layer)}" text-anchor="${(((p.attach || 1) - 1) % 3) === 1 ? 'middle' : (((p.attach || 1) - 1) % 3) === 2 ? 'end' : 'start'}">${ls.map((l, i) => `<tspan x="${X(p.x)}" y="${Y(y0 - i * LINE)}">${esc(l)}</tspan>`).join('')}</text>`; }
     return '';
   });
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${n(W)} ${n(H)}" style="background:#fff">${parts.join('')}</svg>`;
