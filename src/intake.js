@@ -377,7 +377,7 @@ EARTHING tasks: size every protective / earth conductor the drawing needs (MET t
     if (job && /bcd|sld|block|single.?line|cable|earthing/i.test(request + ' ' + kind)) {
       const want = kind === 'bcd' ? 'cable schedule instrument index io list tag list' : kind === 'earthing' ? 'earthing conductors cable schedule' : 'cable schedule load schedule protection settings';
       for (const p of BIZ.projects.relevantFiles(job.id, request + ' ' + want, { exts: ['.xlsx', '.xlsm', '.csv'], max: 3 }).filter(p => !/register/i.test(path.basename(p)))) {
-        try { const b = fs.readFileSync(p); content.push({ type: 'text', text: `PROJECT WORKBOOK ${path.basename(p)} (copy cable numbers, from / to, cores, sizes and types exactly as written; TBC stays TBC):\n` + checker.sheetsAsText(/\.csv$/i.test(p) ? [{ name: 'csv', rows: checker.readCsv(b.toString('utf8')) }] : checker.readXlsx(b), 40000) }); sheetsRead.push(path.basename(p)); } catch {}
+        try { const b = fs.readFileSync(p); content.push({ type: 'text', text: `PROJECT WORKBOOK ${path.basename(p)} (copy cable numbers, from / to, cores, sizes and types exactly as written; TBC stays TBC):\n` + checker.sheetsAsText(/\.csv$/i.test(p) ? checker.readCsv(b.toString('utf8')) : checker.readXlsx(b), 40000) }); sheetsRead.push(path.basename(p)); } catch {}
       }
     }
     const em = emailId && load().find(x => x.id === emailId);

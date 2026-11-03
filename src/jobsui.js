@@ -46,7 +46,7 @@ export function initJobsUI({ api, getAgents, openIssue, onWorkOn }) {
       <div class="jbtabs">${tabs.map(([k, t]) => `<button data-t="${k}" class="${tab === k ? 'on' : ''}">${t}</button>`).join('')}</div>
       ${msg ? `<div class="jbmsg">${esc(msg)}</div>` : ''}
       <div id="jbTab"></div>`;
-    m.querySelectorAll('[data-t]').forEach(b => b.onclick = () => { tab = b.dataset.t; msg = ''; renderJob(); });
+    m.querySelectorAll('[data-t]').forEach(b => b.onclick = () => { tab = b.dataset.t; msg = ''; refresh(); });
     if ($('#jbFolder')) $('#jbFolder').onclick = (e) => { e.preventDefault(); api.proj.open({ jobId: j.id }).catch(() => api.showItem(j.folder)); };
     $('#jbAddMail').onclick = () => emailPanel(j.id);
     $('#jbWork').onclick = async () => { await api.biz.setCurrent({ id: j.id }); if (onWorkOn) onWorkOn(j.id); $('#jbWork').textContent = '✓ Job in hand'; };
@@ -63,7 +63,8 @@ export function initJobsUI({ api, getAgents, openIssue, onWorkOn }) {
     const masterOk = !O.needsMaster || (V.master && V.master.status === 'approved');
     const made = rows.filter(r => r.work && r.work.files && r.agent === 'Dex').length;
     el.innerHTML = `${!rows.length ? `<div class="jbempty"><b>No deliverables on this job yet.</b><span>Check or make the drawing register in Inputs &amp; setup, or forward the client's email to Eli: he lists what the job needs.</span></div>` : ''}
-      ${O.needsMaster && !masterOk ? `<div class="jbbanner">BCDs and schedules are made from the master device list. <button class="jbbtn" id="jbToMaster">${V.master ? 'Check and approve it' : 'Build it'}</button></div>` : ''}
+      ${O.needsMaster && !masterOk && V.master ? `<div class="jbbanner"><span><b>Master list built: ${V.master.devices} devices, ${V.master.cables} cables${(V.master.gaps || []).length ? `, ${V.master.gaps.length} gaps` : ''}.</b> Approve it and the BCDs and schedule can be made.</span><span class="jbbar" style="margin:0"><button class="jbbtn" id="jbToMaster">Review it</button><button class="jbbtn primary" id="jbApprove">✓ Approve it</button></span></div>` : ''}
+      ${O.needsMaster && !masterOk && !V.master ? `<div class="jbbanner">BCDs and schedules are made from the master device list. <button class="jbbtn" id="jbToMaster">${V.master ? 'Check and approve it' : 'Build it'}</button></div>` : ''}
       ${rows.length ? `<div class="jbbar"><button class="jbbtn primary" id="jbAll" ${rows.some(r => r.agent && !r.work && (masterOk || !['bcd', 'schedule'].includes(r.kind))) ? '' : 'disabled'}>Make everything not made yet</button><button class="jbbtn" id="jbCheck" ${made ? '' : 'disabled'}>Cal: check the drawings</button><span class="bsub">Each row: the agent makes it, Cal checks it, then it goes in the issue pack.</span></div>` : ''}
       <div class="jbrows">${rows.map(r => { const w = r.work;
         return `<div class="jbrow">
@@ -75,8 +76,9 @@ export function initJobsUI({ api, getAgents, openIssue, onWorkOn }) {
           ${w && w.questions ? `<div class="jbq"><b>${esc(r.agent)} asks:</b>${w.questions.map((q, i) => `<label class="plain">${esc(q)}</label><input data-ans="${i}" placeholder="Your answer">`).join('')}<button class="jbbtn primary" data-answer="${esc(r.no)}">Send answers</button></div>` : ''}
         </div>`; }).join('')}</div>`;
     // Build it: Lex builds the list now; once built, the button takes you to it (open, in view) to check and approve
+    if ($('#jbApprove')) $('#jbApprove').onclick = () => act(async () => { await api.desk.approveMaster({ jobId: O.job.id }); msg = 'Master list approved. Make the BCD and the cable schedule from their rows.'; }, 'Approving…');
     if ($('#jbToMaster')) $('#jbToMaster').onclick = () => {
-      if (!V.master) return act(async () => { await api.desk.buildMaster({ jobId: O.job.id }); const v = (await api.jobs.overview({ jobId: O.job.id })).desk.master; msg = v ? `Master list built: ${v.devices} devices, ${v.cables} cables${(v.gaps || []).length ? `, ${v.gaps.length} gap${v.gaps.length === 1 ? '' : 's'} to look at` : ''}. Press Check and approve it.` : 'Lex could not build the list: check the inputs are in the job folder (Inputs & setup).'; }, 'Lex is reading the job documents and building the master list (a minute or two)…');
+      if (!V.master) return act(async () => { await api.desk.buildMaster({ jobId: O.job.id }); const v = (await api.jobs.overview({ jobId: O.job.id })).desk.master; msg = v ? `Master list built: ${v.devices} devices, ${v.cables} cables${(v.gaps || []).length ? `, ${v.gaps.length} gap${v.gaps.length === 1 ? '' : 's'} to look at` : ''}. Review it, then press Approve it.` : 'Lex could not build the list: check the inputs are in the job folder (Inputs & setup).'; }, 'Lex is reading the job documents and building the master list (a minute or two)…');
       goMaster();
     };
     if ($('#jbAll')) $('#jbAll').onclick = () => act(() => api.jobs.makeAll({ jobId: O.job.id }), 'Making the deliverables…');

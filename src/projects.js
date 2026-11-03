@@ -138,7 +138,9 @@ function relevantFiles(jobId, request, { exts = ['.pdf'], max = 3 } = {}) {
     if (qs) { s += keys.filter(k => tw.includes(k)).length; if (s > 0) { const nm = namesOf(path.join(p.folder, f.rel), f); s += keys.filter(k => nm.includes(k)).length * 0.5; } }
     return s;
   };
-  return p.files.filter(f => exts.includes(f.ext) && f.size < 20 * 1024 * 1024)
+  // inputs are the client's documents: never Atomax's own outputs (drawings Dex made, older versions, markups)
+  const ours = (f) => /(^|[\\/])(archive|superseded|markups?)([\\/]|$)/i.test(f.rel) || /_DRAFT(_\d+)?\.[a-z]+$/i.test(f.rel) || /X\d{4,6}(?:-[A-Z0-9]{2,4}){2,5}-\d{4}_[PACX]\d{2}(_SH\d+)?(_\d{8}-\d{6})?\.[a-z]+$/i.test(f.rel);
+  return p.files.filter(f => exts.includes(f.ext) && f.size < 20 * 1024 * 1024 && !ours(f))
     .map(f => ({ f, s: score(f) }))
     .filter(x => x.s > 0).sort((a, b) => b.s - a.s || b.f.mtime - a.f.mtime).slice(0, max).map(x => path.join(p.folder, x.f.rel));
 }

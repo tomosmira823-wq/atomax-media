@@ -84,7 +84,7 @@ function findRegisters(job) {
 // read rows out of a register workbook: any row with a drawing number; title / rev / status from the other cells
 function readRegister(file, checker) {
   const buf = fs.readFileSync(file);
-  const sheets = /\.csv$/i.test(file) ? [{ sheet: 'csv', rows: checker.readCsv(buf.toString('utf8')) }] : checker.readXlsx(buf);
+  const sheets = /\.csv$/i.test(file) ? checker.readCsv(buf.toString('utf8')) : checker.readXlsx(buf);
   const rows = [];
   for (const sh of sheets) for (const r of (sh.rows || [])) {
     const cells = (Array.isArray(r) ? r : Array.isArray(r.c) ? r.c : Object.values(r)).map(c => String(c ?? '').trim());
@@ -180,7 +180,7 @@ function masterContent(job, projects, checker, extraFiles = []) {
   const content = [], read = [];
   const pdfs = projects.relevantFiles(job.id, 'instrument index io list tag list bcd block cable diagram cable schedule p&id panel', { exts: ['.pdf'], max: 5 });
   const sheets = projects.relevantFiles(job.id, 'instrument index io list tag list cable schedule register', { exts: ['.xlsx', '.xlsm', '.csv'], max: 5 }).filter(p => !REGISTER_RE.test(path.basename(p)));
-  for (const p of sheets) { try { const b = fs.readFileSync(p); content.push({ type: 'text', text: `WORKBOOK ${path.basename(p)}:\n` + checker.sheetsAsText(/\.csv$/i.test(p) ? [{ name: 'csv', rows: checker.readCsv(b.toString('utf8')) }] : checker.readXlsx(b), 40000) }); read.push(path.basename(p)); } catch {} }
+  for (const p of sheets) { try { const b = fs.readFileSync(p); content.push({ type: 'text', text: `WORKBOOK ${path.basename(p)}:\n` + checker.sheetsAsText(/\.csv$/i.test(p) ? checker.readCsv(b.toString('utf8')) : checker.readXlsx(b), 40000) }); read.push(path.basename(p)); } catch {} }
   for (const p of [...pdfs, ...extraFiles].slice(0, 6)) { try { content.push({ type: 'text', text: 'Document: ' + path.basename(p) }); content.push(checker.contentBlock('pdf', path.basename(p), fs.readFileSync(p))); read.push(path.basename(p)); } catch {} }
   return { content, read };
 }
