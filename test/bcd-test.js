@@ -12,3 +12,14 @@ for (const n of [1, 3, 7, 10, 15, 30]) {
 }
 assert.ok(m.cableClashes([{ t: 'pline', layer: 'BCD-CABLE', pts: [[0, 0], [10, 0], [10, -10]] }, { t: 'line', layer: 'BCD-CABLE', x1: 5, y1: 5, x2: 5, y2: -5 }]).length === 1);
 console.log('bcd ok: no overlapping or crossing cables');
+// the Atomax panel BCD (one sheet per panel, going down): every cable on a sheet, no crossings
+{
+  const fs = require('fs'), path = require('path');
+  const spec = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'hollins-bcd.json'), 'utf8'));
+  const sheets = m.layoutBcd(spec, { border: 'atomax' });
+  assert.ok(sheets.length >= 2, 'one sheet per panel');
+  const onSheets = new Set(sheets.flatMap(s => s.cables));
+  for (const c of spec.cables) assert.ok(onSheets.has(c.no), 'cable on a sheet: ' + c.no);
+  for (const s of sheets) assert.deepStrictEqual(m.cableClashes(s.prims), [], 'panel sheet clashes');
+  console.log(`panel bcd ok: ${sheets.length} sheets, all ${spec.cables.length} cables, no crossings`);
+}

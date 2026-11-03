@@ -613,7 +613,9 @@ function layoutBcd(spec, opts = {}) {
   if (!model.cables.length) throw new Error('The BCD has no cables');
   BSTYLE = { ng: spec.style === 'ng' || spec.style === 'national-grid' };
   // a power BCD (boards, transformers, MCCs, DBs on SWA / XLPE cable) uses the block layout with cable runs; RIO / JB / field-device BCDs keep the instrument layout
-  if (BSTYLE.ng || isPowerBcd(spec, model)) return [layoutPowerBcd(spec, model, opts)];
+  if (BSTYLE.ng) return [layoutPowerBcd(spec, model, opts)];
+  if (spec.layout === 'flow') return [layoutPowerBcd(spec, model, opts)];
+  if (isPowerBcd(spec, model)) return layoutPanelBcd(spec, model, opts);
   const { groups: raw, links } = bcdGroups(model);
   // a JB with more devices than a sheet holds carries on to the next sheet ("CONT.")
   const SHEET_ROWS = sheetRows(opts.noTitle ? null : borderOf(String(opts.border || 'atomax').includes('-') ? opts.border : `${opts.border || 'atomax'}-A1`));
@@ -640,6 +642,123 @@ function layoutBcd(spec, opts = {}) {
     if (sheets.length > 1 && i < sheets.length - 1) prims.push({ t: 'mtext', x: BCD_X.device, y: body.minY - 2, w: 80, h: TH, text: `CONTINUED ON SHEET ${i + 2}`, attach: 1, layer: 'BCD-TEXT' });
     const f = frame(prims, spec, body.minY - 8, 10, body.maxX, label, { fixed: true, noTitle: !!opts.noTitle, border: borderOf(String(opts.border || 'atomax').includes('-') ? opts.border : `${opts.border || 'atomax'}-A1`), fill: { ...(opts.fill || {}), sht: String(i + 1), shtx: String(sheets.length) } });
     return { prims, bounds: f.bounds, content: f.content, sheet: f.sheet, page: f.page, border: f.border, label, boxes, cables: [...gs.flatMap(g => [...g.up, ...g.down.map(d => d.c)]), ...(i === sheets.length - 1 ? links : [])].map(c => String(c.no || '')) };
+  });
+}
+// ---------- panel BCD (Atomax standard, X11481-01-WHT-06-71-0004 style): one sheet per panel, going down ----------
+// The panel is a long box across the sheet; what feeds it sits above it (rising cables), what it feeds drops straight down below it in
+// schedule order (a device fed through another, e.g. isolator then motor, sits under that one). Motors are circles with the tag inside,
+// everything else a box; each description is centred under its device; cable text is written up the cable (number, then cores x size).
+// A cable to another panel ends at a label (LINK TO / SUPPLY FROM ... SEE SHEET n). A dashed boundary goes round it all, the area named top left.
+function layoutPanelBcd(spec, model, opts = {}) {
+  const { nodes, cables } = model, CP = 25, DROP = 72, MOTOR_R = 12.5, BOX_H = 16, DESC_W = 40, COL_MIN = 62;
+  const order = new Map(cables.map((c, i) => [c, i]));
+  const outs = (t) => cables.filter(c => c.from === t), ins = (t) => cables.filter(c => c.to === t);
+  // the panels: anything feeding two or more different things (a board, an MCC, a DB), in the order they first appear
+  const firstSeen = []; for (const c of cables) for (const t of [c.from, c.to]) if (!firstSeen.includes(t)) firstSeen.push(t);
+  const isPanel = (t) => new Set(outs(t).map(c => c.to)).size >= 2;
+  let panels = firstSeen.filter(isPanel);
+  if (!panels.length) panels = [firstSeen.find(t => outs(t).length) || firstSeen[0]];
+  const sheetOf = (t) => panels.indexOf(t);
+  const isMotor = (t) => { const n = nodes.get(t) || {}; return /^M[-_]/i.test(t) || /\bmotor\b|\bpump\b|\bfan\b|\bdrive motor\b/i.test(n.label || '') && !/control station|isolator|starter|panel/i.test(n.label || ''); };
+  const label = (t) => { const n = nodes.get(t) || {}; return String(n.label || '').toUpperCase(); };
+  const sizeTxt = (c) => [c.cores && c.size ? `${String(c.cores).toUpperCase().replace(/\s*PAIRS?$/i, 'PR')} ${String(c.size).toUpperCase()}` : String(c.cores || c.size || '').toUpperCase()].join('').replace(/MM2?$/, 'MM²').replace(/MM²²/, 'MM²');
+  const cabLines = (c) => [String(c.no || 'TBC'), sizeTxt(c) || 'TBC'];
+  const sheets = [], allDrawn = new Set();
+  panels.forEach((PN, si) => {
+    const prims = [], boxes = [], drawn = new Set(), placedHere = new Set([PN]);
+    // the trees: down (what P feeds, through devices that are not panels) and up (what feeds P)
+    const downKids = (t) => { const kids = []; for (const c of outs(t).sort((a, b) => order.get(a) - order.get(b))) { if (c.to === PN || placedHere.has(c.to) && !kids.some(k => k.tag === c.to)) { if (!kids.some(k => k.tag === c.to)) continue; } let k = kids.find(x => x.tag === c.to); if (!k) { k = { tag: c.to, link: sheetOf(c.to) >= 0 && c.to !== PN, cables: [], kids: [] }; kids.push(k); placedHere.add(c.to); } k.cables.push(c); } for (const k of kids) if (!k.link) k.kids = downKids(k.tag); return kids; };
+    const upKids = (t) => { const kids = []; for (const c of ins(t).sort((a, b) => order.get(a) - order.get(b))) { if (placedHere.has(c.from) && !kids.some(k => k.tag === c.from)) continue; let k = kids.find(x => x.tag === c.from); if (!k) { k = { tag: c.from, link: sheetOf(c.from) >= 0, cables: [], kids: [] }; kids.push(k); placedHere.add(c.from); } k.cables.push(c); } for (const k of kids) if (!k.link) k.kids = upKids(k.tag); return kids; };
+    const down = downKids(PN), up = upKids(PN);
+    // widths: a device's column is wide enough for its own cables and description, and for everything under it
+    const descOf = (t) => wrap(label(t), DESC_W), descW = (t) => Math.min(DESC_W, Math.max(0, ...descOf(t).map(l => l.length)) * TH * 0.92);
+    const beside = (k, dir) => k.kids.length > 0 || dir > 0;   // a device with a cable going on past it: its words start just right of that cable
+    const boxW = (k, dir) => Math.max(30, k.cables.length * CP + 6, String(k.tag).length * TH * 0.95 + 8, beside(k, dir) ? descW(k.tag) + 8 : 0);
+    const ownW = (k, dir) => { const n = k.cables.length;
+      if (k.link) return Math.max(COL_MIN, n * CP + 12, DESC_W + 12);
+      if (isMotor(k.tag)) return Math.max(COL_MIN, descW(k.tag) + 12, 2 * ((n - 1) * CP + 9), MOTOR_R * 2 + 14);
+      return Math.max(COL_MIN, boxW(k, dir) + 10, beside(k, dir) ? 0 : descW(k.tag) + 12); };
+    const width = (k, dir) => (k.w = Math.max(ownW(k, dir), k.kids.reduce((n, x) => n + width(x, dir), 0)));
+    const dW = down.reduce((n, k) => n + width(k, -1), 0), uW = up.reduce((n, k) => n + width(k, 1), 0);
+    const PW = Math.max(dW, uW, 160) + 20, px0 = 0, px1 = PW, pTop = 0, pH = 22, pBot = -pH;
+    // the panel
+    prims.push(P([[px0, pBot], [px1, pBot], [px1, pTop], [px0, pTop]], true, 'BCD-BLOCK'));
+    prims.push({ t: 'mtext', x: (px0 + px1) / 2, y: pTop - pH / 2, w: PW - 10, h: 2.5, text: [PN, label(PN)].filter(Boolean).join(' ').trim(), attach: 5, layer: 'BCD-TEXT' });
+    // one cable: a polyline, its text written up beside the vertical part (to the right of it)
+    const cableRun = (c, pts, lx, yFrom) => {
+      prims.push(P(pts, false, 'BCD-CABLE'));
+      const ls = cabLines(c), len = Math.max(...ls.map(l => l.length)) * TH * 0.92;
+      ls.forEach((l, i) => prims.push({ t: 'text', x: lx + 1 + TH + i * LINE, y: yFrom, h: TH, text: l, rot: 90, layer: 'BCD-TEXT' }));
+      boxes.push({ no: String(c.no || ''), x0: lx + 0.5, y0: yFrom - 1, x1: lx + 1.5 + ls.length * LINE, y1: yFrom + len + 1 });
+      drawn.add(c); allDrawn.add(c);
+    };
+    const linkText = (k, dir) => [dir < 0 ? 'LINK TO' : 'SUPPLY FROM', [k.tag, label(k.tag)].filter(Boolean).join(' '), `SEE SHEET ${sheetOf(k.tag) + 1}`].join('\n');
+    // a device (or a link label) whose near edge is at yEdge (top when going down, bottom when going up), centred at cx.
+    // Returns where each of its cables lands, and where cables going on past it leave from.
+    const drawNode = (k, cx, yEdge, dir) => {
+      const n = k.cables.length;
+      if (k.link) {
+        const ls = wrap(linkText(k, dir), DESC_W + 6), h = ls.length * LINE;
+        prims.push({ t: 'mtext', x: cx, y: dir < 0 ? yEdge - 1.5 : yEdge + 1.5 + h, w: DESC_W + 6, h: TH, text: ls.join('\n'), attach: 2, layer: 'BCD-TEXT' });
+        return { lands: k.cables.map((c, i) => [cx + (i - (n - 1) / 2) * CP, yEdge]) };
+      }
+      const desc = descOf(k.tag), side = beside(k, dir);
+      let near, far, lands;   // near: the edge the cables land on; far: the other edge (cables going on leave from it)
+      if (isMotor(k.tag)) {
+        const cy = yEdge + dir * MOTOR_R;
+        prims.push(C(cx, cy, MOTOR_R, 'BCD-BLOCK')); prims.push({ t: 'mtext', x: cx, y: cy, w: MOTOR_R * 2 - 2, h: TH, text: k.tag, attach: 5, layer: 'BCD-TEXT' });
+        near = yEdge; far = cy + dir * MOTOR_R;
+        lands = k.cables.map((c, i) => i === 0 ? [cx, near] : [cx + i * CP, cy, cx + MOTOR_R]);   // the next cables come down beside it and turn in to its side
+      } else {
+        // a device with a cable going on past it carries its description inside the box, under the tag (clear of every cable)
+        const bw = boxW(k, dir), inner = side ? [k.tag, ...desc] : [k.tag], bh = Math.max(BOX_H, inner.length * LINE + 5), top = dir < 0 ? yEdge : yEdge + bh, bot = top - bh;
+        prims.push(P([[cx - bw / 2, bot], [cx + bw / 2, bot], [cx + bw / 2, top], [cx - bw / 2, top]], true, 'BCD-BLOCK'));
+        prims.push({ t: 'mtext', x: cx, y: (top + bot) / 2, w: bw - 4, h: TH, text: inner.join('\n'), attach: 5, layer: 'BCD-TEXT' });
+        near = dir < 0 ? top : bot; far = dir < 0 ? bot : top;
+        lands = k.cables.map((c, i) => [cx + (i - (n - 1) / 2) * CP, near]);
+      }
+      const low = Math.min(near, far);   // the device's lower edge: words go under it
+      const outside = desc.length && !(side && !isMotor(k.tag));
+      if (outside) prims.push(side ? { t: 'mtext', x: cx + 4, y: low - 2, w: DESC_W, h: TH, text: desc.join('\n'), attach: 1, layer: 'BCD-TEXT' } : { t: 'mtext', x: cx, y: low - 2, w: DESC_W, h: TH, text: desc.join('\n'), attach: 2, layer: 'BCD-TEXT' });
+      return { lands, far };
+    };
+    // a row of a tree, going down (dir -1) or up (dir +1); each child's cables start at startY directly over (or under) it
+    const placeRow = (kids, x0, startY, dir) => {
+      let x = x0;
+      for (const k of kids) {
+        const cx = x + k.w / 2, r = drawNode(k, cx, startY + dir * DROP, dir);
+        k.cables.forEach((c, i) => {
+          const [lx, ly, sideX] = r.lands[i];
+          if (sideX !== undefined) cableRun(c, [[lx, startY], [lx, ly], [sideX, ly]], lx, dir < 0 ? ly + 4 : startY + 4);
+          else cableRun(c, [[lx, startY], [lx, ly]], lx, dir < 0 ? ly + 4 : startY + 4);
+        });
+        if (k.kids.length && !k.link) placeRow(k.kids, x + (k.w - k.kids.reduce((n, q) => n + q.w, 0)) / 2, r.far, dir);
+        x += k.w;
+      }
+    };
+    placeRow(down, px0 + (PW - dW) / 2, pBot, -1);
+    placeRow(up, px0 + (PW - uW) / 2, pTop, 1);
+    // cables between two things already on this sheet that are not drawn yet (e.g. two devices side by side): a run underneath
+    for (const c of cables) if (!drawn.has(c) && placedHere.has(c.from) && placedHere.has(c.to) && c.from !== PN && c.to !== PN) { /* drawn on its own panel's sheet */ }
+    // the area: dashed round it all, named top left
+    const bb = primsBounds(prims), m = 12, area = String(spec.area || (opts.fill && (opts.fill.site || opts.fill.project)) || '').toUpperCase();
+    dashBox(prims, bb.x0 - m, bb.y0 - m, bb.x1 + m, bb.y1 + m + (area ? 8 : 0), 'BCD-AREA');
+    if (area) prims.push({ t: 'text', x: bb.x0 - m + 4, y: bb.y1 + m + 2, h: TH, text: area, layer: 'BCD-TEXT' });
+    if (opts.diff) for (const b of boxes) if (opts.diff.added.includes(b.no) || opts.diff.changed.includes(b.no)) revCloud(prims, b, spec.revision);
+    const clash = cableClashes(prims.map(p => p.layer === 'BCD-CABLE' ? p : p)); if (clash.length && !process.env.AMO_NOCLASH) throw new Error('BCD layout has cables that overlap or cross (' + clash.slice(0, 3).join('; ') + '). Not saved.');
+    sheets.push({ P: PN, prims, boxes, cables: [...drawn].map(c => String(c.no || '')) });
+  });
+  // every cable on a sheet (a cable between two devices that are on no panel's sheet goes on the first sheet as a note)
+  const missing = cables.filter(c => !allDrawn.has(c));
+  if (missing.length) spec.notes = [...(spec.notes || []), `NOT DRAWN (NO PANEL): ${missing.map(c => c.no).join(', ')}`];
+  const baseTitle = String(spec.title || 'BLOCK CABLE DIAGRAM').split('\n');
+  return sheets.map((sh, i) => {
+    const bb = primsBounds(sh.prims), key = opts.border && opts.border.geo ? opts.border : String(opts.border || 'atomax');
+    let B = opts.noTitle ? null : borderOf(key, bb.x1 - bb.x0, bb.y1 - bb.y0);
+    if (B && !(opts.border && opts.border.geo) && !/-A\d$/.test(key) && FAMILY[`${B.company}-A0`]) for (const sz of SIZES) { const Cb = FAMILY[`${B.company}-${sz}`]; if (Cb && placeIn(Cb, sh.prims, bb)) { B = Cb; break; } }
+    const sspec = { ...spec, title: [baseTitle[0] || 'BLOCK CABLE DIAGRAM', ...baseTitle.slice(1, 2), [sh.P, label(sh.P)].filter(Boolean).join(' '), sheets.length > 1 ? `SHEET ${i + 1}` : ''].filter(Boolean).join('\n') };
+    const f = frame(sh.prims, sspec, bb.y0 - 4, bb.y1, bb.x1, '', { fixed: true, noTitle: !!opts.noTitle, border: B, fill: { ...(opts.fill || {}), sht: String(i + 1), shtx: String(sheets.length) } });
+    return { prims: sh.prims, bounds: f.bounds, content: f.content, sheet: f.sheet, page: f.page, border: f.border, label: sheets.length > 1 ? `SHEET ${i + 1} OF ${sheets.length}` : '', boxes: sh.boxes, cables: sh.cables };
   });
 }
 // ---------- power BCD (National Grid LVAC style): the supply chain left to right ----------
