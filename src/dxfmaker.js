@@ -456,9 +456,21 @@ function clientNotes(spec) {
 }
 // the notes as printed (numbered by the border); a note that does not fit is reported, never dropped quietly
 const notesOf = (spec, k = 1) => [...clientNotes(spec).notes, ...(k < 1 ? [`DRAWING REDUCED TO ${Math.round(k * 100)}% TO FIT THE SHEET.`] : [])];
+// a note's lines in the notes column; a list of abbreviations ("VSD - VARIABLE SPEED DRIVE. DOL - DIRECT ON LINE.") puts each one on its
+// own line, never split at its dash
+function noteLines(nt, width) {
+  const t = String(nt).toUpperCase().trim(), re = /([A-Z0-9][A-Z0-9/&]{0,7})\s+[-–=]\s+([^.;]+?)\s*[.;](?=\s|$)/g, ents = [];
+  let m, used = 0; while ((m = re.exec(t))) { ents.push(`${m[1]} - ${m[2].trim()}`); used += m[0].length; }
+  const lead = ents.length ? t.slice(0, t.search(new RegExp(re.source))).trim() : '';
+  if (ents.length >= 2 && used + lead.length >= t.replace(/\s+/g, ' ').length * 0.85) {
+    const glue = (e) => { const [a, b] = e.split(' - '); const ls = wrap(b, width - (a.length + 3) * TH * 0.9); return ls.map((l, i) => (i ? ' '.repeat(a.length + 3) : a + ' - ') + l); };
+    return [...wrap(lead || 'ABBREVIATIONS:', width), ...ents.flatMap(glue)];
+  }
+  return wrap(t, width);
+}
 function notesFit(B, spec) {
   const N = B && B.notes; if (!N) return true;
-  let ny = N.y; for (const nt of notesOf(spec)) { const ls = wrap(String(nt).toUpperCase(), N.w - (N.tx - N.x)); if (ny - ls.length * N.pitch < N.bottom) return false; ny -= ls.length * N.pitch + 1.6; }
+  let ny = N.y; for (const nt of notesOf(spec)) { const ls = noteLines(nt, N.w - (N.tx - N.x)); if (ny - ls.length * N.pitch < N.bottom) return false; ny -= ls.length * N.pitch + 1.6; }
   return true;
 }
 const LEGEND_TEXT = { MCCB: 'MCCB. TEXT: RATING, FRAME', MCB: 'MCB / RCBO. TEXT: RATING, POLES, TYPE', 'SWITCH DISCONNECTOR': 'SWITCH DISCONNECTOR / MAIN SWITCH / ISOLATOR', 'ISOLATOR DISCONNECTOR': 'ISOLATOR', 'FUSED SWITCH DISCONNECTOR': 'FUSED SWITCH DISCONNECTOR', FUSE: 'FUSE', CONTACTOR1: 'CONTACTOR', MOTOR: 'MOTOR', LOAD: 'FINAL CIRCUIT / LOAD', 'HV-LV TRANSFORMER': 'TRANSFORMER' };
@@ -551,7 +563,7 @@ function borderFrame(prims, spec, sheetLabel, opts) {
   // NOTES, then the LEGEND of the symbols used, then REFERENCE DOCUMENTS
   const N = B.notes, notes = notesOf(spec, k);
   let ny = N.y;
-  notes.forEach((nt, i) => { const ls = wrap(String(nt).toUpperCase(), N.w - (N.tx - N.x)); if (ny - ls.length * N.pitch < N.bottom) { spec._warnings = [...new Set([...(spec._warnings || []), `note ${i + 1} does not fit the ${B.size || ''} notes column`])]; return; } out.push({ t: 'text', x: N.x, y: ny, h: 2, text: (i + 1) + '.', layer: B.notesLayer }); ls.forEach(l => { out.push({ t: 'text', x: N.tx, y: ny, h: 2, text: l, layer: B.notesLayer }); ny -= N.pitch; }); ny -= 1.6; });
+  notes.forEach((nt, i) => { const ls = noteLines(nt, N.w - (N.tx - N.x)); if (ny - ls.length * N.pitch < N.bottom) { spec._warnings = [...new Set([...(spec._warnings || []), `note ${i + 1} does not fit the ${B.size || ''} notes column`])]; return; } out.push({ t: 'text', x: N.x, y: ny, h: 2, text: (i + 1) + '.', layer: B.notesLayer }); ls.forEach(l => { out.push({ t: 'text', x: N.tx, y: ny, h: 2, text: l, layer: B.notesLayer }); ny -= N.pitch; }); ny -= 1.6; });
   if (B.legend || B.legendFlow) {
     const Lg = B.legend || { x: N.x + 6.6, tx: N.x + 18.4, y: ny - 6, bottom: N.bottom };
     const usedHouse = [...new Set(prims.filter(p => p.t === 'insert' && LEGEND_TEXT[p.name]).map(p => p.name))];
@@ -1238,4 +1250,4 @@ function previousSpec(outDir, baseName) {
   try { return c ? { file: path.basename(c.f), spec: JSON.parse(fs.readFileSync(c.f, 'utf8')) } : null; } catch { return null; }
 }
 
-module.exports = { clientNotes, isInternalNote, notesFit, primsBounds, BORDER_NAMES, flatPrims, BORDERS, cableClashes, previousSpec, layoutBcd, bcdDiff, SYSTEM, ALIASES, SYMBOLS, symbolOf, layoutSld, writeDxf, toSvg, parseReply, make };
+module.exports = { noteLines, clientNotes, isInternalNote, notesFit, primsBounds, BORDER_NAMES, flatPrims, BORDERS, cableClashes, previousSpec, layoutBcd, bcdDiff, SYSTEM, ALIASES, SYMBOLS, symbolOf, layoutSld, writeDxf, toSvg, parseReply, make };

@@ -38,5 +38,8 @@ console.log('bcd ok: no overlapping or crossing cables');
     const tx = m.layoutBcd(sp, { border: 'atomax' }).flatMap(s => s.prims).filter(p => p.t === 'text').map(p => p.text);
     assert.strictEqual(tx.filter(t => /^2PR 1\.0MM²$/.test(t)).length, 2, 'pairs as 2PR'); assert.ok(!tx.some(t => /^\d+P /.test(t)), 'no 2P');
     assert.deepStrictEqual(m.clientNotes({ notes: ['OS - OVERALL SCREENED. P - PAIR.'] }).notes, ['OS - OVERALL SCREENED. PR - PAIR.']); }
+  // an abbreviations note: one per line under a heading, never split at its dash
+  assert.deepStrictEqual(m.noteLines('VSD - VARIABLE SPEED DRIVE. LIS - LOCAL ISOLATOR SWITCH. PR - PAIR.', 70), ['ABBREVIATIONS:', 'VSD - VARIABLE SPEED DRIVE', 'LIS - LOCAL ISOLATOR SWITCH', 'PR - PAIR']);
+  assert.deepStrictEqual(m.noteLines('ALL CABLES ARE COPPER.', 70), ['ALL CABLES ARE COPPER.']);
   console.log('panel bcd client asks ok: lengths, areas, scope, client notes');
 }
