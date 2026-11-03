@@ -455,22 +455,26 @@ function clientNotes(spec) {
   return { notes: keep, moved };
 }
 // the notes as printed (numbered by the border); a note that does not fit is reported, never dropped quietly
-const notesOf = (spec, k = 1) => [...clientNotes(spec).notes, ...(k < 1 ? [`DRAWING REDUCED TO ${Math.round(k * 100)}% TO FIT THE SHEET.`] : [])];
+const notesOf = (spec, k = 1) => [...clientNotes(spec).notes.filter(n => noteLines(n, 200, spec._used).length), ...(k < 1 ? [`DRAWING REDUCED TO ${Math.round(k * 100)}% TO FIT THE SHEET.`] : [])];
 // a note's lines in the notes column; a list of abbreviations ("VSD - VARIABLE SPEED DRIVE. DOL - DIRECT ON LINE.") puts each one on its
 // own line, never split at its dash
-function noteLines(nt, width) {
+// the words written on the drawing itself (not the border or notes): an abbreviation only goes in the key when it is used
+function usedWords(prims) { const w = new Set(); for (const p of flatPrims(prims)) if ((p.t === 'text' || p.t === 'mtext') && !/BORDER|NOTES/i.test(p.layer || '')) for (const m of String(p.text).toUpperCase().matchAll(/[A-Z0-9/&]+/g)) w.add(m[0]); return w; }
+const abbrUsed = (a, used) => !(used instanceof Set) || used.has(a) || [...used].some(x => (x.startsWith(a) && /^\d/.test(x.slice(a.length))) || (x.endsWith(a) && /^[\d.]+$/.test(x.slice(0, -a.length))));   // a word, a tag starting with it (LIS-P01, LIS01) or a size ending in it (2PR)
+function noteLines(nt, width, used) {
   const t = String(nt).toUpperCase().trim(), re = /([A-Z0-9][A-Z0-9/&]{0,7})\s+[-–=]\s+([^.;]+?)\s*[.;](?=\s|$)/g, ents = [];
-  let m, used = 0; while ((m = re.exec(t))) { ents.push(`${m[1]} - ${m[2].trim()}`); used += m[0].length; }
+  let m, len = 0; while ((m = re.exec(t))) { ents.push([m[1], `${m[1]} - ${m[2].trim()}`]); len += m[0].length; }
   const lead = ents.length ? t.slice(0, t.search(new RegExp(re.source))).trim() : '';
-  if (ents.length >= 2 && used + lead.length >= t.replace(/\s+/g, ' ').length * 0.85) {
+  if (ents.length >= 2 && len + lead.length >= t.replace(/\s+/g, ' ').length * 0.85) {
+    const keep = ents.filter(([a]) => abbrUsed(a, used)).map(e => e[1]); if (!keep.length) return [];
     const glue = (e) => { const [a, b] = e.split(' - '); const ls = wrap(b, width - (a.length + 3) * TH * 0.9); return ls.map((l, i) => (i ? ' '.repeat(a.length + 3) : a + ' - ') + l); };
-    return [...wrap(lead || 'ABBREVIATIONS:', width), ...ents.flatMap(glue)];
+    return [...wrap(lead || 'ABBREVIATIONS:', width), ...keep.flatMap(glue)];
   }
   return wrap(t, width);
 }
 function notesFit(B, spec) {
   const N = B && B.notes; if (!N) return true;
-  let ny = N.y; for (const nt of notesOf(spec)) { const ls = noteLines(nt, N.w - (N.tx - N.x)); if (ny - ls.length * N.pitch < N.bottom) return false; ny -= ls.length * N.pitch + 1.6; }
+  let ny = N.y; for (const nt of notesOf(spec)) { const ls = noteLines(nt, N.w - (N.tx - N.x), spec._used); if (ny - ls.length * N.pitch < N.bottom) return false; ny -= ls.length * N.pitch + 1.6; }
   return true;
 }
 const LEGEND_TEXT = { MCCB: 'MCCB. TEXT: RATING, FRAME', MCB: 'MCB / RCBO. TEXT: RATING, POLES, TYPE', 'SWITCH DISCONNECTOR': 'SWITCH DISCONNECTOR / MAIN SWITCH / ISOLATOR', 'ISOLATOR DISCONNECTOR': 'ISOLATOR', 'FUSED SWITCH DISCONNECTOR': 'FUSED SWITCH DISCONNECTOR', FUSE: 'FUSE', CONTACTOR1: 'CONTACTOR', MOTOR: 'MOTOR', LOAD: 'FINAL CIRCUIT / LOAD', 'HV-LV TRANSFORMER': 'TRANSFORMER' };
@@ -561,9 +565,10 @@ function borderFrame(prims, spec, sheetLabel, opts) {
   for (const [t, x, y] of (B.heads || [])) out.push({ t: 'text', x, y: y - 2, h: 2.6, text: t, layer: B.notesLayer });
   if (B.extras) { let n = 0; out.push(...B.extras.prims.map(p => ({ ...p, layer: 'SLD-BORDER' }))); for (const t of B.extras.texts) { const txt = /^X{4,}$/.test(String(t.text).trim()) ? (n++ === 0 ? (f.projectNo || f.project || '').split(' ')[0] : (f.jobTitle || f.project || '').replace(/^\S+\s*/, '')) : t.text; out.push({ ...t, text: txt, layer: B.notesLayer }); } }
   // NOTES, then the LEGEND of the symbols used, then REFERENCE DOCUMENTS
+  if (!(spec._used instanceof Set)) spec._used = usedWords(prims);
   const N = B.notes, notes = notesOf(spec, k);
   let ny = N.y;
-  notes.forEach((nt, i) => { const ls = noteLines(nt, N.w - (N.tx - N.x)); if (ny - ls.length * N.pitch < N.bottom) { spec._warnings = [...new Set([...(spec._warnings || []), `note ${i + 1} does not fit the ${B.size || ''} notes column`])]; return; } out.push({ t: 'text', x: N.x, y: ny, h: 2, text: (i + 1) + '.', layer: B.notesLayer }); ls.forEach(l => { out.push({ t: 'text', x: N.tx, y: ny, h: 2, text: l, layer: B.notesLayer }); ny -= N.pitch; }); ny -= 1.6; });
+  notes.forEach((nt, i) => { const ls = noteLines(nt, N.w - (N.tx - N.x), spec._used); if (ny - ls.length * N.pitch < N.bottom) { spec._warnings = [...new Set([...(spec._warnings || []), `note ${i + 1} does not fit the ${B.size || ''} notes column`])]; return; } out.push({ t: 'text', x: N.x, y: ny, h: 2, text: (i + 1) + '.', layer: B.notesLayer }); ls.forEach(l => { out.push({ t: 'text', x: N.tx, y: ny, h: 2, text: l, layer: B.notesLayer }); ny -= N.pitch; }); ny -= 1.6; });
   if (B.legend || B.legendFlow) {
     const Lg = B.legend || { x: N.x + 6.6, tx: N.x + 18.4, y: ny - 6, bottom: N.bottom };
     const usedHouse = [...new Set(prims.filter(p => p.t === 'insert' && LEGEND_TEXT[p.name]).map(p => p.name))];
@@ -876,6 +881,7 @@ function layoutPanelBcd(spec, model, opts = {}) {
   const missing = cables.filter(c => !allDrawn.has(c));
   if (missing.length) warn(`NOT DRAWN (NO PANEL): ${missing.map(c => c.no).join(', ')}`);
   const baseTitle = String(spec.title || 'BLOCK CABLE DIAGRAM').split('\n');
+  spec._used = usedWords(sheets.flatMap(sh => sh.prims));   // the abbreviations key is the same on every sheet
   return sheets.map((sh, i) => {
     const bb = primsBounds(sh.prims), key = opts.border && opts.border.geo ? opts.border : String(opts.border || 'atomax');
     let B = opts.noTitle ? null : borderOf(key, bb.x1 - bb.x0, bb.y1 - bb.y0);
@@ -1195,6 +1201,7 @@ function stageWords(rev, later = false) {
   return L === 'A' ? 'ISSUED FOR COMMENT' : L === 'C' ? 'ISSUED FOR\nCONSTRUCTION' : L === 'X' ? 'AS BUILT' : later ? 'PRELIMINARY\nREVISED' : 'PRELIMINARY\nFOR CHECKING';
 }
 function make(spec, outDir, baseName, opts = {}) {
+  delete spec._used; delete spec._warnings;   // worked out fresh each time
   if (spec.revision) spec.revision = String(spec.revision).toUpperCase().replace(/^([A-Z])(\d)$/, '$10$2');   // Atomax revisions are two digits: P01
   (spec.revHistory || []).forEach(r => { if (r.rev) r.rev = String(r.rev).toUpperCase().replace(/^([A-Z])(\d)$/, '$10$2'); });
   fs.mkdirSync(outDir, { recursive: true });
@@ -1239,7 +1246,7 @@ function make(spec, outDir, baseName, opts = {}) {
   fs.writeFileSync(file, dxf, 'utf8');
   const files = [{ path: file, svg: toSvg(framed[0].prims, framed[0].bounds), entities: all.length, label, sheets: framed.length, cables: [...new Set(framed.flatMap(f => f.sh.cables || []))], prims: all, bounds: allB, pages: framed.map(f => ({ prims: f.prims, bounds: f.bounds, page: f.page })), page: framed[0].page, border: framed[0].sh.border || '' }];
   // the spec is kept next to the drawing so the next revision can be compared with it
-  try { fs.writeFileSync(files[0].path.replace(/\.dxf$/i, '.spec.json'), JSON.stringify(spec, null, 1)); } catch {}
+  try { fs.writeFileSync(files[0].path.replace(/\.dxf$/i, '.spec.json'), JSON.stringify(spec, (k, v) => k === '_used' ? undefined : v, 1)); } catch {}
   return { path: files[0].path, svg: files[0].svg, entities: files.reduce((n, f) => n + f.entities, 0), files, diff, archived };
 }
 // the most recent spec saved for a drawing stem in a folder (for "new revision")

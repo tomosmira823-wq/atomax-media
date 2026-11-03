@@ -41,5 +41,9 @@ console.log('bcd ok: no overlapping or crossing cables');
   // an abbreviations note: one per line under a heading, never split at its dash
   assert.deepStrictEqual(m.noteLines('VSD - VARIABLE SPEED DRIVE. LIS - LOCAL ISOLATOR SWITCH. PR - PAIR.', 70), ['ABBREVIATIONS:', 'VSD - VARIABLE SPEED DRIVE', 'LIS - LOCAL ISOLATOR SWITCH', 'PR - PAIR']);
   assert.deepStrictEqual(m.noteLines('ALL CABLES ARE COPPER.', 70), ['ALL CABLES ARE COPPER.']);
+  // the key only lists abbreviations written on the drawing (Tom: VSD was in the key but nowhere on X021126)
+  { const used = new Set(['LIS', 'P01', '2PR', 'DOL']);
+    assert.deepStrictEqual(m.noteLines('VSD - VARIABLE SPEED DRIVE. DOL - DIRECT ON LINE. LIS - LOCAL ISOLATOR SWITCH. PR - PAIR.', 70, used), ['ABBREVIATIONS:', 'DOL - DIRECT ON LINE', 'LIS - LOCAL ISOLATOR SWITCH', 'PR - PAIR']);
+    assert.deepStrictEqual(m.noteLines('VSD - VARIABLE SPEED DRIVE. MCB - MINIATURE CIRCUIT BREAKER.', 70, used), []); }
   console.log('panel bcd client asks ok: lengths, areas, scope, client notes');
 }
