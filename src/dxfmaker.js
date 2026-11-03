@@ -684,12 +684,13 @@ function layoutPanelBcd(spec, model, opts = {}) {
     // the panel
     prims.push(P([[px0, pBot], [px1, pBot], [px1, pTop], [px0, pTop]], true, 'BCD-BLOCK'));
     prims.push({ t: 'mtext', x: (px0 + px1) / 2, y: pTop - pH / 2, w: PW - 10, h: 2.5, text: [PN, label(PN)].filter(Boolean).join(' ').trim(), attach: 5, layer: 'BCD-TEXT' });
-    // one cable: a polyline, its text written up beside the vertical part (to the right of it)
-    const cableRun = (c, pts, lx, yFrom) => {
+    // one cable: a polyline, its text written up the vertical part on its left (as X11481-01-WHT-06-71-0004): the cable number outermost,
+    // cores x size next to the line, both centred on the same point just short of the device the cable goes to
+    const cableRun = (c, pts, lx, yNear, dir) => {
       prims.push(P(pts, false, 'BCD-CABLE'));
-      const ls = cabLines(c), len = Math.max(...ls.map(l => l.length)) * TH * 0.92;
-      ls.forEach((l, i) => prims.push({ t: 'text', x: lx + 1 + TH + i * LINE, y: yFrom, h: TH, text: l, rot: 90, layer: 'BCD-TEXT' }));
-      boxes.push({ no: String(c.no || ''), x0: lx + 0.5, y0: yFrom - 1, x1: lx + 1.5 + ls.length * LINE, y1: yFrom + len + 1 });
+      const ls = cabLines(c), len = Math.max(...ls.map(l => l.length)) * TH * 0.92, yc = dir < 0 ? yNear + 6 + len / 2 : yNear - 6 - len / 2;
+      ls.forEach((l, i) => prims.push({ t: 'text', x: lx - 1.2 - (ls.length - 1 - i) * LINE, y: yc, h: TH, text: l, rot: 90, align: 'center', layer: 'BCD-TEXT' }));
+      boxes.push({ no: String(c.no || ''), x0: lx - 1.5 - ls.length * LINE, y0: yc - len / 2 - 1, x1: lx - 0.5, y1: yc + len / 2 + 1 });
       drawn.add(c); allDrawn.add(c);
     };
     const linkText = (k, dir) => [dir < 0 ? 'LINK TO' : 'SUPPLY FROM', [k.tag, label(k.tag)].filter(Boolean).join(' '), `SEE SHEET ${sheetOf(k.tag) + 1}`].join('\n');
@@ -729,8 +730,8 @@ function layoutPanelBcd(spec, model, opts = {}) {
         const cx = x + k.w / 2, r = drawNode(k, cx, startY + dir * DROP, dir);
         k.cables.forEach((c, i) => {
           const [lx, ly, sideX] = r.lands[i];
-          if (sideX !== undefined) cableRun(c, [[lx, startY], [lx, ly], [sideX, ly]], lx, dir < 0 ? ly + 4 : startY + 4);
-          else cableRun(c, [[lx, startY], [lx, ly]], lx, dir < 0 ? ly + 4 : startY + 4);
+          if (sideX !== undefined) cableRun(c, [[lx, startY], [lx, ly], [sideX, ly]], lx, ly + (dir < 0 ? MOTOR_R : -MOTOR_R), dir);   // beside a motor: text above the motor's top
+          else cableRun(c, [[lx, startY], [lx, ly]], lx, ly, dir);
         });
         if (k.kids.length && !k.link) placeRow(k.kids, x + (k.w - k.kids.reduce((n, q) => n + q.w, 0)) / 2, r.far, dir);
         x += k.w;

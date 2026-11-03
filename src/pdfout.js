@@ -7,13 +7,15 @@ const PAGES = { A3: [1190.55, 841.89], A2: [1683.78, 1190.55], A1: [2383.94, 168
 async function toPdf(prims, b, { page = 'A3', title = '' } = {}) {
   prims = require('./dxfmaker').flatPrims(prims);
   const doc = await PDFDocument.create(); if (title) doc.setTitle(title); doc.setProducer('Atomax Media Office (Dex)');
-  const [PW, PH] = PAGES[page] || PAGES.A3, pg = doc.addPage([PW, PH]), font = await doc.embedFont(StandardFonts.Helvetica);
+  const [PW, PH] = PAGES[page] || PAGES.A3, pg = doc.addPage([PW, PH]);
+  // an embedded Arial-width font, so every character (², °, Ω) draws in any viewer; Helvetica only if it cannot be loaded
+  let font; try { doc.registerFontkit(require('@pdf-lib/fontkit')); font = await doc.embedFont(require('fs').readFileSync(require('path').join(__dirname, 'assets', 'fonts', 'LiberationSans-Regular.ttf')), { subset: true }); } catch { font = await doc.embedFont(StandardFonts.Helvetica); }
   const m = 14, s = Math.min((PW - 2 * m) / (b.x1 - b.x0), (PH - 2 * m) / (b.y1 - b.y0));
   const ox = m + ((PW - 2 * m) - (b.x1 - b.x0) * s) / 2, oy = m + ((PH - 2 * m) - (b.y1 - b.y0) * s) / 2;
   const X = (x) => ox + (x - b.x0) * s, Y = (y) => oy + (y - b.y0) * s, black = rgb(0, 0, 0), lw = (p) => Math.max(0.35, (p.width || 0) * s) * (p.layer === 'SLD-BUS' ? 2 : 1) * (p.colour === 1 ? 2.4 : 1);   // red (new) runs print thick in black and white
   const arcPts = (p, a0, a1) => { let e = a1; while (e <= a0) e += 360; const n = Math.max(8, Math.ceil((e - a0) / 10)), out = []; for (let i = 0; i <= n; i++) { const a = (a0 + (e - a0) * i / n) * Math.PI / 180; out.push([p.x + p.r * Math.cos(a), p.y + p.r * Math.sin(a)]); } return out; };
   const poly = (pts, closed, p) => { for (let i = 1; i < pts.length; i++) pg.drawLine({ start: { x: X(pts[i - 1][0]), y: Y(pts[i - 1][1]) }, end: { x: X(pts[i][0]), y: Y(pts[i][1]) }, thickness: lw(p), color: black }); if (closed && pts.length > 2) pg.drawLine({ start: { x: X(pts[pts.length - 1][0]), y: Y(pts[pts.length - 1][1]) }, end: { x: X(pts[0][0]), y: Y(pts[0][1]) }, thickness: lw(p), color: black }); };
-  const clean = (t) => String(t).replace(/[^\x20-\x7E -ÿ]/g, (c) => ({ '²': '2', '–': '-', '—': '-', '°': 'deg' })[c] || '');
+  const clean = (t) => String(t).replace(/[\r\t]/g, ' ').replace(/[^\x20-\x7E\u00A0-\u00FF\u2013\u2014\u2126\u03A9\u00B5]/g, '');   // the embedded font has ², °, Ω, µ
   // fills first (grey in black and white), then lines, then text on top
   for (const p of prims) if (p.t === 'fill' && p.pts && p.pts.length > 2) pg.drawSvgPath((p.rings || [p.pts]).map(r => 'M' + r.map(([x, y]) => `${X(x) - X(b.x0)} ${-(Y(y) - Y(b.y0))}`).join(' L') + ' Z').join(' '), { x: X(b.x0), y: Y(b.y0), color: p.rgb ? rgb(p.rgb[0] / 255, p.rgb[1] / 255, p.rgb[2] / 255) : p.layer === 'SLD-BORDER' ? rgb(0, 0, 0) : p.colour === 1 ? rgb(0.55, 0.55, 0.55) : rgb(0.82, 0.82, 0.82), borderWidth: 0 });
   for (const p of prims) {
