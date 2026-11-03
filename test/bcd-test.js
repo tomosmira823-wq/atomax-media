@@ -33,5 +33,10 @@ console.log('bcd ok: no overlapping or crossing cables');
   // notes: our working never reaches the client
   const cn = m.clientNotes({ notes: ['APPROVED X021126 MASTER DEVICE LIST (25 DEVICES, 32 CABLES).', 'TQ-03: CONFIRM GLAND SIZE', 'DRAWING NUMBER, REVISION AND DRAWN BY ARE TBC.', 'NO SEPARATE TAGS ARE GIVEN FOR THE ISOLATORS SO THEY ARE SHOWN ON THE MOTOR LINE.', 'ALL LV CABLES ARE COPPER.'] });
   assert.deepStrictEqual(cn.notes, ['ALL LV CABLES ARE COPPER.']); assert.strictEqual(cn.moved.length, 4);
+  // pairs are written PR, never P (Tom, X021126 C-025), and the abbreviations note matches
+  { const sp = JSON.parse(JSON.stringify(spec)); sp.cables.find(c => c.no === 'C-025').cores = '2P'; sp.cables.find(c => c.no === 'C-023').cores = '2 pair';
+    const tx = m.layoutBcd(sp, { border: 'atomax' }).flatMap(s => s.prims).filter(p => p.t === 'text').map(p => p.text);
+    assert.strictEqual(tx.filter(t => /^2PR 1\.0MM²$/.test(t)).length, 2, 'pairs as 2PR'); assert.ok(!tx.some(t => /^\d+P /.test(t)), 'no 2P');
+    assert.deepStrictEqual(m.clientNotes({ notes: ['OS - OVERALL SCREENED. P - PAIR.'] }).notes, ['OS - OVERALL SCREENED. PR - PAIR.']); }
   console.log('panel bcd client asks ok: lengths, areas, scope, client notes');
 }
