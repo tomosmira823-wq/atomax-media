@@ -11,11 +11,17 @@ export function initJobsUI({ api, getAgents, openIssue, onWorkOn }) {
   const panel = $('#jobsPanel');
   let jobs = [], sel = '', tab = 'deliv', O = null, msg = '', busy = {}, poll = null;
 
+  // while a Make / Revision panel is open (Tom choosing skills, typing initials) the page is not redrawn under him: the status
+  // updates of other rows wait until he presses Start or Cancel
+  const busyPanel = () => !!document.querySelector('.jbprep');
+  async function refreshWhenFree() { while (busyPanel() && panel.classList.contains('open')) await new Promise(r => setTimeout(r, 800)); return refresh(); }
   async function refresh() {
     const v = await api.biz.get(); jobs = v.jobs.filter(j => j.status !== 'Closed');
     if (sel && !jobs.some(j => j.id === sel)) sel = '';
     renderList();
-    if (sel) { try { O = await api.jobs.overview({ jobId: sel }); } catch (e) { O = null; msg = clean(e); } renderJob(); } else renderHome();
+    if (sel) { let O2 = null; try { O2 = await api.jobs.overview({ jobId: sel }); } catch (e) { msg = clean(e); }
+      if (busyPanel()) { refreshWhenFree(); return; }   // a Make / Revision panel opened while this was fetching: redraw once it closes
+      O = O2; renderJob(); } else renderHome();
   }
   function renderList() {
     $('#jbList').innerHTML = `<button class="jbnew" id="jbNew">+ New job</button><button class="jbnew mail" id="jbMail">✉ New job from an email</button><button class="jbj home ${!sel ? 'on' : ''}" data-j="">Waiting on you</button><div class="jblabel">Jobs</div>` + (jobs.map(j => `<button class="jbj ${j.id === sel ? 'on' : ''}" data-j="${j.id}"><b>${esc(j.number)}</b><span>${esc(j.name || '')}</span><i>${esc(j.client || 'No client')}</i></button>`).join('') || '<div class="bhint">No jobs yet.</div>')
@@ -52,7 +58,7 @@ export function initJobsUI({ api, getAgents, openIssue, onWorkOn }) {
     $('#jbWork').onclick = async () => { await api.biz.setCurrent({ id: j.id }); if (onWorkOn) onWorkOn(j.id); $('#jbWork').textContent = '✓ Job in hand'; };
     ({ deliv: tabDeliv, setup: tabSetup, comments: tabComments, issue: tabIssue })[tab]();
     const working = rows.some(r => r.work && (r.work.status === 'working' || (r.work.check && r.work.check.status === 'working')));
-    clearTimeout(poll); if (working && panel.classList.contains('open')) poll = setTimeout(refresh, 3000);
+    clearTimeout(poll); if (working && panel.classList.contains('open')) poll = setTimeout(refreshWhenFree, 3000);
   }
 
   const chip = (w) => { if (!w) return '<span class="st st-todo">To do</span>'; const s = w.status; return `<span class="st st-${s.replace(/\s+/g, '')}">${{ working: 'Working…', made: 'Made', 'needs you': 'Needs you', failed: 'Failed', issued: 'Issued' }[s] || esc(s)}</span>`; };
@@ -100,7 +106,7 @@ export function initJobsUI({ api, getAgents, openIssue, onWorkOn }) {
       <div id="jpSkills"></div></div>
       <div class="jbbar"><button class="jbbtn primary" id="jpGo">Start ${esc(P.agent)}</button><button class="jbbtn" id="jpCancel">Cancel</button></div>`;
     let picker = null;   // until the skills have loaded, Start uses the agent's usual skills for this kind of drawing
-    box.querySelector('#jpCancel').onclick = () => box.remove();
+    box.querySelector('#jpCancel').onclick = () => { box.remove(); refresh(); };
     box.querySelector('#jpGo').onclick = () => {
       const request = box.querySelector('#jpReq').value.trim(), skills = picker ? picker.selected() : undefined;
       let people;
@@ -132,7 +138,7 @@ export function initJobsUI({ api, getAgents, openIssue, onWorkOn }) {
         <div class="bsub">The ${esc(P.rev || 'current')} files move to the Archive folder; the folder keeps only the new revision.</div></div></div>
       <div class="jbbar"><button class="jbbtn primary" id="jrGo">Make ${esc(P.nextRev)}</button><button class="jbbtn" id="jrCancel">Cancel</button></div>`;
     const to = box.querySelector('#jrTo'); to.oninput = () => { box.querySelector('#jrGo').textContent = 'Make ' + (to.value.trim().toUpperCase() || P.nextRev); };
-    box.querySelector('#jrCancel').onclick = () => box.remove();
+    box.querySelector('#jrCancel').onclick = () => { box.remove(); refresh(); };
     box.querySelector('#jrGo').onclick = () => {
       let people;
       if (P.agent === 'Dex') { people = Object.fromEntries(['drawn', 'checked', 'approved'].map(k => [k, box.querySelector('#jr_' + k).value.trim().toUpperCase()])); if (!people.drawn) { const f = box.querySelector('#jr_drawn'); f.focus(); f.classList.add('need'); f.placeholder = 'who drew it'; return; } try { localStorage.setItem('amo.people', JSON.stringify(people)); } catch {} }
@@ -199,9 +205,9 @@ export function initJobsUI({ api, getAgents, openIssue, onWorkOn }) {
   }
   // run a job action: show it is going, refresh the rows while the agents work, report errors on the page
   async function act(fn, note) {
-    msg = note; renderJob(); const t = setTimeout(refresh, 1500);
+    msg = note; renderJob(); const t = setTimeout(refreshWhenFree, 1500);
     try { await fn(); if (msg === note) msg = ''; } catch (e) { msg = clean(e); }
-    clearTimeout(t); await refresh();
+    clearTimeout(t); await refreshWhenFree();
   }
 
   async function tabSetup() {

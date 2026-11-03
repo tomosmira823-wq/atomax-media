@@ -25,5 +25,24 @@
     try { await until(() => !document.querySelector('#jbApprove') && /approved/i.test((document.querySelector('.jbmsg') || {}).textContent || ''), 20000); } catch { throw new Error('approve: ' + document.querySelector('#jbMain').textContent.replace(/\s+/g, ' ').slice(0, 250)); } const bcd = [...document.querySelectorAll('.jbrow')].find(x => x.textContent.includes('71-0001')); if (bcd.querySelector('[data-make]').disabled) throw new Error('BCD still locked'); return m + ' | approved, BCD Make unlocked'; });
   await step('setup tab shows the job desk', async () => { document.querySelector('[data-t="setup"]').click(); await until(() => document.querySelectorAll('#jbDesk details.jd').length >= 5); return 'ok'; });
   await step('back to deliverables', async () => { document.querySelector('[data-t="deliv"]').click(); await wait(1500); return 'ok'; });
+  // Tom 13:44: starting one drawing then opening another row's Make panel: the panel must stay open (not be redrawn away)
+  await step('a Make panel stays open while another drawing is being made', async () => {
+    let at = 'start';
+    const u = async (name, fn, ms = 30000) => { at = name; await until(fn, ms); };
+    try {
+      const r70 = () => [...document.querySelectorAll('.jbrow')].find(x => x.textContent.includes('70-0001'));
+      await u('SLD row Make button', () => r70() && r70().querySelector('[data-make]') && !r70().querySelector('[data-make]').disabled);
+      r70().querySelector('[data-make]').click(); await u('SLD panel', () => document.querySelector('#jpGo'));
+      document.querySelector('#jp_drawn').value = 'TM'; document.querySelector('#jpGo').click();
+      await wait(400);
+      const other = [...document.querySelectorAll('.jbrow')].find(x => !x.textContent.includes('70-0001') && x.querySelector('[data-make]') && !x.querySelector('[data-make]').disabled);
+      if (!other) return 'no second row free: ' + [...document.querySelectorAll('.jbrow')].map(x => x.textContent.slice(0, 40)).join(' | ');
+      other.querySelector('[data-make]').click(); await u('second panel', () => document.querySelector('#jpGo'));
+      await wait(6000);
+      if (!document.querySelector('#jpGo')) throw new Error('the Make panel was closed by a redraw');
+      document.querySelector('#jpCancel').click(); await wait(1500);
+      return 'panel stayed open 6s while the other drawing ran';
+    } catch (e) { throw new Error(at + ': ' + e.message + ' | rows: ' + [...document.querySelectorAll('.jbrow')].map(x => x.textContent.replace(/\s+/g, ' ').slice(0, 60)).join(' | ')); }
+  });
   return out;
 })();
