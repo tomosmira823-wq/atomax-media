@@ -242,6 +242,21 @@ dead is true only if the sheet itself carries a cancelled / superseded / void / 
   }));
   ipcMain.handle('proj:gather', wrap(({ jobId }) => { const j = jobOf(jobId); if (!j.folder) throw new Error('Link a project folder first'); projects.gather(jobId, j.folder, { checker, dxffix }); return folderInfo(j); }));
   ipcMain.handle('proj:open', wrap(({ jobId }) => { const j = jobOf(jobId); if (j.folder) shell.openPath(j.folder); return true; }));
+  // the Jobs screen is the project folders: every job folder in the jobs folder is a job (created / linked here), its files listed live
+  ipcMain.handle('proj:sync', wrap(() => {
+    const d = data(), root = projects.jobsFolder(d.jobs.map(j => j.number)); if (!root) return { root: '', jobIds: [], added: 0 };
+    let added = 0, linked = 0; const ids = [];
+    for (const f of projects.jobFolders(root, d.jobs.map(j => j.number))) {
+      let j = d.jobs.find(x => x.number.toUpperCase() === f.number);
+      if (!j) { j = biz.saveJob(d, { number: f.number, name: f.name, folder: f.folder }, 'Office'); added++; }
+      else if (!j.folder || !fs.existsSync(j.folder)) { j.folder = f.folder; if (!j.name && f.name) j.name = f.name; linked++; }
+      ids.push(j.id);
+    }
+    if (added || linked) { biz.audit(d, { who: 'Office', action: 'Jobs read from the project folders', detail: `${root} · ${added} new, ${linked} linked` }); store.save(); }
+    return { root, jobIds: ids, added, linked };
+  }));
+  ipcMain.handle('proj:tree', wrap(({ jobId, rel = '' }) => { const j = jobOf(jobId); if (!j.folder) throw new Error('No project folder for this job'); return { folder: j.folder, entries: projects.listDir(j.folder, rel) }; }));
+  ipcMain.handle('proj:openFile', wrap(({ jobId, rel = '', show = false }) => { const j = jobOf(jobId); if (!j.folder) throw new Error('No project folder'); const base = path.resolve(j.folder), p = path.resolve(base, rel); if (p !== base && !p.startsWith(base + path.sep)) throw new Error('Outside the job folder'); if (show) shell.showItemInFolder(p); else shell.openPath(p); return true; }));
   const outputDirFor = (jobId, kind) => { try { const j = data().jobs.find(x => x.id === jobId); return j && j.folder ? projects.outputDir(j.folder, kind) : null; } catch { return null; } };
   return { log, store, data, view, contextFor, outputDirFor, projects, folderOf: (id) => { const j = data().jobs.find(x => x.id === id); return j ? j.folder || '' : ''; } };
 }

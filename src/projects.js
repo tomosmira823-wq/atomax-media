@@ -238,4 +238,35 @@ function createJobFolder(parent, number, name) {
   return dir;
 }
 
-module.exports = { templateDir, isAtomax, jobParent, nextJobNumber, jobPattern, createJobFolder, init, suggest, gather, load, contextBlock, relevantFiles, outputDir, searchRoots, extract };
+// the folder that holds the job folders: the one Tom set (Settings / new job from an email), else the best guess
+function jobsFolder(known = []) {
+  const s = getSettings ? getSettings() : {};
+  if (s.jobsFolder && fs.existsSync(s.jobsFolder)) return s.jobsFolder;
+  return jobParent(known);
+}
+// the job folders in it: one per folder named like a job number (X021126 Hollins Lane ...), never the template
+function jobFolders(root, known = []) {
+  if (!root) return [];
+  const re = jobPattern(known), loose = /^([A-Za-z]{1,3}\d{4,6}(?:-\d{2})?)\b/;
+  let ents = []; try { ents = fs.readdirSync(root, { withFileTypes: true }); } catch { return []; }
+  return ents.filter(e => e.isDirectory() && !/template/i.test(e.name) && !SKIP.test(e.name)).map(e => {
+    const m = e.name.match(re) || e.name.match(loose); if (!m) return null;
+    const number = (m[0].match(/^[A-Za-z]{1,3}\d{4,6}(?:-\d{2})?/) || [m[0]])[0].toUpperCase();
+    return { number, name: e.name.slice(m[0].length).replace(/^[\s_\-–.]+/, '').trim(), folder: path.join(root, e.name) };
+  }).filter(Boolean);
+}
+// one level of a job folder, for the Jobs screen: folders first, then files, in natural order (1.1, 1.2 ... 10.1)
+function listDir(folder, rel = '') {
+  const base = path.resolve(folder), dir = path.resolve(base, rel || '.');
+  if (dir !== base && !dir.startsWith(base + path.sep)) throw new Error('Outside the job folder');
+  let ents = []; try { ents = fs.readdirSync(dir, { withFileTypes: true }); } catch (e) { throw new Error('Cannot open ' + (rel || 'the job folder') + ': ' + e.code); }
+  const out = [];
+  for (const e of ents) {
+    if (/^(~\$|\.|desktop\.ini$|thumbs\.db$)/i.test(e.name)) continue;
+    const full = path.join(dir, e.name); let st = null; try { st = fs.statSync(full); } catch { continue; }
+    out.push({ name: e.name, rel: path.relative(base, full), dir: st.isDirectory(), size: st.isDirectory() ? 0 : st.size, mtime: st.mtimeMs, count: st.isDirectory() ? (() => { try { return fs.readdirSync(full).filter(n => !/^(~\$|\.|desktop\.ini$|thumbs\.db$)/i.test(n)).length; } catch { return 0; } })() : 0 });
+  }
+  return out.sort((a, b) => (b.dir - a.dir) || a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
+}
+
+module.exports = { jobsFolder, jobFolders, listDir, templateDir, isAtomax, jobParent, nextJobNumber, jobPattern, createJobFolder, init, suggest, gather, load, contextBlock, relevantFiles, outputDir, searchRoots, extract };

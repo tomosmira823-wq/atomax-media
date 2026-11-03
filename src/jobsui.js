@@ -9,14 +9,18 @@ const base = (p) => String(p || '').split(/[\\/]/).pop();
 
 export function initJobsUI({ api, getAgents, openIssue, onWorkOn }) {
   const panel = $('#jobsPanel');
-  let jobs = [], sel = '', tab = 'deliv', O = null, msg = '', busy = {}, poll = null;
+  let jobs = [], sel = '', tab = 'files', O = null, msg = '', busy = {}, poll = null;
+  // the jobs are the project folders: every job folder in the jobs folder is a job (read again at most every 15 s)
+  let root = '', folderIds = null, lastSync = 0; const openDirs = new Set();
 
   // while a Make / Revision panel is open (Tom choosing skills, typing initials) the page is not redrawn under him: the status
   // updates of other rows wait until he presses Start or Cancel
   const busyPanel = () => !!document.querySelector('.jbprep');
   async function refreshWhenFree() { while (busyPanel() && panel.classList.contains('open')) await new Promise(r => setTimeout(r, 800)); return refresh(); }
   async function refresh() {
-    const v = await api.biz.get(); jobs = v.jobs.filter(j => j.status !== 'Closed');
+    if (Date.now() - lastSync > 15000) { lastSync = Date.now(); try { const r = await api.proj.sync(); root = r.root || ''; folderIds = r.root ? new Set(r.jobIds) : null; } catch { folderIds = null; } }
+    const v = await api.biz.get(); jobs = v.jobs.filter(j => j.status !== 'Closed' && (!folderIds || folderIds.has(j.id)));
+    jobs.sort((a, b) => String(b.number).localeCompare(String(a.number), undefined, { numeric: true }));
     if (sel && !jobs.some(j => j.id === sel)) sel = '';
     renderList();
     if (sel) { let O2 = null; try { O2 = await api.jobs.overview({ jobId: sel }); } catch (e) { msg = clean(e); }
@@ -24,9 +28,10 @@ export function initJobsUI({ api, getAgents, openIssue, onWorkOn }) {
       O = O2; renderJob(); } else renderHome();
   }
   function renderList() {
-    $('#jbList').innerHTML = `<button class="jbnew" id="jbNew">+ New job</button><button class="jbnew mail" id="jbMail">✉ New job from an email</button><button class="jbj home ${!sel ? 'on' : ''}" data-j="">Waiting on you</button><div class="jblabel">Jobs</div>` + (jobs.map(j => `<button class="jbj ${j.id === sel ? 'on' : ''}" data-j="${j.id}"><b>${esc(j.number)}</b><span>${esc(j.name || '')}</span><i>${esc(j.client || 'No client')}</i></button>`).join('') || '<div class="bhint">No jobs yet.</div>')
+    $('#jbList').innerHTML = `<button class="jbnew" id="jbNew">+ New job</button><button class="jbnew mail" id="jbMail">✉ New job from an email</button><button class="jbj home ${!sel ? 'on' : ''}" data-j="">Waiting on you</button><div class="jblabel" title="${esc(root)}">${root ? `Jobs · ${esc(base(root))}` : 'Jobs'} <a href="#" id="jbRoot" class="jbrootlink">${root ? 'change' : 'set projects folder'}</a></div>` + (jobs.map(j => `<button class="jbj ${j.id === sel ? 'on' : ''}" data-j="${j.id}"><b>${esc(j.number)}</b><span>${esc(j.name || '')}</span><i>${esc(j.client || 'No client')}</i></button>`).join('') || '<div class="bhint">No jobs yet.</div>')
 ;
-    $('#jbList').querySelectorAll('[data-j]').forEach(b => b.onclick = () => { sel = b.dataset.j; tab = 'deliv'; msg = ''; refresh(); });
+    $('#jbList').querySelectorAll('[data-j]').forEach(b => b.onclick = () => { sel = b.dataset.j; tab = sel ? 'files' : 'deliv'; msg = ''; openDirs.clear(); refresh(); });
+    $('#jbRoot').onclick = async (e) => { e.preventDefault(); const f = await api.mail.pickParent(); if (!f) return; try { await api.mail.setJobsFolder({ folder: f }); } catch (err) { msg = clean(err); } lastSync = 0; refresh(); };
     $('#jbNew').onclick = newJob;
     $('#jbMail').onclick = () => { sel = ''; renderList(); emailPanel(''); };
   }
@@ -46,7 +51,7 @@ export function initJobsUI({ api, getAgents, openIssue, onWorkOn }) {
     const m = $('#jbMain'); if (!O) { m.innerHTML = `<div class="bhint">${esc(msg)}</div>`; return; }
     const j = O.job, V = O.desk, rows = O.rows;
     const openC = (V.crs || []).filter(c => !/responded|closed/i.test(c.status || '')).length;
-    const tabs = [['deliv', `Deliverables <em>${rows.length}</em>`], ['setup', 'Inputs &amp; setup'], ['comments', `Comments${openC ? ` <em>${openC}</em>` : ''}`], ['issue', 'Issue']];
+    const tabs = [['files', 'Files'], ['deliv', `Deliverables <em>${rows.length}</em>`], ['setup', 'Inputs &amp; setup'], ['comments', `Comments${openC ? ` <em>${openC}</em>` : ''}`], ['issue', 'Issue']];
     m.innerHTML = `<div class="jbhead"><div><h2>${esc(j.number)} ${esc(j.name || '')}</h2><div class="bsub">${esc(j.client || 'No client')} · border: ${esc(V.borderUsed || '')}${j.folder ? ` · <a href="#" id="jbFolder">open folder</a>` : ' · <b class="warn">no folder linked</b>'}</div></div>
         <div class="jbbar" style="margin:0"><button class="jbbtn primary" id="jbAddMail">✉ Add email / changes</button><button class="jbbtn" id="jbWork">Work on this job</button></div></div>
       <div class="jbtabs">${tabs.map(([k, t]) => `<button data-t="${k}" class="${tab === k ? 'on' : ''}">${t}</button>`).join('')}</div>
@@ -56,11 +61,34 @@ export function initJobsUI({ api, getAgents, openIssue, onWorkOn }) {
     if ($('#jbFolder')) $('#jbFolder').onclick = (e) => { e.preventDefault(); api.proj.open({ jobId: j.id }).catch(() => api.showItem(j.folder)); };
     $('#jbAddMail').onclick = () => emailPanel(j.id);
     $('#jbWork').onclick = async () => { await api.biz.setCurrent({ id: j.id }); if (onWorkOn) onWorkOn(j.id); $('#jbWork').textContent = '✓ Job in hand'; };
-    ({ deliv: tabDeliv, setup: tabSetup, comments: tabComments, issue: tabIssue })[tab]();
+    ({ files: tabFiles, deliv: tabDeliv, setup: tabSetup, comments: tabComments, issue: tabIssue })[tab]();
     const working = rows.some(r => r.work && (r.work.status === 'working' || (r.work.check && r.work.check.status === 'working')));
     clearTimeout(poll); if (working && panel.classList.contains('open')) poll = setTimeout(refreshWhenFree, 3000);
   }
 
+  // ---------- the job's real folder: the Atomax template layout as it is on OneDrive, opened folder by folder ----------
+  const fIcon = (n) => /\.pdf$/i.test(n) ? '📄' : /\.(dwg|dxf|dwt)$/i.test(n) ? '📐' : /\.(xlsx?|xlsm|csv)$/i.test(n) ? '📊' : /\.(docx?|rtf)$/i.test(n) ? '📝' : /\.(msg|eml)$/i.test(n) ? '✉' : /\.(png|jpe?g|gif|bmp|tif)$/i.test(n) ? '🖼' : '📄';
+  const fSize = (b) => !b ? '' : b < 1024 ? b + ' B' : b < 1048576 ? Math.round(b / 1024) + ' KB' : (b / 1048576).toFixed(1) + ' MB';
+  const fDate = (t) => { if (!t) return ''; const d = new Date(t); return [d.getDate(), d.getMonth() + 1, d.getFullYear() % 100].map(v => String(v).padStart(2, '0')).join('.'); };
+  async function tabFiles() {
+    const el = $('#jbTab'), j = O.job;
+    if (!j.folder) { el.innerHTML = `<div class="jbempty"><b>No project folder for this job.</b><span>Pick its folder in OneDrive, or set the projects folder at the top of the job list.</span><button class="jbbtn primary" id="jftPick">Choose the folder…</button></div>`; $('#jftPick').onclick = async () => { const f = await api.proj.pick(); if (f) { await api.proj.setFolder({ jobId: j.id, folder: f }); refresh(); } }; return; }
+    el.innerHTML = `<div class="jbcard jft"><div class="jft-top"><b>${esc(base(j.folder))}</b><span class="bsub">${esc(j.folder)}</span><button class="jbbtn" id="jftOpen">Open in Explorer</button></div><div id="jftRoot" class="jft-list"><div class="bsub">Reading the folder…</div></div></div>`;
+    $('#jftOpen').onclick = () => api.proj.open({ jobId: j.id });
+    await fillDir($('#jftRoot'), '');
+  }
+  async function fillDir(box, rel) {
+    let r; try { r = await api.proj.tree({ jobId: O.job.id, rel }); } catch (e) { box.innerHTML = `<div class="bsub">${esc(clean(e))}</div>`; return; }
+    if (!r.entries.length) { box.innerHTML = '<div class="bsub jft-empty">Empty</div>'; return; }
+    box.innerHTML = r.entries.map(e => e.dir
+      ? `<details class="jft-dir" data-rel="${esc(e.rel)}"><summary><span class="ic">📁</span><span class="nm">${esc(e.name)}</span><i>${e.count ? e.count + ' item' + (e.count === 1 ? '' : 's') : 'empty'}</i></summary><div class="jft-kids"></div></details>`
+      : `<div class="jft-file" data-rel="${esc(e.rel)}" title="Open ${esc(e.name)}"><span class="ic">${fIcon(e.name)}</span><span class="nm">${esc(e.name)}</span><i>${fDate(e.mtime)}</i><i>${fSize(e.size)}</i><button class="jbbtn sm" data-show="1" title="Show it in Explorer">Show</button></div>`).join('');
+    box.querySelectorAll(':scope > details').forEach(d => {
+      d.addEventListener('toggle', () => { if (d.open) { openDirs.add(d.dataset.rel); if (!d.dataset.loaded) { d.dataset.loaded = '1'; fillDir(d.querySelector('.jft-kids'), d.dataset.rel); } } else openDirs.delete(d.dataset.rel); });
+      if (openDirs.has(d.dataset.rel)) d.open = true;   // folders Tom opened stay open when the page refreshes
+    });
+    box.querySelectorAll(':scope > .jft-file').forEach(f => { f.onclick = (ev) => api.proj.openFile({ jobId: O.job.id, rel: f.dataset.rel, show: !!ev.target.closest('[data-show]') }).catch(err => { msg = clean(err); renderJob(); }); });
+  }
   const chip = (w) => { if (!w) return '<span class="st st-todo">To do</span>'; const s = w.status; return `<span class="st st-${s.replace(/\s+/g, '')}">${{ working: 'Working…', made: 'Made', 'needs you': 'Needs you', failed: 'Failed', issued: 'Issued' }[s] || esc(s)}</span>`; };
   const files = (w) => w && w.files ? [...w.files, ...(w.pdfs || [])].map(p => `<button class="jbfile" data-open="${esc(p)}" title="${esc(p)}">${esc(base(p).replace(/^.*\./, '').toUpperCase())}</button>`).join('') : '';
 
