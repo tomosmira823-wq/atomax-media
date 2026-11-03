@@ -25,4 +25,8 @@ const worst = +(ce.match(/worst offset ([\d.]+)/) || [])[1]; if (!(worst <= 0.3)
   if (D.cleanLabel('400V 3PH+N 50HZ\nPFC 31.5kA 3PH SYM') !== '400V 3PH+N 50Hz\nPROSPECTIVE FAULT 31.5kA 3PH SYM') throw new Error('Hz / prospective fault');
   const tmp = fs.mkdtempSync(path.join(require('os').tmpdir(), 'sldr-')); const made = D.make(JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'hollins-sld-room.json'), 'utf8')), tmp, 'R', { border: 'atomax', fill: {} });
   const r = require('child_process').spawnSync('python3', [path.join(__dirname, 'dxf-overlaps.py'), made.path || made.files[0].path], { encoding: 'utf8' }); if (!/ 0 problems/.test(r.stdout)) throw new Error('room SLD overlaps: ' + r.stdout.slice(-300)); }
+// 14:53 run: the room box must not stretch the drawing (it was scaled to 86% on A0); C-001's voltage never written twice
+{ const L = D.layoutSld(JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'hollins-sld-room.json'), 'utf8')), { border: 'atomax', fill: {} });
+  if ((L.sheet || L.page) !== 'A1') throw new Error('room SLD should stay on A1, got ' + (L.sheet || L.page));
+  if (D.flatPrims(L.prims).some(p => /REDUCED TO/.test(String(p.text || '')))) throw new Error('room SLD was scaled down'); }
 console.log('sld ok: A1, no overlaps, text centred');

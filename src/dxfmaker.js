@@ -203,6 +203,7 @@ const EARTH_SYMS = ['cable', 'earth', 'electrode', 'grid', 'link'];
 const isEarthFeeder = (f) => { const { items, sub } = chainParts(f.chain || []); const syms = items.filter(it => !it.gap).map(it => symbolOf(it.symbol)); return !sub && syms.length > 0 && syms.every(x => EARTH_SYMS.includes(x)) && syms.some(x => ['earth', 'electrode', 'grid'].includes(x)); };
 const EARTH_BAR = 8;
 let SUBLOG = null;   // filled while measuring a switchroom: where each sub-board in the room lands
+let ROOMLOG = null;  // and in the final drawing: each in-room board's busbar level and width, for the room outline
 function drawBoard(b, x0, y, prims, top, over = null) {
   let minY = y, maxY = y, maxX = x0 + FEED + 20; const ixs = [];
   // feeders, left to right at the feeder pitch. A board fed by a feeder (an MCC, a DB) is drawn underneath, reaching across under the
@@ -234,6 +235,7 @@ function drawBoard(b, x0, y, prims, top, over = null) {
       prims.push(L(fx, yEnd, fx, subY, 'SLD-CABLE'));
       if (SUBLOG && sub._room) SUBLOG.push({ id: sub._room, y: subY });
       const d = drawBoard({ ...sub, incomers: [] }, S.x0, subY, prims, false, [...under, { x0: fx - 10, x1: fx + 6 + LABEL_W + 4, y0: -1e9 }]);   // its own feed (and that feed's labels) too
+      if (ROOMLOG && sub._room) ROOMLOG.push({ id: sub._room, y: subY, x0: Math.min(S.x0, fx - 10), x1: Math.max(d.maxX, S.x1, fx + 6 + LABEL_W + 4) });
       yEnd = d.minY; maxX = Math.max(maxX, d.maxX, S.x1);
     }
     minY = Math.min(minY, yEnd);
@@ -271,6 +273,15 @@ function drawBoard(b, x0, y, prims, top, over = null) {
 }
 
 const SHEETS = [['A3', 420, 297], ['A2', 594, 420], ['A1', 841, 594], ['A0', 1189, 841]];
+// the outline of a union of rectangles, as straight segments (used for room / area boxes that step round what they hold)
+function unionSegs(rs) {
+  const xs = [...new Set(rs.flatMap(r => [r.x0, r.x1]))].sort((a, b) => a - b), ys = [...new Set(rs.flatMap(r => [r.y0, r.y1]))].sort((a, b) => a - b);
+  const inside = (i, j) => i >= 0 && j >= 0 && i < xs.length - 1 && j < ys.length - 1 && rs.some(r => (xs[i] + xs[i + 1]) / 2 > r.x0 && (xs[i] + xs[i + 1]) / 2 < r.x1 && (ys[j] + ys[j + 1]) / 2 > r.y0 && (ys[j] + ys[j + 1]) / 2 < r.y1);
+  const out = [];
+  for (let j = 0; j < ys.length; j++) { let run = null; for (let i = 0; i < xs.length - 1; i++) { const e = inside(i, j) !== inside(i, j - 1); if (e && run) run.x1 = xs[i + 1]; else if (e) run = { x0: xs[i], y0: ys[j], x1: xs[i + 1], y1: ys[j] }; if (!e && run) { out.push(run); run = null; } } if (run) out.push(run); }
+  for (let i = 0; i < xs.length; i++) { let run = null; for (let j = 0; j < ys.length - 1; j++) { const e = inside(i, j) !== inside(i - 1, j); if (e && run) run.y1 = ys[j + 1]; else if (e) run = { x0: xs[i], y0: ys[j], x1: xs[i], y1: ys[j + 1] }; if (!e && run) { out.push(run); run = null; } } if (run) out.push(run); }
+  return out;
+}
 function dashPath(prims, pts, layer, open = false) {   // a dashed outline through the points (closed unless open)
   for (let i = 0; i < pts.length - (open ? 1 : 0); i++) { const [ax, ay] = pts[i], [bx, by] = pts[(i + 1) % pts.length], len = Math.hypot(bx - ax, by - ay); if (len < 1e-6) continue; const ux = (bx - ax) / len, uy = (by - ay) / len; for (let d = 0; d < len; d += 9) { const e = Math.min(len, d + 6); prims.push(L(ax + ux * d, ay + uy * d, ax + ux * e, ay + uy * e, layer)); } }
 }
@@ -289,7 +300,7 @@ function layoutSld(spec, opts = {}) {
   for (let b of boards) {
     // in a switchroom / kiosk: every cable leaves the room at the same level, a little below the deepest item inside, so the dashed wall
     // only ever crosses bare conductor (never a cable tag, a label or a symbol). Feeders with no cable stay wholly inside.
-    let wall = null, wallTop = null, roomSubs = false;
+    let wall = null, wallTop = null, roomSubs = false, roomWalls = null;
     if (b.enclosure) {
       const firstCable = (items) => items.findIndex(it => !it.gap && symbolOf(it.symbol) === 'cable');
       const depthOf = (items) => { if (!items.length) return 0; const r = drawChain(items, 0, 0), bb = primsBounds(r.prims); return Math.max(-r.y, Number.isFinite(bb.y0) ? -bb.y0 : 0); };
@@ -311,9 +322,9 @@ function layoutSld(spec, opts = {}) {
         let n = 0; const tagged = { ...b, feeders: (b.feeders || []).map(f => { const chain = (f.chain || []).map(it => it.board && inRoom(it.board) ? { ...it, board: { ...it.board, _room: 'r' + (n++) } } : it); return { ...f, chain }; }) };
         SUBLOG = []; drawBoard(tagged, 0, 0, [], true); const at = new Map(SUBLOG.map(e => [e.id, e.y])); SUBLOG = null;
         const subsT = tagged.feeders.map(f => chainParts(f.chain).sub).filter(sb => sb && sb._room);
-        const bottom = Math.min(...subsT.map(sb => at.get(sb._room) - subD(sb) - 3));
-        wall = bottom;
-        b = { ...tagged, feeders: tagged.feeders.map(f => ({ ...f, chain: (f.chain || []).map(it => it.board && it.board._room ? { ...it, board: { ...it.board, feeders: (it.board.feeders || []).map(g => endsInRoom(g) ? { ...g, _inRoom: true } : gapIn(g, at.get(it.board._room) - 3 - bottom)) } } : it) })) };
+        roomWalls = new Map(subsT.map(sb => [sb._room, subD(sb)]));
+        wall = Math.min(...subsT.map(sb => at.get(sb._room) - subD(sb) - 3));
+        b = { ...tagged, feeders: tagged.feeders.map(f => ({ ...f, chain: (f.chain || []).map(it => it.board && it.board._room ? { ...it, board: { ...it.board, feeders: (it.board.feeders || []).map(g => endsInRoom(g) ? { ...g, _inRoom: true } : gapIn(g, subD(it.board))) } } : it) })) };
       }
       // incomers from another place (a transformer in its compound, a generator in its enclosure): their cable crosses the top wall
       // the same way, so what feeds the board in sits outside the room
@@ -325,11 +336,18 @@ function layoutSld(spec, opts = {}) {
       }
       if (!roomSubs) b = { ...b, feeders: (b.feeders || []).map(f => gapIn(f, D)) };
     }
+    if (roomSubs) ROOMLOG = [];
     const from = prims.length, d = drawBoard(b, x0, 0, prims, true);
+    const placedRooms = ROOMLOG || []; ROOMLOG = null;
     if (wall !== null) {   // a dashed box round the board and its incomers, named above it
       const inside = (p) => { const q = primsBounds([p]); return q.y0 >= wall - 0.5 && (wallTop === null || q.y1 <= wallTop + 0.5); };
       const bb = primsBounds(prims.slice(from).filter(inside)), m = 6, ex0 = bb.x0 - m, ex1 = bb.x1 + m, ey0 = wall, ey1 = wallTop === null ? bb.y1 + m : wallTop;
-      dashBox(prims, ex0, ey0, ex1, ey1, 'SLD-ENCLOSURE');
+      if (roomSubs && placedRooms.length) {
+        // the room steps down round each board in it: the top part down to the shallowest board's cable level, then each board's own part
+        const walls = placedRooms.map(e => ({ ...e, w: e.y - roomWalls.get(e.id) - 3 })), top = Math.max(...walls.map(e => e.w));
+        const rs = [{ x0: ex0, y0: top, x1: ex1, y1: ey1 }, ...walls.filter(e => e.w < top - 1e-6).map(e => ({ x0: e.x0 - m, y0: e.w, x1: e.x1 + m, y1: top + 1 }))];
+        for (const g of unionSegs(rs)) dashPath(prims, [[g.x0, g.y0], [g.x1, g.y1]], 'SLD-ENCLOSURE', true);
+      } else dashBox(prims, ex0, ey0, ex1, ey1, 'SLD-ENCLOSURE');
       // the name: centred above the box, or (incomer cables crossing the top) at its top left, inside, clear of them
       prims.push(wallTop === null ? { t: 'text', x: (ex0 + ex1) / 2, y: ey1 + 2, h: TH, text: String(b.enclosure).toUpperCase(), align: 'center', layer: 'SLD-TEXT' } : { t: 'text', x: ex0 + 3, y: ey1 - 3 - TH, h: TH, text: String(b.enclosure).toUpperCase(), layer: 'SLD-TEXT' });
       d.maxY = Math.max(d.maxY, ey1 + 2 + TH); d.maxX = Math.max(d.maxX, ex1); x0 = Math.min(x0, ex0);
@@ -522,12 +540,13 @@ function fromSchedule(spec, sheets) {
     const lines = String(lab || '').split(/\n|\\n/), no = key((lines[0] || '').split(/[\s/]/)[0].replace(/[A-Z]$/i, m => m)), s0 = cabs.get(no) || cabs.get(key((lines[0] || '').split(/\s/)[0]).split('/')[0]);
     if (!s0 || !s0.type) return lab;
     const vt = s0.volt && s0.volt !== '-' && !key(s0.type).includes(key(s0.volt)) ? s0.volt : '', T = vt ? s0.type + (/\d(?:\.\d+)?\s*k?V\b/i.test(s0.type) ? ', ' : ' ') + vt : s0.type;
-    if (key(lab).includes(key(T))) return lab;
+    const k2 = (v) => key(v).replace(/,/g, ''); if (k2(lab).includes(k2(T))) return lab;
     // only a type Dex wrote with a voltage that differs from the schedule's is replaced (the rest of the label, e.g. its length, kept)
     const first = s0.type.split(/\s+/)[0].toUpperCase(), li = lines.findIndex(l => l.toUpperCase().includes(first)); if (li < 0) return lab;
     const line = lines[li], pos = line.toUpperCase().indexOf(first), seg = line.slice(pos), cut = seg.search(/\s+\d+(?:\.\d+)?\s*m\b|\s+\(/i), part = cut < 0 ? seg : seg.slice(0, cut);
-    if (!/\d(?:\.\d+)?\s*k?V\b/i.test(part) || key(part) === key(T)) return lab;
-    lines[li] = line.slice(0, pos) + T + (cut < 0 ? '' : seg.slice(cut));
+    if (!/\d(?:\.\d+)?\s*k?V\b/i.test(part) || k2(part) === k2(T)) return lab;
+    const elsewhere = vt && lines.some((l, i) => i !== li && k2(l).includes(k2(vt))) || (vt && k2(seg.slice(cut < 0 ? seg.length : cut)).includes(k2(vt)));
+    lines[li] = line.slice(0, pos) + (elsewhere ? s0.type : T) + (cut < 0 ? '' : seg.slice(cut));
     return lines.join('\n');
   };
   const walk = (b) => { if (!b) return; for (const f of [...(b.incomers || []), ...(b.feeders || [])]) for (const it of f.chain || []) { if (it.board) walk(it.board); else if (symbolOf(it.symbol) === 'cable' && it.label) { const nl = fixType(it.label); if (nl !== it.label) { changed.push(`${String(it.label).split(/\n|\\n/)[0]} type: -> ${nl.split(/\n|\\n/).slice(1).join(' ')}`); it.label = nl; } } } };
