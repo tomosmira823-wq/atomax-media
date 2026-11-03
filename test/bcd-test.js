@@ -68,6 +68,13 @@ console.log('bcd ok: no overlapping or crossing cables');
     assert.ok(!/\d(KV|KVA|KW|MM²)\b/.test(all) && /1000kVA/.test(all) && /mm²/.test(all), 'kV / kVA / mm² written normally'); assert.deepStrictEqual(sp._warnings || [], [], 'run 3 no warnings');
     const title = sh[0].prims.filter(p => p.t === 'text').map(p => p.text); assert.ok(title.includes('MSB-01 MAIN LV SWITCHBOARD'), 'short panel name in the title'); }
   console.log('panel bcd one sheet ok, per-panel split ok');
+  // Tom 13:36: Dex ran the abbreviations together with no separators; and one used only in another note (ICP) stays in the key
+  { const t = 'ABBREVIATIONS: DNO - DISTRIBUTION NETWORK OPERATOR ICP - INDEPENDENT CONNECTION PROVIDER LV - LOW VOLTAGE C - CORE PR - PAIR';
+    assert.deepStrictEqual(m.noteLines(t, 70), ['ABBREVIATIONS:', 'DNO - DISTRIBUTION NETWORK OPERATOR', 'ICP - INDEPENDENT CONNECTION PROVIDER', 'LV - LOW VOLTAGE', 'C - CORE', 'PR - PAIR']);
+    assert.deepStrictEqual(m.noteLines('C-001 AND RMU-01 ARE DNO - SHOWN FOR REFERENCE ONLY.', 70), ['C-001 AND RMU-01 ARE DNO - SHOWN FOR', 'REFERENCE ONLY.']);
+    const sp = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'hollins-bcd-run3.json'), 'utf8')); sp.notes = ['RMU-01 AND C-001 ARE DNO/ICP SCOPE.', t + ' MCB - MINIATURE CIRCUIT BREAKER'];
+    const tx = m.layoutBcd(sp, { border: 'atomax' })[0].prims.filter(p => p.t === 'text').map(p => p.text);
+    assert.ok(tx.includes('ICP - INDEPENDENT CONNECTION PROVIDER') && tx.includes('PR - PAIR') && !tx.includes('MCB - MINIATURE CIRCUIT BREAKER'), 'key: ICP from the notes kept, MCB (not used) dropped'); }
   // markup R2: the schedule is the source (C-001 had lost "11kV" from its type), locations from the equipment list; Dyn11 keeps its case
   { const sp = { cables: [{ no: 'C-001', type: 'XLPE/SWA/PVC 6.35/11kV', cores: '3C', size: '95mm²', length: '18' }, { no: 'C-023', type: 'Instrument PVC/SWA/LSZH OS 300/500V', cores: '2PR', size: '1.0', length: '48' }], nodes: [{ tag: 'LIS-P02' }] };
     const wb = [{ sheet: 'Cable Schedule', rows: [{ c: ['CABLE SCHEDULE'] }, { c: ['Cable No', 'From Tag', 'To Tag', 'Cable Type', 'No. of Cores', 'CSA (mm²)', 'Voltage', 'Length (m)'] }, { c: ['C-001', 'RMU-01', 'TX01', 'XLPE/SWA/PVC 11kV', '3', '95', '6.35/11kV', '18'] }, { c: ['C-023', 'MCC-01', 'LT-01', 'Instrument PVC/SWA/LSZH OS', '2 pair', '1.0', '300/500V', '48'] }] },
