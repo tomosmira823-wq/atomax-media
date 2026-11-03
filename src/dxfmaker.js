@@ -81,8 +81,8 @@ const STATUS_COLOUR = { new: 3, modified: 3, remove: 1, removal: 1, removed: 1, 
 let PHASED = false;
 const isPhased = (spec) => !!(spec.phase || /\bphase\s*\d+/i.test(String(spec.title || '')));
 const TAG_CHARS = 16;   // longest line written up a cable tag
-function cableTag(label) {
-  const ls = wrap(label, TAG_CHARS * TH * 0.9).slice(0, 6), n = Math.max(1, ls.length), bw = n * LINE + 1.2, bh = Math.max(22, Math.max(...ls.map(l => l.length), 6) * TH * 0.92 + 6);
+function cableTag(label, minH = 0) {
+  const ls = wrap(label, TAG_CHARS * TH * 0.9).slice(0, 6), n = Math.max(1, ls.length), bw = n * LINE + 1.2, bh = Math.max(22, minH, Math.max(...ls.map(l => l.length), 6) * TH * 0.92 + 6);
   const prims = [L(0, 0, 0, -3, 'SLD-CABLE'), P([[-bw / 2, -3], [bw / 2, -3], [bw / 2, -3 - bh], [-bw / 2, -3 - bh]], true, 'SLD-CABLE'), L(0, -3 - bh, 0, -6 - bh, 'SLD-CABLE')];
   // the lines sit in the middle of the box across its width (each line's letters run from its baseline up by the text height)
   const first = -((n - 1) * LINE + TH) / 2 + TH;
@@ -94,7 +94,7 @@ function drawChain(chain, x, y) {
   for (let item of chain || []) {
     if (item.gap) { prims.push(L(x, y, x, y - item.gap, 'SLD-CABLE')); y -= item.gap; continue; }
     const kind = symbolOf(item.symbol), col = !PHASED ? 0 : STATUS_COLOUR[String(item.status || '').toLowerCase().trim()] || 0;
-    const sym = kind === 'cable' && item.label ? cableTag(item.label) : SYMBOLS[kind]();
+    const sym = kind === 'cable' && item.label ? cableTag(item.label, item._tagH || 0) : SYMBOLS[kind]();
     if (kind === 'meter' && !sym.house) { const k = /ammeter/i.test(item.label || '') ? 'A' : /voltmeter/i.test(item.label || '') ? 'V' : ''; if (k) sym.prims = sym.prims.map(p => p.t === 'text' && p.text === 'kWh' ? { ...p, text: k, h: 3, y: p.y - 0.4 } : p); }
     if (sym.tagged) { const from = prims.length; sym.prims.forEach(p => prims.push(moved(p, x, y))); if (col) for (let i = from; i < prims.length; i++) prims[i] = { ...prims[i], colour: col }; y -= sym.len; continue; }
     const state = /^(open|closed)$/i.test(String(item.state || '').trim()) ? `(${String(item.state).trim().toUpperCase()})` : '';
@@ -140,6 +140,52 @@ function feederLabelAdds(f) {
   return !(el.includes(fl) || fl.includes(firstTwo(el)) || el.includes(firstTwo(fl)));
 }
 
+// ---- the feeders of a board line up row by row: protective device, drive / starter, cable, isolator, cable, load all level across the board ----
+const ROLE_OF = (it) => { if (it.board) return null; if (it.gap) return null; const k = symbolOf(it.symbol), sym = SYMBOLS[k](); if (sym.end) return 'end'; if (k === 'cable') return 'cable'; if (['vsd', 'dol', 'softstarter', 'contactor', 'ups'].includes(k)) return 'drive'; if (['ct', 'meter'].includes(k)) return 'meter'; return 'switch'; };
+function mergeRoles(a, b) {   // shortest common supersequence of two role lists
+  const n = a.length, m = b.length, L = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(0));
+  for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--) L[i][j] = a[i] === b[j] ? L[i + 1][j + 1] + 1 : Math.max(L[i + 1][j], L[i][j + 1]);
+  const out = []; let i = 0, j = 0;
+  while (i < n && j < m) { if (a[i] === b[j]) { out.push(a[i]); i++; j++; } else if (L[i + 1][j] >= L[i][j + 1]) out.push(a[i++]); else out.push(b[j++]); }
+  return [...out, ...a.slice(i), ...b.slice(j)];
+}
+function itemH(it) { if (it.gap) return it.gap; const r = drawChain([it], 0, 0); return -r.y; }
+function alignFeeders(feeders) {
+  // feeders made of the same kinds of item in the same order (e.g. breaker, drive, cable, isolator, cable, motor) line up row for row
+  const sig = (f) => chainParts(f.chain).items.map(ROLE_OF).filter(Boolean).join('>') + (chainParts(f.chain).sub ? '>board' : '');
+  const groups = {}; feeders.forEach((f, i) => (groups[sig(f)] = groups[sig(f)] || []).push(i));
+  const out = [...feeders];
+  for (const idx of Object.values(groups)) if (idx.length > 1) alignGroup(idx.map(i => feeders[i])).forEach((f, k) => { out[idx[k]] = f; });
+  return out;
+}
+function alignGroup(feeders) {
+  const parts = feeders.map(f => { const { items, sub } = chainParts(f.chain); return { f, items: items.map(it => ({ ...it })), sub }; });
+  if (parts.length < 2) return feeders;
+  let master = []; for (const p of parts) master = mergeRoles(master, p.items.map(ROLE_OF).filter(Boolean));
+  // which master slot each item takes (in order); gap items ride along with the item after them
+  const slotOf = parts.map(p => { let k = 0; return p.items.map(it => { const r = ROLE_OF(it); if (!r) return -1; while (k < master.length && master[k] !== r) k++; return k++; }); });
+  const ys = parts.map(() => 0), next = parts.map(() => 0), out = parts.map(() => []);
+  for (let s = 0; s < master.length; s++) {
+    const who = [];
+    parts.forEach((p, pi) => { // gaps before this feeder's next real item are taken now
+      while (next[pi] < p.items.length && slotOf[pi][next[pi]] === -1) { const g = p.items[next[pi]++]; out[pi].push(g); ys[pi] += itemH(g); }
+      if (next[pi] < p.items.length && slotOf[pi][next[pi]] === s) who.push(pi);
+    });
+    if (!who.length) continue;
+    const top = Math.max(...who.map(pi => ys[pi]));
+    if (master[s] === 'cable') { const tagH = Math.max(...who.map(pi => { const it = parts[pi].items[next[pi]]; return it.label ? cableTag(it.label).len - 6 : 0; })); who.forEach(pi => { parts[pi].items[next[pi]]._tagH = tagH; }); }
+    const bottom = Math.max(...who.map(pi => top + itemH(parts[pi].items[next[pi]])));
+    who.forEach(pi => {
+      const it = parts[pi].items[next[pi]++];
+      if (top - ys[pi] > 0.01) out[pi].push({ gap: top - ys[pi] });
+      out[pi].push(it); ys[pi] = top + itemH(it);
+      // a switching device or drive shorter than its row is carried on to the row's bottom, so the next row starts level
+      if (master[s] !== 'end' && bottom - ys[pi] > 0.01) { out[pi].push({ gap: bottom - ys[pi] }); ys[pi] = bottom; }
+    });
+  }
+  parts.forEach((p, pi) => { while (next[pi] < p.items.length) out[pi].push(p.items[next[pi]++]); });
+  return parts.map((p, pi) => ({ ...p.f, chain: [...out[pi], ...(p.sub ? [{ board: p.sub }] : [])] }));
+}
 // a feeder with no board under it, drawn at (fx, y): its chain, then its own label underneath when that adds something
 function drawSimple(f, fx, y, prims) {
   const { items } = chainParts(f.chain), r = drawChain(items, fx, y); prims.push(...r.prims);
@@ -152,7 +198,7 @@ function drawBoard(b, x0, y, prims, top) {
   // feeders, left to right at the feeder pitch. A board fed by a feeder (an MCC, a DB) is drawn underneath, reaching across under the
   // neighbouring feeders and dropped below the deepest of them, so the drawing stays compact (it does not stretch the main board).
   // A feeder that has its own board under it starts past the end of the board before it, so two sub-boards never share the space.
-  const fs = b.feeders || [], fxs = [], subs = [];
+  const fs = alignFeeders(b.feeders || []), fxs = [], subs = [];
   let cx = x0 + 5;
   for (const f of fs) {
     const { sub } = chainParts(f.chain);
