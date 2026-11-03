@@ -1,6 +1,6 @@
 // The Jobs screen: home for engineering work. Left: the jobs. Right: "Waiting on you" across every job, or one job's flow:
 // Deliverables (each made by its agent, checked by Cal) · Inputs & setup · Comments (revisions) · Issue.
-import { renderJobDesk } from './jobdeskui.js';
+import { renderJobDesk, openDeskSection } from './jobdeskui.js';
 import { renderSkillPicker } from './skillpicker.js';
 const $ = (s, r = document) => r.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -32,7 +32,7 @@ export function initJobsUI({ api, getAgents, openIssue, onWorkOn }) {
     const icon = { master: '☑', questions: '?', failed: '!', check: '⚑', rfi: '✉', comments: '✎', folder: '📁' };
     m.innerHTML = `<div class="jbhead"><div><h2>Waiting on you</h2><div class="bsub">Everything across your jobs that needs you. Click one to go to it.</div></div></div>
       ${W.length ? `<div class="jbwait">${W.map((w, i) => `<button class="jbw k-${w.kind}" data-i="${i}"><span class="ic">${icon[w.kind] || '•'}</span><span><b>${esc(w.text)}</b><i>${esc(w.job)}</i></span></button>`).join('')}</div>` : `<div class="jbempty"><b>Nothing waiting on you.</b><span>${jobs.length ? 'Pick a job on the left to see its deliverables, or start a new one.' : 'Start with + New job on the left.'}</span></div>`}`;
-    m.querySelectorAll('[data-i]').forEach(b => b.onclick = () => { const w = W[+b.dataset.i]; sel = w.jobId; tab = { master: 'setup', rfi: 'setup', folder: 'setup', comments: 'comments' }[w.kind] || 'deliv'; refresh(); });
+    m.querySelectorAll('[data-i]').forEach(b => b.onclick = () => { const w = W[+b.dataset.i]; sel = w.jobId; tab = { master: 'setup', rfi: 'setup', folder: 'setup', comments: 'comments' }[w.kind] || 'deliv'; if (w.kind === 'master') { openDeskSection('master'); refresh().then(goMaster); } else refresh(); });
   }
 
   // ---------- one job ----------
@@ -74,7 +74,11 @@ export function initJobsUI({ api, getAgents, openIssue, onWorkOn }) {
           <div class="c5">${r.agent ? (() => { const off = (w && w.status === 'working') || (!masterOk && (r.kind === 'bcd' || r.kind === 'schedule')) ? 'disabled' : ''; return w && w.files ? `<button class="jbbtn" data-make="${esc(r.no)}" ${off} title="Make this revision again (the old copy goes to Archive)">Make again</button><button class="jbbtn ${openFor(r.no) ? 'primary' : ''}" data-rev="${esc(r.no)}" ${off} title="Next revision (e.g. P01 to P02); older versions go to Archive">Revision</button>` : `<button class="jbbtn primary" data-make="${esc(r.no)}" ${off}>Make</button>`; })() : ''}</div>
           ${w && w.questions ? `<div class="jbq"><b>${esc(r.agent)} asks:</b>${w.questions.map((q, i) => `<label class="plain">${esc(q)}</label><input data-ans="${i}" placeholder="Your answer">`).join('')}<button class="jbbtn primary" data-answer="${esc(r.no)}">Send answers</button></div>` : ''}
         </div>`; }).join('')}</div>`;
-    if ($('#jbToMaster')) $('#jbToMaster').onclick = () => { tab = 'setup'; renderJob(); };
+    // Build it: Lex builds the list now; once built, the button takes you to it (open, in view) to check and approve
+    if ($('#jbToMaster')) $('#jbToMaster').onclick = () => {
+      if (!V.master) return act(async () => { await api.desk.buildMaster({ jobId: O.job.id }); const v = (await api.jobs.overview({ jobId: O.job.id })).desk.master; msg = v ? `Master list built: ${v.devices} devices, ${v.cables} cables${(v.gaps || []).length ? `, ${v.gaps.length} gap${v.gaps.length === 1 ? '' : 's'} to look at` : ''}. Press Check and approve it.` : 'Lex could not build the list: check the inputs are in the job folder (Inputs & setup).'; }, 'Lex is reading the job documents and building the master list (a minute or two)…');
+      goMaster();
+    };
     if ($('#jbAll')) $('#jbAll').onclick = () => act(() => api.jobs.makeAll({ jobId: O.job.id }), 'Making the deliverables…');
     if ($('#jbCheck')) $('#jbCheck').onclick = () => act(async () => { const r = await api.jobs.check({ jobId: O.job.id }); msg = `Cal checked against ${r.schedule}: ${r.headline || ''} ${r.findings} to look at.`; }, 'Cal is checking…');
     el.querySelectorAll('[data-make]').forEach(b => b.onclick = () => prep(b.closest('.jbrow'), b.dataset.make));
@@ -108,6 +112,7 @@ export function initJobsUI({ api, getAgents, openIssue, onWorkOn }) {
     box.querySelector('#jpSkills').innerHTML = '<div class="skp"><div class="skp-h">Skills for this run <span>loading…</span></div></div>';
     const DK = api.drawKinds; picker = await renderSkillPicker(api, box.querySelector('#jpSkills'), P.agentId, { uncheck: (i) => DK && ['bcd', 'sld', 'earthing'].includes(P.kind) ? !DK.skillFit(i, P.kind) : false });
   }
+  function goMaster() { openDeskSection('master'); tab = 'setup'; msg = ''; renderJob(); const t0 = Date.now(); const look = () => { const d = document.querySelector('details.jd[data-sec="master"]'); if (d) { d.open = true; d.scrollIntoView({ behavior: 'smooth', block: 'start' }); d.classList.add('flash'); setTimeout(() => d.classList.remove('flash'), 1600); } else if (Date.now() - t0 < 5000) setTimeout(look, 150); }; look(); }
   const openList = (no) => ((O && O.desk.crs) || []).filter(c => c.doc === no && !/responded|closed/i.test(c.status || ''));
   const openFor = (no) => openList(no).length;
   // a new revision: the next one at the same stage (P01 > P02) unless another is typed (e.g. C01); anything different goes to the agent

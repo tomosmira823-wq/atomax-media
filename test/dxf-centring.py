@@ -1,4 +1,5 @@
-import sys, ezdxf
+import sys, ezdxf, re
+UNI = lambda s: re.sub(r'\\U\+([0-9A-Fa-f]{4})', lambda m: chr(int(m.group(1), 16)), s)
 from ezdxf import bbox
 d=ezdxf.readfile(sys.argv[1]); boxes=[]; texts=[]
 def walk(ents):
@@ -13,6 +14,11 @@ def walk(ents):
             if e.dxf.layer.startswith('E-020') or 'Notes' in e.dxf.layer: continue
             b=bbox.extents([e],fast=False)
             if b.has_data: texts.append(((e.dxf.text if t=='TEXT' else e.plain_text())[:20], b.extmin.x,b.extmin.y,b.extmax.x,b.extmax.y))
+for e in d.entitydb.values():
+    try:
+        if e.dxftype() in ('TEXT', 'ATTRIB') and '\\U+' in e.dxf.text: e.dxf.text = UNI(e.dxf.text)
+        elif e.dxftype() == 'MTEXT' and '\\U+' in e.text: e.text = UNI(e.text)
+    except Exception: pass
 for sp in [d.modelspace()]: walk(sp)
 worst=0; n=0
 for kind,x0,y0,x1,y1 in boxes:

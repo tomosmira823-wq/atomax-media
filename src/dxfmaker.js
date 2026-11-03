@@ -6,8 +6,8 @@ const path = require('path');
 
 const TH = 2;            // standard text height (Tom's house rule: 2, never smaller)
 const LINE = TH * 1.7;   // MTEXT line pitch at height 2
-const FEED = 50;         // spacing between feeders on a busbar (house symbols carry an operating handle to the left)
-const LABEL_W = 34;      // label width beside a symbol
+const FEED = 55;         // spacing between feeders on a busbar (house symbols carry an operating handle to the left)
+const LABEL_W = 33;      // label width beside a symbol
 
 // ---------- symbols: drawn downwards from a top terminal at (0,0); `len` is where the bottom terminal is (0,-len); `end` = no bottom terminal ----------
 const L = (x1, y1, x2, y2, layer = 'SLD-SYMBOL') => ({ t: 'line', x1, y1, x2, y2, layer });
@@ -82,13 +82,14 @@ let PHASED = false;
 const isPhased = (spec) => !!(spec.phase || /\bphase\s*\d+/i.test(String(spec.title || '')));
 const TAG_CHARS = 16;   // longest line written up a cable tag
 function cableTag(label, minH = 0) {
-  const ls = wrap(label, TAG_CHARS * TH * 0.9).slice(0, 6), n = Math.max(1, ls.length), bw = n * LINE + 1.2, bh = Math.max(22, minH, Math.max(...ls.map(l => l.length), 6) * TH * 0.92 + 6);
+  const ls = wrap(label, TAG_CHARS * TH * 0.9).slice(0, 6), n = Math.max(1, ls.length), bw = n * LINE + 1.2, bh = Math.max(18, minH, Math.max(...ls.map(l => l.length), 6) * TH * 0.92 + 5);
   const prims = [L(0, 0, 0, -3, 'SLD-CABLE'), P([[-bw / 2, -3], [bw / 2, -3], [bw / 2, -3 - bh], [-bw / 2, -3 - bh]], true, 'SLD-CABLE'), L(0, -3 - bh, 0, -6 - bh, 'SLD-CABLE')];
   // the lines sit in the middle of the box across its width (each line's letters run from its baseline up by the text height)
   const first = -((n - 1) * LINE + TH) / 2 + TH;
   ls.forEach((l, i) => prims.push({ t: 'text', x: first + i * LINE, y: -3 - bh / 2, h: TH, text: l, align: 'center', rot: 90, layer: 'SLD-TEXT' }));
   return { len: 6 + bh, w: bw / 2, prims, tagged: true };
 }
+const UNDER = new Set(['motor', 'load']), UNDER_W = 30;   // motors and loads have their description centred underneath
 function drawChain(chain, x, y) {
   const prims = [];
   for (let item of chain || []) {
@@ -100,7 +101,7 @@ function drawChain(chain, x, y) {
     const state = /^(open|closed)$/i.test(String(item.state || '').trim()) ? `(${String(item.state).trim().toUpperCase()})` : '';
     if (state) item = { ...item, label: [item.label, state].filter(Boolean).join('\n') };
     const from0 = prims.length;
-    const label = wrap(item.label, sym.inside ? 16 : LABEL_W);
+    const label = wrap(item.label, sym.inside ? 16 : sym.end && UNDER.has(kind) ? UNDER_W : LABEL_W);
     const need = sym.inside ? 0 : label.length * LINE + 2.8;
     if (sym.inside && label.length > 2) {   // a board name over two lines: the box grows to hold it
       const bh = label.length * LINE + 3; sym.prims = [L(0, 0, 0, -2), P([[-9, -2], [9, -2], [9, -2 - bh], [-9, -2 - bh]], true)]; sym.len = 2 + bh;
@@ -108,12 +109,13 @@ function drawChain(chain, x, y) {
     sym.prims.forEach(p => prims.push(moved(p, x, y)));
     if (label.length) {
       if (sym.inside) prims.push({ t: 'mtext', x: x, y: y - 2 - (sym.len - 2) / 2, w: 17, h: TH, text: label.join('\n'), attach: 5, layer: 'SLD-TEXT' });
+      else if (sym.end && UNDER.has(kind)) prims.push({ t: 'mtext', x, y: y - sym.len - 1, w: UNDER_W, h: TH, text: label.join('\n'), attach: 2, layer: 'SLD-TEXT' });   // a load's description centred under it
       else prims.push({ t: 'mtext', x: x + sym.w + 2, y: y - 1.8, w: LABEL_W, h: TH, text: label.join('\n'), attach: 1, layer: 'SLD-TEXT' });
     }
     if (col) for (let i = from0; i < prims.length; i++) prims[i] = { ...prims[i], colour: col };
-    const labelBottom = label.length && !sym.inside ? y - 1.8 - label.length * LINE : y;
+    const labelBottom = !label.length || sym.inside ? y : sym.end && UNDER.has(kind) ? y - sym.len - 1 - label.length * LINE : y - 1.8 - label.length * LINE;
     y -= sym.len;
-    if (sym.end) return { y: Math.min(y, labelBottom - 1), prims, ended: true };
+    if (sym.end) return { y: Math.min(y, labelBottom - 0.5), prims, ended: true };
     // the label is taller than the symbol: carry the conductor on so the next symbol's label cannot touch this one
     const extra = Math.max(0, need - sym.len);
     if (extra > 0) { prims.push(L(x, y, x, y - extra, 'SLD-CABLE')); y -= extra; }
@@ -190,10 +192,10 @@ function alignGroup(feeders) {
 function drawSimple(f, fx, y, prims) {
   const { items } = chainParts(f.chain), r = drawChain(items, fx, y); prims.push(...r.prims);
   let yEnd = r.y;
-  if (feederLabelAdds(f)) { const tl = wrap(f.label, FEED - 6); prims.push({ t: 'mtext', x: fx - 3, y: yEnd - 3, w: FEED - 6, h: TH, text: tl.join('\n'), attach: 1, layer: 'SLD-TEXT' }); yEnd -= 4 + tl.length * LINE; }
+  if (feederLabelAdds(f)) { const tl = wrap(f.label, UNDER_W); prims.push({ t: 'mtext', x: fx, y: yEnd - 2, w: UNDER_W, h: TH, text: tl.join('\n'), attach: 2, layer: 'SLD-TEXT' }); yEnd -= 3 + tl.length * LINE; }
   return { yEnd, ended: r.ended, chainEnd: r.y };
 }
-function drawBoard(b, x0, y, prims, top) {
+function drawBoard(b, x0, y, prims, top, over = null) {
   let minY = y, maxY = y, maxX = x0 + FEED + 20; const ixs = [];
   // feeders, left to right at the feeder pitch. A board fed by a feeder (an MCC, a DB) is drawn underneath, reaching across under the
   // neighbouring feeders and dropped below the deepest of them, so the drawing stays compact (it does not stretch the main board).
@@ -217,12 +219,11 @@ function drawBoard(b, x0, y, prims, top) {
     let yEnd = r.y;
     if (!r.ended) {
       // the conductor carries on down to the board it feeds; that board's name sits beside the conductor
-      const sl = wrap(sub.label || 'BOARD', 30);
+      // the board's name goes above the right-hand end of its own busbar (clear of the feeders over it), not in the feed
       const S = subs.find(s => s.i === i), under = ext.filter(e => e && e.x1 > S.x0 && e.x0 < S.x1);
-      const natural = yEnd - Math.max(SUB_GAP_MIN, sl.length * LINE + 4), subY = Math.min(natural, ...under.map(e => e.y0 - 10));
+      const natural = yEnd - SUB_GAP_MIN, subY = Math.min(natural, ...under.map(e => e.y0 - 10));
       prims.push(L(fx, yEnd, fx, subY, 'SLD-CABLE'));
-      prims.push({ t: 'mtext', x: fx + 3, y: subY + 2 + sl.length * LINE, w: 30, h: TH, text: sl.join('\n'), attach: 1, layer: 'SLD-TEXT' });
-      const d = drawBoard({ ...sub, label: '', incomers: [] }, S.x0, subY, prims, false);
+      const d = drawBoard({ ...sub, incomers: [] }, S.x0, subY, prims, false, [...under, { x0: fx - 10, x1: fx + 6 + LABEL_W + 4, y0: -1e9 }]);   // its own feed (and that feed's labels) too
       yEnd = d.minY; maxX = Math.max(maxX, d.maxX, S.x1);
     }
     minY = Math.min(minY, yEnd);
@@ -237,6 +238,14 @@ function drawBoard(b, x0, y, prims, top) {
   // the busbar spans its own feeders and incomers only
   const xs = [...fxs, ...ixs], busL = xs.length ? Math.min(...xs) - 8 : x0, busR = Math.max(xs.length ? Math.max(...xs) + 14 : x0 + 30, busL + 30);
   prims.push(P([[busL, y], [busR, y]], false, 'SLD-BUS', 0.8));
+  // a board fed from a feeder: its name above the right-hand end of its busbar, kept clear of the feeders drawn over it
+  if (!top && over && b.label) {
+    const bl = wrap(b.label, 44), h = bl.length * LINE, clearX = Math.max(busL + 10, ...over.map(e => e.x1 + 3)), w = Math.min(44, Math.max(30, busR - clearX));
+    const room = over.every(e => e.x1 + 2 < busR - w || e.y0 > y + h + 2 + 2);
+    if (room) prims.push({ t: 'mtext', x: busR, y: y + 1.5 + h, w, h: TH, text: wrap(b.label, w).join('\n'), attach: 3, layer: 'SLD-TEXT' });
+    else prims.push({ t: 'mtext', x: busR + 3, y: y + h / 2, w: 44, h: TH, text: bl.join('\n'), attach: 4, layer: 'SLD-TEXT' });   // no room above: past the right end
+    maxY = Math.max(maxY, y + 2 + h);
+  }
   // a top-level board's name: above the bus at the left when there is room, otherwise past its right end
   if (top && b.label) {
     const room = (busR - busL) / 2 - 14, bl = wrap(b.label, room >= 30 ? Math.min(44, room) : 44);
@@ -269,7 +278,7 @@ function layoutSld(spec, opts = {}) {
       const depthOf = (items) => { if (!items.length) return 0; const r = drawChain(items, 0, 0), bb = primsBounds(r.prims); return Math.max(-r.y, Number.isFinite(bb.y0) ? -bb.y0 : 0); };
       const D = Math.max(8, ...(b.feeders || []).map(f => { const { items } = chainParts(f.chain), k = firstCable(items); return depthOf(k >= 0 ? items.slice(0, k) : items); }));
       wall = -D - 3;
-      b = { ...b, feeders: (b.feeders || []).map(f => { const chain = [...(f.chain || [])], { items } = chainParts(chain), k = firstCable(items); if (k < 0) return f; const h = k ? chainHeight(items.slice(0, k)) : 0; chain.splice(k, 0, { gap: D + 6 - h }); return { ...f, chain }; }) };
+      b = { ...b, feeders: (b.feeders || []).map(f => { const chain = [...(f.chain || [])], { items } = chainParts(chain), k = firstCable(items); if (k < 0) return f; const h = k ? chainHeight(items.slice(0, k)) : 0; chain.splice(k, 0, { gap: D + 5 - h }); return { ...f, chain }; }) };
     }
     const from = prims.length, d = drawBoard(b, x0, 0, prims, true);
     if (wall !== null) {   // a dashed box round the board and its incomers, named above it
@@ -790,7 +799,8 @@ function writeDxf(prims, bounds, opts = {}) {
   const out = [];
   const g = (code, val) => out.push(String(code).padStart(3, ' '), String(val));
   let colour = 0; const head = (type, layer) => { g(0, type); g(5, (h++).toString(16).toUpperCase()); g(330, OWNER); g(100, 'AcDbEntity'); g(8, layer || '0'); if (colour) g(62, colour); };
-  const clean = (s) => String(s).replace(/[\r\n]+/g, ' ');
+  const uni = (s) => String(s).replace(/[^\x00-\x7F]/g, (c) => '\\U+' + c.codePointAt(0).toString(16).toUpperCase().padStart(4, '0'));   // ², °, Ω ... as AutoCAD's own unicode escape
+  const clean = (s) => uni(String(s).replace(/[\r\n]+/g, ' '));
   const blocks = new Set([...tpl.matchAll(/\n\s*0\nBLOCK\n[\s\S]*?\n\s*2\n([^\n]+)\n/g)].map(m => m[1].trim()));
   const list = []; const add = (p) => { if (p.t === 'insert' && !blocks.has(p.name)) flatPrims([p]).forEach(add); else list.push(p); }; prims.forEach(add);
   for (const p of list) {
@@ -802,7 +812,7 @@ function writeDxf(prims, bounds, opts = {}) {
     else if (p.t === 'pline') { head('LWPOLYLINE', p.layer); g(100, 'AcDbPolyline'); g(90, p.pts.length); g(70, p.closed ? 1 : 0); if (p.width) g(43, n(p.width)); for (const [x, y] of p.pts) { g(10, n(x)); g(20, n(y)); } }
     else if (p.t === 'text') { head('TEXT', p.layer); g(100, 'AcDbText'); g(10, n(p.x)); g(20, n(p.y)); g(30, 0); g(40, n(p.h)); g(1, clean(p.text)); if (p.rot) g(50, n(p.rot)); g(7, 'Standard'); if (p.align === 'center') { g(72, 1); g(11, n(p.x)); g(21, n(p.y)); g(31, 0); } g(100, 'AcDbText'); }
     else if (p.t === 'fill' && p.pts && p.pts.length > 2) { head('HATCH', p.layer); g(100, 'AcDbHatch'); g(10, 0); g(20, 0); g(30, 0); g(210, 0); g(220, 0); g(230, 1); g(2, 'SOLID'); g(70, 1); g(71, 0); const rings = p.rings || [p.pts]; g(91, rings.length); for (const r of rings) { g(92, 2); g(72, 0); g(73, 1); g(93, r.length); for (const [x, y] of r) { g(10, n(x)); g(20, n(y)); } g(97, 0); } g(75, 0); g(76, 1); g(98, 0); }
-    else if (p.t === 'mtext') { head('MTEXT', p.layer); g(100, 'AcDbMText'); g(10, n(p.x)); g(20, n(p.y)); g(30, 0); g(40, n(p.h)); g(41, n(p.w)); g(71, p.attach || 1); g(72, 5); g(1, String(p.text).replace(/\r?\n/g, '\\P')); g(7, 'Standard'); }
+    else if (p.t === 'mtext') { head('MTEXT', p.layer); g(100, 'AcDbMText'); g(10, n(p.x)); g(20, n(p.y)); g(30, 0); g(40, n(p.h)); g(41, n(p.w)); g(71, p.attach || 1); g(72, 5); g(1, uni(String(p.text)).replace(/\r?\n/g, '\\P')); g(7, 'Standard'); }
   }
   tpl = tpl.replace(/(\n\s*0\nSECTION\n\s*2\nENTITIES\n)(\s*0\nENDSEC\n)/, (_m, a, b) => a + out.join('\n') + '\n' + b);
   tpl = tpl.replace(/(\$HANDSEED\n\s*5\n)[0-9A-Fa-f]+\n/, (_m, a) => a + (h + 16).toString(16).toUpperCase() + '\n');
@@ -826,7 +836,7 @@ function toSvg(prims, b) {
     if (p.t === 'pline') return `<polyline points="${p.pts.map(([x, y]) => X(x) + ',' + Y(y)).join(' ')}${p.closed ? ' ' + X(p.pts[0][0]) + ',' + Y(p.pts[0][1]) : ''}" fill="none" stroke="${col(p.layer)}" stroke-width="${p.width || 0.35}"/>`;
     if (p.t === 'text') { const tf = [p.rot ? `rotate(${-p.rot} ${X(p.x)} ${Y(p.y)})` : '', p.wf && p.wf !== 1 ? `translate(${X(p.x)} 0) scale(${p.wf} 1) translate(${-X(p.x)} 0)` : ''].filter(Boolean).join(' '); return `<text ${tf ? `transform="${tf}" ` : ''}x="${X(p.x)}" y="${Y(p.y)}" font-size="${(p.h / 0.72).toFixed(2)}" text-anchor="${p.align === 'center' ? 'middle' : 'start'}" font-family="Arial">${esc(p.text)}</text>`; }
     if (p.t === 'fill') return `<path fill-rule="evenodd" d="${(p.rings || [p.pts]).map(r => 'M' + r.map(([x, y]) => X(x) + ' ' + Y(y)).join(' L') + ' Z').join(' ')}" fill="${p.colour === 3 ? '#40c057' : p.colour === 1 ? '#fa5252' : '#495057'}" stroke="none"/>`;
-    if (p.t === 'mtext') { const ls = String(p.text).split('\n'), mid = p.attach === 5 || p.attach === 6 || p.attach === 4; const y0 = mid ? p.y + (ls.length - 1) * LINE / 2 - p.h / 2 : p.y - p.h; return `<text font-size="${(p.h / 0.72).toFixed(2)}" font-family="Arial" fill="${col(p.layer)}" text-anchor="${p.attach === 5 ? 'middle' : p.attach === 6 ? 'end' : 'start'}">${ls.map((l, i) => `<tspan x="${X(p.x)}" y="${Y(y0 - i * LINE)}">${esc(l)}</tspan>`).join('')}</text>`; }
+    if (p.t === 'mtext') { const ls = String(p.text).split('\n'), mid = p.attach === 5 || p.attach === 6 || p.attach === 4; const y0 = mid ? p.y + (ls.length - 1) * LINE / 2 - p.h / 2 : p.y - p.h; return `<text font-size="${(p.h / 0.72).toFixed(2)}" font-family="Arial" fill="${col(p.layer)}" text-anchor="${(((p.attach || 1) - 1) % 3) === 1 ? 'middle' : (((p.attach || 1) - 1) % 3) === 2 ? 'end' : 'start'}">${ls.map((l, i) => `<tspan x="${X(p.x)}" y="${Y(y0 - i * LINE)}">${esc(l)}</tspan>`).join('')}</text>`; }
     return '';
   });
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${n(W)} ${n(H)}" style="background:#fff">${parts.join('')}</svg>`;

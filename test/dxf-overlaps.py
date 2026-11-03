@@ -1,4 +1,5 @@
-import sys, ezdxf, itertools
+import sys, ezdxf, re, itertools
+UNI = lambda s: re.sub(r'\\U\+([0-9A-Fa-f]{4})', lambda m: chr(int(m.group(1), 16)), s)
 from ezdxf import bbox
 from ezdxf.math import BoundingBox2d
 f=sys.argv[1]; d=ezdxf.readfile(f)
@@ -26,6 +27,11 @@ def walk(ents, depth=0):
             import math
             pts=[(c.x+r*math.cos(i/16*2*math.pi), c.y+r*math.sin(i/16*2*math.pi)) for i in range(17)]
             for a,b2 in zip(pts,pts[1:]): segs.append((a,b2,e.dxf.layer))
+for e in d.entitydb.values():
+    try:
+        if e.dxftype() in ('TEXT', 'ATTRIB') and '\\U+' in e.dxf.text: e.dxf.text = UNI(e.dxf.text)
+        elif e.dxftype() == 'MTEXT' and '\\U+' in e.text: e.text = UNI(e.text)
+    except Exception: pass
 for sp in spaces: walk(sp)
 def shrink(b,m=0.25): return (b.extmin.x+m,b.extmin.y+m,b.extmax.x-m,b.extmax.y-m)
 def ov(a,b): return a[0]<b[2] and b[0]<a[2] and a[1]<b[3] and b[1]<a[3]
