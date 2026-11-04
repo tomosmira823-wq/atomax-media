@@ -30,7 +30,8 @@ function parse(no) {
   m = t.match(QS_SHORT); return m ? { project: m[1], area: m[2], disc: '', type: m[3], seq: +m[4], form: 'short' } : null;
 }
 // numbers in a file name (the client's schedule X071126-01-72-0001 Cable Schedule.xlsx says which area and form this job uses)
-const inName = (name) => { const m = String(name || '').toUpperCase().match(/X\d{4,6}(?:-[A-Z0-9]{2,4}){2,4}-\d{4}/g) || []; return m.map(parse).filter(Boolean); };
+// only engineering documents count (the client's schedules and drawings): the template's own registers (0000-01-01-000x) would otherwise teach area 0000 and discipline 01
+const inName = (name) => { const m = String(name || '').toUpperCase().match(/X\d{4,6}(?:-[A-Z0-9]{2,4}){2,4}-\d{4}/g) || []; return m.map(parse).filter(p => p && (p.form === 'short' || /^0[56]$/.test(p.disc))); };
 // the job's numbering habits, read from the numbers already on its register, then from numbered files in the job folder (seen)
 function habits(job, seen = []) {
   const own = (job.drawings || []).map(d => parse(d.no)).filter(Boolean), ps = own.length ? own : seen.flatMap(n => typeof n === 'string' ? inName(n) : [n]).filter(Boolean);

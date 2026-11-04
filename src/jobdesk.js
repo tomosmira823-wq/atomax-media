@@ -129,7 +129,12 @@ const DN = require('./docnumber');
 // stays TBC (the register may still say otherwise) unless `assume` is set, which the make does so a drawing never goes out numbered TBC.
 function proposeNumber(job, type, taken, id, seen = [], assume = false) { const d = id ? load(id) : {}; const r = DN.next(job, type, { area: d.area, disc: d.disc, taken, seen: seen.length ? seen : seenNumbers(job) }); return r.assumed && !assume ? '' : r.no; }
 // numbered files already in the job folder (the client's schedules, registers): they say how this job is numbered
-function seenNumbers(job) { try { const p = require('./projects').load(job.id); return (p && p.files || []).map(f => f.rel.split(/[\\/]/).pop()); } catch { return []; } }
+function seenNumbers(job) {
+  try { const p = require('./projects').load(job.id); if (p && p.files && p.files.length) return p.files.map(f => f.rel.split(/[\\/]/).pop()); } catch {}
+  // the folder not read yet (a job Eli has just made): a quick look at the file names themselves
+  const out = []; const walk = (dir, depth) => { if (depth > 4 || out.length > 2000) return; let es = []; try { es = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; } for (const e of es) { if (e.isDirectory()) { if (!/^(archive|superseded|node_modules|\.)/i.test(e.name)) walk(path.join(dir, e.name), depth + 1); } else out.push(e.name); } };
+  if (job && job.folder) walk(job.folder, 0); return out;
+}
 function setNumbering(id, { area, disc }) { const d = load(id); if (area != null) d.area = String(area).trim().toUpperCase().slice(0, 4); if (disc != null) d.disc = /^\d{2}$/.test(disc) ? disc : ''; return save(id, d); }
 // the kind of a drawing (by its QS 006 code, else its words): used to match emails and register rows to the row that already exists
 const QSNO = /X\d{4,6}(?:-[A-Z0-9]{2,4}){2,5}-\d{4}/i;

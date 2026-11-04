@@ -358,7 +358,7 @@ function drawRoomed(b, x0, y, prims, top, over = null, feed = null) {   // feed:
         const subsT = tagged.feeders.map(f => chainParts(f.chain).sub).filter(sb => sb && sb._room);
         // one cable level for every board in the room: the deepest board's; a feeder that stays in the room (DB to its UPS) starts its cable
         // at that level too, so the tags across the drawing sit in one row, and the wall steps down round what stays inside
-        const Dall = Math.max(8, ...subsT.map(subD));
+        const Dall = Math.max(8, ...subsT.flatMap(sb => (sb.feeders || []).map(fDepth)));   // the deepest first cable across the boards (not a whole in-room chain: that gets a lobe)
         roomWalls = new Map(subsT.map(sb => [sb._room, Dall]));   // a feeder that stays inside gets its own lobe below this (logged as it is drawn)
         wall = Math.min(...subsT.map(sb => at.get(sb._room) - Dall - 3));
         // this board's own feeders that leave the room (not to a board in it): their cables cross its wall like any other room's
@@ -385,15 +385,20 @@ function drawRoomed(b, x0, y, prims, top, over = null, feed = null) {   // feed:
       const bb = primsBounds(prims.slice(from).filter(inside)), m = 6, ex0 = bb.x0 - m, ex1 = bb.x1 + m, ey0 = y + wall, ey1 = feed ? Math.min(bb.y1 + m, feed.ceil - TH - 3) : wallTop === null ? bb.y1 + m : y + wallTop;
       if (roomSubs && placedRooms.length) {
         // the room steps down round each board in it: the top part down to the shallowest board's cable level, then each board's own part
-        const walls = placedRooms.filter(e => !e.lobe).map(e => ({ ...e, w: e.y - roomWalls.get(e.id) - 3 })), topW = Math.max(top ? -Infinity : y + ownWall, ...walls.map(e => e.w));
+        const walls = placedRooms.filter(e => !e.lobe && !e.away).map(e => ({ ...e, w: e.y - roomWalls.get(e.id) - 3 })), topW = Math.max(top ? -Infinity : y + ownWall, ...walls.map(e => e.w));
         const lobes = placedRooms.filter(e => e.lobe).map(e => ({ x0: e.x0 - 3, y0: e.y - 3, x1: e.x1 + 3, y1: topW + 1 })).filter(l => l.y0 < Math.min(topW, ...walls.filter(e => e.x1 > l.x0 && e.x0 < l.x1).map(e => e.w)) - 1e-6);
-        const rs = [{ x0: ex0, y0: topW, x1: ex1, y1: ey1 }, ...walls.filter(e => e.w < topW - 1e-6).map(e => ({ x0: e.x0 - m, y0: e.w, x1: e.x1 + m, y1: topW + 1 })), ...lobes];
+        // another room inside this one's footprint (the office DB fed from the switchboard): this room's band is cut round it, so the
+        // feed cable crosses the wall above the other room's box, as a cable leaving a room does
+        let band = [{ x0: ex0, y0: topW, x1: ex1, y1: ey1 }];
+        for (const a of placedRooms.filter(e => e.away)) { const g = 3, ax0 = a.x0 - g, ax1 = a.x1 + g, ay = a.y1 + g; const next = []; for (const r of band) { if (ax1 <= r.x0 || ax0 >= r.x1 || ay >= r.y1) { next.push(r); continue; } if (ax0 > r.x0) next.push({ ...r, x1: ax0 }); if (ax1 < r.x1) next.push({ ...r, x0: ax1 }); if (ay > r.y0) next.push({ x0: Math.max(r.x0, ax0), x1: Math.min(r.x1, ax1), y0: ay, y1: r.y1 }); } band = next; }
+        const rs = [...band, ...walls.filter(e => e.w < topW - 1e-6).map(e => ({ x0: e.x0 - m, y0: e.w, x1: e.x1 + m, y1: topW + 1 })), ...lobes];
         for (const g of unionSegs(rs)) dashPath(prims, [[g.x0, g.y0], [g.x1, g.y1]], 'SLD-ENCLOSURE', true);
       } else dashBox(prims, ex0, ey0, ex1, ey1, 'SLD-ENCLOSURE');
       // the name: centred above the box, or (incomer cables crossing the top) at its top left, inside, clear of them
       if (feed) prims.push({ t: 'text', x: feed.x + 8, y: ey1 + 1.5, h: TH, text: String(b.enclosure).toUpperCase(), layer: 'SLD-TEXT' });   // a board fed from another room: its room named just above the box, beside the cable coming in
       else prims.push(wallTop === null ? { t: 'text', x: (ex0 + ex1) / 2, y: ey1 + 2, h: TH, text: String(b.enclosure).toUpperCase(), align: 'center', layer: 'SLD-TEXT' } : { t: 'text', x: ex0 + 3, y: ey1 - 3 - TH, h: TH, text: String(b.enclosure).toUpperCase(), layer: 'SLD-TEXT' });
       d.maxY = Math.max(d.maxY, ey1 + 2 + TH); d.maxX = Math.max(d.maxX, ex1); d.minY = Math.min(d.minY, ey0); d.x0 = ex0;
+      if (feed && Array.isArray(keepR)) keepR.push({ away: true, x0: ex0, x1: ex1, y1: ey1 + 2 + TH });   // a board in another room, fed from this one: the parent's outline is cut round it
     }
     return d;
   } finally { SUBLOG = keepS; ROOMLOG = keepR; }
@@ -407,6 +412,10 @@ function layoutSld(spec, opts = {}) {
   if (!boards.length) throw new Error('The drawing has no boards');
   // two sources written as one incomer (transformer ... then a generator ... down to the bus): split at each source into its own incomer
   { const SRC = new Set(['supply', 'generator']);
+    // an incomer heading that is data (fault level, Ze, capacity: it has numbers in it) belongs on the source it describes, not floating above the chain
+    const foldInc = (b) => { if (!b) return; for (const c of b.incomers || []) { const first = (c.chain || []).find(it => !it.gap); if (c.label && /\d/.test(c.label) && !/^(MAINS|STANDBY|NORMAL|EMERGENCY|ALTERNATIVE)\b/i.test(c.label) && first && SRC.has(symbolOf(first.symbol))) { first.label = [first.label, c.label].filter(Boolean).join('\n'); c.label = ''; } }
+      for (const f of b.feeders || []) for (const it of f.chain || []) if (it.board) foldInc(it.board); };
+    boards.forEach(foldInc);
     const splitInc = (b) => { if (!b) return; const out = [];
       for (const c of b.incomers || []) { const items = c.chain || []; const starts = items.map((it, i) => !it.gap && !it.board && SRC.has(symbolOf(it.symbol)) ? i : -1).filter(i => i > 0);
         if (!starts.length) { out.push(c); continue; }
@@ -1012,7 +1021,7 @@ function layoutPanelBcd(spec, model, opts = {}) {
   const coresTxt = (v) => { const s = String(v || '').trim().toUpperCase(); return /^\d+$/.test(s) ? s + 'C' : s.replace(/^(\d+)\s*(?:PAIRS?|PRS?|P)$/, '$1PR').replace(/\s*CORES?$/, 'C'); };
   const sizeTxt = (c) => { const sz = String(c.size || '').trim().toUpperCase().replace(/\s*MM2?²?$/, '').trim(); return units([coresTxt(c.cores), sz ? (/^[\d.]+$/.test(sz) ? sz + 'MM²' : sz) : ''].filter(Boolean).join(' ')); };
   const anyLen = cables.some(c => String(c.length ?? '').trim());
-  const lenTxt = (c) => { const v = String(c.length ?? '').trim().toUpperCase().replace(/\s*M$/, ''); return v ? v + 'm' : anyLen ? 'LENGTH TBC' : ''; };
+  const lenTxt = (c) => { const v = String(c.length ?? '').trim().toUpperCase().replace(/\s*M$/, ''); if (!v) return anyLen ? 'LENGTH TBC' : ''; return /^[\d.]+$/.test(v) ? v + 'm' : /TBC|TBA|HOLD|\?/.test(v) ? 'LENGTH TBC' : v; };   // a length still to be confirmed is said so, never TBCm
   // a type line too long for the drop is split over two lines (type, then the rest with the length), so the drops stay short
   const LINE_MAX = 62;
   const cabLines = (c) => {
@@ -1026,7 +1035,7 @@ function layoutPanelBcd(spec, model, opts = {}) {
   const textX = (lx, i) => i === 0 ? lx - 1.2 : lx + i * (1.2 + H);   // text up the page: its letters stand left of its baseline
   // the drop from a panel / device to the next is long enough for the longest cable text, clear of the area boxes
   // each level of a sheet (going up or down from the panel) has its own drop, long enough for the longest cable text on that level
-  const dropFor = (len) => Math.max(72, Math.ceil(len + (hasAreas ? 30 : 16)));
+  const dropFor = (len) => Math.max(72, Math.ceil(len + (hasAreas ? 40 : 16)));   // with areas: room for the box edges the cable crosses (the upper box reaches below the deepest item in its row)
   const textLen = (c) => Math.max(...cabLines(c).map(tw));
   // devices in the same place go side by side (first place first), so each area is one box
   const byLoc = (kids) => { if (!hasAreas) return kids; const seen = []; kids.forEach(k => { if (!seen.includes(loc(k.tag))) seen.push(loc(k.tag)); }); return kids.map((k, i) => [k, i]).sort((a, b) => seen.indexOf(loc(a[0].tag)) - seen.indexOf(loc(b[0].tag)) || a[1] - b[1]).map(x => x[0]); };
@@ -1159,7 +1168,7 @@ function layoutPanelBcd(spec, model, opts = {}) {
           const above = over.filter(R => R.y0 >= b.y1).sort((p, q) => p.y0 - q.y0)[0], below = over.filter(R => R.y1 <= b.y0).sort((p, q) => q.y1 - p.y1)[0], R = above || below;
           if (!R) continue;
           const strip = above ? { x0: Math.max(b.x0, R.x0), x1: Math.min(b.x1, R.x1), y0: b.y1, y1: R.y0 } : { x0: Math.max(b.x0, R.x0), x1: Math.min(b.x1, R.x1), y0: R.y1, y1: b.y0 };
-          if (clusters.some(Cl => Cl !== A && Cl !== B && Cl.loc && (Cl.rects || [Cl.box]).some(r => hit(strip, r, 3)))) continue;   // only the strip can cover another area: B's own box already stands beside its neighbours, and a pointer label is text, not kit
+          if (clusters.some(Cl => Cl !== A && Cl !== B && Cl.loc && (Cl.rects || [Cl.box]).some(r => hit(strip, r, 0.5)))) continue;   // only the strip can cover another area (boxes are already padded, so a neighbour touching the strip's side is fine); B's own box already stands beside its neighbours, and a pointer label is text, not kit
           A.rects.push(strip, b); A.items.push(...B.items); clusters.splice(clusters.indexOf(B), 1); changed = true; break tabs; } }
       }
       // a link label on its own is not boxed: that panel's area is drawn on its own sheet
@@ -1198,7 +1207,7 @@ function layoutPanelBcd(spec, model, opts = {}) {
       const cuts = [lo, ...hEdges.filter(e => e.x0 < q.lx && q.lx < e.x1 && e.y > lo && e.y < hi).map(e => e.y), hi].sort((a, b) => a - b);
       let best = [lo, hi], bl = -1; for (let i = 1; i < cuts.length; i++) if (cuts[i] - cuts[i - 1] > bl) { bl = cuts[i] - cuts[i - 1]; best = [cuts[i - 1], cuts[i]]; }
       const ls = cabLines(q.c), len = Math.max(...ls.map(tw)), yc = (best[0] + best[1]) / 2;
-      if (len + 2 > bl) warn(`sheet ${si + 1}: cable ${q.c.no} text is longer than its clear run`);
+      if (len + 2 > bl) { if (process.env.CUTDBG) console.error('CUT', q.c.no, { lo, hi, cuts, len, bl, ls }); warn(`sheet ${si + 1}: cable ${q.c.no} text is longer than its clear run`); }
       ls.forEach((l, i) => { const x = textX(q.lx, i); prims.push({ t: 'text', x, y: yc, h: H, text: l, rot: 90, align: 'center', layer: 'BCD-TEXT' }); textRects.push({ x0: x - H, y0: yc - tw(l) / 2, x1: x, y1: yc + tw(l) / 2 }); });
       boxes.push({ no: String(q.c.no || ''), x0: q.lx - 1.5 - H, y0: yc - len / 2 - 1, x1: textX(q.lx, ls.length - 1) + 0.3, y1: yc + len / 2 + 1, hold: /^TBC$|^$/i.test(String(q.c.no || '').trim()) || /\bTBC\b/i.test(`${q.c.size || ''} ${q.c.cores || ''} ${q.c.type || ''}`) });
     }
@@ -1216,7 +1225,7 @@ function layoutPanelBcd(spec, model, opts = {}) {
       let at = tryName(b, w, obs);
       for (let d = 1; !at && d <= w + 10; d += 1) for (const nb of [{ ...b, x1: b.x1 + d }, { ...b, x0: b.x0 - d }]) {
         const strip = nb.x1 > b.x1 ? { x0: b.x1, y0: b.y0, x1: nb.x1, y1: b.y1 } : { x0: nb.x0, y0: b.y0, x1: b.x0, y1: b.y1 };
-        if (obs.some(o => hit(strip, o, 1)) || boxesNow.some(o => hit(nb, o, 3))) continue;
+        if (obs.some(o => hit(strip, o, 1)) || boxesNow.some(o => hit(strip, o, 3))) continue;   // only the added strip is tested: the box already stands next to its neighbours
         const a = tryName(nb, w, obs); if (a) { Object.assign(b, nb); at = a; break; } }
       if (at) { prims.push({ t: 'text', x: at.x, y: at.y, h: H, text: name, layer: 'BCD-TEXT' }); return; }
       // a narrow box (a cable down its middle): the name on two lines beside the cable, as MTEXT, rather than left off

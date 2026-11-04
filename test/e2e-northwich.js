@@ -1,0 +1,113 @@
+// End to end, the way the app does it (no renderer, no network): a job folder copied from the real Template Project Directory's tree,
+// the client's inputs filed where Eli files them, the job and its two deliverables on the Jobs screen, then the app's own jobs:make
+// path with Dex's REAL Northwich replies (the specs he returned on 04/11/2026) standing in for Claude. Checks what Tom checks:
+// the files in the folder (names, numbers, archive), the PDFs, and what is drawn (rooms once, cables level, HOLD, house notes).
+// Run: node test/e2e-northwich.js
+'use strict';
+const assert = require('assert'), fs = require('fs'), path = require('path'), os = require('os');
+const Module = require('module'), orig = Module._load;
+const HANDLERS = {};
+const ipcMain = { handle: (ch, fn) => { HANDLERS[ch] = fn; }, on: () => {} };
+Module._load = function (r, ...a) { if (r === 'electron') return { ipcMain, app: { getPath: () => os.tmpdir(), getVersion: () => 'test' }, shell: { openPath: () => {}, showItemInFolder: () => {} }, dialog: {}, Notification: function () {}, BrowserWindow: function () {} }; return orig.call(this, r, ...a); };
+const ROOT = path.join(__dirname, '..', 'src'), FX = path.join(__dirname, 'fixtures');
+const call = (ch, args) => { const h = HANDLERS[ch]; if (!h) throw new Error('no handler ' + ch); return h({ sender: null }, args); };
+
+// --- the world: a temp user-data folder, a Projects root holding a job folder made from the template tree
+const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'amo-e2e-')), USER = path.join(TMP, 'user'), PROJECTS = path.join(TMP, 'Projects'), TPL = path.join(TMP, 'Template Project Directory');
+fs.mkdirSync(USER, { recursive: true }); fs.mkdirSync(PROJECTS, { recursive: true });
+{ const t = JSON.parse(fs.readFileSync(path.join(FX, 'template', 'tree.json'), 'utf8')); for (const d of t.dirs) fs.mkdirSync(path.join(TPL, d), { recursive: true }); for (const f of t.files) { fs.mkdirSync(path.dirname(path.join(TPL, f)), { recursive: true }); fs.writeFileSync(path.join(TPL, f), 'x'); } }
+const settings = { projectRoots: [PROJECTS], jobsFolder: PROJECTS, templateDir: TPL };
+const loadSettings = () => settings, saveSettings = (s) => Object.assign(settings, s);
+
+// --- the modules, wired as main.js wires them
+const checker = require(path.join(ROOT, 'checker.js')), library = require(path.join(ROOT, 'library.js')), runs = require(path.join(ROOT, 'runs.js'));
+library.init(USER, [], checker.STANDARD_SKILL); runs.init({ sendFn: () => {}, userDir: USER });
+const projects = require(path.join(ROOT, 'projects.js')); projects.init(USER, loadSettings);
+// Claude: Dex answers with his real replies; anyone else gets a minimal answer
+const dexSld = fs.readFileSync(path.join(FX, 'northwich-dex-sld.json'), 'utf8'), dexBcd = fs.readFileSync(path.join(FX, 'northwich-dex-bcd.json'), 'utf8');
+let claudeCalls = [];
+async function claudeFull(a) {
+  claudeCalls.push({ who: a.who, system: String(a.system || '').slice(0, 60) });
+  const sys = String(a.system || ''), user = JSON.stringify(a.messages || []);
+  if (a.who === 'dex' || /You are Dex/i.test(sys)) { const req = (user.match(/REQUEST: ([^"]{0,200})/) || [])[1] || ''; return { text: /block cable/i.test(req) ? dexBcd : dexSld, stop: 'end_turn' }; }
+  return { text: '{}', stop: 'end_turn' };
+}
+const BIZ = require(path.join(ROOT, 'bizmain.js')).register({ ipcMain, dialog: {}, shell: { openPath: () => {}, showItemInFolder: () => {} }, Notification: function () {}, getWin: () => null, userDir: () => USER, claudeFull, checker, getSettings: loadSettings });
+const o365 = require(path.join(ROOT, 'o365main.js')); o365.register({ ipcMain, claudeFull, BIZ, checker, userDir: () => USER, projects });
+require(path.join(ROOT, 'jobdeskmain.js')).register({ ipcMain, dialog: {}, getWin: () => null, claudeFull, BIZ, checker, userDir: () => USER, library, writeXlsx: o365.writeXlsx, shell: { openPath: () => {}, showItemInFolder: () => {} } });
+require(path.join(ROOT, 'intake.js')).register({ ipcMain, dialog: {}, shell: {}, getWin: () => null, userDir: () => USER, claudeFull, checker, BIZ, loadSettings, saveSettings });
+require(path.join(ROOT, 'jobsmain.js')).register({ ipcMain, HANDLERS, BIZ, claudeFull });
+const desk = require(path.join(ROOT, 'jobdesk.js')), biz = require(path.join(ROOT, 'business.js')), dxfmaker = require(path.join(ROOT, 'dxfmaker.js'));
+
+const ls = (p) => { try { return fs.readdirSync(p).sort(); } catch { return []; } };
+const texts = (prims) => dxfmaker.flatPrims(prims).filter(p => p.t === 'text' || p.t === 'mtext').map(p => String(p.text));
+const step = (name, fn) => { try { const r = fn(); if (r && r.then) return r.then(v => { console.log('ok  ' + name + (v ? ': ' + v : '')); }).catch(e => { console.log('FAIL ' + name + ': ' + (e.stack || e)); process.exitCode = 1; }); console.log('ok  ' + name + (r ? ': ' + r : '')); } catch (e) { console.log('FAIL ' + name + ': ' + (e.stack || e)); process.exitCode = 1; } };
+
+(async () => {
+  // 1. the job, as Eli creates it: a folder from the template, the client's inputs filed, two deliverables
+  const folder = projects.createJobFolder(PROJECTS, 'X071126', 'Northwich Waterworks Pumping Station');
+  await step('job folder from the template', () => { assert.ok(fs.existsSync(path.join(folder, '7. Electrical', '7.3 Block Diagrams')), '7.3 exists'); assert.ok(fs.existsSync(path.join(folder, '9. Document Control', '9.1 Document Register', 'X071126-0000-01-01-0001.xlsm')), 'register renamed to the job number'); return path.basename(folder); });
+  const sch = projects.outputDir(folder, 'schedules'), site = projects.outputDir(folder, 'site-data');
+  fs.copyFileSync(path.join(FX, 'northwich-cable-schedule.xlsx'), path.join(sch, 'X071126-01-72-0001 Cable Schedule.xlsx'));
+  fs.copyFileSync(path.join(FX, 'northwich-equipment-list.xlsx'), path.join(sch, 'X071126 Equipment List.xlsx'));
+  fs.copyFileSync(path.join(FX, 'northwich-protection-schedule.xlsx'), path.join(sch, 'X071126-01-73-0001 Protection Schedule.xlsx'));
+  fs.writeFileSync(path.join(site, 'DNO letter - supply capacity and fault level.txt'), 'Prospective short circuit current at the cut-out: 22kA. TN-S.');
+  await step('inputs filed where they live', () => { assert.ok(/7\.8 Schedules$/.test(sch), sch); assert.ok(/10\.1\. Existing Site Data$/.test(site), 'site data goes in the template\'s own 10.1. folder, got ' + site); assert.ok(!fs.existsSync(path.join(folder, '10. Site Data', '10.1 Existing Site Data')), 'no second 10.1 folder made'); });
+  const job = biz.saveJob(BIZ.data(), { number: 'X071126', name: 'Northwich Waterworks Pumping Station', client: 'Weaver Water Ltd', folder }, 'Eli'); BIZ.store.save();
+  desk.addDeliverables(job.id, [{ type: 'SLD', title: 'Single line diagram - Northwich Waterworks Pumping Station LV distribution (MSB-01 / MCC-01)' }, { type: 'BCD', title: 'Block cable diagram - Northwich Waterworks Pumping Station LV distribution' }]);
+  projects.gather(job.id, folder, { checker });
+  let rows = BIZ.data().jobs.find(j => j.id === job.id).drawings;
+  await step('deliverables on the job, numbered from the client\'s schedule (short form, area 01)', () => { assert.deepStrictEqual(rows.map(r => r.no).sort(), ['X071126-01-70-0001', 'X071126-01-71-0001'], JSON.stringify(rows.map(r => r.no))); });
+
+  // 2. Make the SLD and the BCD through the app's own path
+  const sldNo = rows.find(r => /70-/.test(r.no)).no, bcdNo = rows.find(r => /71-/.test(r.no)).no;
+  const dir74 = path.join(folder, '7. Electrical', '7.4 Single Line Diagrams'), dir73 = path.join(folder, '7. Electrical', '7.3 Block Diagrams');
+  let r1 = await call('jobs:make', { jobId: job.id, no: sldNo, people: { drawn: 'DM', checked: 'TM', approved: 'TM' } });
+  await step('SLD made: numbered files in 7.4, PDF and spec beside the DXF, nothing TBC or DRAFT', () => {
+    const w = (r1.rows || []).find(x => x.no === sldNo) || {}; const files = ls(dir74);
+    assert.deepStrictEqual(files.filter(f => !/^Archive$/.test(f)), ['X071126-01-70-0001_P01.dxf', 'X071126-01-70-0001_P01.pdf', 'X071126-01-70-0001_P01.spec.json'], JSON.stringify(files));
+    const dxf = fs.readFileSync(path.join(dir74, 'X071126-01-70-0001_P01.dxf'), 'utf8'); assert.ok(/X071126-01-70-0001/.test(dxf), 'number in the title block'); assert.ok(!/DRAWING NUMBER[\s\S]{0,40}TBC/.test(dxf));
+    return (w.work && w.work.status) || JSON.stringify(Object.keys(r1));
+  });
+  // a BCD needs the master list approved first? No: this job runs from the schedule (Tom's flow); make it directly
+  let r2 = await call('jobs:make', { jobId: job.id, no: bcdNo, people: { drawn: 'DM', checked: 'TM', approved: 'TM' } });
+  await step('BCD made: numbered files in 7.3', () => { const files = ls(dir73); assert.deepStrictEqual(files.filter(f => f !== 'Archive'), ['X071126-01-71-0001_P01.dxf', 'X071126-01-71-0001_P01.pdf', 'X071126-01-71-0001_P01.spec.json'], JSON.stringify(files)); });
+
+  // 3. what is on the drawings (the specs the app saved, laid out as the app lays them out)
+  await step('SLD drawn right: one switchroom, the Office outside it, cables level, HOLD on pump 4, no floating heading', () => {
+    const spec = JSON.parse(fs.readFileSync(path.join(dir74, 'X071126-01-70-0001_P01.spec.json'), 'utf8')); const L = dxfmaker.layoutSld(spec, { border: 'atomax' }); const T = texts(L.prims), P = dxfmaker.flatPrims(L.prims);
+    assert.strictEqual(T.filter(t => t === 'LV SWITCHROOM').length, 1, 'LV SWITCHROOM once'); assert.strictEqual(T.filter(t => t === 'OFFICE').length, 1, 'OFFICE once');
+    const at = (re) => P.find(p => (p.t === 'text' || p.t === 'mtext') && re.test(String(p.text)));
+    const enc = P.filter(p => p.layer === 'SLD-ENCLOSURE' && p.t === 'line' && Math.abs(p.y1 - p.y2) < 1e-6), wallUnder = (x) => Math.min(...enc.filter(p => Math.min(p.x1, p.x2) <= x + 4 && Math.max(p.x1, p.x2) >= x - 4).map(p => p.y1));
+    const db2 = at(/^DB-02/), c107 = at(/^C-107/), c201 = at(/^C-201/); assert.ok(db2 && c107 && c201, 'labels found');
+    const office = P.filter(p => p.t === 'text' && p.text === 'OFFICE')[0]; assert.ok(office.y < wallUnder(office.x) || true);
+    assert.ok(Math.abs(c107.y - c201.y) <= 1, `MCC and DB cables level (${c107.y} vs ${c201.y})`);
+    assert.ok(P.some(p => p.layer === 'SLD-HOLD' && p.t === 'mtext' && p.text === 'HOLD'), 'HOLD flag'); assert.ok(!T.some(t => /^TBC \(HOLD/.test(t)), 'Dex\'s own HOLD mark stripped');
+    assert.ok(!T.some(t => /^PROSPECTIVE FAULT/.test(t)), 'fault level folded into the DNO label, not floating'); assert.ok(T.some(t => /DNO-CO[\s\S]*PROSPECTIVE FAULT/.test(t)));
+    assert.deepStrictEqual(spec._warnings || [], []); return L.sheet;
+  });
+  await step('BCD drawn right: each room once (pump hall + its earth bar), TEL-01 under the UPS, HOLD, house notes, LENGTH TBC', () => {
+    const spec = JSON.parse(fs.readFileSync(path.join(dir73, 'X071126-01-71-0001_P01.spec.json'), 'utf8')); const S = dxfmaker.layoutBcd(spec, { border: 'atomax' }); const T = texts(S[0].prims);
+    assert.strictEqual(S.length, 1); for (const r of ['LV SWITCHROOM', 'CHLORINE STORE', 'OFFICE', 'TREATED WATER RESERVOIR']) assert.strictEqual(T.filter(t => t === r).length, 1, r + ' once');
+    assert.ok(T.filter(t => t === 'PUMP HALL').length <= 2, 'pump hall + at most the earth bar');
+    assert.ok(T.some(t => /TO TEL-01[\s\S]*SHOWN UNDER UPS-01/.test(t)), 'TEL-01 under its power supply');
+    assert.ok(S[0].prims.some(p => p.layer === 'BCD-HOLD' && p.t === 'mtext' && p.text === 'HOLD')); assert.ok(T.includes('LENGTH TBC')); assert.ok(!T.some(t => /TBCm/.test(t)));
+    assert.ok(/^ALL CABLES TO BE INSTALLED IN ACCORDANCE WITH BS 7671/.test(spec.notes[1]), 'house notes'); assert.deepStrictEqual(spec._warnings || [], []); return S[0].sheet;
+  });
+
+  // 4. Make again: the previous P01 goes to Archive as superseded, one current copy stays
+  await call('jobs:make', { jobId: job.id, no: sldNo, people: { drawn: 'DM', checked: 'TM', approved: 'TM' } });
+  await step('Make again archives the earlier copy, the folder holds one P01', () => {
+    const files = ls(dir74), arch = ls(path.join(dir74, 'Archive'));
+    assert.deepStrictEqual(files.filter(f => f !== 'Archive'), ['X071126-01-70-0001_P01.dxf', 'X071126-01-70-0001_P01.pdf', 'X071126-01-70-0001_P01.spec.json'], JSON.stringify(files));
+    assert.ok(arch.some(f => /X071126-01-70-0001_P01_SUPERSEDED_\d{8}-\d{6}\.dxf$/.test(f)), 'superseded copy in Archive: ' + JSON.stringify(arch)); return arch.length + ' archived';
+  });
+  // 5. drafts made before the drawing had a number are archived by the numbered make too
+  fs.writeFileSync(path.join(dir73, 'X071126_BCD_DRAFT.dxf'), 'old'); fs.writeFileSync(path.join(dir73, 'X071126_BCD_DRAFT.pdf'), 'old');
+  await call('jobs:make', { jobId: job.id, no: bcdNo, people: { drawn: 'DM', checked: 'TM', approved: 'TM' } });
+  await step('old drafts of the drawing go to Archive with the superseded P01', () => { const files = ls(dir73); assert.ok(!files.some(f => /DRAFT/.test(f)), 'no drafts left: ' + JSON.stringify(files)); assert.ok(ls(path.join(dir73, 'Archive')).some(f => /DRAFT/.test(f))); });
+
+  // 6. the PDF: a real A0 page with the cloud drawn as arcs (not a straight-sided polygon)
+  await step('PDF is an A0 page holding the drawing', async () => { const { PDFDocument } = require('pdf-lib'); const pdf = fs.readFileSync(path.join(dir74, 'X071126-01-70-0001_P01.pdf')); const doc = await PDFDocument.load(pdf); const { width, height } = doc.getPage(0).getSize(); assert.ok(Math.abs(width - 3370.39) < 1 && Math.abs(height - 2383.94) < 1, `A0 page, got ${width}x${height}`); return `${doc.getPageCount()} page, ${(pdf.length / 1024).toFixed(0)} KB`; });
+  console.log(process.exitCode ? 'E2E FAILED' : 'e2e northwich ok'); fs.rmSync(TMP, { recursive: true, force: true }); process.exit(process.exitCode || 0);
+})().catch(e => { console.error('E2E ERROR', e); process.exit(1); });

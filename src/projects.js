@@ -157,7 +157,7 @@ const ATOMAX = {
 };
 const SECTIONS = { 4: '4. Piping and Mechanical', 6: '6. Instrument', 7: '7. Electrical', 9: '9. Document Control', 10: '10. Site Data' };
 const isAtomax = (folder) => { try { return fs.readdirSync(folder).some(n => /^(7\. Electrical|9\. Document Control)/i.test(n)); } catch { return false; } };
-const findDir = (parent, prefix) => { try { const e = fs.readdirSync(parent, { withFileTypes: true }).find(d => d.isDirectory() && (d.name.startsWith(prefix + ' ') || d.name === prefix)); return e ? path.join(parent, e.name) : null; } catch { return null; } };
+const findDir = (parent, prefix) => { try { const e = fs.readdirSync(parent, { withFileTypes: true }).find(d => d.isDirectory() && (d.name.startsWith(prefix + ' ') || d.name.startsWith(prefix + '. ') || d.name === prefix)); return e ? path.join(parent, e.name) : null; } catch { return null; } };   // "10.1 Existing" and "10.1. Existing" (the template has both spellings)
 // older Atomax template: flat 001-020 sections (001 Incoming Correspondence ... 006 Atomax-UK Drawings ... 020 Issued)
 const OLD = {
   sld: ['006', 'Atomax-UK Drawings'], bcd: ['006', 'Atomax-UK Drawings'], 'bcd-instrument': ['006', 'Atomax-UK Drawings'], earthing: ['006', 'Atomax-UK Drawings'], loop: ['006', 'Atomax-UK Drawings'], dxf: ['006', 'Atomax-UK Drawings'], models: ['006', 'Atomax-UK Drawings'],

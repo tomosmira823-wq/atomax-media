@@ -1,0 +1,431 @@
+{
+ "kind": "sld",
+ "title": "SINGLE LINE DIAGRAM\nNORTHWICH WATERWORKS PUMPING STATION LV DISTRIBUTION (MSB-01 / MCC-01)",
+ "drawingNumber": "X071126-01-70-0001",
+ "revision": "P01",
+ "boards": [
+  {
+   "label": "MSB-01\nNEW MAIN LV SWITCHBOARD\n800A 36kA FORM 4 TYPE 2\n400V 3PH+N 50Hz TN-S",
+   "enclosure": "LV Switchroom",
+   "incomers": [
+    {
+     "label": "PROSPECTIVE FAULT 22kA\nZe 0.08 OHM",
+     "chain": [
+      {
+       "symbol": "supply",
+       "label": "DNO-CO\nDNO CUT-OUT AND METERING\n(EXISTING, BY OTHERS)\n800A",
+       "enclosure": "LV Switchroom"
+      },
+      {
+       "symbol": "cable",
+       "label": "C-001\n4C 300mm² XLPE/SWA/LSZH 600/1000V\n8m"
+      },
+      {
+       "symbol": "breaker",
+       "label": "INC\n800A 4P ACB WITHDRAWABLE\nELECTRONIC LSI\nIr 0.9 x In, Isd 6 x Ir, Ig 0.4"
+      }
+     ]
+    }
+   ],
+   "feeders": [
+    {
+     "chain": [
+      {
+       "symbol": "breaker",
+       "label": "F1\n160A 3P MCCB\nTM"
+      },
+      {
+       "symbol": "cable",
+       "label": "C-002\n4C 70mm² XLPE/SWA/LSZH 600/1000V\n4m"
+      },
+      {
+       "symbol": "pfc",
+       "label": "PFC-01\nPOWER FACTOR CORRECTION\n150kVAr DETUNED",
+       "enclosure": "LV Switchroom"
+      }
+     ]
+    },
+    {
+     "chain": [
+      {
+       "symbol": "breaker",
+       "label": "F2\n630A 4P MCCB\nELECTRONIC LSI\nIr 0.95 x In"
+      },
+      {
+       "symbol": "cable",
+       "label": "C-003\n4C 240mm² XLPE/SWA/LSZH 600/1000V\n5m"
+      },
+      {
+       "board": {
+        "label": "MCC-01\nNEW PUMP MCC\n630A FORM 4 TYPE 2\n400V 3PH+N 50Hz",
+        "enclosure": "LV Switchroom",
+        "incomers": [
+         {
+          "chain": [
+           {
+            "symbol": "breaker",
+            "label": "INC\n630A 4P ACB\nELECTRONIC LSI\nIr 0.9 x In"
+           }
+          ]
+         }
+        ],
+        "feeders": [
+         {
+          "chain": [
+           {
+            "symbol": "breaker",
+            "label": "WAY 1\n125A 3P MCCB\nMOTOR PROTECTION"
+           },
+           {
+            "symbol": "vsd",
+            "label": "VSD\n45kW"
+           },
+           {
+            "symbol": "cable",
+            "label": "C-101\n4C 35mm² XLPE/SWA/LSZH VSD SCREENED 600/1000V\n42m"
+           },
+           {
+            "symbol": "motor",
+            "label": "M-101\nHIGH LIFT PUMP 1\n45kW",
+            "enclosure": "Pump Hall"
+           }
+          ]
+         },
+         {
+          "chain": [
+           {
+            "symbol": "breaker",
+            "label": "WAY 2\n125A 3P MCCB\nMOTOR PROTECTION"
+           },
+           {
+            "symbol": "vsd",
+            "label": "VSD\n45kW"
+           },
+           {
+            "symbol": "cable",
+            "label": "C-102\n4C 35mm² XLPE/SWA/LSZH VSD SCREENED 600/1000V\n46m"
+           },
+           {
+            "symbol": "motor",
+            "label": "M-102\nHIGH LIFT PUMP 2\n45kW",
+            "enclosure": "Pump Hall"
+           }
+          ]
+         },
+         {
+          "chain": [
+           {
+            "symbol": "breaker",
+            "label": "WAY 3\n125A 3P MCCB\nMOTOR PROTECTION"
+           },
+           {
+            "symbol": "vsd",
+            "label": "VSD\n45kW"
+           },
+           {
+            "symbol": "cable",
+            "label": "C-103\n4C 35mm² XLPE/SWA/LSZH VSD SCREENED 600/1000V\n50m"
+           },
+           {
+            "symbol": "motor",
+            "label": "M-103\nHIGH LIFT PUMP 3\n45kW",
+            "enclosure": "Pump Hall"
+           }
+          ]
+         },
+         {
+          "chain": [
+           {
+            "symbol": "breaker",
+            "label": "WAY 4\n125A 3P MCCB\nMOTOR PROTECTION"
+           },
+           {
+            "symbol": "vsd",
+            "label": "VSD\n45kW"
+           },
+           {
+            "symbol": "cable",
+            "label": "TBC (HOLD)\n4C 35mm² XLPE/SWA/LSZH VSD SCREENED 600/1000V\n54m"
+           },
+           {
+            "symbol": "motor",
+            "label": "M-104\nHIGH LIFT PUMP 4 (STANDBY)\n45kW",
+            "enclosure": "Pump Hall"
+           }
+          ]
+         },
+         {
+          "chain": [
+           {
+            "symbol": "breaker",
+            "label": "WAY 5\n10A 3P MCB\nTYPE C"
+           },
+           {
+            "symbol": "dol",
+            "label": "DOL STARTER\n2.2kW"
+           },
+           {
+            "symbol": "cable",
+            "label": "C-105\n4C 2.5mm² XLPE/SWA/LSZH 600/1000V\n38m"
+           },
+           {
+            "symbol": "motor",
+            "label": "M-105\nSUMP PUMP\n2.2kW",
+            "enclosure": "Pump Hall"
+           }
+          ]
+         },
+         {
+          "chain": [
+           {
+            "symbol": "breaker",
+            "label": "WAY 6\n6A 3P MCB\nTYPE C"
+           },
+           {
+            "symbol": "dol",
+            "label": "DOL STARTER\n1.1kW"
+           },
+           {
+            "symbol": "cable",
+            "label": "C-106\n4C 1.5mm² XLPE/SWA/LSZH 600/1000V\n72m"
+           },
+           {
+            "symbol": "motor",
+            "label": "M-106\nCHLORINE STORE EXTRACT FAN\n1.1kW\nATEX ZONE 2",
+            "enclosure": "Chlorine Store"
+           }
+          ]
+         },
+         {
+          "chain": [
+           {
+            "symbol": "breaker",
+            "label": "WAY 7\n16A 3P MCB\nTYPE C"
+           },
+           {
+            "symbol": "cable",
+            "label": "C-107\n4C 4mm² XLPE/SWA/LSZH 600/1000V\n70m"
+           },
+           {
+            "symbol": "load",
+            "label": "DOS-01\nCHLORINE DOSING SKID\n3kW\n(PACKAGE UNIT, STARTER BY OTHERS)",
+            "enclosure": "Chlorine Store"
+           }
+          ]
+         }
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "chain": [
+      {
+       "symbol": "breaker",
+       "label": "F3\n125A 4P MCCB\nTM"
+      },
+      {
+       "symbol": "cable",
+       "label": "C-004\n4C 35mm² XLPE/SWA/LSZH 600/1000V\n4m"
+      },
+      {
+       "board": {
+        "label": "DB-01\nSTATION SERVICES DISTRIBUTION BOARD\n125A TP&N",
+        "enclosure": "LV Switchroom",
+        "feeders": [
+         {
+          "chain": [
+           {
+            "symbol": "breaker",
+            "label": "WAY 1\n32A 3P MCB\nTYPE C"
+           },
+           {
+            "symbol": "cable",
+            "label": "C-201\n4C 6mm² XLPE/SWA/LSZH 600/1000V\n3m"
+           },
+           {
+            "symbol": "ups",
+            "label": "UPS-01\nUPS\n6kVA ONLINE",
+            "enclosure": "LV Switchroom"
+           },
+           {
+            "symbol": "cable",
+            "label": "C-202\n4C 4mm² XLPE/SWA/LSZH 600/1000V\n3m"
+           },
+           {
+            "symbol": "load",
+            "label": "TEL-01\nTELEMETRY AND PLC PANEL",
+            "enclosure": "LV Switchroom"
+           }
+          ]
+         },
+         {
+          "chain": [
+           {
+            "symbol": "breaker",
+            "label": "WAY 2\n32A 1P MCB\nTYPE B"
+           },
+           {
+            "symbol": "load",
+            "label": "SMALL POWER"
+           }
+          ]
+         },
+         {
+          "chain": [
+           {
+            "symbol": "breaker",
+            "label": "WAY 3\n10A 1P MCB\nTYPE B"
+           },
+           {
+            "symbol": "load",
+            "label": "LIGHTING"
+           }
+          ]
+         }
+        ],
+        "incomers": []
+       }
+      }
+     ]
+    },
+    {
+     "chain": [
+      {
+       "symbol": "breaker",
+       "label": "F4\n100A 4P MCCB\nTM"
+      },
+      {
+       "symbol": "cable",
+       "label": "C-005\n4C 25mm² XLPE/SWA/LSZH 600/1000V\n65m"
+      },
+      {
+       "board": {
+        "label": "DB-02\nOFFICE DISTRIBUTION BOARD\n100A TP&N",
+        "enclosure": "Office",
+        "feeders": [
+         {
+          "chain": [
+           {
+            "symbol": "breaker",
+            "label": "WAY 1\n32A 1P MCB\nTYPE B"
+           },
+           {
+            "symbol": "load",
+            "label": "SMALL POWER"
+           }
+          ]
+         },
+         {
+          "chain": [
+           {
+            "symbol": "breaker",
+            "label": "WAY 2\n10A 1P MCB\nTYPE B"
+           },
+           {
+            "symbol": "load",
+            "label": "LIGHTING"
+           }
+          ]
+         }
+        ],
+        "incomers": []
+       }
+      }
+     ]
+    },
+    {
+     "chain": [
+      {
+       "symbol": "breaker",
+       "label": "F5\n250A 4P MCCB\nTM"
+      },
+      {
+       "symbol": "spare",
+       "label": "C-006\nSPARE - EQUIPPED, OFF & LOCKED\n250A"
+      }
+     ]
+    },
+    {
+     "chain": [
+      {
+       "symbol": "breaker",
+       "label": "F6\n100A 4P MCCB\nTM"
+      },
+      {
+       "symbol": "spare",
+       "label": "C-007\nSPARE - EQUIPPED, OFF & LOCKED\n100A"
+      }
+     ]
+    },
+    {
+     "chain": [
+      {
+       "symbol": "cable",
+       "label": "C-301\n1C 150mm² LSZH 450/750V\n3m"
+      },
+      {
+       "board": {
+        "label": "MET\nMAIN EARTH TERMINAL",
+        "enclosure": "LV Switchroom",
+        "feeders": [
+         {
+          "chain": [
+           {
+            "symbol": "cable",
+            "label": "C-302\n1C 70mm² LSZH 450/750V\n40m"
+           },
+           {
+            "symbol": "earth",
+            "label": "EB-01\nPUMP HALL EARTH BAR",
+            "enclosure": "Pump Hall"
+           }
+          ]
+         }
+        ],
+        "incomers": []
+       }
+      }
+     ]
+    }
+   ]
+  }
+ ],
+ "references": [
+  "X071126-01-72-0001 - CABLE SCHEDULE",
+  "X071126-01-73-0001 - PROTECTION SCHEDULE",
+  "X071126 - EQUIPMENT LIST",
+  "NGN/CON/2026/41877 - DNO LETTER, SUPPLY CAPACITY AND FAULT LEVEL",
+  "X071126 Equipment List"
+ ],
+ "client": "WEAVER WATER LTD",
+ "notes": [
+  "Information taken from the Weaver Water Ltd cable schedule X071126-01-72-0001, protection schedule X071126-01-73-0001, equipment list and DNO letter NGN/CON/2026/41877.",
+  "Supply 400V 3PH+N 50Hz TN-S, agreed capacity 800A per phase. Prospective fault 22kA and Ze 0.08 ohm at the DNO cut-out.",
+  "DNO cut-out and metering DNO-CO are existing, by others, and are not to be altered.",
+  "Cable types, cores, sizes and lengths are as the cable schedule.",
+  "Pump 4 (M-104) cable number is TBC and the circuit is on hold until the number is allocated.",
+  "Chlorine dosing skid DOS-01 is a package unit with its starter by others.",
+  "Control and instrumentation cables are shown on the block cable diagram."
+ ],
+ "summary": "Redrew SLD X071126-01-70-0001 P01 for a readable sheet: DNO-CO > C-001 > MSB-01 (800A ACB) with F1 PFC-01, F2 MCC-01 (ways 1-7: 4 VSD pumps, 2 DOL, dosing skid), F3 DB-01 (UPS-01 > TEL-01, small power, lighting), F4 DB-02 in Office, F5/F6 spares, C-301 to MET and C-302 to EB-01; pump 4 cable number TBC on hold, control ways 8/9 left to the BCD.",
+ "people": {
+  "drawn": "DM",
+  "checked": "TM",
+  "approved": "TM",
+  "date": "04.11.2026"
+ },
+ "_kinds": [
+  "supply",
+  "cable",
+  "breaker",
+  "pfc",
+  "vsd",
+  "motor",
+  "dol",
+  "load",
+  "ups",
+  "spare",
+  "earth"
+ ]
+}

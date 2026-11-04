@@ -437,6 +437,8 @@ EARTHING tasks: size every protective / earth conductor the drawing needs (MET t
     }
     if (spec.questions && spec.questions.length && !answers.length) return { questions: spec.questions.slice(0, 4).map(String), read: [...pdfs.map(p => path.basename(p)), ...sheetsRead, ...notesRead], skills: used };
     if ((kind === 'bcd' && !spec.boards && !spec.busbars) || (Array.isArray(spec.cables) && spec.cables.length && !spec.boards)) spec.kind = 'bcd';   // what Dex drew decides when it is plainly an SLD
+    // the wrong kind of drawing is never saved under the asked-for number (an SLD spec filed as the BCD)
+    if (askedKind && ((askedKind === 'bcd' && spec.kind !== 'bcd') || (askedKind === 'sld' && spec.kind === 'bcd'))) throw new Error(`Dex drew a ${spec.kind === 'bcd' ? 'block cable diagram' : 'single line diagram'} when the ${askedKind === 'bcd' ? 'block cable diagram' : 'single line diagram'} was asked for. Press Make again.`);
     // National Grid jobs and LVAC block diagrams use the National Grid style (filled energised / de-energised blocks, coloured cable runs, legend)
     if (spec.kind === 'bcd' && !spec.style && (/national grid|\bNGET?\b|\blvac\b/i.test(request) || (job && /national grid/i.test(job.client || '')))) spec.style = 'ng';
     if (spec.kind === 'bcd' ? !(spec.cables || []).length : (!spec.boards && !spec.busbars)) {
