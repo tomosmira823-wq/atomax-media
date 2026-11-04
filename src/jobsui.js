@@ -18,6 +18,11 @@ export function initJobsUI({ api, getAgents, openIssue, onWorkOn }) {
   const recents = () => { try { return JSON.parse(localStorage.getItem('amo.recentJobs') || '[]'); } catch { return []; } };
   const noteRecent = (p, name) => { if (!p) return; const r = recents().filter(x => x.path !== p); r.unshift({ path: p, name: name || base(p), at: Date.now() }); localStorage.setItem('amo.recentJobs', JSON.stringify(r.slice(0, 6))); };
   // the divider between the list and the job: dragged, remembered
+  // full screen: remembered between sessions
+  const setFull = (on) => { document.body.classList.toggle('jobs-full', on); const b = $('#jbFull'); if (b) { b.textContent = on ? '🗗' : '⛶'; b.title = on ? 'Exit full screen (F11)' : 'Full screen (F11)'; } try { localStorage.setItem('amo.jobsFull', on ? '1' : ''); } catch {} };
+  if ($('#jbFull')) $('#jbFull').onclick = () => setFull(!document.body.classList.contains('jobs-full'));
+  document.addEventListener('keydown', (e) => { if (e.key === 'F11' && panel.classList.contains('open')) { e.preventDefault(); setFull(!document.body.classList.contains('jobs-full')); } });
+  const fullPref = () => { try { return localStorage.getItem('amo.jobsFull') === '1'; } catch { return false; } };
   const split = $('#jbSplit'); try { const w = +localStorage.getItem('amo.jbw'); if (w >= 200) panel.style.setProperty('--jbw', w + 'px'); } catch {}
   if (split) split.onmousedown = (e) => { e.preventDefault(); split.classList.add('on'); const x0 = e.clientX, w0 = $('#jbList').getBoundingClientRect().width;
     const mv = (ev) => { const w = Math.max(200, Math.min(560, w0 + ev.clientX - x0)); panel.style.setProperty('--jbw', w + 'px'); };
@@ -363,11 +368,11 @@ export function initJobsUI({ api, getAgents, openIssue, onWorkOn }) {
   }
 
   $('#jbBack').onclick = () => hide();
-  function hide() { panel.classList.remove('open'); clearTimeout(poll); clearInterval(listTimer); document.body.classList.remove('jobs-open'); const b = $('#jobsBtn'); if (b) b.classList.remove('active'); const o = document.querySelector('#top .tabs button[data-tab="office"]'); if (o) o.classList.add('active'); }
+  function hide() { panel.classList.remove('open'); document.body.classList.remove('jobs-full'); clearTimeout(poll); clearInterval(listTimer); document.body.classList.remove('jobs-open'); const b = $('#jobsBtn'); if (b) b.classList.remove('active'); const o = document.querySelector('#top .tabs button[data-tab="office"]'); if (o) o.classList.add('active'); }
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && panel.classList.contains('open') && !document.querySelector('.modal.open')) hide(); });
   return {
     focusSearch() { const q = $('#jbQ'); if (q) { q.focus(); q.select(); } },
-    async show(jobId) { if (jobId !== undefined) { sel = jobId; selPath = ''; tab = 'deliv'; } clearInterval(listTimer); listTimer = setInterval(async () => { if (!panel.classList.contains('open') || busyPanel() || !nav || !document.hasFocus()) return; const before = JSON.stringify(listing && listing.entries.map(e => e.name + e.dir)); await relist(); if (JSON.stringify(listing && listing.entries.map(e => e.name + e.dir)) !== before) renderList(); }, 15000); panel.classList.add('open'); document.body.classList.add('jobs-open'); document.querySelectorAll('#top .tabs:not(.rooms) button').forEach(x => x.classList.toggle('active', x.id === 'jobsBtn')); await refresh().catch(e => { $('#jbMain').innerHTML = `<div class="bhint">${esc(clean(e))}</div>`; }); },
+    async show(jobId) { if (jobId !== undefined) { sel = jobId; selPath = ''; tab = 'deliv'; } clearInterval(listTimer); listTimer = setInterval(async () => { if (!panel.classList.contains('open') || busyPanel() || !nav || !document.hasFocus()) return; const before = JSON.stringify(listing && listing.entries.map(e => e.name + e.dir)); await relist(); if (JSON.stringify(listing && listing.entries.map(e => e.name + e.dir)) !== before) renderList(); }, 15000); panel.classList.add('open'); document.body.classList.add('jobs-open'); document.body.classList.toggle('jobs-full', fullPref()); if ($('#jbFull')) $('#jbFull').textContent = fullPref() ? '🗗' : '⛶'; document.querySelectorAll('#top .tabs:not(.rooms) button').forEach(x => x.classList.toggle('active', x.id === 'jobsBtn')); await refresh().catch(e => { $('#jbMain').innerHTML = `<div class="bhint">${esc(clean(e))}</div>`; }); },
     hide, refresh, isOpen: () => panel.classList.contains('open')
   };
 }
