@@ -153,7 +153,7 @@ const ATOMAX = {
   sld: ['7.4', 'Single Line Diagrams'], bcd: ['7.3', 'Block Diagrams'], 'bcd-instrument': ['6.3', 'Block Diagrams'], earthing: ['7.5', 'Routings and Layouts'], loop: ['6.4', 'Loop Diagrams'], dxf: ['7.13', 'Misc'],
   markups: ['7.13', 'Misc', 'MARKUPS'], documents: ['7.12', 'Reports'], reports: ['7.12', 'Reports'], calcs: ['7.11', 'Calculations'], schedules: ['7.8', 'Schedules'], datasheets: ['7.1', 'Datasheets'],
   email: ['7.0', 'Incoming Correspondance'], register: ['9.1', 'Document Register'], transmittals: ['9.2', 'Transmittals'], rfi: ['9.3', 'RFI'], issued: ['9.7', 'Issued'], crs: ['9.8', 'Document Client Comment Tracker'],
-  models: ['4.15', 'Misc'], 'site-data': ['10.1.', 'Existing Site Data'],
+  models: ['4.15', 'Misc'], 'site-data': ['10.1', 'Existing Site Data'],
 };
 const SECTIONS = { 4: '4. Piping and Mechanical', 6: '6. Instrument', 7: '7. Electrical', 9: '9. Document Control', 10: '10. Site Data' };
 const isAtomax = (folder) => { try { return fs.readdirSync(folder).some(n => /^(7\. Electrical|9\. Document Control)/i.test(n)); } catch { return false; } };

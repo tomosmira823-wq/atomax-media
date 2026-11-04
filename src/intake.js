@@ -241,6 +241,15 @@ function register({ ipcMain, dialog, shell, getWin, userDir, claudeFull, checker
     return { jobs, email: e, job: job ? { id: job.id, number: job.number, name: job.name, client: job.client || '' } : null, suggest: { number: String(e.jobNumber || D.nextNumber || '').toUpperCase(), name: e.site || e.subject || '', client: company ? company.company : '', folderFound: e.folderFound || '' } };
   }));
   // file it: on the job (new one made if asked), its deliverables added, its changes logged against the drawings they are for, a copy kept in the job folder
+  // where an email attachment belongs in the job folder, by its name and type (the email itself always goes in correspondence)
+function attachmentKind(name) {
+  const n = String(name || ''), ext = (n.match(/\.(\w+)$/) || ['', ''])[1].toLowerCase();
+  if (/\.eml$|\.msg$/i.test(n)) return 'email';
+  if (/schedule|equipment list|cable list|load list|protection|breaker|setting/i.test(n) && /^(xlsx|xlsm|xls|csv)$/.test(ext)) return 'schedules';
+  if (/datasheet|data sheet|catalogue|brochure/i.test(n)) return 'datasheets';
+  if (/^(dxf|dwg)$/.test(ext) || /dno|letter|survey|existing|site|as[- ]?built|layout|drawing|sld|bcd|diagram/i.test(n)) return 'site-data';
+  return 'email';
+}
   ipcMain.handle('jobs:applyEmail', wrap(({ emailId, jobId = '', newJob = null, client = '' }) => {
     const list = load(), e = list.find(x => x.id === emailId); if (!e) throw new Error('That email is gone');
     const d = BIZ.data(), desk = require('./jobdesk');
@@ -273,7 +282,9 @@ function register({ ipcMain, dialog, shell, getWin, userDir, claudeFull, checker
     try { desk.tidyRows(job.id); } catch {}
     try { desk.addInputs(job.id, { inputs: e.inputs || [], missing: e.missingInputs || [], questions: e.clientQuestions || [], fromEmail: e.subject || e.from }); } catch {}
     if (e.comments && e.comments.filter(mine).length) { const cs = e.comments.filter(mine).map(c => ({ ...c, doc: docOf(c.doc) })); try { r.comments = desk.addComments(job.id, cs, e.subject || e.from).length; } catch {} r.docs = [...new Set(cs.map(c => c.doc).filter(Boolean))]; }
-    if (job.folder) { try { const out = BIZ.projects.outputDir(job.folder, 'email'); for (const n of [...(e.originals || []), ...(e.attachments || []).map(x => x.name)]) { const src = path.join(DIR(), e.id, n.replace(/[\\/:*?"<>|]+/g, '_')), dst = path.join(out, n.replace(/[\\/:*?"<>|]+/g, '_')); if (fs.existsSync(src) && !fs.existsSync(dst)) fs.copyFileSync(src, dst); } } catch {} }
+    // the email itself goes in correspondence; its attachments go where that kind of file lives in the job folder (schedules in 7.8 / 008, drawings and
+    // site information in site data), so Dex and Lex find them where Tom would look
+    if (job.folder) { try { const filed = []; for (const n of [...(e.originals || []), ...(e.attachments || []).map(x => x.name)]) { const safe = n.replace(/[\\/:*?"<>|]+/g, '_'), src = path.join(DIR(), e.id, safe); if (!fs.existsSync(src)) continue; const out = BIZ.projects.outputDir(job.folder, attachmentKind(n)) || BIZ.projects.outputDir(job.folder, 'email'); const dst = path.join(out, safe); if (!fs.existsSync(dst)) fs.copyFileSync(src, dst); filed.push(path.relative(job.folder, dst)); } if (filed.length) r.filed = filed; } catch {} }
     e.jobId = job.id; e.desk = { ...(e.desk || {}), [job.id]: r }; save(list);
     BIZ.log({ who: 'Eli', action: 'Filed an email on the job', jobId: job.id, detail: `${e.subject || e.summary} · ${r.deliverables} deliverable(s) added · ${r.comments} change(s) logged` });
     return r;
