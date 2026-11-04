@@ -626,7 +626,7 @@ function fromSchedule(spec, sheets) {
     for (const f of [...(b.incomers || []), ...(b.feeders || [])]) for (const it of f.chain || []) { if (it.board) sldWalk(it.board); else if (it.label && !it.gap && ['supply', 'generator', 'transformer', 'load', 'motor', 'ups', 'earth', 'electrode', 'pfc', 'spd', 'grid'].includes(symbolOf(it.symbol))) { const li = locs.get(tagOfL(it.label)); if (li) it.enclosure = li; } } };
   (spec.boards || spec.busbars || []).forEach(sldWalk);
   // a cable the revision says is deleted ("delete the 100A spare way C-009", "remove C-012", "C-007 no longer required"): gone from the drawing
-  const dropped = new Set(); { const t = String(spec.revisionNote || ''); for (const m of t.matchAll(/\b(?:delete|remove|omit|drop|take off|scrap)\b[^.;]{0,80}?\b([A-Z]{1,3}-?\d{2,4}[A-Z]?)\b/gi)) dropped.add(key(m[1])); for (const m of t.matchAll(/\b([A-Z]{1,3}-?\d{2,4}[A-Z]?)\b[^.;]{0,60}?\b(?:no longer (?:required|needed)|not required|is deleted|to be deleted|deleted|removed)\b/gi)) dropped.add(key(m[1])); }
+  const dropped = new Set(); { const t = String(spec.revisionNote || ''); for (const m of t.matchAll(/\b(?:delete|remove|omit|drop|take off|scrap)\b((?:(?!\bfrom\b|\bnote\b|\boff\b|\bon the\b)[^.;]){0,80}?)\b([A-Z]{1,3}-?\d{2,4}[A-Z]?)\b/gi)) if (!/\b(from|note|text|label|tbc)\b/i.test(m[1])) dropped.add(key(m[2])); for (const m of t.matchAll(/\b([A-Z]{1,3}-?\d{2,4}[A-Z]?)\b[^.;]{0,60}?\b(?:no longer (?:required|needed)|not required|is deleted|to be deleted|deleted|removed)\b/gi)) dropped.add(key(m[1])); }
   if (dropped.size) { spec._dropped = [...dropped];
     if (spec.cables) { const n0 = spec.cables.length; spec.cables = spec.cables.filter(c => !dropped.has(key(c.no))); if (spec.cables.length < n0) changed.push('deleted per the revision: ' + [...dropped].join(', ')); }
     const dropWalk = (b) => { if (!b) return; b.feeders = (b.feeders || []).filter(f => !(f.chain || []).some(it => symbolOf(it.symbol) === 'cable' && dropped.has(key(String(it.label || '').split(/\n|\\n|\s/)[0])))); for (const f of b.feeders) for (const it of f.chain || []) if (it.board) dropWalk(it.board); };
@@ -1553,11 +1553,11 @@ function make(spec, outDir, baseName, opts = {}) {
   return { path: files[0].path, svg: files[0].svg, entities: files.reduce((n, f) => n + f.entities, 0), files, diff, archived };
 }
 // the most recent spec saved for a drawing stem in a folder (for "new revision")
-function previousSpec(outDir, baseName) {
+function previousSpec(outDir, baseName, notRev = '') {   // notRev: skip specs of that revision (a P02 made again is compared with the P01, not the P02 it replaces)
   const stem = safeName(baseName).toUpperCase(), all = [];
   for (const dir of [outDir, path.join(outDir, 'Archive')]) { try { for (const f of fs.readdirSync(dir)) if (f.toUpperCase().startsWith(stem) && f.endsWith('.spec.json')) all.push({ f: path.join(dir, f), t: fs.statSync(path.join(dir, f)).mtimeMs }); } catch {} }
-  const c = all.sort((a, b) => b.t - a.t)[0];
-  try { return c ? { file: path.basename(c.f), spec: JSON.parse(fs.readFileSync(c.f, 'utf8')) } : null; } catch { return null; }
+  for (const c of all.sort((a, b) => b.t - a.t)) { try { const sp = JSON.parse(fs.readFileSync(c.f, 'utf8')); if (notRev && String(sp.revision || '').toUpperCase() === String(notRev).toUpperCase()) continue; return { file: path.basename(c.f), spec: sp }; } catch {} }
+  return null;
 }
 
 module.exports = { fromSchedule, cleanLabels, cleanLabel, noteLines, clientNotes, isInternalNote, notesFit, primsBounds, BORDER_NAMES, flatPrims, BORDERS, cableClashes, previousSpec, layoutBcd, bcdDiff, SYSTEM, ALIASES, SYMBOLS, symbolOf, layoutSld, writeDxf, toSvg, parseReply, make };

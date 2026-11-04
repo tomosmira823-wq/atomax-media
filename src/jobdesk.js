@@ -140,7 +140,9 @@ function tidyRows(id) {
   const rows = job.drawings; const hasWork = (r) => !!(dl[r.no] && (dl[r.no].files || dl[r.no].status));
   for (const kind of ['sld', 'bcd', 'earthing']) {
     const same = rows.filter(r => kindKey(r.no, r.title) === kind && !/cancel|superseded/i.test(r.status || '')); if (same.length < 2) continue;
-    const real = same.filter(r => QSNO.test(r.no)), tbc = same.filter(r => /^TBC-/i.test(r.no)); if (!real.length || !tbc.length) continue;
+    const distinct = (r) => /\b(sheet|phase|area|zone|stage|rio\s*\d|mcc\s*\d|\d+\s+of\s+\d+)\b/i.test(r.title || '') || /\(\s*sheet/i.test(r.title || '');   // a second drawing of the kind, not a duplicate
+    const real = same.filter(r => QSNO.test(r.no)), tbc = same.filter(r => /^TBC-/i.test(r.no) && !distinct(r)); if (!real.length || !tbc.length || real.some(distinct)) continue;
+    const same2 = [...real, ...tbc]; same.length = 0; same.push(...same2);
     const numbers = [...new Set(real.map(r => r.no.toUpperCase()))]; if (numbers.length > 1) continue;   // two numbered drawings of one kind: leave alone
     const keepNo = real[0].no, keep = same.find(hasWork) || real[0], drop = same.filter(r => r !== keep);
     if (keep.no !== keepNo) { if (dl[keep.no]) { dl[keepNo] = dl[keep.no]; delete dl[keep.no]; } moves.push({ from: keep.no, to: keepNo }); keep.no = keepNo; }

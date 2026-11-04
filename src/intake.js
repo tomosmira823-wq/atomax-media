@@ -455,7 +455,7 @@ EARTHING tasks: size every protective / earth conductor the drawing needs (MET t
     // the notes go to the client: questions, TQs and our own working come off the drawing and go to the job's RFI register
     // the schedule is the source: cable type (with voltage), cores, size, length and locations copied from its own columns
     if (revision && revision.on && revision.note) spec.revisionNote = String(revision.note).slice(0, 2000);   // known before the schedule pass: a cable the comments delete is not put back from the schedule
-    const fromSched = workbooks.length ? dxfmaker.fromSchedule(spec, workbooks) : [];
+    const fromSched = dxfmaker.fromSchedule(spec, workbooks);   // with no workbook it still applies the revision's deletions
     if (fromSched.length) BIZ.log({ who: 'Dex', action: 'Matched the BCD to the schedule', jobId: job ? job.id : '', detail: fromSched.slice(0, 12).join('; ') + (fromSched.length > 12 ? ' …' : '') });
     dxfmaker.cleanLabels(spec);   // no SEE TQ / RFI pointers in labels: TBC is enough, the question is in the RFI register
     const cn = dxfmaker.clientNotes(spec), queries = [...new Set([...(Array.isArray(spec.queries) ? spec.queries : []), ...cn.moved].map(q => String(q || '').trim()).filter(Boolean))];
@@ -477,13 +477,15 @@ EARTHING tasks: size every protective / earth conductor the drawing needs (MET t
     // optional: a new revision of a drawing Dex made before (changes clouded on BCDs, history carried in the notes)
     // the drawing as it is now (its last saved spec, in the folder or its Archive)
     const realNo = spec.drawingNumber && !/^TBC/i.test(spec.drawingNumber) ? spec.drawingNumber : '';
-    const prior = dxfmaker.previousSpec(outDir, realNo || base);
+    let prior = dxfmaker.previousSpec(outDir, realNo || base);
     let previous = null;
     if (revision && revision.on) {
       // a revision: the next one at the same stage (P01 > P02), or the one asked for (e.g. "C01")
-      previous = prior;
       const to = String(revision.to || '').toUpperCase().replace(/^([A-Z])(\d)$/, '$10$2');
       spec.revision = /^[A-Z]\d{2}$/.test(to) ? to : DN.nextRev(prior ? prior.spec.revision : 'P01', revision.stage || '');
+      // the same revision made again (a P02 redone): compared with the revision before it, so the clouds and the note show the real changes
+      if (prior && String(prior.spec.revision || '').toUpperCase() === spec.revision) prior = dxfmaker.previousSpec(outDir, realNo || base, spec.revision) || prior;
+      previous = prior;
       if (revision.note) spec.revisionNote = revision.note;
     } else {
       // make again: the same revision the drawing has now (P01 for a first make), its revision history kept
