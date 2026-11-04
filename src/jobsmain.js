@@ -69,6 +69,9 @@ function register({ ipcMain, HANDLERS, BIZ }) {
     const prev = delivOf(jobId)[no] || {};
     if (answers && answers.length) answers = [...(prev.answers || []).filter(p => !answers.some(a => a.q === p.q)), ...answers]; else answers = prev.answers || [];   // answers given once are kept for remakes and revisions
     people = people || prev.people || {};   // drawn / checked / approved, kept for remakes and revisions
+    // open items from Cal's check (and any other open comment) on a remake at the same revision: fixed in this make, then marked done
+    let calOpen = [];
+    if (!revision) { try { calOpen = (desk.load(jobId).crs || []).filter(c => c.doc === no && !/responded|closed/i.test(c.status || '')); } catch {} if (calOpen.length) note = [note, 'Fix these check findings and comments (keep everything else as it was): ' + calOpen.map(c => c.comment).join(' | ')].filter(Boolean).join(' '); }
     setDeliv(jobId, no, { status: 'working', run: RUN, agent: k.agent, summary: `${k.agent} is on it`, answers, people });
     try {
       let r, files = [], pdfs = [];
@@ -85,6 +88,7 @@ function register({ ipcMain, HANDLERS, BIZ }) {
         r = await call('o365:word', { jobId, request: (asked || plan({ jobId, no }).request) + (note ? ' ' + note : ''), skills });
         files = [r.path].filter(Boolean);
       }
+      if (calOpen.length && !r.incomplete && !r.questions) for (const c of calOpen) { try { desk.saveCrs(jobId, { no: c.no, status: 'Responded', response: `Fixed in ${r.revision || d.rev || 'the remake'}` }); } catch {} }
       return setDeliv(jobId, no, { status: r.incomplete ? 'needs you' : 'made', questions: null, check: null, files, pdfs, rev: r.revision || d.rev || '', archived: r.archived || 0, summary: (r.incomplete ? 'CUT SHORT: ' : '') + (r.summary || 'Made') + (r.fromSchedule && r.fromSchedule.length ? ` · ${r.fromSchedule.length} value(s) matched to the schedule` : '') + (r.queries && r.queries.length ? ` · ${r.queries.length} question(s) to the RFI register` : '') + (r.warnings && r.warnings.length ? ' · LAYOUT: ' + r.warnings.join('; ') : ''), notes: r.notes || [], warning: r.borderWarning || '' });
     } catch (e) { setDeliv(jobId, no, { status: 'failed', summary: String(e.message || e).slice(0, 300) }); throw e; }
   }
@@ -104,7 +108,11 @@ function register({ ipcMain, HANDLERS, BIZ }) {
     targets.forEach(n => setDeliv(jobId, n, { check: { status: 'working', run: RUN } }));
     const r = await call('check:run', { agent: { id: 'cal' }, schedule: enc(schedule), drawings: drawings.map(enc), jobId, note: 'Check both ways and say exactly what was covered.' });
     const findings = r.findings || [], dir = r.markups && r.markups.dir || '';
-    for (const n of targets) { const mine = findings.filter(f => JSON.stringify(f).includes(n)); setDeliv(jobId, n, { check: { status: findings.length ? 'needs you' : 'passed', headline: r.headline || '', count: mine.length || findings.length, markups: dir } }); }
+    for (const n of targets) { const mine = findings.filter(f => JSON.stringify(f).includes(n)); setDeliv(jobId, n, { check: { status: findings.length ? 'needs you' : 'passed', headline: r.headline || '', count: mine.length || findings.length, markups: dir } });
+      // Cal's findings go on the Comments tab against the drawing, like a client's, so Make again / Revision pick them up and Tom can close the ones he disagrees with
+      try { const V = desk.load(jobId), have = new Set((V.crs || []).filter(c => c.doc === n && c.by === 'Cal').map(c => c.comment));
+        const items = (mine.length ? mine : findings).map(f => String(f.text || '') + (f.confirm ? ` [CONFIRM${f.reason ? ': ' + f.reason : ''}]` : '')).filter(t => t && !have.has(t));
+        if (items.length) desk.addComments(jobId, items.map(t => ({ doc: n, comment: t, by: 'Cal', agent: 'dex' })), 'Cal check'); } catch {} }
     return { headline: r.headline || '', findings: findings.length, markups: dir, schedule: path.basename(schedule) };
   }
 
