@@ -116,6 +116,7 @@ function drawChain(chain, x, y) {
     }
     if (col) for (let i = from0; i < prims.length; i++) prims[i] = { ...prims[i], colour: col };
     if (item.enclosure) for (let i = from0; i < prims.length; i++) prims[i] = { ...prims[i], _enc: String(item.enclosure).toUpperCase().trim() };   // which room this item is in (boxed by the caller)
+    if (item._cloud && REV) { const bb = primsBounds(prims.slice(from0)); if (Number.isFinite(bb.x0)) revCloud(prims, bb, REV, 'SLD-REVISION'); }   // a changed item on a revision
     const labelBottom = !label.length || sym.inside ? y : sym.end && UNDER.has(kind) ? y - sym.len - 1 - label.length * LINE : y - 1.8 - label.length * LINE;
     y -= sym.len;
     if (sym.end) return { y: Math.min(y, labelBottom - 0.5), prims, ended: true };
@@ -238,9 +239,10 @@ function drawBoard(b, x0, y, prims, top, over = null) {
   const padSub = (sub) => { if (!rowCab) return sub; return { ...sub, feeders: (sub.feeders || []).map(g => { if (chainParts(g.chain || []).sub || g._inRoom || (g.chain || []).some(it => it.gap)) return g;   /* a room already sets where its cables leave */ const h = firstCab(g); if (h < 0 || rowCab - h < 0.5) return g; const chain = [...g.chain], { items } = chainParts(chain), k = items.findIndex(it => !it.gap && symbolOf(it.symbol) === 'cable'), at = chain.indexOf(items[k]); chain.splice(at, 0, { gap: rowCab - h }); return { ...g, chain }; }) }; };
   fs.forEach((f, i) => {
     const fx = fxs[i], { items, sub } = chainParts(f.chain);
-    if (!sub) { const d = drawSimple(f, fx, fy(f), prims); minY = Math.min(minY, d.yEnd); maxX = Math.max(maxX, ext[i].x1); return; }
+    const from0 = prims.length, cloud = () => { if (f._cloud !== true || !REV) return; const bb = primsBounds(prims.slice(from0)); if (Number.isFinite(bb.x0)) revCloud(prims, bb, REV, 'SLD-REVISION'); };
+    if (!sub) { const d = drawSimple(f, fx, fy(f), prims); minY = Math.min(minY, d.yEnd); maxX = Math.max(maxX, ext[i].x1); cloud(); return; }
     const inc = (sub.incomers || []).flatMap(c => c.chain || []);
-    const r = drawChain([...items, ...inc], fx, y); prims.push(...r.prims);
+    const r = drawChain([...items, ...inc], fx, y); prims.push(...r.prims); cloud();   // a changed feed to a sub-board: the feed clouded, not the board under it
     let yEnd = r.y;
     if (!r.ended) {
       // the conductor carries on down to the board it feeds; that board's name sits beside the conductor
@@ -263,6 +265,7 @@ function drawBoard(b, x0, y, prims, top, over = null) {
     const first = (c.chain || []).find(it => !it.gap), lift = first && first.enclosure && !sameRoom(first.enclosure, b.enclosure) ? TH + 6 : 0;   // the room's name goes above the box: the supply name above that
     if (c.label) { const tl = wrap(c.label, 40); prims.push({ t: 'mtext', x: ix - 20, y: y + h + 3 + lift + tl.length * LINE, w: 40, h: TH, text: tl.join('\n'), attach: 1, layer: 'SLD-TEXT' }); maxY = Math.max(maxY, y + h + 3 + lift + tl.length * LINE); }
     const r = drawChain(c.chain, ix, y + h); prims.push(...r.prims); maxY = Math.max(maxY, y + h);
+    if (c._cloud === true && REV) { const bb = primsBounds(r.prims); if (Number.isFinite(bb.x0)) revCloud(prims, bb, REV, 'SLD-REVISION'); }
     // the items of an incomer that sit in another room (RMU and transformer in the HV compound, the generator in its enclosure): a dashed box
     // round each room's run, named above it, so every room on the drawing is shown the same way
     const own = String(b.enclosure || '').toUpperCase().trim(), rooms = [...new Set(r.prims.map(p => p._enc).filter(e => e && e !== own))];
@@ -382,8 +385,9 @@ function drawRoomed(b, x0, y, prims, top, over = null, feed = null) {   // feed:
   } finally { SUBLOG = keepS; ROOMLOG = keepR; }
 }
 
+let REV = '';   // the revision being drawn (for the clouds), set by layoutSld
 function layoutSld(spec, opts = {}) {
-  PHASED = isPhased(spec);
+  PHASED = isPhased(spec); REV = spec.revision || '';
   if (PHASED && spec.phase && !/\bphase\b/i.test(spec.title || '')) spec.title = `${spec.title || ''} - PHASE ${String(spec.phase).replace(/^phase\s*/i, '')}`.trim();
   const prims = [], boards = spec.boards || spec.busbars || [];
   if (!boards.length) throw new Error('The drawing has no boards');
@@ -1310,19 +1314,40 @@ function layoutPowerBcd(spec, model, opts = {}) {
 }
 function dashedSeg(prims, x1, y1, x2, y2, colour) { const len = Math.hypot(x2 - x1, y2 - y1), ux = (x2 - x1) / len, uy = (y2 - y1) / len; for (let d = 0; d < len; d += 4.5) { const e = Math.min(len, d + 3); prims.push({ ...L(x1 + ux * d, y1 + uy * d, x1 + ux * e, y1 + uy * e, 'BCD-CABLE'), colour }); } }
 // revision clouds round the cable boxes that changed, with the revision triangle beside them
-function revCloud(prims, b, rev) {
+function revCloud(prims, b, rev, layer = 'BCD-REVISION') {
   const pad = 2, x0 = b.x0 - pad, y0 = b.y0 - pad, x1 = b.x1 + pad, y1 = b.y1 + pad, r = 2;
-  const edge = (ax, ay, bx, by) => { const len = Math.hypot(bx - ax, by - ay), n = Math.max(1, Math.round(len / (2 * r))); const ang = Math.atan2(by - ay, bx - ax) * 180 / Math.PI; for (let i = 0; i < n; i++) { const cx = ax + (bx - ax) * (i + 0.5) / n, cy = ay + (by - ay) * (i + 0.5) / n; prims.push({ t: 'arc', x: cx, y: cy, r: len / n / 2, a0: ang, a1: ang + 180, layer: 'BCD-REVISION' }); } };
+  const edge = (ax, ay, bx, by) => { const len = Math.hypot(bx - ax, by - ay), n = Math.max(1, Math.round(len / (2 * r))); const ang = Math.atan2(by - ay, bx - ax) * 180 / Math.PI; for (let i = 0; i < n; i++) { const cx = ax + (bx - ax) * (i + 0.5) / n, cy = ay + (by - ay) * (i + 0.5) / n; prims.push({ t: 'arc', x: cx, y: cy, r: len / n / 2, a0: ang, a1: ang + 180, layer: layer }); } };
   edge(x0, y0, x1, y0); edge(x1, y0, x1, y1); edge(x1, y1, x0, y1); edge(x0, y1, x0, y0);
   const tx = x1 + 4, ty = y1;
-  prims.push(P([[tx, ty - 3], [tx + 7, ty - 3], [tx + 3.5, ty + 3]], true, 'BCD-REVISION'));
-  prims.push({ t: 'mtext', x: tx + 3.5, y: ty - 1, w: 8, h: TH, text: String(rev || '').replace(/^[A-Z]0*/, '') || '1', attach: 5, layer: 'BCD-REVISION' });
+  prims.push(P([[tx, ty - 3], [tx + 7, ty - 3], [tx + 3.5, ty + 3]], true, layer));
+  prims.push({ t: 'mtext', x: tx + 3.5, y: ty - 1, w: 8, h: TH, text: String(rev || '').replace(/^[A-Z]0*/, '') || '1', attach: 5, layer });
 }
 // what changed between two BCD specs, by cable number
+// an SLD revision: each feeder / incomer is known by its cable number (else the thing at its end); one whose chain differs from the last
+// revision, or is new, is marked (_cloud) so the layout puts a revision cloud round it. Returns what changed, by those names.
+function sldDiff(oldSpec, newSpec) {
+  const tagOf = (t) => String(t || '').split(/\n|\\n/)[0].trim().toUpperCase();
+  const idOf = (f) => { const its = (f.chain || []).filter(it => !it.gap); const cab = its.find(it => symbolOf(it.symbol) === 'cable' && it.label); if (cab) return tagOf(cab.label).split(/[\s/]/)[0]; const last = its[its.length - 1]; return last ? (last.board ? tagOf(last.board.label) : tagOf(last.label) + (its.length > 1 ? ' ' + tagOf(its[0].label) : '')) : ''; };
+  const sig = (f) => JSON.stringify((f.chain || []).filter(it => !it.gap).map(it => it.board ? ['board', String(it.board.label || '').toUpperCase().replace(/\s+/g, ' ')] : [symbolOf(it.symbol), String(it.label || '').toUpperCase().replace(/\s+/g, ' ').trim()]));
+  const collect = (spec) => { const out = new Map(); const walk = (b, pathKey) => { if (!b) return; for (const [kind, list] of [['in', b.incomers || []], ['f', b.feeders || []]]) list.forEach((f, i) => { const id = (idOf(f) || `${kind}${i}`); out.set(pathKey + '|' + id, { f, sig: sig(f), id }); for (const it of f.chain || []) if (it.board) walk(it.board, pathKey + '>' + tagOf(it.board.label)); }); }; (spec.boards || spec.busbars || []).forEach(b => walk(b, tagOf(b.label))); return out; };
+  const o = collect(oldSpec), n = collect(newSpec), added = [], changed = [], removed = [];
+  const itemsOf = (f) => (f.chain || []).filter(it => !it.gap), itemSig = (it) => it.board ? 'board' : symbolOf(it.symbol) + '|' + String(it.label || '').toUpperCase().replace(/\s+/g, ' ').trim();
+  for (const [k, v] of n) { const prev = o.get(k); if (!prev) { added.push(v.id); v.f._cloud = true; continue; } if (prev.sig === v.sig) continue; changed.push(v.id);
+    // the same feeder with some items different: only those items are clouded (a new rating on a breaker, an impedance on a transformer)
+    const a = itemsOf(prev.f), b = itemsOf(v.f);
+    if (a.length === b.length && b.some((it, i) => itemSig(it) === itemSig(a[i]))) { b.forEach((it, i) => { if (itemSig(it) !== itemSig(a[i]) && !it.board) it._cloud = true; }); v.f._cloud = 'items'; } else v.f._cloud = true; }
+  for (const [k, v] of o) if (!n.has(k)) removed.push(v.id);
+  return { added, removed, changed };
+}
 function bcdDiff(oldSpec, newSpec) {
   const key = (c) => [c.from, c.to, c.type, c.cores, c.size].map(v => String(v || '').trim().toUpperCase()).join('|');
   const o = new Map((oldSpec.cables || []).map(c => [String(c.no || ''), c])), n = new Map((newSpec.cables || []).map(c => [String(c.no || ''), c]));
-  const added = [...n.keys()].filter(k => !o.has(k)), removed = [...o.keys()].filter(k => !n.has(k)), changed = [...n.keys()].filter(k => o.has(k) && key(o.get(k)) !== key(n.get(k)));
+  const ends = (c) => [c.from, c.to].map(v => String(v || '').trim().toUpperCase()).join('>');
+  const isTbc = (k) => /^TBC$|^TBC-|^$/i.test(k);
+  let added = [...n.keys()].filter(k => !o.has(k)), removed = [...o.keys()].filter(k => !n.has(k)), changed = [...n.keys()].filter(k => o.has(k) && key(o.get(k)) !== key(n.get(k)));
+  // a cable that was TBC and now has its number (same ends): that number is a change, not an add plus a removed TBC
+  for (const k of [...removed]) if (isTbc(k)) { const m = added.find(a => ends(n.get(a)) === ends(o.get(k))); if (m) { removed.splice(removed.indexOf(k), 1); added.splice(added.indexOf(m), 1); changed.push(m); } }
+  removed = removed.filter(k => !isTbc(k)); changed = changed.filter(k => !isTbc(k));
   return { added, removed, changed };
 }
 
@@ -1330,7 +1355,7 @@ function bcdDiff(oldSpec, newSpec) {
 const ATOMAX_TPL = path.join(__dirname, 'cad', 'atomax-template.dxf');
 const TEMPLATE = () => fs.readFileSync(fs.existsSync(ATOMAX_TPL) ? ATOMAX_TPL : path.join(__dirname, 'dxf-template-r2010.dxf'), 'utf8');
 const n = (v) => (Math.round(v * 1000) / 1000).toString();
-const LAYERS = [['SLD-BUS', 1], ['SLD-CABLE', 3], ['SLD-SYMBOL', 7], ['SLD-TEXT', 7], ['SLD-BORDER', 8], ['SLD-NOTES', 30], ['SLD-ENCLOSURE', 8], ['BCD-BLOCK', 7], ['BCD-CABLE', 7], ['BCD-CABLEBOX', 2], ['BCD-TEXT', 7], ['BCD-REVISION', 1]];
+const LAYERS = [['SLD-BUS', 1], ['SLD-CABLE', 3], ['SLD-SYMBOL', 7], ['SLD-TEXT', 7], ['SLD-BORDER', 8], ['SLD-NOTES', 30], ['SLD-ENCLOSURE', 8], ['SLD-REVISION', 1], ['BCD-BLOCK', 7], ['BCD-CABLE', 7], ['BCD-CABLEBOX', 2], ['BCD-TEXT', 7], ['BCD-REVISION', 1]];
 // add any of our layers the template does not have (so a client's own title block DXF can be the template)
 function ensureLayers(tpl, h0) {
   let h = h0; const tab = tpl.match(/\n\s*0\nTABLE\n\s*2\nLAYER\n\s*5\n([0-9A-Fa-f]+)\n[\s\S]*?\n\s*0\nENDTAB\n/); if (!tab) return { tpl, h };
@@ -1515,14 +1540,16 @@ function make(spec, outDir, baseName, opts = {}) {
   let diff = null;
   if (opts.previous && opts.previous.spec) {
     const old = opts.previous.spec;
-    diff = spec.kind === 'bcd' ? bcdDiff(old, spec) : null;
+    diff = spec.kind === 'bcd' ? bcdDiff(old, spec) : sldDiff(old, spec);   // the SLD's changed feeders get their clouds from the marks sldDiff leaves
     const said = diff ? [diff.added.length ? 'added ' + diff.added.join(', ') : '', diff.removed.length ? 'removed ' + diff.removed.join(', ') : '', diff.changed.length ? 'changed ' + diff.changed.join(', ') : ''].filter(Boolean).join('; ') : (spec.revisionNote || 'revised');
     // each row of the revision box keeps its own description, date and initials; what changed goes in the notes
     const op = old.people || {}, np = spec.people || {};
     const first = old.revHistory && old.revHistory.length ? old.revHistory : [{ rev: old.revision || 'P01', what: stageWords(old.revision || 'P01'), date: op.date || '', by: op.drawn || '', checked: op.checked || '', approved: op.approved || '' }];
     spec.revHistory = [...first.filter(r => r.rev !== spec.revision), { rev: spec.revision, what: spec.revisionDesc || stageWords(spec.revision, true), date: np.date || '', by: np.drawn || '', checked: np.checked || '', approved: np.approved || '' }];
-    // the drawing's revision note names what changed (by cable number, from the diff); the client's own words never go on the drawing
-    if (diff && said) spec.notes = [...(spec.notes || []), `${spec.revision}: ${said.toUpperCase()}`];
+    // the drawing's revision note names what changed (by cable number, from the diff); the client's own words never go on the drawing,
+    // and Dex's own "P02: ..." notes make way for this one
+    spec.notes = (spec.notes || []).filter(nt => !/^\s*[PCAX]\d\d\s*[:\-–]/i.test(String(nt)));
+    if (diff && said) spec.notes = [...spec.notes, `${spec.revision}: ${said.toUpperCase()}`];
   }
   const sheets = spec.kind === 'bcd' ? layoutBcd(spec, { noTitle: !!opts.template, diff, fill: opts.fill, border: opts.border }) : [(() => { const r = layoutSld(spec, { fill: opts.fill, border: opts.border }); return { ...r, label: '' }; })()];
   // every sheet framed in its border; a drawing of several sheets is ONE DXF (the sheets side by side in model space, 50mm apart)
@@ -1560,4 +1587,4 @@ function previousSpec(outDir, baseName, notRev = '') {   // notRev: skip specs o
   return null;
 }
 
-module.exports = { fromSchedule, cleanLabels, cleanLabel, noteLines, clientNotes, isInternalNote, notesFit, primsBounds, BORDER_NAMES, flatPrims, BORDERS, cableClashes, previousSpec, layoutBcd, bcdDiff, SYSTEM, ALIASES, SYMBOLS, symbolOf, layoutSld, writeDxf, toSvg, parseReply, make };
+module.exports = { sldDiff, fromSchedule, cleanLabels, cleanLabel, noteLines, clientNotes, isInternalNote, notesFit, primsBounds, BORDER_NAMES, flatPrims, BORDERS, cableClashes, previousSpec, layoutBcd, bcdDiff, SYSTEM, ALIASES, SYMBOLS, symbolOf, layoutSld, writeDxf, toSvg, parseReply, make };

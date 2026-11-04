@@ -27,3 +27,13 @@ console.log('oakmere ok: SLD 2 incomers, rooms boxed; BCD 1 sheet A0, all', bcd.
   const S2 = D.layoutBcd(b2, { border: 'atomax' }); assert.strictEqual(S2.length, 1, 'P02 BCD still one sheet'); assert(!S2[0].cables.includes('C-009') && S2[0].cables.includes('C-018'));
   console.log('oakmere P02 ok: spare way deleted on both, M-207 added, one sheet');
 }
+// SLD revision clouds: a changed item (transformer impedance), a changed breaker and a new feeder each get a cloud; unchanged ones none
+{
+  const F3 = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'oakmere.json'), 'utf8')), old = JSON.parse(JSON.stringify(F3.sld)), nw = F3.sld;
+  nw.boards[0].incomers[0].chain[2].label = 'TX-01\n800kVA 11/0.433kV\nDyn11\nZ 5%'; nw.boards[0].feeders[0].chain[0].label = '400A 3P MCCB';
+  nw.boards[0].feeders[0].chain[2].board.feeders.push({ chain: [{ symbol: 'breaker', label: 'TBC' }, { symbol: 'dol', label: 'DOL STARTER' }, { symbol: 'cable', label: 'C-018\n4C 6mm²' }, { symbol: 'motor', label: 'M-207\nGRIT PUMP 2' }] });
+  const d = D.sldDiff(old, nw); assert.deepStrictEqual(d.added, ['C-018']); assert.deepStrictEqual(d.changed.sort(), ['C-001', 'C-004']); assert.deepStrictEqual(d.removed, []);
+  nw.revision = 'P02'; const L3 = D.layoutSld(nw, { border: 'atomax' }); const tri = L3.prims.filter(p => p.layer === 'SLD-REVISION' && p.t === 'mtext').length;
+  assert.strictEqual(tri, 3, 'three revision triangles (TX-01, 400A MCCB, new C-018 feeder), got ' + tri);
+  console.log('oakmere SLD clouds ok: 3 changes, 3 clouds');
+}
