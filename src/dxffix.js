@@ -232,4 +232,49 @@ function matchFile(drawing, files) {
   return files.find(f => { try { return parseDxf(Buffer.from(f.base64, 'base64')).ents.some(e => normKey(e.plain) === k); } catch { return false; } }) || null;
 }
 
-module.exports = { parseDxf, applyFixes, countMatches, checkItem, inventory, proposalsFromFindings, matchFile, plainText, DEX_SYSTEM, DEX_NOTE_SYSTEM };
+
+// Cable ends traced from the linework of a block cable diagram: each cable's line(s) followed to the two boxes / circles it
+// touches, and the tag written in each. Exact, so a check never has to guess from/to from a picture. Returns [] for drawings
+// that are not drawn as boxes joined by cable lines.
+function cableEnds(buf) {
+  const lines = decode(buf).split(/\r?\n/), P = []; for (let i = 0; i + 1 < lines.length; i += 2) P.push([parseInt(lines[i].trim(), 10), lines[i + 1]]);
+  const ents = []; let sec = '', cur = null;
+  for (let i = 0; i < P.length; i++) { const [c, v] = P[i];
+    if (c === 0) { cur = null; if (v === 'SECTION') sec = P[i + 1] && P[i + 1][1]; else if (sec === 'ENTITIES' && /^(LINE|LWPOLYLINE|CIRCLE|MTEXT|TEXT)$/.test(v)) { cur = { t: v, pts: [], txt: '', layer: '' }; ents.push(cur); } continue; }
+    if (!cur) continue; const f = parseFloat(v);
+    if (c === 8) cur.layer = v; else if (c === 10) cur.pts.push([f, NaN]); else if (c === 20 && cur.pts.length) cur.pts[cur.pts.length - 1][1] = f;
+    else if (c === 11) cur.x2 = f; else if (c === 21) cur.y2 = f; else if (c === 40) cur.r = f; else if (c === 70) cur.closed = (parseInt(v, 10) & 1) === 1; else if (c === 50) cur.rot = f;
+    else if (c === 1 || (c === 3 && cur.t === 'MTEXT')) cur.txt += v; }
+  if (ents.filter(e => /CABLE/i.test(e.layer) && !/BOX/i.test(e.layer)).length < 1) return [];
+  const segs = [];
+  for (const e of ents) if (/CABLE/i.test(e.layer) && !/BOX/i.test(e.layer)) {
+    if (e.t === 'LINE' && e.pts[0]) segs.push([e.pts[0], [e.x2, e.y2]]);
+    else if (e.t === 'LWPOLYLINE') for (let i = 1; i < e.pts.length; i++) segs.push([e.pts[i - 1], e.pts[i]]); }
+  const shapes = [];   // boxes and circles, with the first line of the text inside as the tag
+  const texts = ents.filter(e => /TEXT/.test(e.t) && e.pts[0]).map(e => ({ x: e.pts[0][0], y: e.pts[0][1], first: e.txt.replace(/\\[A-Za-z][^;\\]*;/g, '').split('\\P')[0].replace(/[{}]/g, '').trim(), all: e.txt.replace(/\\[A-Za-z][^;\\]*;/g, '').replace(/\\P/g, ' ').replace(/[{}]/g, '').trim(), rot: e.rot || 0 }));
+  for (const e of ents) {
+    if (e.t === 'LWPOLYLINE' && e.closed && /BLOCK/i.test(e.layer) && e.pts.length >= 4) { const xs = e.pts.map(p => p[0]), ys = e.pts.map(p => p[1]); shapes.push({ x0: Math.min(...xs), x1: Math.max(...xs), y0: Math.min(...ys), y1: Math.max(...ys) }); }
+    else if (e.t === 'CIRCLE' && /BLOCK/i.test(e.layer) && e.pts[0]) shapes.push({ cx: e.pts[0][0], cy: e.pts[0][1], r: e.r, x0: e.pts[0][0] - e.r, x1: e.pts[0][0] + e.r, y0: e.pts[0][1] - e.r, y1: e.pts[0][1] + e.r }); }
+  for (const s of shapes) { const t = texts.filter(t => !t.rot && t.x > s.x0 && t.x < s.x1 && t.y > s.y0 && t.y < s.y1)[0]; s.tag = t ? t.first.split(/\s+/)[0] : ''; }
+  const tol = 0.6, near = (a, b) => Math.abs(a[0] - b[0]) < tol && Math.abs(a[1] - b[1]) < tol;
+  const onShape = (p) => shapes.find(s => s.tag && (s.r ? Math.abs(Math.hypot(p[0] - s.cx, p[1] - s.cy) - s.r) < tol : (p[0] > s.x0 - tol && p[0] < s.x1 + tol && p[1] > s.y0 - tol && p[1] < s.y1 + tol && (Math.abs(p[0] - s.x0) < tol || Math.abs(p[0] - s.x1) < tol || Math.abs(p[1] - s.y0) < tol || Math.abs(p[1] - s.y1) < tol))));
+  // join touching segments into runs
+  const seen = new Set(), runs = [];
+  for (let i = 0; i < segs.length; i++) { if (seen.has(i)) continue; const run = [i]; seen.add(i);
+    for (let k = 0; k < run.length; k++) for (let j = 0; j < segs.length; j++) if (!seen.has(j) && segs[run[k]].some(a => segs[j].some(b => near(a, b)))) { seen.add(j); run.push(j); }
+    runs.push(run.map(i => segs[i])); }
+  const out = [];
+  for (const run of runs) {
+    const pts = run.flat(), ends = pts.filter(p => pts.filter(q => near(p, q)).length === 1);
+    const refTo = (p) => { const t = texts.filter(t => /^TO\s+\S/i.test(t.all) && Math.hypot(t.x - p[0], t.y - p[1]) < 10).sort((a, b) => Math.hypot(a.x - p[0], a.y - p[1]) - Math.hypot(b.x - p[0], b.y - p[1]))[0]; return t ? { tag: t.all.split(/\s+/)[1] } : null; };   // a link label: "TO FT-01 (SHOWN UNDER MCC-01)"
+    const hits = [...new Set((ends.length ? ends : pts).map(p => onShape(p) || refTo(p)).filter(Boolean))];
+    // the cable number: the rotated text beside a vertical part of this run (or the text nearest the run)
+    const vert = run.filter(([a, b]) => Math.abs(a[0] - b[0]) < tol);
+    const lab = texts.filter(t => /^[A-Z0-9][A-Z0-9_./-]*\d/i.test(t.first) && vert.some(([a, b]) => Math.abs(t.x - a[0]) < 6 && t.y > Math.min(a[1], b[1]) - 1 && t.y < Math.max(a[1], b[1]) + 1) && t.rot).sort((p, q) => Math.abs(p.x - vert[0][0][0]) - Math.abs(q.x - vert[0][0][0]))[0];
+    if (!lab) continue;
+    out.push({ cable: lab.first.split(/\s+/)[0], ends: hits.map(s => s.tag) });
+  }
+  return out;
+}
+
+module.exports = { cableEnds, parseDxf, applyFixes, countMatches, checkItem, inventory, proposalsFromFindings, matchFile, plainText, DEX_SYSTEM, DEX_NOTE_SYSTEM };

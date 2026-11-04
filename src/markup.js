@@ -141,7 +141,9 @@ async function makeMarkups({ report, drawings, fallbackDir }) {
   const firstWithPath = drawings.find(d => d.path);
   const dir = path.join(firstWithPath ? path.dirname(firstWithPath.path) : fallbackDir, 'MARKUPS');
   for (const [fi, list] of byFile) {
-    const d = drawings[fi]; if (!d) continue;
+    let d = drawings[fi]; if (!d) continue;
+    // a DXF that was checked is marked up on its PDF (made beside it with the same name)
+    if (/\.dxf$/i.test(d.name) && d.path) { const pf = d.path.replace(/\.dxf$/i, '.pdf'); if (fs.existsSync(pf)) d = { ...d, name: path.basename(pf), path: pf, base64: fs.readFileSync(pf).toString('base64') }; }
     const ext = path.extname(d.name).toLowerCase();
     const kind = ext === '.pdf' ? 'pdf' : (['.png', '.jpg', '.jpeg'].includes(ext) ? 'image' : null);
     if (!kind) { if (/\.(gif|webp)$/i.test(ext)) res.failed.push({ name: d.name, reason: 'Only PDF, PNG and JPG drawings can be marked up.' }); continue; }

@@ -94,9 +94,10 @@ function register({ ipcMain, HANDLERS, BIZ }) {
     if (!schedule) schedule = (BIZ.projects.relevantFiles(job.id, 'cable schedule', { exts: ['.xlsx', '.xlsm', '.pdf'], max: 1 }) || [])[0];
     if (!schedule) throw new Error('No cable schedule to check against: make the schedule first or put it in the job folder');
     const targets = (nos && nos.length ? nos : Object.keys(dl)).filter(n => dl[n] && dl[n].files && kindOf(job.drawings.find(d => d.no === n) || { no: n }).agent === 'Dex');
-    const drawings = targets.flatMap(n => [...(dl[n].pdfs || []), ...(dl[n].pdfs && dl[n].pdfs.length ? [] : dl[n].files)]).filter(p => fs.existsSync(p));
+    // the DXF Dex made, not its PDF: every word exact and each cable's ends traced from the lines (a PDF of an A0 sheet is too small to read)
+    const drawings = targets.flatMap(n => { const dx = (dl[n].files || []).filter(p => /\.dxf$/i.test(p) && fs.existsSync(p)); return dx.length ? dx : [...(dl[n].pdfs || []), ...(dl[n].files || [])]; }).filter(p => fs.existsSync(p));
     if (!drawings.length) throw new Error('No drawings made yet to check');
-    const enc = (p) => ({ name: path.basename(p), base64: fs.readFileSync(p).toString('base64') });
+    const enc = (p) => ({ name: path.basename(p), path: p, base64: fs.readFileSync(p).toString('base64') });
     targets.forEach(n => setDeliv(jobId, n, { check: { status: 'working', run: RUN } }));
     const r = await call('check:run', { agent: { id: 'cal' }, schedule: enc(schedule), drawings: drawings.map(enc), jobId, note: 'Check both ways and say exactly what was covered.' });
     const findings = r.findings || [], dir = r.markups && r.markups.dir || '';

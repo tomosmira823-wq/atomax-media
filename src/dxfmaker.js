@@ -570,8 +570,8 @@ const notesOf = (spec, k = 1) => [...clientNotes(spec).notes.filter(n => noteLin
 // a note's lines in the notes column; a list of abbreviations ("VSD - VARIABLE SPEED DRIVE. DOL - DIRECT ON LINE.") puts each one on its
 // own line, never split at its dash
 // units written normally even in capitals (11kV, 1000kVA, 75kW, 200kVAr, 50kA 1s, 95mm²), as on the SLD
-const UNIT = { HZ: 'Hz', KVAR: 'kVAr', KVA: 'kVA', KV: 'kV', KW: 'kW', KA: 'kA', MVA: 'MVA', MW: 'MW', 'MM²': 'mm²', MM2: 'mm²', MM: 'mm' };
-const units = (s) => String(s).replace(/\b(YN|ZN|D|Y|Z)(YN|ZN|Y|D|Z)(\d{1,2})\b/g, (m, a, b, n) => a + b.toLowerCase() + n).replace(/(\d)\s?(HZ|KVAR|KVA|KV|KW|KA|MVA|MW|MM²|MM2|MM)(?![A-Z0-9])/gi, (m, d, u) => d + (UNIT[u.toUpperCase()] || u)).replace(/(kA,?\s*\d+(?:\.\d+)?)S(?![A-Z])/g, '$1s');
+const UNIT = { MA: 'mA', HZ: 'Hz', KVAR: 'kVAr', KVA: 'kVA', KV: 'kV', KW: 'kW', KA: 'kA', MVA: 'MVA', MW: 'MW', 'MM²': 'mm²', MM2: 'mm²', MM: 'mm' };
+const units = (s) => String(s).replace(/\b(YN|ZN|D|Y|Z)(YN|ZN|Y|D|Z)(\d{1,2})\b/g, (m, a, b, n) => a + b.toLowerCase() + n).replace(/(\d)\s?(HZ|KVAR|KVA|KV|KW|KA|MVA|MW|MM²|MM2|MM|MA)(?![A-Z0-9])/gi, (m, d, u) => d + (UNIT[u.toUpperCase()] || u)).replace(/(kA,?\s*\d+(?:\.\d+)?)S(?![A-Z])/g, '$1s');
 // the words written on the drawing itself (not the border or notes): an abbreviation only goes in the key when it is used
 function usedWords(prims) { const w = new Set(); for (const p of flatPrims(prims)) if ((p.t === 'text' || p.t === 'mtext') && !/BORDER|NOTES/i.test(p.layer || '')) for (const m of String(p.text).toUpperCase().matchAll(/[A-Z0-9/&]+/g)) { w.add(m[0]); m[0].split('/').forEach(x => x && w.add(x)); } return w; }
 const abbrUsed = (a, used) => !(used instanceof Set) || used.has(a) || [...used].some(x => (x.startsWith(a) && /^\d/.test(x.slice(a.length))) || (x.endsWith(a) && /^[\d.]+$/.test(x.slice(0, -a.length))));   // a word, a tag starting with it (LIS-P01, LIS01) or a size ending in it (2PR)
