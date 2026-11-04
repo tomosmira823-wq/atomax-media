@@ -36,6 +36,17 @@
   #top .right > span { display: inline-flex; align-items: center; padding: 4px 10px; border-radius: 20px; background: rgba(18,24,39,.8); border: 1px solid var(--line); }
   .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--red); display: inline-block; margin-right: 7px; box-shadow: 0 0 0 3px rgba(255,107,107,.12); }
   .dot.ok { background: var(--green); box-shadow: 0 0 0 3px var(--green-soft); }
+  /* service badges in the top bar: a lettered badge (or the service's own logo dropped in assets/logos/<service>.png) lit green when its key is set */
+  #top .right > span.svc { padding: 3px 9px 3px 4px; gap: 6px; }
+  .svcico { width: 20px; height: 20px; border-radius: 6px; display: inline-flex; align-items: center; justify-content: center; font-style: normal; font-weight: 800; font-size: 11px; letter-spacing: 0; color: #0b0f1a; background: #4a5368; opacity: .55; background-size: 14px 14px; background-repeat: no-repeat; background-position: center; }
+  .svc.ok .svcico { opacity: 1; background-color: var(--green); box-shadow: 0 0 0 3px var(--green-soft); }
+  .svc.warn .svcico { opacity: 1; background-color: var(--amber); } .svc.bad .svcico { opacity: 1; background-color: var(--red); }
+  .svcico.haslogo { color: transparent; font-size: 0; } .svcico.cloud { color: #0b0f1a; } .svc:not(.ok):not(.warn):not(.bad) .svcico.cloud { color: #cfd6e3; }
+  /* toasts: short messages bottom right (saved, failed, update ready) */
+  #toasts { position: fixed; right: 18px; bottom: 18px; display: flex; flex-direction: column; gap: 8px; z-index: 60; pointer-events: none; }
+  .toast { pointer-events: auto; background: #141c2f; border: 1px solid #2c3850; border-left: 3px solid var(--green); color: var(--text); border-radius: 10px; padding: 10px 14px; font-size: 13px; max-width: 420px; box-shadow: 0 10px 30px rgba(0,0,0,.45); animation: toastin .18s ease-out; display: flex; gap: 10px; align-items: center; }
+  .toast.err { border-left-color: var(--red); } .toast.warn { border-left-color: var(--amber); } .toast.out { opacity: 0; transform: translateY(6px); transition: opacity .25s, transform .25s; }
+  .toast button { margin-left: auto; } @keyframes toastin { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 
   /* panels */
   .panel { position: fixed; top: 70px; bottom: 16px; width: 360px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); backdrop-filter: blur(14px) saturate(1.2); z-index: 10; display: flex; flex-direction: column; overflow: hidden; box-shadow: var(--shadow); }
@@ -60,10 +71,10 @@
   label.plain, .agentpick label { text-transform: none; letter-spacing: 0; font-weight: 500; font-size: 13px; }
   .row { display: flex; gap: 8px; align-items: center; }
   input[type=checkbox] { accent-color: var(--green); width: 15px; height: 15px; }
-  button.btn { background: var(--navy3); color: var(--text); border: 1px solid var(--line2); border-radius: var(--radius-sm); padding: 8px 14px; cursor: pointer; font: inherit; font-weight: 600; transition: background .15s, border-color .15s, transform .08s; }
-  button.btn:hover { background: #222c42; border-color: #3a4760; }
+  button.btn { background: #1a2338; color: var(--text); border: 1px solid #2c3850; border-radius: 8px; padding: 7px 12px; cursor: pointer; font: inherit; font-size: 12.5px; font-weight: 600; transition: background .15s, border-color .15s, transform .08s; }
+  button.btn:hover { background: #222d47; border-color: #3a4760; }
   button.btn:active { transform: translateY(1px); }
-  button.btn.primary { background: var(--green); color: #061000; border-color: var(--green); }
+  button.btn.primary { background: var(--green); color: #0b0f1a; border-color: var(--green); }
   button.btn.primary:hover { background: #4fd60a; border-color: #4fd60a; }
   button.btn.small { padding: 5px 10px; font-size: 12px; }
   button.btn:disabled { opacity: .45; cursor: default; transform: none; }
@@ -141,7 +152,7 @@
   /* project whiteboard (meeting room) */
   #dexPanel.make-mode #dexSetup, #dexPanel.make-mode #dexRun, #dexPanel.make-mode #dexList, #dexPanel.make-mode #dexResult { display: none !important; } #dexPanel:not(.make-mode) #dexMake { display: none; }
   .dmfolder { margin-top: 6px; font-size: 12.5px; color: var(--muted); } .dmfolder b { color: var(--text); } .dmfolder .bp { font-family: Consolas, monospace; font-size: 11.5px; word-break: break-all; color: var(--text); }
-  .dmfolder button, #dmOut button, .dmq button { font: inherit; font-size: 12px; padding: 5px 9px; border-radius: 7px; border: 1px solid var(--line); background: #1b2131; color: var(--text); cursor: pointer; margin: 4px 4px 0 0; }
+  .dmfolder button, #dmOut button, .dmq button { font: inherit; font-size: 12.5px; font-weight: 600; padding: 6px 10px; border-radius: 8px; border: 1px solid #2c3850; background: #1a2338; color: var(--text); cursor: pointer; margin: 4px 4px 0 0; }
   .dmq { margin-top: 10px; padding: 10px; border: 1px solid #ffa94d55; background: #2a2010; border-radius: 8px; } .dmq label { margin-top: 6px; font-weight: 600; font-size: 12.5px; text-transform: none; letter-spacing: 0; color: var(--text); } .dmq input { width: 100%; }
   .dmsvg { margin-top: 10px; background: #fff; border-radius: 6px; overflow: auto; max-height: 340px; } .dmsvg svg { width: 100%; height: auto; display: block; }
   #mailPanel { display: none; right: 16px; left: auto; width: min(1000px, 66vw); background: #10172a; color: #e8ecf4; border-color: #2c3850; }
@@ -151,7 +162,7 @@
   #mlDrop { border: 2px dashed #f08c00; border-radius: 10px; padding: 18px 10px; text-align: center; background: rgba(240,140,0,.07); cursor: pointer; } #mlDrop.over { background: rgba(240,140,0,.16); }
   #mlDrop b { display: block; color: #ffb84d; } #mlDrop span { font-size: 12px; color: #97a1b6; }
   #mlPaste { width: 100%; margin-top: 8px; font: inherit; font-size: 12.5px; padding: 6px; border: 1px solid #2c3850; border-radius: 6px; resize: vertical; background: #172034; color: #e8ecf4; }
-  #mailPanel button { font: inherit; font-size: 12.5px; padding: 6px 10px; border-radius: 6px; border: 1px solid #2c3850; background: #172034; color: #e8ecf4; cursor: pointer; }
+  #mailPanel button { background: #1a2338; color: var(--text); border: 1px solid #2c3850; border-radius: 8px; padding: 7px 12px; font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; }
   #mailPanel button.bprim { background: #40bd00; border-color: #40bd00; color: #fff; } #mailPanel button:disabled { opacity: .5; cursor: default; }
   .mlitem { display: block; width: 100%; text-align: left; margin-top: 6px; background: #172034; } .mlitem.on { outline: 2px solid #ffb84d; } .mlitem b { display: block; font-size: 13px; } .mlitem i { font-style: normal; font-size: 11.5px; color: #97a1b6; }
   .mlhead h3 { margin: 0 0 2px; } .mlsum { margin: 8px 0; padding: 10px 12px; background: #172034; border: 1px solid #2c3850; border-radius: 6px; font-size: 13.5px; }
@@ -180,7 +191,7 @@
   .fc { text-align: left; border: 0; color: var(--text); background: #172034; border-radius: 6px; padding: 9px 10px; display: flex; align-items: center; gap: 8px; font: inherit; cursor: pointer; box-shadow: inset 4px 0 0 var(--c); }
   .fc.on { outline: 2px solid #40bd00; } .fc i { display: none; } .fc span { margin-left: auto; color: #97a1b6; font-size: 12px; }
   #fcMain { padding: 14px 16px; overflow: auto; max-height: none; height: 100%; min-height: 0; } #fcTabs { min-height: 0; overflow: auto; } .fhead { display: flex; justify-content: space-between; gap: 10px; align-items: flex-start; } .fhead h3 { margin: 0 0 2px; }
-  .fbtns { display: flex; gap: 6px; flex-wrap: wrap; } .fbtns button, .fup, .scard button, .sbtns button, .sban button { font: inherit; font-size: 12.5px; padding: 6px 10px; border-radius: 6px; border: 1px solid #2c3850; background: #172034; color: #e8ecf4; cursor: pointer; }
+  .fbtns { display: flex; gap: 6px; flex-wrap: wrap; } .fbtns button, .fup, .scard button, .sbtns button, .sban button { background: #1a2338; color: var(--text); border: 1px solid #2c3850; border-radius: 8px; padding: 7px 12px; font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; }
   .fbtns .bprim, .scard .bprim, .sbtns .bprim { background: #40bd00; border-color: #40bd00; color: #fff; }
   .flist { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; } .frow { background: #172034; border: 1px solid #2c3850; border-radius: 6px; padding: 10px 12px; display: grid; grid-template-columns: 1fr auto auto auto; gap: 10px; align-items: center; cursor: pointer; }
   .frow.open { grid-template-columns: 1fr; } .frow .fedit { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 6px; cursor: default; } .frow .fedit input, .frow .fedit textarea, .frow .fedit select { font: inherit; font-size: 13px; padding: 6px; border: 1px solid #2c3850; border-radius: 5px; }
@@ -221,7 +232,7 @@
   #bdMain textarea, #bdMain input, #bdMain select { width: 100%; box-sizing: border-box; border: 1px solid #2c3850; border-radius: 6px; padding: 8px 10px; font: inherit; background: #172034; color: #e8ecf4; }
   .bsub { font-size: 12px; color: #97a1b6; } .bhint { color: #97a1b6; padding: 8px 2px; font-size: 13px; }
   .bhead { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; flex-wrap: wrap; } .brow { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
-  #bdMain .brow button, .bnew button, .bt-b button { border: 1px solid #2c3850; background: #172034; color: #e8ecf4; border-radius: 6px; padding: 6px 10px; font-size: 12.5px; }
+  #bdMain .brow button, .bnew button, .bt-b button { background: #1a2338; color: var(--text); border: 1px solid #2c3850; border-radius: 8px; padding: 7px 12px; font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; }
   #bdMain .bprim { background: #1b2a41; color: #fff; border-color: #e8ecf4; } #bdMain .bon { background: #2f9e44; color: #fff; border-color: #2f9e44; }
   .bnew { display: grid; grid-template-columns: 1fr 190px auto; gap: 8px; margin-bottom: 8px; }
   .bcols { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 12px; } .bcol h4 { margin: 0 0 8px; font-size: 12px; color: #b6bfd0; text-transform: uppercase; letter-spacing: .08em; } .bcol h4 span { background: #1f2a40; border-radius: 9px; padding: 0 7px; }
@@ -404,13 +415,20 @@ body.fp canvas#scene{cursor:grab}
   .fagents select { width: auto; padding: 3px 24px 3px 9px; font-size: 12px; border: 1px dashed #3a4760; background-color: transparent; color: var(--muted); border-radius: 10px; background-position: calc(100% - 12px) 50%, calc(100% - 8px) 50%; }
   .frow .fx { opacity: 0; transition: opacity .15s; } .frow:hover .fx { opacity: 1; } .fx:hover { color: var(--red) !important; }
   .fhead { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 6px; } .fhead h3 { margin: 0 0 2px; font-size: 18px; }
-  :where(#filePanel, #boardPanel, #serverPanel, #mailPanel) button:not([class]) { background: #172034; border: 1px solid #2c3850; border-radius: 8px; padding: 6px 10px; font: inherit; font-size: 12.5px; cursor: pointer; }
+  :where(#filePanel, #boardPanel, #serverPanel, #mailPanel) button:not([class]) { background: #1a2338; color: var(--text); border: 1px solid #2c3850; border-radius: 8px; padding: 7px 12px; font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; }
   /* ---------- Jobs screen ---------- */
   #jobsPanel { display: none; left: 16px; right: 16px; width: auto; max-width: 1280px; margin-left: auto; z-index: 15; }
   #jobsPanel.open { display: flex; }
   body.jobs-open #boardPanel, body.jobs-open #brief, body.jobs-open #board { display: none !important; }
-  #jobsPanel .body { padding: 0; display: grid; grid-template-columns: 250px minmax(0, 1fr); overflow: hidden; }
-  #jbList { overflow: auto; padding: 12px; border-right: 1px solid var(--line); display: flex; flex-direction: column; gap: 6px; background: rgba(8,12,22,.5); }
+  #jobsPanel .body { padding: 0; display: grid; grid-template-columns: var(--jbw, 280px) 6px minmax(0, 1fr); overflow: hidden; }
+  #jbSplit { cursor: col-resize; background: transparent; border-right: 1px solid var(--line); } #jbSplit:hover, #jbSplit.on { background: rgba(64,189,0,.25); }
+  .jbsearch { position: relative; margin: 2px 0 4px; } .jbsearch input { width: 100%; box-sizing: border-box; background: #0f1524; border: 1px solid #2c3850; border-radius: 9px; padding: 8px 30px 8px 32px; color: var(--text); font: inherit; font-size: 13px; }
+  .jbsearch input:focus { outline: none; border-color: var(--green); } .jbsearch::before { content: '⌕'; position: absolute; left: 11px; top: 6px; color: var(--muted); font-size: 16px; }
+  .jbsearch .x { position: absolute; right: 6px; top: 5px; background: none; border: 0; color: var(--muted); cursor: pointer; font-size: 16px; } .jbsearch .x:hover { color: var(--text); }
+  .jbj .jbcl { color: var(--muted); font-size: 11px; margin-left: 4px; }
+  .jbj.recent b { font-weight: 600; } .jbj span.jbclient { color: var(--muted); font-size: 12px; }
+  .jbcloud { display: inline-block; width: 9px; height: 9px; margin-left: 6px; border-radius: 50%; border: 1px solid #5a6a88; vertical-align: middle; } .jbcloud[title] { cursor: help; }
+  #jbList { overflow: auto; padding: 12px; display: flex; flex-direction: column; gap: 6px; background: rgba(8,12,22,.5); }
   .jbnew { border: 1px dashed #3a4760; background: transparent; color: var(--green); border-radius: 10px; padding: 9px; font: inherit; font-weight: 600; cursor: pointer; }
   .jbnew:hover { border-color: var(--green); }
   .jbj { text-align: left; border: 1px solid transparent; background: transparent; color: var(--text); border-radius: 10px; padding: 9px 11px; font: inherit; cursor: pointer; display: flex; flex-direction: column; gap: 1px; }
@@ -520,10 +538,11 @@ body.fp canvas#scene{cursor:grab}
   </div>
   <div class="right">
     <span id="update" class="hint"></span>
-    <span id="k-claude" title="Claude key"><i class="dot"></i><em>Claude</em></span>
-    <span id="k-openai" title="OpenAI key"><i class="dot"></i><em>OpenAI</em></span>
-    <span id="k-google" title="Google key"><i class="dot"></i><em>Google</em></span>
-    <span id="k-hf" title="Higgsfield key"><i class="dot"></i><em>Higgsfield</em></span>
+    <span id="k-claude" class="svc" title="Claude key"><i class="svcico" data-svc="claude">C</i><em>Claude</em></span>
+    <span id="k-openai" class="svc" title="OpenAI key"><i class="svcico" data-svc="openai">O</i><em>OpenAI</em></span>
+    <span id="k-google" class="svc" title="Google key"><i class="svcico" data-svc="google">G</i><em>Google</em></span>
+    <span id="k-hf" class="svc" title="Higgsfield key"><i class="svcico" data-svc="higgsfield">H</i><em>Higgsfield</em></span>
+    <span id="k-cloud" class="svc" title="OneDrive"><i class="svcico cloud" data-svc="onedrive"><svg viewBox="0 0 24 24" width="14" height="14"><path d="M7 18a4 4 0 0 1-.6-7.95A6 6 0 0 1 17.9 9.2 4.5 4.5 0 0 1 17.5 18H7z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg></i><em>OneDrive</em></span>
   </div>
 </div>
 
@@ -639,8 +658,9 @@ body.fp canvas#scene{cursor:grab}
 <!-- Project whiteboard in the meeting room -->
 <div class="panel" id="jobsPanel">
   <h2><span>Jobs</span><button class="collapse" id="jbBack" title="Close (Esc)">×</button></h2>
-  <div class="body"><div id="jbList"></div><div id="jbMain"></div></div>
+  <div class="body"><div id="jbList"></div><div id="jbSplit" title="Drag to resize"></div><div id="jbMain"></div></div>
 </div>
+<div id="toasts"></div>
 <div class="panel" id="boardPanel">
   <h2><span>Projects whiteboard</span><button class="collapse" id="bdBack" title="Back to the office (Esc)">×</button></h2>
   <div class="body">

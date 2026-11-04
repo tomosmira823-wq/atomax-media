@@ -12,6 +12,17 @@ export function initJobsUI({ api, getAgents, openIssue, onWorkOn }) {
   let jobs = [], sel = '', tab = 'files', O = null, msg = '', busy = {}, poll = null;
   // the Jobs list IS the live Projects folder: nav = the folder being listed, selPath = the job folder open on the right
   let roots = [], nav = '', listing = null, selPath = '', listTimer = null; const openDirs = new Set();
+  let query = '', found = null, searchT = null;   // the search box: a job by number, name or client across every Projects folder
+  const toast = (t, k, o) => { try { window.toast && window.toast(t, k, o); } catch {} };
+  // recently opened jobs (this PC), newest first
+  const recents = () => { try { return JSON.parse(localStorage.getItem('amo.recentJobs') || '[]'); } catch { return []; } };
+  const noteRecent = (p, name) => { if (!p) return; const r = recents().filter(x => x.path !== p); r.unshift({ path: p, name: name || base(p), at: Date.now() }); localStorage.setItem('amo.recentJobs', JSON.stringify(r.slice(0, 6))); };
+  // the divider between the list and the job: dragged, remembered
+  const split = $('#jbSplit'); try { const w = +localStorage.getItem('amo.jbw'); if (w >= 200) panel.style.setProperty('--jbw', w + 'px'); } catch {}
+  if (split) split.onmousedown = (e) => { e.preventDefault(); split.classList.add('on'); const x0 = e.clientX, w0 = $('#jbList').getBoundingClientRect().width;
+    const mv = (ev) => { const w = Math.max(200, Math.min(560, w0 + ev.clientX - x0)); panel.style.setProperty('--jbw', w + 'px'); };
+    const up = () => { split.classList.remove('on'); document.removeEventListener('mousemove', mv); document.removeEventListener('mouseup', up); try { localStorage.setItem('amo.jbw', String(Math.round($('#jbList').getBoundingClientRect().width))); } catch {} };
+    document.addEventListener('mousemove', mv); document.addEventListener('mouseup', up); };
 
   // while a Make / Revision panel is open (Tom choosing skills, typing initials) the page is not redrawn under him: the status
   // updates of other rows wait until he presses Start or Cancel
@@ -43,14 +54,18 @@ export function initJobsUI({ api, getAgents, openIssue, onWorkOn }) {
     return (roots.length > 1 ? '<a href="#" data-nav="">Projects</a> › ' : '') + out.join(' › ');
   }
   function renderList() {
-    const head = `<button class="jbnew" id="jbNew">+ New job</button><button class="jbnew mail" id="jbMail">✉ Email in</button><button class="jbj home ${!sel && !selPath ? 'on' : ''}" data-j="">Waiting on you</button>`;
+    const head = `<div class="jbsearch"><input id="jbQ" type="search" placeholder="Find a job (number, name, client)" value="${esc(query)}" autocomplete="off">${query ? '<button class="x" id="jbQx" title="Clear">×</button>' : ''}</div><button class="jbnew" id="jbNew">+ New job</button><button class="jbnew mail" id="jbMail">✉ Email in</button><button class="jbj home ${!sel && !selPath ? 'on' : ''}" data-j="">Waiting on you</button>`;
     let body;
-    if (!roots.length) body = `<div class="jblabel">Projects</div><div class="bsub" style="padding:6px 8px">Set your Projects folder (the live OneDrive one) to see your jobs here.</div><button class="jbnew" id="jbRoot">Set projects folder…</button>`;
-    else if (!nav) body = `<div class="jblabel">Projects <a href="#" id="jbRoot" class="jbrootlink">add folder</a></div>` + roots.map(r => `<button class="jbj jbdir" data-go="${esc(r.path)}"><b>📁 ${esc(r.name)}</b><span class="bsub">${esc(r.path)}</span></button>`).join('');
-    else body = `<div class="jblabel jbcrumbs">${crumbs()} <a href="#" id="jbRoot" class="jbrootlink">${roots.length ? 'add folder' : ''}</a></div>` + (listing && listing.error ? `<div class="bsub" style="padding:6px 8px">${esc(listing.error)}</div>` : '') +
+    const cloudDot = (e) => e.cloud ? '<i class="jbcloud" title="Online-only in OneDrive (not downloaded to this PC yet)"></i>' : '';
+    const rec = recents().filter(r => roots.some(x => r.path === x.path || r.path.startsWith(x.path)));
+    const recentHtml = !query && rec.length ? `<div class="jblabel">Recent</div>` + rec.map(r => `<button class="jbj recent ${selPath === r.path ? 'on' : ''}" data-dir="${esc(r.path)}" data-job="1" title="${esc(r.path)}"><b>${esc(r.name)}</b></button>`).join('') : '';
+    if (query) body = `<div class="jblabel">${found === null ? 'Searching…' : found.length ? `${found.length} job${found.length === 1 ? '' : 's'}` : 'No job matches'}</div>` + (found || []).map(f => `<button class="jbj ${selPath === f.path ? 'on' : ''}" data-dir="${esc(f.path)}" data-job="1" title="${esc(f.path)}"><b>${esc(f.number)}${f.name ? ' · ' + esc(f.name) : ''}</b>${f.client ? `<span class="jbclient">${esc(f.client)}</span>` : ''}</button>`).join('');
+    else if (!roots.length) body = `<div class="jblabel">Projects</div><div class="bsub" style="padding:6px 8px">Set your Projects folder (the live OneDrive one) to see your jobs here.</div><button class="jbnew" id="jbRoot">Set projects folder…</button>`;
+    else if (!nav) body = recentHtml + `<div class="jblabel">Projects <a href="#" id="jbRoot" class="jbrootlink">add folder</a></div>` + roots.map(r => `<button class="jbj jbdir" data-go="${esc(r.path)}"><b>📁 ${esc(r.name)}</b><span class="bsub">${esc(r.path)}</span></button>`).join('');
+    else body = recentHtml + `<div class="jblabel jbcrumbs">${crumbs()} <a href="#" id="jbRoot" class="jbrootlink">${roots.length ? 'add folder' : ''}</a></div>` + (listing && listing.error ? `<div class="bsub" style="padding:6px 8px">${esc(listing.error)}</div>` : '') +
       (listing && listing.entries.length ? listing.entries.map(e => e.dir
-        ? `<button class="jbj jbdir ${selPath === e.path ? 'on' : ''}" data-dir="${esc(e.path)}" data-job="${e.isJob || e.job ? 1 : ''}" title="${esc(e.path)}"><b>📁 ${esc(e.name)}</b>${e.job ? '<span class="bsub">set up for drawings</span>' : ''}</button>`
-        : `<button class="jbj jbfile" data-file="${esc(e.path)}" title="Open ${esc(e.name)}"><span>${fIcon(e.name)} ${esc(e.name)}</span></button>`).join('') : (listing && !listing.error ? '<div class="bsub" style="padding:6px 8px">Empty folder</div>' : ''));
+        ? `<button class="jbj jbdir ${selPath === e.path ? 'on' : ''}" data-dir="${esc(e.path)}" data-job="${e.isJob || e.job ? 1 : ''}" title="${esc(e.path)}"><b>📁 ${esc(e.name)}${cloudDot(e)}</b>${e.job ? '<span class="bsub">set up for drawings</span>' : ''}</button>`
+        : `<button class="jbj jbfile" data-file="${esc(e.path)}" title="Open ${esc(e.name)}"><span>${fIcon(e.name)} ${esc(e.name)}${cloudDot(e)}</span></button>`).join('') : (listing && !listing.error ? '<div class="bsub" style="padding:6px 8px">Empty folder</div>' : ''));
     $('#jbList').innerHTML = head + body;
     const L = $('#jbList');
     L.querySelector('[data-j=""]').onclick = () => { sel = ''; selPath = ''; tab = 'deliv'; msg = ''; refresh(); };
@@ -58,7 +73,7 @@ export function initJobsUI({ api, getAgents, openIssue, onWorkOn }) {
     L.querySelectorAll('[data-dir]').forEach(b => b.onclick = async () => {
       const p = b.dataset.dir;
       if (!b.dataset.job) { nav = p; await relist(); renderList(); return; }
-      selPath = p; tab = 'files'; msg = ''; openDirs.clear();
+      selPath = p; tab = 'files'; msg = ''; openDirs.clear(); noteRecent(p, (b.querySelector('b') || {}).textContent.replace(/^📁\s*/, '').trim());
       try { const r = await api.proj.recordAt({ path: p }); sel = r ? r.id : ''; } catch { sel = ''; }
       refresh();
     });
@@ -71,6 +86,9 @@ export function initJobsUI({ api, getAgents, openIssue, onWorkOn }) {
     if ($('#jbRoot')) $('#jbRoot').onclick = pick;
     $('#jbNew').onclick = newJob;
     $('#jbMail').onclick = () => { sel = ''; selPath = ''; renderList(); emailPanel(''); };
+    const q = $('#jbQ'); q.oninput = () => { query = q.value.trim(); clearTimeout(searchT); if (!query) { found = null; renderList(); return; } found = null; searchT = setTimeout(async () => { try { found = await api.proj.search({ q: query }); } catch { found = []; } if (q.value.trim() === query) { const at = q.selectionStart; renderList(); const q2 = $('#jbQ'); q2.focus(); q2.setSelectionRange(at, at); } }, 250); };
+    q.onkeydown = (e) => { if (e.key === 'Escape') { query = ''; found = null; renderList(); } if (e.key === 'Enter' && found && found[0]) L.querySelector('[data-dir]').click(); };
+    if ($('#jbQx')) $('#jbQx').onclick = () => { query = ''; found = null; renderList(); $('#jbQ').focus(); };
   }
   // ---------- home: everything that needs Tom ----------
   async function renderHome() {
@@ -292,7 +310,7 @@ export function initJobsUI({ api, getAgents, openIssue, onWorkOn }) {
   // run a job action: show it is going, refresh the rows while the agents work, report errors on the page
   async function act(fn, note) {
     msg = note; renderJob(); const t = setTimeout(refreshWhenFree, 1500);
-    try { await fn(); if (msg === note) msg = ''; } catch (e) { msg = clean(e); }
+    try { await fn(); if (msg === note) msg = ''; toast(note.replace(/…$/, '').replace(/ is on it$/, '') + ' — done'); } catch (e) { msg = clean(e); toast(clean(e), 'err'); }
     clearTimeout(t); await refreshWhenFree();
   }
 
@@ -348,6 +366,7 @@ export function initJobsUI({ api, getAgents, openIssue, onWorkOn }) {
   function hide() { panel.classList.remove('open'); clearTimeout(poll); clearInterval(listTimer); document.body.classList.remove('jobs-open'); const b = $('#jobsBtn'); if (b) b.classList.remove('active'); const o = document.querySelector('#top .tabs button[data-tab="office"]'); if (o) o.classList.add('active'); }
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && panel.classList.contains('open') && !document.querySelector('.modal.open')) hide(); });
   return {
+    focusSearch() { const q = $('#jbQ'); if (q) { q.focus(); q.select(); } },
     async show(jobId) { if (jobId !== undefined) { sel = jobId; selPath = ''; tab = 'deliv'; } clearInterval(listTimer); listTimer = setInterval(async () => { if (!panel.classList.contains('open') || busyPanel() || !nav || !document.hasFocus()) return; const before = JSON.stringify(listing && listing.entries.map(e => e.name + e.dir)); await relist(); if (JSON.stringify(listing && listing.entries.map(e => e.name + e.dir)) !== before) renderList(); }, 15000); panel.classList.add('open'); document.body.classList.add('jobs-open'); document.querySelectorAll('#top .tabs:not(.rooms) button').forEach(x => x.classList.toggle('active', x.id === 'jobsBtn')); await refresh().catch(e => { $('#jbMain').innerHTML = `<div class="bhint">${esc(clean(e))}</div>`; }); },
     hide, refresh, isOpen: () => panel.classList.contains('open')
   };

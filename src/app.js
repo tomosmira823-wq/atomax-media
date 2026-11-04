@@ -41,6 +41,7 @@ api.update.onStatus(s => {
   const el = $('#update');
   if (s.state === 'downloading') el.textContent = 'Update ' + (s.version ? 'v' + s.version + ' ' : '') + 'downloading' + (s.percent != null ? ' ' + s.percent + '%' : '') + '…';
   else if (s.state === 'ready') { el.innerHTML = `<button class="btn small primary" id="installUpdate">Restart to update to v${esc(s.version)}</button>`; $('#installUpdate').addEventListener('click', () => api.update.install()); }
+  if (s.state === 'ready' && !window._updToast) { window._updToast = true; toast(`Update v${s.version} is ready`, '', { sticky: true, action: 'Restart now', onAction: () => api.update.install() }); }
   else if (s.state === 'error') el.textContent = '';
 });
 $('#checkUpdate').addEventListener('click', async () => { $('#updText').textContent = 'Checking…'; try { $('#updText').textContent = await api.update.check(); } catch (e) { $('#updText').textContent = e.message; } });
@@ -73,11 +74,24 @@ function imageChoice() {
   return { provider, model: model || (provider === 'google' ? settings.googleImageModel : settings.openaiImageModel) };
 }
 function updateKeyDots() {
-  $('#k-claude .dot').classList.toggle('ok', !!settings.anthropicKey);
-  $('#k-openai .dot').classList.toggle('ok', !!settings.openaiKey);
-  $('#k-google .dot').classList.toggle('ok', !!settings.googleKey);
-  $('#k-hf .dot').classList.toggle('ok', !!(settings.higgsfieldKeyId && settings.higgsfieldSecret));
+  $('#k-claude').classList.toggle('ok', !!settings.anthropicKey);
+  $('#k-openai').classList.toggle('ok', !!settings.openaiKey);
+  $('#k-google').classList.toggle('ok', !!settings.googleKey);
+  $('#k-hf').classList.toggle('ok', !!(settings.higgsfieldKeyId && settings.higgsfieldSecret));
 }
+// the services' own logos, when Tom drops them in assets/logos/<service>.png (or .svg); a lettered badge otherwise
+document.querySelectorAll('.svcico[data-svc]').forEach(i => { const img = new Image(); img.onload = () => { i.classList.add('haslogo'); i.style.backgroundImage = `url(${img.src})`; }; img.src = `assets/logos/${i.dataset.svc}.png`; });
+// OneDrive badge: green when the Projects folder is on OneDrive and OneDrive is running
+async function pollCloud() { try { const c = await api.proj.cloud(); const el = $('#k-cloud'); el.className = 'svc ' + ({ ok: 'ok', off: 'bad', local: 'warn', none: '' }[c.state] || ''); el.title = c.text; } catch {} }
+setTimeout(pollCloud, 2500); setInterval(pollCloud, 30000);
+// toasts: short messages bottom right
+window.toast = function (text, kind = '', opts = {}) {
+  const box = $('#toasts'); if (!box) return;
+  const t = document.createElement('div'); t.className = 'toast ' + kind; t.textContent = text;
+  if (opts.action) { const b = document.createElement('button'); b.className = 'jbbtn primary'; b.textContent = opts.action; b.onclick = () => { opts.onAction && opts.onAction(); gone(); }; t.appendChild(b); }
+  const gone = () => { t.classList.add('out'); setTimeout(() => t.remove(), 300); };
+  box.appendChild(t); if (!opts.sticky) setTimeout(gone, opts.ms || (kind === 'err' ? 8000 : 4000)); t.onclick = (e) => { if (e.target === t) gone(); };
+};
 
 // ---------- tabs / modals ----------
 document.querySelectorAll('#top .tabs button').forEach(b => b.addEventListener('click', () => {
@@ -159,7 +173,7 @@ $('#saveSettings').addEventListener('click', async () => {
   settings.projectRoots = $('#s_projectRoots').value.split(/\r?\n/).map(x => x.trim()).filter(Boolean);
   await api.settings.set(settings);
   settings.openaiImageQuality = $('#s_openaiImageQuality').value;
-  updateKeyDots(); fillImageSelects(); closeModals();
+  updateKeyDots(); fillImageSelects(); closeModals(); toast('Settings saved'); pollCloud();
 });
 $('#pullSite').addEventListener('click', async () => {
   const url = $('#c_website').value.trim(); if (!url) { $('#siteHint').textContent = 'Enter the website address first.'; return; }
@@ -569,6 +583,7 @@ const boardUI = initBoardUI({
   openAgent: (task, job) => openAgentForTask(task, job)
 });
 // the Jobs screen: home for engineering work (opened from the top bar or the projects whiteboard)
+document.addEventListener('keydown', (e) => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f' && document.body.classList.contains('jobs-open')) { e.preventDefault(); jobsUI.focusSearch(); } });
 const jobsUI = initJobsUI({ api, getAgents: () => agents, openIssue: () => { bizUI.open('issue').then(() => openModal('bizModal')); }, onWorkOn: () => {} });
 window.__jobsUI = jobsUI;
 $('#jobsBtn').addEventListener('click', () => { if (jobsUI.isOpen()) jobsUI.hide(); else jobsUI.show(); });

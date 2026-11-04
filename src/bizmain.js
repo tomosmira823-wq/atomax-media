@@ -264,10 +264,32 @@ dead is true only if the sheet itself carries a cancelled / superseded / void / 
       const full = path.join(p, e.name); let st = null; try { st = await fs.promises.stat(full); } catch { try { st = await fs.promises.lstat(full); } catch { st = null; } }
       const dir = st && !st.isSymbolicLink() ? (st.isDirectory() || (!st.isFile() && e.isDirectory())) : (e.isDirectory() || !path.extname(e.name)), rec = dir ? recordFor(d, full) : null;
       const isJob = dir && !/template/i.test(e.name) && (!!projects.jobNoIn(e.name) || await looksJob(full));
-      return { name: e.name, path: full, dir, size: dir || !st ? 0 : st.size, mtime: st ? st.mtimeMs : 0, isJob, job: rec ? { id: rec.id, number: rec.number } : null };
+      return { name: e.name, path: full, dir, size: dir || !st ? 0 : st.size, mtime: st ? st.mtimeMs : 0, isJob, cloud: !st || st.isSymbolicLink(), job: rec ? { id: rec.id, number: rec.number } : null };   // cloud: OneDrive online-only (not on this PC yet)
     }));
     out.sort((a, b) => (b.dir - a.dir) || a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));   // Explorer's name order
     return { path: p, name: path.basename(p), entries: out };
+  }));
+  // find a job by number, name, client or folder name across every Projects folder (job folders remembered for a minute)
+  let jobCache = { t: 0, list: [] };
+  ipcMain.handle('proj:search', wrap(({ q }) => {
+    const words = String(q || '').toLowerCase().split(/\s+/).filter(Boolean); if (!words.length) return [];
+    if (Date.now() - jobCache.t > 60e3) jobCache = { t: Date.now(), list: projects.allJobFolders() };
+    const d = data(), out = [];
+    for (const f of jobCache.list) { const rec = recordFor(d, f.folder), hay = [f.number, f.name, path.basename(f.folder), rec && rec.client, rec && rec.name].filter(Boolean).join(' ').toLowerCase(); if (words.every(w => hay.includes(w))) out.push({ number: f.number, name: rec && rec.name || f.name, client: rec && rec.client || '', path: f.folder, job: rec ? { id: rec.id, number: rec.number } : null }); }
+    return out.slice(0, 40);
+  }));
+  // OneDrive: is it running, and are the Projects folders on it (sync itself is OneDrive's job; the app only shows whether it is there to do it)
+  let cloudAt = 0, cloudLast = null;
+  ipcMain.handle('cloud:status', wrap(async () => {
+    if (cloudLast && Date.now() - cloudAt < 25e3) return cloudLast;
+    const rs = roots(), onCloud = rs.filter(r => /onedrive|sharepoint/i.test(r)), out = { roots: rs.length, onCloud: onCloud.length, running: null, state: 'none', text: 'No Projects folder set' };
+    if (process.platform === 'win32') { try { const { execFile } = require('child_process'); out.running = await new Promise(res => execFile('tasklist', ['/FI', 'IMAGENAME eq OneDrive.exe', '/NH'], { windowsHide: true, timeout: 4000 }, (e, so) => res(!e && /OneDrive\.exe/i.test(String(so))))); } catch { out.running = null; } }
+    if (rs.length) {
+      if (!onCloud.length) { out.state = 'local'; out.text = 'Projects folder is not on OneDrive'; }
+      else if (out.running === false) { out.state = 'off'; out.text = 'OneDrive is not running: changes will not sync until it is'; }
+      else { out.state = 'ok'; out.text = onCloud.length === rs.length ? 'Projects on OneDrive, OneDrive running' : `${onCloud.length} of ${rs.length} Projects folders on OneDrive, OneDrive running`; }
+    }
+    cloudAt = Date.now(); cloudLast = out; return out;
   }));
   ipcMain.handle('proj:openAt', wrap(({ path: p, show = false }) => { if (!p || !fenced(p)) throw new Error('That is outside your Projects folders'); if (show) shell.showItemInFolder(p); else shell.openPath(p); return true; }));
   ipcMain.handle('proj:recordAt', wrap(({ path: p }) => { const r = p && fenced(p) ? recordFor(data(), p) : null; return r ? { id: r.id, number: r.number } : null; }));
