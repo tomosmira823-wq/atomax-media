@@ -388,6 +388,9 @@ const AGENT_OF = { Milo: 'milo', Theo: 'theo', Vera: 'vera', Dex: 'dex', Cal: 'c
 const withJob = (a) => { const name = (String(a && a.system || '').match(/You are (Milo|Theo|Vera|Dex|Cal)\b/) || [])[1] || ''; let c = ''; try { c = BIZ ? BIZ.contextFor(undefined, name) : ''; } catch {} const out = c ? { ...a, system: String(a.system || '') + '\n\n' + c } : { ...a }; if (name && !out.who) out.who = AGENT_OF[name]; return out; };
 roomsmain.register({ ipcMain, dialog, getWin: () => win, loadSettings, saveSettings, userDir: USER_DIR, version: () => app.getVersion(), getAgents: () => readJson(AGENTS_FILE(), DEFAULT_AGENTS) });
 const updSend = (u) => { roomsmain.setUpdate(u); win?.webContents.send('update:status', u); };
+runs.init({ sendFn: (ch, p) => { try { win && win.webContents.send(ch, p); } catch {} }, userDir: USER_DIR() });
+ipcMain.handle('run:stop', (_e, { id, jobId, no } = {}) => id ? runs.stop(id) : runs.stopFor(jobId, no));
+ipcMain.handle('run:live', () => runs.live());
 BIZ = bizmain.register({ ipcMain, dialog, shell, Notification, getWin: () => win, userDir: USER_DIR, claudeFull: (a) => claudeFull(a.docKind ? { ...a, who: 'documents' } : a), checker, getSettings: () => loadSettings() });
 { const NAME_ID = { Dex: 'dex', Cal: 'cal', Lex: 'excel', Wren: 'word', Eli: 'email', Ada: 'engineer', Dot: 'documents', Milo: 'milo', Theo: 'theo', Vera: 'vera' };
   const raw = BIZ.log;
@@ -400,15 +403,15 @@ require('./pcmain.js').register({ ipcMain, BrowserWindow, desktopCapturer, scree
 
 // ---------- the drawing room: cable schedule vs drawings ----------
 let checkRunning = false;
-ipcMain.handle('check:run', async (_e, { agent, schedule, drawings, note, jobId }) => {
+ipcMain.handle('check:run', async (_e, { agent, schedule, drawings, note, jobId, run = '' }) => {
   if (checkRunning) throw new Error('A check is already running. Wait for Cal to finish.');
   checkRunning = true;
   try {
-    const progress = (p) => { try { win && win.webContents.send('check:progress', p); } catch {} };
+    const progress = (p) => { try { win && win.webContents.send('check:progress', p); } catch {} if (run && p && p.message) runs.stage(run, 'Cal: ' + p.message, p.total ? 10 + Math.round(70 * (p.done || 0) / p.total) : undefined); };
     const report = await checker.runCheck({
       schedule, drawings, note: note || '',
       skill: library.skillFor(agent && agent.id, (agent && agent.rules && agent.rules.trim()) || STANDARD_SKILL),
-      claude: (a) => claudeFull({ ...a, who: 'cal', skills: false }), progress
+      claude: (a) => claudeFull({ ...a, who: 'cal', skills: false, run }), progress
     });
     // marked-up copies of the drawings that have findings; originals are never touched
     progress({ message: 'marking up the drawings', stage: 'markup' });
@@ -632,7 +635,8 @@ ipcMain.handle('file:saveText', async (_e, { text, name }) => {
 // every Claude call goes through here: the monthly cap check, the library (rulebook + ticked files for `who`), and the usage log
 // agent working time since its last logged action, so the time lands on the job it was working on (auto timesheet lines)
 const AGENT_MS = {};
-async function claudeFull({ system, messages, maxTokens = 4000, model, tools, who = '', test = false, skills }) {
+const runs = require('./runs');
+async function claudeFull({ system, messages, maxTokens = 4000, model, tools, who = '', test = false, skills, run = '' }) {
   const s = loadSettings();
   const useModel = model || s.claudeModel;
   let tIn = 0, tOut = 0; const t0 = Date.now();
@@ -643,10 +647,12 @@ async function claudeFull({ system, messages, maxTokens = 4000, model, tools, wh
     const sys = who ? `${system || ''}${skills === false ? '' : library.skillsBlock(who, skills)}\n${library.promptBlock(who)}` : system;
     let msgs = messages, text = '', stop = '', searches = 0;
     for (let turn = 0; turn < 4; turn++) {   // server-side tools (web search) can pause a long turn: carry on where it stopped
+      if (run && runs.aborted(run)) throw new Error('Stopped by Tom (aborted)');
       const res = await fetch(ANTHROPIC + '/v1/messages', {
         method: 'POST',
         headers: { 'content-type': 'application/json', 'x-api-key': s.anthropicKey, 'anthropic-version': '2023-06-01' },
-        body: JSON.stringify({ model: useModel, max_tokens: maxTokens, system: sys, messages: msgs, ...(tools ? { tools } : {}) })
+        body: JSON.stringify({ model: useModel, max_tokens: maxTokens, system: sys, messages: msgs, ...(tools ? { tools } : {}) }),
+        signal: run ? runs.signal(run) : undefined   // the Stop button aborts the call
       });
       const data = await res.json();
       if (!res.ok) throw new Error(`Claude ${res.status}: ${data?.error?.message || JSON.stringify(data)}`);

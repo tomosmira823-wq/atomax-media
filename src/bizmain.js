@@ -30,7 +30,7 @@ function register({ ipcMain, dialog, shell, Notification, getWin, userDir, claud
       routines: d.routines, lastRuns: d.lastRuns, people: d.people, tasks: d.tasks, currentJobId: d.currentJobId
     };
   };
-  const wrap = (fn) => async (_e, args) => { try { return await fn(args || {}); } catch (e) { throw new Error(String(e && e.message || e)); } };
+  const wrap = (fn) => async (_e, args) => { try { return await fn(args || {}); } catch (e) { throw new Error(require('./runs').plain(e)); } };
 
   ipcMain.handle('biz:get', wrap(() => view()));
   ipcMain.handle('biz:jobs', wrap(() => data().jobs.map(j => ({ id: j.id, number: j.number, name: j.name, status: j.status }))));

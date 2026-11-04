@@ -144,7 +144,7 @@ function register({ ipcMain, dialog, shell, getWin, userDir, claudeFull, checker
   const FILE = () => path.join(DIR(), 'emails.json');
   const load = () => { try { return JSON.parse(fs.readFileSync(FILE(), 'utf8')); } catch { return []; } };
   const save = (list) => fs.writeFileSync(FILE(), JSON.stringify(list.slice(0, 200), null, 2));
-  const wrap = (fn) => async (_e, a) => { try { return await fn(a || {}); } catch (e) { throw new Error(String(e && e.message || e)); } };
+  const wrap = (fn) => async (_e, a) => { try { return await fn(a || {}); } catch (e) { throw new Error(require('./runs').plain(e)); } };
   const uid = () => 'm' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
   const IMG = /^image\/(png|jpe?g|gif|webp)$/;
   const extMime = (n) => ({ '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp', '.pdf': 'application/pdf' })[path.extname(n).toLowerCase()] || '';
@@ -372,8 +372,11 @@ EARTHING tasks: size every protective / earth conductor the drawing needs (MET t
   }));
 
   // ---------- Dex makes a DXF ----------
-  ipcMain.handle('dex:make', wrap(async ({ jobId = '', request = '', answers = [], emailId = '', skills, revision = null, drawingNumber = '', drawn = '', checked = '', approved = '' }) => {
+  const runs = require('./runs');
+  ipcMain.handle('dex:make', wrap(async ({ jobId = '', request = '', answers = [], emailId = '', skills, revision = null, drawingNumber = '', drawn = '', checked = '', approved = '', run = '' }) => {
     if (!String(request).trim()) throw new Error('Say what Dex should draw');
+    const stage = (t, pct) => runs.stage(run, t, pct);
+    stage('reading the job\'s inputs', 5);
     const d = BIZ.data(), job = jobId && d.jobs.find(j => j.id === jobId);
     // his skills for MAKING a drawing: drawing skills first, fixer-only rules and spreadsheet skills only when the request needs them
     const all = library.skillsFor('dex');
@@ -407,8 +410,9 @@ EARTHING tasks: size every protective / earth conductor the drawing needs (MET t
     try { const nd = job && BIZ.outputDirFor(job.id, 'documents'); if (nd && fs.existsSync(nd)) { const want = /earth/i.test(request) ? /earth/i : /./; const ns = fs.readdirSync(nd).filter(f => /^Technical note - .*\.md$/i.test(f)).map(f => ({ f, t: fs.statSync(path.join(nd, f)).mtimeMs })).sort((a, b) => b.t - a.t).filter(x => want.test(x.f) || /earth|conductor/i.test(fs.readFileSync(path.join(nd, x.f), 'utf8').slice(0, 3000))).slice(0, 2); for (const n of ns) { content.push({ type: 'text', text: `ENGINEER'S TECHNICAL NOTE (${n.f}) - use its sizes and say "per ${n.f.replace(/\.md$/, '')}" in the notes:\n` + fs.readFileSync(path.join(nd, n.f), 'utf8').slice(0, 20000) }); notesRead.push(n.f); } } } catch {}
     content.push({ type: 'text', text: `REQUEST: ${request}${answers.length ? '\n\nANSWERS FROM THE ENGINEER:\n' + answers.map(x => `Q: ${x.q}\nA: ${x.a}`).join('\n') : ''}` });
     // a big site needs a long spec: give room, retry with more if it is cut off, and never pass off a cut-off spec as complete
-    let r = await claudeFull({ system, who: 'dex', skills: false, maxTokens: 12000, messages: [{ role: 'user', content }] });
-    if (r.stop === 'max_tokens') r = await claudeFull({ system: system + '\nKeep labels short (four lines at most) and give a feeder label only when it adds something the end item label does not say.', who: 'dex', skills: false, maxTokens: 24000, messages: [{ role: 'user', content }] });
+    stage(revision && revision.on ? 'Dex is working out the changes' : 'Dex is drawing', 20);
+    let r = await claudeFull({ system, who: 'dex', skills: false, maxTokens: 12000, messages: [{ role: 'user', content }], run });
+    if (r.stop === 'max_tokens') r = await claudeFull({ run, system: system + '\nKeep labels short (four lines at most) and give a feeder label only when it adds something the end item label does not say.', who: 'dex', skills: false, maxTokens: 24000, messages: [{ role: 'user', content }] });
     let text = r.text, cutOff = r.stop === 'max_tokens';
     // a reply that still cannot be read (a stray quote or bracket the repair cannot place): kept for a look, and Dex is asked once to send it again as strict JSON
     let spec;
@@ -455,6 +459,7 @@ EARTHING tasks: size every protective / earth conductor the drawing needs (MET t
     // the notes go to the client: questions, TQs and our own working come off the drawing and go to the job's RFI register
     // the schedule is the source: cable type (with voltage), cores, size, length and locations copied from its own columns
     if (revision && revision.on && revision.note) spec.revisionNote = String(revision.note).slice(0, 2000);   // known before the schedule pass: a cable the comments delete is not put back from the schedule
+    stage('matching the drawing to the schedule', 65);
     const fromSched = dxfmaker.fromSchedule(spec, workbooks);   // with no workbook it still applies the revision's deletions
     if (fromSched.length) BIZ.log({ who: 'Dex', action: 'Matched the BCD to the schedule', jobId: job ? job.id : '', detail: fromSched.slice(0, 12).join('; ') + (fromSched.length > 12 ? ' …' : '') });
     dxfmaker.cleanLabels(spec);   // no SEE TQ / RFI pointers in labels: TBC is enough, the question is in the RFI register
@@ -498,8 +503,10 @@ EARTHING tasks: size every protective / earth conductor the drawing needs (MET t
     const bd = job ? desk.borderFor(job) : { key: 'atomax', name: 'Atomax A1' }, template = bd.template || '';
     if (bd.warning) spec.notes = [...(spec.notes || [])];
     // saved as NUMBER_REV (older versions moved to Archive); a drawing with no real number yet keeps the old draft naming
+    stage('laying out the drawing', 75);
     const res = dxfmaker.make(spec, outDir, realNo ? realNo + '_' + spec.revision : base, { exact: !!realNo, archivePrefix: realNo, template, border: bd.key, previous, fill: job ? { drawn, checked, approved, client: job.client || spec.client || '', project: `${job.number} ${job.name || ''}`.trim(), site: (desk.load(job.id).ng || {}).site || job.name || '', ngInvestment: (desk.load(job.id).ng || {}).investment || '' } : { drawn, checked, approved, client: spec.client || '' } });
     // every DXF gets its monochrome PDF beside it (issues go out as DXF and PDF)
+    stage('writing the DXF and PDF', 90);
     let madePdfs = []; try { madePdfs = await require('./pdfout').writePdfs(res); } catch (e) { (res.files || []).forEach(f => delete f.prims); }
     BIZ.log({ who: 'Dex', action: 'Drew', jobId: job ? job.id : '', detail: `${path.basename(res.path)} · ${spec.summary || spec.title || 'SLD'}${used.length ? ' · skills: ' + used.join(', ') : ' · no skills'}` });
     return { fromSchedule: fromSched, queries, warnings: spec._warnings || [], archived: (res.archived || []).length, border: bd.name, borderWarning: bd.warning || '', pdfs: madePdfs, masterCheck, sheets: (res.files || []).map(f => ({ path: f.path, pdf: f.pdf || '', label: f.label })), diff: res.diff, revision: spec.revision, previousFound: !!previous, titleBlock: template ? path.basename(template) : '', drawingNumber: spec.drawingNumber, skills: used, incomplete: cutOff, path: res.path, folder: outDir, svg: res.svg, summary: spec.summary || '', title: spec.title || '', notes: spec.notes || [], read: [...pdfs.map(p => path.basename(p)), ...sheetsRead, ...notesRead], inJobFolder: !!(job && job.folder) };

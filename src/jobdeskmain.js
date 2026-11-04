@@ -6,7 +6,7 @@ const dxfmaker = require('./dxfmaker');
 
 function register({ ipcMain, dialog, getWin, claudeFull, BIZ, checker, userDir, library, writeXlsx, shell }) {
   desk.init({ userDir: userDir(), BIZ, library });
-  const wrap = (fn) => async (_e, a) => { try { return await fn(a || {}); } catch (e) { throw new Error(String(e && e.message || e)); } };
+  const wrap = (fn) => async (_e, a) => { try { return await fn(a || {}); } catch (e) { throw new Error(require('./runs').plain(e)); } };
   ipcMain.handle('desk:get', wrap(({ jobId }) => desk.view(jobId)));
   ipcMain.handle('desk:setRules', wrap(({ jobId, text }) => { desk.setRules(jobId, text); BIZ.log({ who: 'Tom', action: 'Updated the job rules', jobId }); return desk.view(jobId); }));
   ipcMain.handle('desk:correction', wrap(({ jobId, agent, agentName, text, scope }) => ({ saved: desk.addCorrection(jobId, { agent, agentName, text, scope }), view: desk.view(jobId) })));

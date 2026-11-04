@@ -34,7 +34,8 @@ function register({ ipcMain, HANDLERS, BIZ }) {
     }
     if (fixed) desk.saveRaw(id, d); return dl; };
   const setDeliv = (id, no, patch) => { const d = desk.load(id); d.deliv = d.deliv || {}; d.deliv[no] = { ...(d.deliv[no] || {}), ...patch, at: new Date().toISOString() }; desk.saveRaw(id, d); return d.deliv[no]; };
-  const wrap = (fn) => async (_e, a) => { try { return await fn(a || {}); } catch (e) { throw new Error(String(e && e.message || e)); } };
+  const runs = require('./runs');
+  const wrap = (fn) => async (_e, a) => { try { return await fn(a || {}); } catch (e) { throw new Error(runs.plain(e)); } };
 
   function overview(jobId) {
     { // a TBC number on the list with the real drawing number written in its title: the list gets the real number
@@ -72,25 +73,27 @@ function register({ ipcMain, HANDLERS, BIZ }) {
     // open items from Cal's check (and any other open comment) on a remake at the same revision: fixed in this make, then marked done
     let calOpen = [];
     if (!revision) { try { calOpen = (desk.load(jobId).crs || []).filter(c => c.doc === no && !/responded|closed/i.test(c.status || '')); } catch {} if (calOpen.length) note = [note, 'Fix these check findings and comments (keep everything else as it was): ' + calOpen.map(c => c.comment).join(' | ')].filter(Boolean).join(' '); }
-    setDeliv(jobId, no, { status: 'working', run: RUN, agent: k.agent, summary: `${k.agent} is on it`, answers, people });
+    const R = runs.start({ kind: `${k.kind}:${revision ? 'revision' : 'make'}`, who: k.agent, jobId, no });
+    setDeliv(jobId, no, { status: 'working', run: RUN, runId: R.id, agent: k.agent, summary: `${k.agent} is on it`, answers, people });
     try {
       let r, files = [], pdfs = [];
       if (k.agent === 'Dex') {
-        const P = plan({ jobId, no }); r = await call('dex:make', { jobId, drawingNumber: P.number, request: (asked || P.request) + (note ? ' ' + note : ''), answers, revision, skills, drawn: people.drawn || '', checked: people.checked || '', approved: people.approved || '' });
+        const P = plan({ jobId, no }); r = await call('dex:make', { run: R.id, jobId, drawingNumber: P.number, request: (asked || P.request) + (note ? ' ' + note : ''), answers, revision, skills, drawn: people.drawn || '', checked: people.checked || '', approved: people.approved || '' });
         // a TBC row that Dex numbered when he made it (from the register / the job's QS 006 numbering): the row takes that number now
         if (/^TBC-/i.test(no) && QS.test(String(r.drawingNumber || '')) && desk.renameRow(jobId, no, r.drawingNumber)) no = r.drawingNumber;
-        if (r.questions) return setDeliv(jobId, no, { status: 'needs you', questions: r.questions, summary: 'Dex has questions' });
+        if (r.questions) { runs.finish(R.id, { ok: true }); return setDeliv(jobId, no, { status: 'needs you', questions: r.questions, summary: 'Dex has questions' }); }
         files = (r.sheets && r.sheets.length ? r.sheets.map(s => s.path) : [r.path]).filter(Boolean); pdfs = r.pdfs || [];
       } else if (k.agent === 'Lex') {
-        r = await call('o365:excel', { jobId, request: (asked || plan({ jobId, no }).request) + (note ? ' ' + note : ''), skills });
+        runs.stage(R.id, 'Lex is building the workbook', 20); r = await call('o365:excel', { run: R.id, jobId, request: (asked || plan({ jobId, no }).request) + (note ? ' ' + note : ''), skills });
         files = [r.path].filter(Boolean);
       } else {
-        r = await call('o365:word', { jobId, request: (asked || plan({ jobId, no }).request) + (note ? ' ' + note : ''), skills });
+        runs.stage(R.id, 'writing the document', 20); r = await call('o365:word', { run: R.id, jobId, request: (asked || plan({ jobId, no }).request) + (note ? ' ' + note : ''), skills });
         files = [r.path].filter(Boolean);
       }
       if (calOpen.length && !r.incomplete && !r.questions) for (const c of calOpen) { try { desk.saveCrs(jobId, { no: c.no, status: 'Responded', response: `Fixed in ${r.revision || d.rev || 'the remake'}` }); } catch {} }
+      runs.finish(R.id, { ok: true });
       return setDeliv(jobId, no, { status: r.incomplete ? 'needs you' : 'made', questions: null, check: null, files, pdfs, rev: r.revision || d.rev || '', archived: r.archived || 0, summary: (r.incomplete ? 'CUT SHORT: ' : '') + (r.summary || 'Made') + (r.fromSchedule && r.fromSchedule.length ? ` · ${r.fromSchedule.length} value(s) matched to the schedule` : '') + (r.queries && r.queries.length ? ` · ${r.queries.length} question(s) to the RFI register` : '') + (r.warnings && r.warnings.length ? ' · LAYOUT: ' + r.warnings.join('; ') : ''), notes: r.notes || [], warning: r.borderWarning || '' });
-    } catch (e) { setDeliv(jobId, no, { status: 'failed', summary: String(e.message || e).slice(0, 300) }); throw e; }
+    } catch (e) { const stopped = runs.aborted(R.id); runs.finish(R.id, { ok: false, error: runs.plain(e) }); setDeliv(jobId, no, { status: stopped ? 'stopped' : 'failed', summary: stopped ? 'Stopped. Nothing was changed; press Make to start again.' : runs.plain(e) }); throw e; }
   }
 
   // Cal checks the made drawings against the job's schedule (made by Lex, else the schedule in the job folder)
@@ -105,8 +108,11 @@ function register({ ipcMain, HANDLERS, BIZ }) {
     const drawings = targets.flatMap(n => { const dx = (dl[n].files || []).filter(p => /\.dxf$/i.test(p) && fs.existsSync(p)); return dx.length ? dx : [...(dl[n].pdfs || []), ...(dl[n].files || [])]; }).filter(p => fs.existsSync(p));
     if (!drawings.length) throw new Error('No drawings made yet to check');
     const enc = (p) => ({ name: path.basename(p), path: p, base64: fs.readFileSync(p).toString('base64') });
+    const R = runs.start({ kind: 'check', who: 'Cal', jobId, no: targets.join(',') }); runs.stage(R.id, 'Cal is reading the schedule and the drawings', 10);
     targets.forEach(n => setDeliv(jobId, n, { check: { status: 'working', run: RUN } }));
-    const r = await call('check:run', { agent: { id: 'cal' }, schedule: enc(schedule), drawings: drawings.map(enc), jobId, note: 'Check both ways and say exactly what was covered.' });
+    let r; try { r = await call('check:run', { run: R.id, agent: { id: 'cal' }, schedule: enc(schedule), drawings: drawings.map(enc), jobId, note: 'Check both ways and say exactly what was covered.' });
+    } catch (e) { runs.finish(R.id, { ok: false, error: runs.plain(e) }); targets.forEach(n => setDeliv(jobId, n, { check: null })); throw e; }
+    runs.finish(R.id, { ok: true });
     const findings = r.findings || [], dir = r.markups && r.markups.dir || '';
     for (const n of targets) { const mine = findings.filter(f => JSON.stringify(f).includes(n)); setDeliv(jobId, n, { check: { status: findings.length ? 'needs you' : 'passed', headline: r.headline || '', count: mine.length || findings.length, markups: dir } });
       // Cal's findings go on the Comments tab against the drawing, like a client's, so Make again / Revision pick them up and Tom can close the ones he disagrees with

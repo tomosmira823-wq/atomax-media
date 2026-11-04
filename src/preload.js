@@ -7,6 +7,7 @@ const DK = require('./drawkinds');
 contextBridge.exposeInMainWorld('office', {
   drawKinds: { kindOf: (t) => DK.kindOf(t), kindName: (k) => DK.kindName(k), skillFit: (sk, k) => DK.skillFit(sk, k), skillKinds: (sk) => DK.skillKinds(sk) },
   settings: { get: call('settings:get'), set: call('settings:set') },
+  runs: { stop: call('run:stop'), live: call('run:live'), onProgress: (fn) => ipcRenderer.on('run:progress', (_e, p) => fn(p)) },
   agents: { get: call('agents:get'), set: call('agents:set'), reset: call('agents:reset') },
   posts: { get: call('posts:get'), set: call('posts:set') },
   files: { pickImages: call('file:pickImages'), saveImage: call('file:saveImage'), saveText: call('file:saveText') },

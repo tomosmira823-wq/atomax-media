@@ -12,6 +12,13 @@ export function initJobsUI({ api, getAgents, openIssue, onWorkOn }) {
   let jobs = [], sel = '', tab = 'files', O = null, msg = '', busy = {}, poll = null;
   // the Jobs list IS the live Projects folder: nav = the folder being listed, selPath = the job folder open on the right
   let roots = [], nav = '', listing = null, selPath = '', listTimer = null; const openDirs = new Set();
+  // live agent runs (stage, elapsed, estimate) keyed by job|drawing, from the main process; the row shows them and offers Stop
+  const RUNS = new Map(); const runKey = (jobId, no) => `${jobId}|${no}`;
+  const fmtT = (ms) => { const sec = Math.round(ms / 1000); return sec < 60 ? `${sec}s` : `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`; };
+  const runText = (r) => { if (!r) return ''; const est = r.estimate ? ` · usually about ${fmtT(r.estimate)}` : ''; return `${r.stage} · ${fmtT(r.elapsed)}${est}`; };
+  if (api.runs && api.runs.onProgress) api.runs.onProgress((p) => { const k = runKey(p.jobId, p.no); if (p.done) RUNS.delete(k); else RUNS.set(k, p); const el = document.querySelector(`[data-runrow="${CSS.escape(k)}"]`); if (el) el.innerHTML = runCell(p.jobId, p.no); if (p.done && panel.classList.contains('open') && !busyPanel()) setTimeout(refresh, 400); });
+  setInterval(() => { for (const [k, r] of RUNS) { r.elapsed += 1000; const el = document.querySelector(`[data-runrow="${CSS.escape(k)}"]`); if (el) el.innerHTML = runCell(r.jobId, r.no); } }, 1000);
+  const runCell = (jobId, no) => { const r = RUNS.get(runKey(jobId, no)); if (!r) return ''; return `<span class="jbrun"><i class="jbspin"></i>${esc(runText(r))}</span><button class="jbbtn jbstop" data-stop="${esc(no)}" title="Stop this run (nothing is saved)">Stop</button>`; };
   let query = '', found = null, searchT = null;   // the search box: a job by number, name or client across every Projects folder
   const toast = (t, k, o) => { try { window.toast && window.toast(t, k, o); } catch {} };
   // recently opened jobs (this PC), newest first
@@ -167,7 +174,7 @@ export function initJobsUI({ api, getAgents, openIssue, onWorkOn }) {
     });
     tabFiles(selPath, '');
   }
-  const chip = (w) => { if (!w) return '<span class="st st-todo">To do</span>'; const s = w.status; return `<span class="st st-${s.replace(/\s+/g, '')}">${{ working: 'Working…', made: 'Made', 'needs you': 'Needs you', failed: 'Failed', issued: 'Issued' }[s] || esc(s)}</span>`; };
+  const chip = (w) => { if (!w) return '<span class="st st-todo">To do</span>'; const s = w.status; return `<span class="st st-${s.replace(/\s+/g, '')}">${{ working: 'Working…', made: 'Made', 'needs you': 'Needs you', failed: 'Failed', stopped: 'Stopped', issued: 'Issued' }[s] || esc(s)}</span>`; };
   const files = (w) => w && w.files ? [...w.files, ...(w.pdfs || [])].map(p => `<button class="jbfile" data-open="${esc(p)}" title="${esc(p)}">${esc(base(p).replace(/^.*\./, '').toUpperCase())}</button>`).join('') : '';
 
   function tabDeliv() {
@@ -180,7 +187,7 @@ export function initJobsUI({ api, getAgents, openIssue, onWorkOn }) {
       ${rows.length ? `<div class="jbbar"><button class="jbbtn primary" id="jbAll" ${rows.some(r => r.agent && !r.work && (masterOk || !['bcd', 'schedule'].includes(r.kind))) ? '' : 'disabled'}>Make everything not made yet</button><button class="jbbtn" id="jbCheck" ${made ? '' : 'disabled'}>Cal: check the drawings</button><span class="bsub">Each row: the agent makes it, Cal checks it, then it goes in the issue pack.</span></div>` : ''}
       <div class="jbrows">${rows.map(r => { const w = r.work;
         return `<div class="jbrow">
-          <div class="c1"><b>${esc(r.num)}</b><span>${esc(r.ctitle)}</span>${w && w.summary && w.status !== 'made' ? `<i>${esc(w.summary)}</i>` : ''}${w && w.warning ? `<i class="warn">${esc(w.warning)}</i>` : ''}</div>
+          <div class="c1"><b>${esc(r.num)}</b><span>${esc(r.ctitle)}</span>${w && w.summary && w.status !== 'made' && w.status !== 'working' ? `<i>${esc(w.summary)}</i>` : ''}${w && (w.status === 'working' || (w.check && w.check.status === 'working')) ? `<div class="jbrunrow" data-runrow="${esc(runKey(O.job.id, r.no))}">${runCell(O.job.id, r.no)}</div>` : ''}${w && w.warning ? `<i class="warn">${esc(w.warning)}</i>` : ''}</div>
           <div class="c2">${r.agent ? esc(r.agent) : '<span class="bsub">by hand</span>'}</div>
           <div class="c3">${openFor(r.no) ? `<span class="st st-needsyou" title="Changes logged against this drawing">${openFor(r.no)} change${openFor(r.no) === 1 ? '' : 's'}</span>` : ''}${chip(w)}${w && w.rev && w.files ? `<span class="st">${esc(w.rev)}</span>` : ''}${w && w.check ? `<span class="st st-${w.check.status === 'passed' ? 'made' : w.check.status === 'working' ? 'working' : 'needsyou'}">${w.check.status === 'passed' ? 'Checked ✓' : w.check.status === 'working' ? 'Checking…' : `Check: ${w.check.count} to look at`}</span>` : ''}</div>
           <div class="c4">${files(w)}${w && w.check && w.check.markups ? `<button class="jbfile" data-show="${esc(w.check.markups)}">MARKUPS</button>` : ''}</div>
@@ -196,6 +203,7 @@ export function initJobsUI({ api, getAgents, openIssue, onWorkOn }) {
     if ($('#jbAll')) $('#jbAll').onclick = () => act(() => api.jobs.makeAll({ jobId: O.job.id }), 'Making the deliverables…');
     if ($('#jbCheck')) $('#jbCheck').onclick = () => act(async () => { const r = await api.jobs.check({ jobId: O.job.id }); msg = `Cal checked against ${r.schedule}: ${r.headline || ''} ${r.findings} to look at.`; }, 'Cal is checking…');
     el.querySelectorAll('[data-make]').forEach(b => b.onclick = () => prep(b.closest('.jbrow'), b.dataset.make));
+    el.onclick = (e) => { const b = e.target.closest('[data-stop]'); if (!b) return; b.disabled = true; b.textContent = 'Stopping…'; api.runs.stop({ jobId: O.job.id, no: b.dataset.stop }).catch(() => {}); };
     el.querySelectorAll('[data-rev]').forEach(b => b.onclick = () => revPanel(b.closest('.jbrow'), b.dataset.rev));
     el.querySelectorAll('[data-answer]').forEach(b => b.onclick = () => { const box = b.closest('.jbq'), qs = O.rows.find(r => r.no === b.dataset.answer).work.questions; const answers = qs.map((q, i) => ({ q, a: box.querySelector(`[data-ans="${i}"]`).value })); act(() => api.jobs.make({ jobId: O.job.id, no: b.dataset.answer, answers }), 'Sent. Working…'); });
     wireFiles(el);

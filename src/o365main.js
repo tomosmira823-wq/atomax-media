@@ -75,7 +75,7 @@ Reply with JSON only, no markdown: {"filename":"short file name without extensio
 const WORD_SYSTEM = (base) => `You are Wren, the Word agent in the Atomax-UK 365 room. The engineer's request decides the document type (report, technical note, letter, specification, method statement, minutes) and its sections; the default sections below are only a fallback. Turn any attached notes (for example a Markdown technical note) into a proper Atomax document without changing their facts.\n\n${base}`;
 
 function register({ ipcMain, claudeFull, BIZ, checker, userDir, projects }) {
-  const wrap = (fn) => async (_e, a) => { try { return await fn(a || {}); } catch (e) { throw new Error(String(e && e.message || e)); } };
+  const wrap = (fn) => async (_e, a) => { try { return await fn(a || {}); } catch (e) { throw new Error(require('./runs').plain(e)); } };
   const IMG = /\.(png|jpe?g|gif|webp)$/i;
   // attached files -> Claude content: spreadsheets and documents as text, PDFs and pictures as themselves
   function filesToContent(files) {
@@ -100,13 +100,13 @@ function register({ ipcMain, claudeFull, BIZ, checker, userDir, projects }) {
     return p;
   };
   // ask Claude, with room and one retry when the reply is cut off
-  async function ask(system, who, skills, content, max = 16000) {
-    let r = await claudeFull({ system, who, skills, maxTokens: max, messages: [{ role: 'user', content }] });
-    if (r.stop === 'max_tokens') r = await claudeFull({ system: system + '\nBe concise.', who, skills, maxTokens: max * 2, messages: [{ role: 'user', content }] });
+  async function ask(system, who, skills, content, max = 16000, run = '') {
+    let r = await claudeFull({ system, who, skills, maxTokens: max, messages: [{ role: 'user', content }], run });
+    if (r.stop === 'max_tokens') r = await claudeFull({ run, system: system + '\nBe concise.', who, skills, maxTokens: max * 2, messages: [{ role: 'user', content }] });
     return { spec: dxfmaker.parseReply(r.text), cut: r.stop === 'max_tokens' };
   }
 
-  ipcMain.handle('o365:excel', wrap(async ({ jobId = '', request = '', files = [], skills }) => {
+  ipcMain.handle('o365:excel', wrap(async ({ jobId = '', request = '', files = [], skills, run = '' }) => {
     if (!request.trim()) throw new Error('Say what Lex should make');
     const job = jobId && BIZ.data().jobs.find(j => j.id === jobId);
     const system = EXCEL_SYSTEM + (job ? '\n\n' + BIZ.contextFor(job.id, 'Lex') : '');
@@ -115,7 +115,7 @@ function register({ ipcMain, claudeFull, BIZ, checker, userDir, projects }) {
     if (/cable schedule|schedule of cables|\bcables?\b/i.test(request)) {
       try { const lib = require('./library'); for (const i of lib.list('datasheets').filter(x => x.on && /\.pdf$/i.test(x.file)).slice(0, 5)) { extra.push({ type: 'text', text: 'CABLE DATASHEET: ' + i.name }); extra.push(checker.contentBlock('pdf', i.file, fs.readFileSync(lib.pathOf('datasheets', i.file)))); } } catch {}
     }
-    const { spec, cut } = await ask(system, 'excel', skills, [...extra, ...filesToContent(files), { type: 'text', text: 'REQUEST: ' + request }]);
+    const { spec, cut } = await ask(system, 'excel', skills, [...extra, ...filesToContent(files), { type: 'text', text: 'REQUEST: ' + request }], 16000, run);
     if (!Array.isArray(spec.sheets) || !spec.sheets.length) throw new Error('Lex did not return a workbook');
     const file = outFile(job && job.id, spec.filename || (job ? job.number + ' workbook' : 'Workbook'), '.xlsx', /schedule|register|list|index/i.test(request + ' ' + (spec.filename || '')) ? 'schedules' : /calc/i.test(request) ? 'calcs' : 'documents');
     fs.writeFileSync(file, writeXlsx(spec.sheets));
@@ -124,11 +124,11 @@ function register({ ipcMain, claudeFull, BIZ, checker, userDir, projects }) {
     return { path: file, summary: spec.summary || '', incomplete: cut, sheets: spec.sheets.map(s => ({ name: s.name, rows: (s.rows || []).length })), preview: { columns: (s0.columns || []).map(c => c.header), rows: (s0.rows || []).slice(0, 25) } };
   }));
 
-  ipcMain.handle('o365:word', wrap(async ({ jobId = '', request = '', files = [], skills, prepared = '' }) => {
+  ipcMain.handle('o365:word', wrap(async ({ jobId = '', request = '', files = [], skills, prepared = '', run = '' }) => {
     if (!request.trim()) throw new Error('Say what Wren should write');
     const d = BIZ.data(), job = jobId && d.jobs.find(j => j.id === jobId);
     const system = WORD_SYSTEM(biz.DOC_SYSTEM('report')) + (job ? '\n\n' + BIZ.contextFor(job.id, 'Wren') : '');
-    const { spec, cut } = await ask(system, 'word', skills, [...filesToContent(files), { type: 'text', text: 'REQUEST: ' + request }]);
+    const { spec, cut } = await ask(system, 'word', skills, [...filesToContent(files), { type: 'text', text: 'REQUEST: ' + request }], 16000, run);
     if (!Array.isArray(spec.sections)) throw new Error('Wren did not return a document');
     const j = job || { number: 'TBC', name: '', client: '', drawings: [] };
     const num = job ? biz.nextDocNumber(d, job) : 'TBC';
