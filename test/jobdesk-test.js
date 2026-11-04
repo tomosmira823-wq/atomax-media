@@ -114,4 +114,10 @@ t('one row per drawing: TBC row + register row merge, comments move, reissue add
   const d2 = desk.load(j2.id); assert.ok(d2.deliv['X051126-01-70-0001'] && d2.deliv['X051126-01-70-0001'].rev === 'P01', 'the made SLD kept its work under the real number');
   assert.ok(d2.crs.every(c => c.doc === 'X051126-01-70-0001'));
 });
+t('comments against a vanished TBC number land on the drawing of that kind', () => {
+  const j2 = data().jobs.find(x => x.number === 'X051126');
+  desk.addComments(j2.id, [{ doc: 'TBC-BCD-05', comment: 'add M-207', by: 'Priya' }, { doc: 'TBC-SLD-04', comment: 'TX-01 1250A ACB', by: 'Priya' }], 'comments');
+  desk.tidyRows(j2.id);
+  const d2 = desk.load(j2.id); assert.ok(d2.crs.find(c => c.comment === 'add M-207').doc === 'X051126-01-71-0001' && d2.crs.find(c => c.comment === 'TX-01 1250A ACB').doc === 'X051126-01-70-0001', JSON.stringify(d2.crs));
+});
 console.log('jobdesk ok', ok);

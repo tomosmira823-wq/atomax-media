@@ -148,7 +148,11 @@ function tidyRows(id) {
       for (const c of d.crs || []) if (String(c.doc).toUpperCase() === r.no.toUpperCase()) c.doc = keepNo; moves.push({ from: r.no, to: keepNo }); }
     for (const r of drop) rows.splice(rows.indexOf(r), 1);
   }
-  if (moves.length) { d.deliv = dl; save(id, d); biz.saveJob(BIZ.data(), { ...job, drawings: rows }, 'Eli'); BIZ.store.save(); BIZ.log({ who: 'Eli', action: 'Tidied the drawing list', jobId: id, detail: moves.map(m => `${m.from} -> ${m.to}`).join(', ') }); }
+  // a comment logged against a number that is no longer a row (a TBC row since merged or renumbered) goes to the one row of that kind
+  let repointed = 0;
+  for (const c of d.crs || []) { if (!c.doc || rows.some(r => r.no.toUpperCase() === String(c.doc).toUpperCase())) continue;
+    const k = kindKey(c.doc, c.doc), of = k ? rows.filter(r => kindKey(r.no, r.title) === k && !/cancel|superseded/i.test(r.status || '')) : []; if (of.length === 1) { c.doc = of[0].no; repointed++; } }
+  if (moves.length || repointed) { d.deliv = dl; save(id, d); biz.saveJob(BIZ.data(), { ...job, drawings: rows }, 'Eli'); BIZ.store.save(); BIZ.log({ who: 'Eli', action: 'Tidied the drawing list', jobId: id, detail: [...moves.map(m => `${m.from} -> ${m.to}`), repointed ? `${repointed} comment(s) put on their drawing` : ''].filter(Boolean).join(', ') }); }
   return moves;
 }
 // a row gets its real number (Dex numbered a TBC drawing from the register / QS 006 when he made it): its work and comments follow it
