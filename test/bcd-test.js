@@ -96,6 +96,7 @@ console.log('bcd ok: no overlapping or crossing cables');
 // and the MCC (signals), hangs under the UPS inside the switchroom with the MCC cable ending at a pointer; the JB's instruments join the
 // pump hall; a cable still numbered TBC is clouded HOLD; the house notes are on the sheet in order
 {
+  const fs = require('fs'), path = require('path');
   const spec = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'northwich-bcd.json'), 'utf8'));
   const sheets = m.layoutBcd(spec, { border: 'atomax' }); assert.strictEqual(sheets.length, 1, 'northwich on one sheet');
   const texts = m.flatPrims(sheets[0].prims).filter(p => p.t === 'text' || p.t === 'mtext').map(p => String(p.text).replace(/\n/g, ' '));
