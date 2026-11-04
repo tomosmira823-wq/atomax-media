@@ -112,7 +112,7 @@ function closeModals() {
 document.querySelectorAll('[data-close]').forEach(b => b.addEventListener('click', closeModals));
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeModals(); });
 document.querySelectorAll('.modal').forEach(m => m.addEventListener('mousedown', (e) => { if (e.target === m) closeModals(); }));
-document.querySelectorAll('.panel .collapse').forEach(b => { if (['deskBack', 'dexBack', 'modelBack', 'fileBack', 'srvBack', 'mailBack', 'bdBack', 'o3Back'].includes(b.id)) return; b.addEventListener('click', () => b.closest('.panel').classList.toggle('collapsed')); }); // the room panels' x closes them (own handler), it must not also shrink them
+document.querySelectorAll('.panel .collapse').forEach(b => { if (['deskBack', 'dexBack', 'modelBack', 'fileBack', 'srvBack', 'mailBack', 'bdBack', 'o3Back', 'jbBack'].includes(b.id)) return; b.addEventListener('click', () => b.closest('.panel').classList.toggle('collapsed')); }); // the room panels' x closes them (own handler), it must not also shrink them
 ['#checkPanel', '#dexPanel', '#modelPanel'].forEach(sel => $(sel).classList.remove('collapsed'));
 
 // ---------- settings ----------
