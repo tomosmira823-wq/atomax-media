@@ -21,7 +21,7 @@ const realNo = (d) => /^TBC-/i.test(d.no) ? ((String(d.title).match(QS) || [])[0
 const cleanTitle = (d) => String(d.title).replace(QS, '').replace(/\(\s*\)/g, '').replace(/\s+P\d{1,2}\s*$/i, '').replace(/\s{2,}/g, ' ').trim();
 const AGENT_ID = { Dex: 'dex', Lex: 'excel', Wren: 'word' };
 
-function register({ ipcMain, HANDLERS, BIZ }) {
+function register({ ipcMain, HANDLERS, BIZ, claudeFull }) {
   const desk = require('./jobdesk');
   const call = (ch, args) => { const h = HANDLERS[ch]; if (!h) throw new Error('Not available: ' + ch); return h({ sender: null }, args); };
   const jobOf = (id) => { const j = BIZ.data().jobs.find(x => x.id === id); if (!j) throw new Error('No such job'); return j; };
@@ -141,6 +141,26 @@ function register({ ipcMain, HANDLERS, BIZ }) {
     return out;
   }
 
+  // a marked-up drawing (red pen, a client's PDF comments, a scan) dropped on the drawing's row: the markups read into the Comments tab
+  async function readMarkup({ jobId, no, file }) {
+    const job = jobOf(jobId); if (!file || !fs.existsSync(file)) throw new Error('That file is not there any more');
+    const ext = path.extname(file).toLowerCase(), kind = ext === '.pdf' ? 'pdf' : ['.png', '.jpg', '.jpeg'].includes(ext) ? 'image' : '';
+    if (!kind) throw new Error('Drop a PDF or a picture of the marked-up drawing');
+    const buf = fs.readFileSync(file); if (buf.length > 24 * 1024 * 1024) throw new Error('That file is too big to read (over 24 MB). Save a smaller PDF.');
+    const checker = require('./checker'), R = runs.start({ kind: 'markup-read', who: 'Cal', jobId, no }); runs.stage(R.id, 'Cal is reading the red pen', 20);
+    const system = `You read a MARKED-UP engineering drawing: a PDF or picture of drawing ${no} with hand or digital markups on it (red pen, clouds, comment boxes, sticky notes, crossings-out, arrows with text). List every markup as a separate comment, in the words written, with the page it is on and who signed it if a name or initials are written. Markups only: do not describe the drawing itself, do not invent corrections, do not tidy the wording. A crossed-out item is "delete X". An arrow from a value to a new value is "X: change A to B". Reply with JSON only, no fences:
+{ "comments": [ { "page": 1, "comment": "as written", "by": "initials or name if written, else empty" } ], "unreadable": "anything that could not be read, or empty" }`;
+    let r; try { r = await claudeFull({ system, who: 'cal', skills: false, maxTokens: 6000, messages: [{ role: 'user', content: [checker.contentBlock(kind, path.basename(file), buf), { type: 'text', text: `Drawing ${no} for job ${job.number}. List the markups.` }] }], run: R.id }); } catch (e) { runs.finish(R.id, { ok: false, error: runs.plain(e) }); throw e; }
+    let out = { comments: [] }; try { out = JSON.parse(String(r.text).slice(String(r.text).indexOf('{'), String(r.text).lastIndexOf('}') + 1)); } catch { runs.finish(R.id, { ok: false, error: 'reply not readable' }); throw new Error('The reply was cut off before it finished. Press the button again; it usually goes through second time.'); }
+    const list = (out.comments || []).filter(c => c && c.comment).map(c => ({ doc: no, comment: String(c.comment).trim(), by: String(c.by || '').trim() || 'Markup', agent: 'dex', page: c.page }));
+    const have = new Set((desk.load(jobId).crs || []).filter(c => c.doc === no).map(c => c.comment.toLowerCase()));
+    const fresh = list.filter(c => !have.has(c.comment.toLowerCase()));
+    const added = fresh.length ? desk.addComments(jobId, fresh, 'Markup: ' + path.basename(file)) : [];
+    runs.finish(R.id, { ok: true });
+    BIZ.log({ who: 'Cal', action: 'Read a markup', jobId, detail: `${path.basename(file)} on ${no}: ${added.length} comment(s)` });
+    return { added: added.length, skipped: list.length - fresh.length, unreadable: out.unreadable || '' };
+  }
+  ipcMain.handle('jobs:readMarkup', wrap((a) => readMarkup(a)));
   ipcMain.handle('jobs:overview', wrap(({ jobId }) => overview(jobId)));
   ipcMain.handle('jobs:plan', wrap((a) => plan(a)));
   ipcMain.handle('jobs:make', wrap((a) => make(a)));

@@ -227,6 +227,13 @@ export function initJobsUI({ api, getAgents, openIssue, onWorkOn }) {
     if ($('#jbAll')) $('#jbAll').onclick = () => act(() => api.jobs.makeAll({ jobId: O.job.id }), 'Making the deliverables…');
     if ($('#jbCheck')) $('#jbCheck').onclick = () => act(async () => { const r = await api.jobs.check({ jobId: O.job.id }); msg = `Cal checked against ${r.schedule}: ${r.headline || ''} ${r.findings} to look at.`; }, 'Cal is checking…');
     el.querySelectorAll('[data-make]').forEach(b => b.onclick = () => prep(b.closest('.jbrow'), b.dataset.make));
+    // drop a marked-up PDF / picture on a drawing's row: Cal reads the red pen into the Comments tab against that drawing
+    el.querySelectorAll('.jbrow[data-no]').forEach(row => {
+      row.ondragover = (e) => { if ([...e.dataTransfer.types].includes('Files')) { e.preventDefault(); row.classList.add('drop'); } };
+      row.ondragleave = () => row.classList.remove('drop');
+      row.ondrop = (e) => { e.preventDefault(); row.classList.remove('drop'); const f = e.dataTransfer.files && e.dataTransfer.files[0]; if (!f) return; const p = api.pathForFile ? api.pathForFile(f) : ''; if (!p) { toast('Could not read the dropped file', 'err'); return; }
+        const no = row.dataset.no; act(async () => { const r = await api.jobs.readMarkup({ jobId: O.job.id, no, file: p }); msg = `${r.added} markup${r.added === 1 ? '' : 's'} logged against ${no}${r.skipped ? ` (${r.skipped} already there)` : ''}${r.unreadable ? '. Could not read: ' + r.unreadable : ''}. Make again fixes them.`; }, `${no}: Cal is reading the markup…`); };
+    });
     // what the agent was given: request, files read, skills, schedule matches, queries, warnings; the full prompt as a text file
     el.querySelectorAll('[data-given]').forEach(b => b.onclick = () => { const row = b.closest('.jbrow'), w = (rows.find(r => r.no === b.dataset.given) || {}).work, g = w && w.given; if (!g) return; document.querySelectorAll('.jbprep').forEach(x => x.remove());
       const box = document.createElement('div'); box.className = 'jbprep'; const li = (a) => a && a.length ? `<ul>${a.map(x => `<li>${esc(x)}</li>`).join('')}</ul>` : '<span class="bsub">none</span>';

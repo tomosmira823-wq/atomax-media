@@ -1152,4 +1152,4 @@ ipcMain.handle('ai:test', async (_e, which) => {
 
 // the hands-off run (needs every handler registered above)
 global.AMO_FLOW = require('./flow').register({ ipcMain, HANDLERS, BIZ });
-require('./jobsmain').register({ ipcMain, HANDLERS, BIZ });
+require('./jobsmain').register({ ipcMain, HANDLERS, BIZ, claudeFull: (a) => claudeFull(a) });
