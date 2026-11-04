@@ -17,3 +17,13 @@ const bt = S[0].prims.filter(p => p.t === 'text' || p.t === 'mtext').map(p => St
 for (const room of ['HV COMPOUND', 'GENERATOR ENCLOSURE', 'INLET SCREEN HOUSE', 'GRIT PLANT', 'INLET CHANNEL']) assert(bt.some(t => t.includes(room)), 'BCD room boxed: ' + room);
 assert(bt.some(t => /^TO MET/.test(t)), 'star point earth labelled TO MET');
 console.log('oakmere ok: SLD 2 incomers, rooms boxed; BCD 1 sheet A0, all', bcd.cables.length, 'cables');
+// P02 per the client's comments: a deleted spare way goes from both drawings (not put back from the schedule), a new motor fits, still one sheet
+{
+  const F2 = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'oakmere.json'), 'utf8')), note = 'Delete the 100A spare way C-009 on MSB-01. Keep the 250A spare. Add a second grit pump M-207 on new cable C-018.';
+  const s2 = F2.sld, b2 = F2.bcd; s2.revisionNote = note; b2.revisionNote = note;
+  b2.cables.push({ no: 'C-018', from: 'MCC-01', to: 'M-207', type: 'XLPE/SWA/LSZH 600/1000V', cores: '4C', size: '6', length: '128' }); b2.nodes.push({ tag: 'M-207', type: 'device', label: 'GRIT PUMP 2 5.5kW DOL', location: 'Grit Plant' });
+  D.fromSchedule(s2, F2.sheets); D.fromSchedule(b2, F2.sheets);
+  const sp = s2.boards[0].feeders.filter(f => f.chain.some(i => i.symbol === 'spare')); assert.strictEqual(sp.length, 1, 'one spare way left on the SLD'); assert(/250A/.test(sp[0].chain[1].label));
+  const S2 = D.layoutBcd(b2, { border: 'atomax' }); assert.strictEqual(S2.length, 1, 'P02 BCD still one sheet'); assert(!S2[0].cables.includes('C-009') && S2[0].cables.includes('C-018'));
+  console.log('oakmere P02 ok: spare way deleted on both, M-207 added, one sheet');
+}

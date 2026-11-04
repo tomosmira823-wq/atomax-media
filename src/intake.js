@@ -454,6 +454,7 @@ EARTHING tasks: size every protective / earth conductor the drawing needs (MET t
     }
     // the notes go to the client: questions, TQs and our own working come off the drawing and go to the job's RFI register
     // the schedule is the source: cable type (with voltage), cores, size, length and locations copied from its own columns
+    if (revision && revision.on && revision.note) spec.revisionNote = String(revision.note).slice(0, 2000);   // known before the schedule pass: a cable the comments delete is not put back from the schedule
     const fromSched = workbooks.length ? dxfmaker.fromSchedule(spec, workbooks) : [];
     if (fromSched.length) BIZ.log({ who: 'Dex', action: 'Matched the BCD to the schedule', jobId: job ? job.id : '', detail: fromSched.slice(0, 12).join('; ') + (fromSched.length > 12 ? ' …' : '') });
     dxfmaker.cleanLabels(spec);   // no SEE TQ / RFI pointers in labels: TBC is enough, the question is in the RFI register
