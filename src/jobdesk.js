@@ -127,19 +127,50 @@ function makeRegister(id, writeXlsx) {
 const DN = require('./docnumber');
 function proposeNumber(job, type, taken, id) { const d = id ? load(id) : {}; return DN.next(job, type, { area: d.area, disc: d.disc, taken }).no; }
 function setNumbering(id, { area, disc }) { const d = load(id); if (area != null) d.area = String(area).trim().toUpperCase().slice(0, 4); if (disc != null) d.disc = /^\d{2}$/.test(disc) ? disc : ''; return save(id, d); }
-// Eli's deliverables onto the drawing list: numbered like the existing ones of that kind, otherwise "TBC-<kind>-n" for Tom to number
-function addDeliverables(id, list) {
+// the kind of a drawing (by its QS 006 code, else its words): used to match emails and register rows to the row that already exists
+const QSNO = /X\d{4,6}(?:-[A-Z0-9]{2,4}){2,5}-\d{4}/i;
+function kindKey(no, title) { const t = (String(no || '').match(/-(\d{2})-\d{4}(?:\b|_)/) || [])[1] || '', s = `${title || ''} ${no || ''}`;
+  if (t === '71' || /\bbcd\b|block cable/i.test(s)) return 'bcd'; if (t === '70' || /single.?line|\bsld\b/i.test(s)) return 'sld'; if (t === '74' || /earthing/i.test(s)) return 'earthing';
+  if (t === '72' || t === '23' || /cable schedule/i.test(s)) return 'schedule'; if (/\bloop\b/i.test(s)) return 'loop'; return ''; }
+// one row per drawing: a TBC row and a numbered row of the same kind (the email's deliverable and the register's row, or a "Rev P02" the
+// email asked for) are the same drawing. The row with work done keeps its work; it takes the real number; the other row goes, and the
+// comments logged against it move across. Returns the renames made ({from, to}).
+function tidyRows(id) {
+  const job = jobOf(id); if (!job) return []; const d = load(id), dl = d.deliv || {}, moves = [];
+  const rows = job.drawings; const hasWork = (r) => !!(dl[r.no] && (dl[r.no].files || dl[r.no].status));
+  for (const kind of ['sld', 'bcd', 'earthing']) {
+    const same = rows.filter(r => kindKey(r.no, r.title) === kind && !/cancel|superseded/i.test(r.status || '')); if (same.length < 2) continue;
+    const real = same.filter(r => QSNO.test(r.no)), tbc = same.filter(r => /^TBC-/i.test(r.no)); if (!real.length || !tbc.length) continue;
+    const numbers = [...new Set(real.map(r => r.no.toUpperCase()))]; if (numbers.length > 1) continue;   // two numbered drawings of one kind: leave alone
+    const keepNo = real[0].no, keep = same.find(hasWork) || real[0], drop = same.filter(r => r !== keep);
+    if (keep.no !== keepNo) { if (dl[keep.no]) { dl[keepNo] = dl[keep.no]; delete dl[keep.no]; } moves.push({ from: keep.no, to: keepNo }); keep.no = keepNo; }
+    for (const r of drop) { const rev = real.find(x => x === r) ? r.rev : ''; if (rev && !keep.rev) keep.rev = rev; if (!/\bP\d\d\b|rev/i.test(keep.title) && /single|block|earthing/i.test(r.title) && !/\bP\d\d\b|rev/i.test(r.title) && r.title.length > keep.title.length) keep.title = r.title;
+      for (const c of d.crs || []) if (String(c.doc).toUpperCase() === r.no.toUpperCase()) c.doc = keepNo; moves.push({ from: r.no, to: keepNo }); }
+    for (const r of drop) rows.splice(rows.indexOf(r), 1);
+  }
+  if (moves.length) { d.deliv = dl; save(id, d); biz.saveJob(BIZ.data(), { ...job, drawings: rows }, 'Eli'); BIZ.store.save(); BIZ.log({ who: 'Eli', action: 'Tidied the drawing list', jobId: id, detail: moves.map(m => `${m.from} -> ${m.to}`).join(', ') }); }
+  return moves;
+}
+// Eli's deliverables onto the drawing list: numbered like the existing ones of that kind, otherwise "TBC-<kind>-n" for Tom to number.
+// A deliverable that is a drawing the list already has (same number, or a revision / reissue of a kind the list has one of) adds nothing.
+function addDeliverables(id, list, opts = {}) {
   const job = jobOf(id); if (!job || !Array.isArray(list) || !list.length) return [];
-  const added = [], taken = [];
+  const added = [], taken = []; let renamed = false;
   for (const dl of list) {
     const qty = Math.max(1, Math.min(60, parseInt(dl.qty, 10) || 1));
     for (let i = 0; i < qty; i++) {
       const title = qty > 1 ? `${dl.title || dl.type} (sheet ${i + 1})` : (dl.title || dl.type);
       if (job.drawings.some(d => d.title.toLowerCase() === String(title).toLowerCase())) continue;
+      const num = (String(`${dl.number || ''} ${dl.title || ''}`).match(QSNO) || [])[0], kind = kindKey(num || '', `${dl.type || ''} ${dl.title || ''}`);
+      if (num && job.drawings.some(d => d.no.toUpperCase() === num.toUpperCase())) continue;   // already on the list
+      const sameKind = kind && ['sld', 'bcd', 'earthing'].includes(kind) ? job.drawings.filter(d => kindKey(d.no, d.title) === kind && !/cancel|superseded/i.test(d.status || '')) : [];
+      if (num && sameKind.length === 1 && /^TBC-/i.test(sameKind[0].no)) { const r = sameKind[0], d0 = load(id); if (d0.deliv && d0.deliv[r.no]) { d0.deliv[num] = d0.deliv[r.no]; delete d0.deliv[r.no]; save(id, d0); } for (const c of (d0.crs || [])) if (c.doc === r.no) c.doc = num; save(id, d0); r.no = num; renamed = true; BIZ.log({ who: 'Eli', action: 'Numbered a drawing from the email', jobId: id, detail: `${title}: ${num}` }); continue; }   // the TBC row IS this drawing
+      if (sameKind.length && (opts.commentReturn || /\brev(ision)?\b|reissue|re-issue|\b[PC]\d\d\b|updated?\b/i.test(title))) continue;   // a revision of a drawing we have is not a new drawing
       const no = proposeNumber(job, dl.title + ' ' + dl.type, taken, id) || `TBC-${String(dl.type || 'DOC').toUpperCase().replace(/[^A-Z0-9]+/g, '')}-${String(job.drawings.filter(d => /^TBC-/.test(d.no)).length + added.length + 1).padStart(2, '0')}`;
       taken.push(no); added.push({ no, title, rev: '', status: 'To do' });
     }
   }
+  if (renamed && !added.length) { biz.saveJob(BIZ.data(), job, 'Eli'); BIZ.store.save(); }
   if (added.length) { biz.saveJob(BIZ.data(), { ...job, drawings: [...job.drawings, ...added] }, 'Eli'); BIZ.store.save(); BIZ.log({ who: 'Eli', action: 'Added deliverables to the drawing list', jobId: id, detail: added.map(a => a.no).join(', ') }); }
   return added;
 }
@@ -293,4 +324,4 @@ function borderFor(job) {
 }
 
 const saveRaw = (id, d) => save(id, d);
-module.exports = { setBorder, borderFor, saveRaw, setNumbering, init, load, getRules, setRules, addCorrection, clientProfile, titleBlockFor, findRegisters, readRegister, checkRegister, makeRegister, proposeNumber, addDeliverables, addInputs, saveRfi, addComments, saveCrs, buildMaster, exportMaster, importMaster, approveMaster, context, view, exportSheet, masterOf, MASTER_SYSTEM, RULES_FILE };
+module.exports = { tidyRows, kindKey, setBorder, borderFor, saveRaw, setNumbering, init, load, getRules, setRules, addCorrection, clientProfile, titleBlockFor, findRegisters, readRegister, checkRegister, makeRegister, proposeNumber, addDeliverables, addInputs, saveRfi, addComments, saveCrs, buildMaster, exportMaster, importMaster, approveMaster, context, view, exportSheet, masterOf, MASTER_SYSTEM, RULES_FILE };

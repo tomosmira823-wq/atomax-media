@@ -44,7 +44,7 @@ Existing jobs: the list of Atomax's jobs (its project folders) is given below th
 Client comments and changes: if the email returns comments on issued drawings or documents (a comment sheet, a marked-up PDF, "please address the following") OR asks for changes to drawings / documents Atomax has already made, even informally ("can you change F3 to 125A on the SLD", "the generator is now 600kVA"), set "commentReturn": true, list every comment under "comments" (document number, or its title when no number is given, e.g. "SLD"; the comment or change as written; who made it) and make one task per document for the agent who changes it (drawings: "dex", schedules and registers: "excel", documents: "documents" or "word").
 Deliverables: list what Atomax is being asked to produce under "deliverables" (e.g. {"type":"BCD","title":"Block cable diagram - Malt RIO1","qty":2}, {"type":"cable schedule","title":"Cable schedule","qty":1}); type is one of BCD, cable schedule, SLD, earthing, loop, layout, document, other.
 Inputs: list every input document the client sent or refers to under "inputs" with its revision as written, and under "missingInputs" what is needed to do the work properly but has not been sent (e.g. instrument index, IO list, cable datasheets, latest tag list, panel GA).
-Only list real asks from the email. Do not invent work. Copy site names, job numbers, drawing numbers, ratings and dates exactly as written.
+A revision, reissue or update of a drawing Atomax has already made ("please revise and reissue as P02", comments on P01) is NOT a new deliverable: list nothing under deliverables for it, its changes go under comments against that drawing's number. Only list real asks from the email. Do not invent work. Copy site names, job numbers, drawing numbers, ratings and dates exactly as written.
 Also work out, from the whole thread:
 - who is who: the client asking, anyone the quote or work is for or must go to, the Atomax person forwarding and what they want.
 - how urgent it is, in their words.
@@ -268,7 +268,9 @@ function register({ ipcMain, dialog, shell, getWin, userDir, claudeFull, checker
       return best && score >= Math.min(2, words.length) ? best.no : t; };
     const r = { job: { id: job.id, number: job.number }, deliverables: 0, comments: 0, docs: [] };
     const mine = (x) => !x || !x.job || !(e.jobIds || []).length || (e.jobIds || []).length < 2 || String(job.number).toUpperCase().includes(String(x.job).trim().toUpperCase()) || String(x.job).toUpperCase().includes(String(job.number).toUpperCase());
-    try { r.deliverables = (desk.addDeliverables(job.id, (e.deliverables || []).filter(mine)) || []).length; } catch {}
+    try { desk.checkRegister(job.id, checker); } catch {}   // the register's numbers first, so the email's deliverables land on the rows that exist
+    try { r.deliverables = (desk.addDeliverables(job.id, (e.deliverables || []).filter(mine), { commentReturn: !!e.commentReturn }) || []).length; } catch {}
+    try { desk.tidyRows(job.id); } catch {}
     try { desk.addInputs(job.id, { inputs: e.inputs || [], missing: e.missingInputs || [], questions: e.clientQuestions || [], fromEmail: e.subject || e.from }); } catch {}
     if (e.comments && e.comments.filter(mine).length) { const cs = e.comments.filter(mine).map(c => ({ ...c, doc: docOf(c.doc) })); try { r.comments = desk.addComments(job.id, cs, e.subject || e.from).length; } catch {} r.docs = [...new Set(cs.map(c => c.doc).filter(Boolean))]; }
     if (job.folder) { try { const out = BIZ.projects.outputDir(job.folder, 'email'); for (const n of [...(e.originals || []), ...(e.attachments || []).map(x => x.name)]) { const src = path.join(DIR(), e.id, n.replace(/[\\/:*?"<>|]+/g, '_')), dst = path.join(out, n.replace(/[\\/:*?"<>|]+/g, '_')); if (fs.existsSync(src) && !fs.existsSync(dst)) fs.copyFileSync(src, dst); } } catch {} }

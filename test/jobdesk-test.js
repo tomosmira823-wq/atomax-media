@@ -95,3 +95,23 @@ console.log(`\n${ok} passed`);
   console.log('ok borders by job'); ok++;
 }
 console.log(`${ok} passed (with borders)`);
+
+// Oakmere: the email's TBC deliverable and the register's numbered row are the same drawing; a "Rev P02" asked for by a comments email adds nothing
+t('one row per drawing: TBC row + register row merge, comments move, reissue adds no row', () => {
+  const f2 = path.join(tmp, 'Oakmere - X051126'); fs.mkdirSync(path.join(f2, '013 Transmittals & Drawing Register'), { recursive: true });
+  const j2 = biz.saveJob(data(), { number: 'X051126', name: 'Oakmere', client: 'MWS', folder: f2 }); store.save();
+  desk.addDeliverables(j2.id, [{ type: 'SLD', title: 'Single line diagram - Oakmere' }, { type: 'BCD', title: 'Block cable diagram - Oakmere' }]);
+  let j = data().jobs.find(x => x.id === j2.id); assert.ok(j.drawings.every(d => /^TBC-/.test(d.no)));
+  const tbcSld = j.drawings.find(d => /SLD/.test(d.no)).no;
+  const dd = desk.load(j2.id); dd.deliv = { [tbcSld]: { status: 'made', files: ['x.dxf'], rev: 'P01' } }; desk.saveRaw(j2.id, dd);   // the SLD has been made under its TBC number
+  fs.writeFileSync(path.join(f2, '013 Transmittals & Drawing Register', 'X051126 Drawing Register.xlsx'), writeXlsx([{ name: 'Register', columns: [{ header: 'Document number' }, { header: 'Title' }, { header: 'Revision' }, { header: 'Status' }], rows: [['X051126-01-70-0001', 'SINGLE LINE DIAGRAM - INLET WORKS', 'P01', 'Live'], ['X051126-01-71-0001', 'BLOCK CABLE DIAGRAM - INLET WORKS', 'P01', 'Live']] }]));
+  desk.checkRegister(j2.id, checker);
+  desk.addComments(j2.id, [{ doc: 'X051126-01-70-0001', comment: 'TX-01 impedance 5%', by: 'Priya' }], 'comments');
+  desk.addDeliverables(j2.id, [{ type: 'SLD', title: 'SLD Rev P02 - Oakmere' }, { type: 'BCD', title: 'BCD Rev P02 - Oakmere' }], { commentReturn: true });
+  desk.tidyRows(j2.id);
+  j = data().jobs.find(x => x.id === j2.id);
+  assert.deepStrictEqual(j.drawings.map(d => d.no).sort(), ['X051126-01-70-0001', 'X051126-01-71-0001'], JSON.stringify(j.drawings));
+  const d2 = desk.load(j2.id); assert.ok(d2.deliv['X051126-01-70-0001'] && d2.deliv['X051126-01-70-0001'].rev === 'P01', 'the made SLD kept its work under the real number');
+  assert.ok(d2.crs.every(c => c.doc === 'X051126-01-70-0001'));
+});
+console.log('jobdesk ok', ok);
