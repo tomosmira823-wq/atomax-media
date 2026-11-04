@@ -125,7 +125,9 @@ function makeRegister(id, writeXlsx) {
 }
 // the next number for a kind of deliverable, per Atomax QS 006 (project ref - area - discipline - type - sequence); '' when the area code is not known yet
 const DN = require('./docnumber');
-function proposeNumber(job, type, taken, id, seen = []) { const d = id ? load(id) : {}; return DN.next(job, type, { area: d.area, disc: d.disc, taken, seen: seen.length ? seen : seenNumbers(job) }).no; }
+// a number for a deliverable: grounded in the register, the job desk's area or numbered files in the job folder. With nothing to go on the row
+// stays TBC (the register may still say otherwise) unless `assume` is set, which the make does so a drawing never goes out numbered TBC.
+function proposeNumber(job, type, taken, id, seen = [], assume = false) { const d = id ? load(id) : {}; const r = DN.next(job, type, { area: d.area, disc: d.disc, taken, seen: seen.length ? seen : seenNumbers(job) }); return r.assumed && !assume ? '' : r.no; }
 // numbered files already in the job folder (the client's schedules, registers): they say how this job is numbered
 function seenNumbers(job) { try { const p = require('./projects').load(job.id); return (p && p.files || []).map(f => f.rel.split(/[\\/]/).pop()); } catch { return []; } }
 function setNumbering(id, { area, disc }) { const d = load(id); if (area != null) d.area = String(area).trim().toUpperCase().slice(0, 4); if (disc != null) d.disc = /^\d{2}$/.test(disc) ? disc : ''; return save(id, d); }

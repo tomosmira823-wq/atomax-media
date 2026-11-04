@@ -481,7 +481,7 @@ EARTHING tasks: size every protective / earth conductor the drawing needs (MET t
     if (job && (!spec.drawingNumber || /tbc/i.test(spec.drawingNumber))) {
       const want = spec.kind === 'bcd' ? /bcd|block cable/i : spec.kind === 'earthing' ? /earth/i : /single line|\bsld\b/i;
       const onList = job.drawings.find(d => want.test(d.title) && !/^TBC-/.test(d.no) && /to do|live/i.test(d.status || 'Live'));
-      spec.drawingNumber = onList ? onList.no : (desk.proposeNumber(job, spec.kind === 'bcd' ? 'BCD' : spec.kind === 'earthing' ? 'earthing' : 'SLD', [], job.id) || 'TBC');
+      spec.drawingNumber = onList ? onList.no : (desk.proposeNumber(job, spec.kind === 'bcd' ? 'BCD' : spec.kind === 'earthing' ? 'earthing' : 'SLD', [], job.id, [], true) || 'TBC');
     }
     if (job && queries.length) { try { desk.addInputs(job.id, { questions: queries, fromEmail: 'Dex (drawing ' + (spec.drawingNumber || spec.title || '') + ')' }); } catch {} }
     // the drawing's own place in an Atomax project folder (7.3 Block Diagrams, 7.4 Single Line Diagrams, 6.3 for instrument BCDs ...)
