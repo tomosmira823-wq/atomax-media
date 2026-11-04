@@ -41,7 +41,9 @@
   .svcico { width: 20px; height: 20px; border-radius: 6px; display: inline-flex; align-items: center; justify-content: center; font-style: normal; font-weight: 800; font-size: 11px; letter-spacing: 0; color: #0b0f1a; background: #4a5368; opacity: .55; background-size: 14px 14px; background-repeat: no-repeat; background-position: center; }
   .svc.ok .svcico { opacity: 1; background-color: var(--green); box-shadow: 0 0 0 3px var(--green-soft); }
   .svc.warn .svcico { opacity: 1; background-color: var(--amber); } .svc.bad .svcico { opacity: 1; background-color: var(--red); }
-  .svcico.haslogo { color: transparent; font-size: 0; } .svcico.cloud { color: #0b0f1a; } .svc:not(.ok):not(.warn):not(.bad) .svcico.cloud { color: #cfd6e3; }
+  .svcico.haslogo { color: transparent; font-size: 0; background-color: #eef1f6; background-size: 16px 16px; border-radius: 5px; }
+  .svc.ok .svcico.haslogo { background-color: #eef1f6; box-shadow: 0 0 0 2px var(--green); } .svc.bad .svcico.haslogo { background-color: #eef1f6; box-shadow: 0 0 0 2px var(--red); } .svc.warn .svcico.haslogo { background-color: #eef1f6; box-shadow: 0 0 0 2px var(--amber); }
+  .svc:not(.ok):not(.warn):not(.bad) .svcico.haslogo { opacity: .45; filter: grayscale(1); } .svcico.cloud { color: #0b0f1a; } .svc:not(.ok):not(.warn):not(.bad) .svcico.cloud { color: #cfd6e3; }
   /* toasts: short messages bottom right (saved, failed, update ready) */
   #toasts { position: fixed; right: 18px; bottom: 18px; display: flex; flex-direction: column; gap: 8px; z-index: 60; pointer-events: none; }
   .toast { pointer-events: auto; background: #141c2f; border: 1px solid #2c3850; border-left: 3px solid var(--green); color: var(--text); border-radius: 10px; padding: 10px 14px; font-size: 13px; max-width: 420px; box-shadow: 0 10px 30px rgba(0,0,0,.45); animation: toastin .18s ease-out; display: flex; gap: 10px; align-items: center; }
