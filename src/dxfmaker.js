@@ -1571,10 +1571,22 @@ function repairJson(raw) {
   out = out.replace(/,(\s*[}\]])/g, '$1');                 // trailing commas
   return JSON.parse(out);
 }
+// Dex's reply as a drawing spec. Tried several ways (the whole text, the first balanced object, each object that names a kind, a spec
+// wrapped in another object) and the reading that holds a drawing (boards / busbars / cables) wins; a reply with none throws.
+const looksLikeSpec = (o) => !!(o && typeof o === 'object' && ((Array.isArray(o.boards) && o.boards.length) || (Array.isArray(o.busbars) && o.busbars.length) || (Array.isArray(o.cables) && o.cables.length) || (Array.isArray(o.questions) && o.questions.length)));
 function parseReply(text) {
-  const s = String(text || '').trim().replace(/^```(?:json)?/i, '').replace(/```\s*$/, '').trim();
+  const s = String(text || '').trim().replace(/^```(?:json)?/i, '').replace(/```\s*$/, '').replace(/```(?:json)?/gi, '').trim();
+  const tries = [], seen = new Set();
+  const add = (fn) => { try { const o = fn(); if (o && typeof o === 'object') tries.push(o); } catch {} };
   const a = s.indexOf('{'), b = s.lastIndexOf('}');
-  if (a >= 0 && b > a) { try { return JSON.parse(s.slice(a, b + 1)); } catch {} }
+  if (a >= 0 && b > a) add(() => JSON.parse(s.slice(a, b + 1)));
+  add(() => repairJson(s));
+  // every object that starts a spec ({"kind": ... or {"boards": ...), in case the reply carries prose or a second object first
+  for (const m of s.matchAll(/\{\s*"(kind|boards|busbars|cables|nodes|title)"\s*:/g)) { if (seen.has(m.index)) continue; seen.add(m.index); add(() => repairJson(s.slice(m.index))); if (tries.length > 12) break; }
+  // a spec wrapped in another object ({"spec": {...}}, {"drawing": {...}})
+  const unwrap = (o) => { if (looksLikeSpec(o)) return o; for (const k of ['spec', 'drawing', 'sld', 'bcd', 'result', 'output']) if (o && looksLikeSpec(o[k])) return o[k]; return null; };
+  for (const o of tries) { const u = unwrap(o); if (u) return u; }
+  if (tries.length) return tries[0];
   return repairJson(s);
 }
 

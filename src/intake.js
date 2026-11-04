@@ -438,7 +438,11 @@ EARTHING tasks: size every protective / earth conductor the drawing needs (MET t
     if (kind === 'bcd' || (Array.isArray(spec.cables) && spec.cables.length && !spec.boards)) spec.kind = 'bcd';
     // National Grid jobs and LVAC block diagrams use the National Grid style (filled energised / de-energised blocks, coloured cable runs, legend)
     if (spec.kind === 'bcd' && !spec.style && (/national grid|\bNGET?\b|\blvac\b/i.test(request) || (job && /national grid/i.test(job.client || '')))) spec.style = 'ng';
-    if (spec.kind === 'bcd' ? !(spec.cables || []).length : (!spec.boards && !spec.busbars)) throw new Error(cutOff ? 'Dex\'s drawing was cut off before the end (max_tokens) and could not be read. Press Make again.' : 'Dex did not produce a drawing: ' + String(text).slice(0, 200));
+    if (spec.kind === 'bcd' ? !(spec.cables || []).length : (!spec.boards && !spec.busbars)) {
+      // the reply is kept beside the GIVEN files so the fault can be found, never guessed at
+      let kept = ''; try { const gd = path.join(userDir(), 'runs', String(job ? job.id : 'nojob')); fs.mkdirSync(gd, { recursive: true }); kept = path.join(gd, `dex-reply-${new Date().toISOString().replace(/[:.]/g, '-')}.txt`); fs.writeFileSync(kept, String(text || '')); } catch {}
+      throw new Error(cutOff ? 'Dex\'s drawing was cut off before the end (max_tokens) and could not be read. Press Make again.' : `Dex's reply had no drawing in it that could be read. The reply is kept at ${kept || '(could not save)'} — send it to Claude. Press Make again meanwhile.`);
+    }
     const desk = require('./jobdesk'), DN = require('./docnumber');
     // REFERENCE DOCUMENTS: what Dex says he used, plus every file he was actually given (a document he read is always referenced)
     {
