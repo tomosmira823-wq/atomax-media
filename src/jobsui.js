@@ -19,6 +19,30 @@ export function initJobsUI({ api, getAgents, openIssue, onWorkOn }) {
   if (api.runs && api.runs.onProgress) api.runs.onProgress((p) => { const k = runKey(p.jobId, p.no); if (p.done) RUNS.delete(k); else RUNS.set(k, p); const el = document.querySelector(`[data-runrow="${CSS.escape(k)}"]`); if (el) el.innerHTML = runCell(p.jobId, p.no); if (p.done && panel.classList.contains('open') && !busyPanel()) setTimeout(refresh, 400); });
   setInterval(() => { for (const [k, r] of RUNS) { r.elapsed += 1000; const el = document.querySelector(`[data-runrow="${CSS.escape(k)}"]`); if (el) el.innerHTML = runCell(r.jobId, r.no); } }, 1000);
   const runCell = (jobId, no) => { const r = RUNS.get(runKey(jobId, no)); if (!r) return ''; return `<span class="jbrun"><i class="jbspin"></i>${esc(runText(r))}</span><button class="jbbtn jbstop" data-stop="${esc(no)}" title="Stop this run (nothing is saved)">Stop</button>`; };
+  // the in-app PDF viewer: a drawing or a markup opens over the job, with Cal's items for that drawing beside it (click one: that page)
+  const viewer = { el: null };
+  const fileUrl = (p) => 'app://local/?p=' + encodeURIComponent(p);
+  function showPdf(p, { title = '', no = '', items = [], page = 1 } = {}) {
+    if (!/\.pdf$/i.test(p)) { api.desk.open({ p }); return; }   // DXFs go to AutoCAD
+    closeViewer(); const v = document.createElement('div'); v.className = 'jbviewer'; viewer.el = v;
+    const list = items.length ? `<div class="jbv-side"><div class="jbv-h">${items.length} item${items.length === 1 ? '' : 's'} on this drawing</div>${items.map((c, i) => `<button class="jbv-item ${/responded|closed/i.test(c.status || '') ? 'done' : ''}" data-page="${c.page || 1}"><b>${i + 1}</b><span>${esc(c.comment)}</span><i>${esc(c.by || '')}${c.status && /responded|closed/i.test(c.status) ? ' · done' : ''}</i></button>`).join('')}</div>` : '';
+    v.innerHTML = `<div class="jbv-top"><b>${esc(title || base(p))}</b><span class="bsub">${esc(p)}</span><span class="jbbar" style="margin:0 0 0 auto"><button class="jbbtn" id="jbvWin">Open in Windows</button><button class="jbbtn" id="jbvFolder">Show in folder</button><button class="jbbtn" id="jbvClose">Close</button></span></div>
+      <div class="jbv-body"><iframe id="jbvFrame" src="${esc(fileUrl(p))}#page=${page}&toolbar=1" title="PDF"></iframe>${list}</div>`;
+    $('#jbMain').appendChild(v);
+    v.querySelector('#jbvClose').onclick = closeViewer; v.querySelector('#jbvWin').onclick = () => api.desk.open({ p }); v.querySelector('#jbvFolder').onclick = () => api.desk.show({ p });
+    v.querySelectorAll('[data-page]').forEach(b => b.onclick = () => { const f = v.querySelector('#jbvFrame'); f.src = fileUrl(p) + '#page=' + b.dataset.page + '&toolbar=1'; v.querySelectorAll('.jbv-item').forEach(x => x.classList.toggle('on', x === b)); });
+    document.addEventListener('keydown', escClose);
+  }
+  const escClose = (e) => { if (e.key === 'Escape' && viewer.el) { e.stopPropagation(); closeViewer(); } };
+  function closeViewer() { if (viewer.el) { viewer.el.remove(); viewer.el = null; } document.removeEventListener('keydown', escClose); }
+  // the markups folder: its PDFs listed to pick from (one per checked drawing, plus the schedule notes)
+  async function showMarkups(dir, no) {
+    let entries = []; try { entries = (await api.proj.listAt({ path: dir })).entries.filter(e => !e.dir && /\.pdf$/i.test(e.name)); } catch { api.desk.show({ p: dir }); return; }
+    const mine = entries.filter(e => !no || e.name.toUpperCase().includes(String(no).toUpperCase().replace(/[^A-Z0-9-]/g, ''))), pick = (mine.length ? mine : entries).sort((a, b) => b.mtime - a.mtime);
+    if (!pick.length) { api.desk.show({ p: dir }); return; }
+    const items = ((O && O.desk.crs) || []).filter(c => c.doc === no && c.by === 'Cal');
+    showPdf(pick[0].path, { title: `Markup · ${no}`, no, items });
+  }
   let query = '', found = null, searchT = null;   // the search box: a job by number, name or client across every Projects folder
   const toast = (t, k, o) => { try { window.toast && window.toast(t, k, o); } catch {} };
   // recently opened jobs (this PC), newest first
@@ -113,7 +137,7 @@ export function initJobsUI({ api, getAgents, openIssue, onWorkOn }) {
 
   // ---------- one job ----------
   function renderJob() {
-    const m = $('#jbMain'); if (!O) { m.innerHTML = `<div class="bhint">${esc(msg)}</div>`; return; }
+    closeViewer(); const m = $('#jbMain'); if (!O) { m.innerHTML = `<div class="bhint">${esc(msg)}</div>`; return; }
     const j = O.job, V = O.desk, rows = O.rows;
     const openC = (V.crs || []).filter(c => !/responded|closed/i.test(c.status || '')).length;
     const tabs = [['files', 'Files'], ['deliv', `Deliverables <em>${rows.length}</em>`], ['setup', 'Inputs &amp; setup'], ['comments', `Comments${openC ? ` <em>${openC}</em>` : ''}`], ['issue', 'Issue']];
@@ -160,7 +184,7 @@ export function initJobsUI({ api, getAgents, openIssue, onWorkOn }) {
       d.addEventListener('toggle', () => { if (d.open) { openDirs.add(d.dataset.path); if (!d.dataset.loaded) { d.dataset.loaded = '1'; fillDir(d.querySelector('.jft-kids'), ctx, d.dataset.rel); } } else openDirs.delete(d.dataset.path); });
       if (openDirs.has(d.dataset.path)) d.open = true;   // folders Tom opened stay open when the page refreshes
     });
-    box.querySelectorAll(':scope > .jft-file').forEach(f => { f.onclick = (ev) => { const show = !!ev.target.closest('[data-show]'); (ctx.byPath ? api.proj.openAt({ path: f.dataset.path, show }) : api.proj.openFile({ jobId: ctx.jobId, rel: f.dataset.rel, show })).catch(err => { msg = clean(err); }); }; });
+    box.querySelectorAll(':scope > .jft-file').forEach(f => { f.onclick = (ev) => { const show = !!ev.target.closest('[data-show]'); if (!show && f.dataset.path && /\.pdf$/i.test(f.dataset.path)) { showPdf(f.dataset.path, { title: base(f.dataset.path) }); return; } (ctx.byPath ? api.proj.openAt({ path: f.dataset.path, show }) : api.proj.openFile({ jobId: ctx.jobId, rel: f.dataset.rel, show })).catch(err => { msg = clean(err); }); }; });
   }
   // a job folder not yet set up for drawings: its files straight away; Deliverables, Inputs, Comments or Issue set it up there and then
   function renderFolder() {
@@ -186,7 +210,7 @@ export function initJobsUI({ api, getAgents, openIssue, onWorkOn }) {
       ${O.needsMaster && !masterOk && !V.master ? `<div class="jbbanner">BCDs and schedules are made from the master device list. <button class="jbbtn" id="jbToMaster">${V.master ? 'Check and approve it' : 'Build it'}</button></div>` : ''}
       ${rows.length ? `<div class="jbbar"><button class="jbbtn primary" id="jbAll" ${rows.some(r => r.agent && !r.work && (masterOk || !['bcd', 'schedule'].includes(r.kind))) ? '' : 'disabled'}>Make everything not made yet</button><button class="jbbtn" id="jbCheck" ${made ? '' : 'disabled'}>Cal: check the drawings</button><span class="bsub">Each row: the agent makes it, Cal checks it, then it goes in the issue pack.</span></div>` : ''}
       <div class="jbrows">${rows.map(r => { const w = r.work;
-        return `<div class="jbrow">
+        return `<div class="jbrow" data-no="${esc(r.no)}">
           <div class="c1"><b>${esc(r.num)}</b><span>${esc(r.ctitle)}</span>${w && w.summary && w.status !== 'made' && w.status !== 'working' ? `<i>${esc(w.summary)}</i>` : ''}${w && (w.status === 'working' || (w.check && w.check.status === 'working')) ? `<div class="jbrunrow" data-runrow="${esc(runKey(O.job.id, r.no))}">${runCell(O.job.id, r.no)}</div>` : ''}${w && w.warning ? `<i class="warn">${esc(w.warning)}</i>` : ''}</div>
           <div class="c2">${r.agent ? esc(r.agent) : '<span class="bsub">by hand</span>'}</div>
           <div class="c3">${openFor(r.no) ? `<span class="st st-needsyou" title="Changes logged against this drawing">${openFor(r.no)} change${openFor(r.no) === 1 ? '' : 's'}</span>` : ''}${chip(w)}${w && w.rev && w.files ? `<span class="st">${esc(w.rev)}</span>` : ''}${w && w.check ? `<span class="st st-${w.check.status === 'passed' ? 'made' : w.check.status === 'working' ? 'working' : 'needsyou'}">${w.check.status === 'passed' ? 'Checked ✓' : w.check.status === 'working' ? 'Checking…' : `Check: ${w.check.count} to look at`}</span>` : ''}</div>
@@ -324,8 +348,8 @@ export function initJobsUI({ api, getAgents, openIssue, onWorkOn }) {
   }
   function lastPeople() { try { return JSON.parse(localStorage.getItem('amo.people') || '{}') || {}; } catch { return {}; } }
   function wireFiles(el) {
-    el.querySelectorAll('[data-open]').forEach(b => b.onclick = () => api.desk.open({ p: b.dataset.open }));
-    el.querySelectorAll('[data-show]').forEach(b => b.onclick = () => api.desk.show({ p: b.dataset.show }));
+    el.querySelectorAll('[data-open]').forEach(b => b.onclick = () => { const no = (b.closest('.jbrow') || {}).dataset ? b.closest('.jbrow').dataset.no : ''; const items = ((O && O.desk.crs) || []).filter(c => no && c.doc === no); showPdf(b.dataset.open, { no, items, title: no ? `${no} · ${base(b.dataset.open)}` : '' }); });
+    el.querySelectorAll('[data-show]').forEach(b => b.onclick = () => { const no = (b.closest('.jbrow') || {}).dataset ? b.closest('.jbrow').dataset.no : ''; showMarkups(b.dataset.show, no); });
   }
   // run a job action: show it is going, refresh the rows while the agents work, report errors on the page
   async function act(fn, note) {

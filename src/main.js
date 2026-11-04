@@ -203,6 +203,13 @@ const APP_ROOT = path.join(__dirname, '..');
 function registerAppProtocol() {
   protocol.handle('app', (req) => {
     const u = new URL(req.url);
+    // app://local/?p=<path>: a file on this PC for the in-app viewer (PDFs), only from the Projects folders or the app's own data
+    if (u.host === 'local') {
+      const p = u.searchParams.get('p') || '', norm = (x) => { const r = path.resolve(String(x || '')); return process.platform === 'win32' ? r.toLowerCase() : r; };
+      const roots = [...((BIZ && BIZ.projects && BIZ.projects.projectsRoots()) || []), USER_DIR()], np = norm(p);
+      if (!p || !roots.some(r => np === norm(r) || np.startsWith(norm(r) + path.sep))) return new Response('forbidden', { status: 403 });
+      return net.fetch(pathToFileURL(p).toString());
+    }
     let rel = decodeURIComponent(u.pathname);
     const file = path.normalize(path.join(APP_ROOT, rel));
     if (!file.startsWith(APP_ROOT)) return new Response('forbidden', { status: 403 });
@@ -222,7 +229,8 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false
+      sandbox: false,
+      plugins: true   // Chromium's PDF viewer inside the app
     }
   });
   win.loadURL('app://app/src/index.html');
