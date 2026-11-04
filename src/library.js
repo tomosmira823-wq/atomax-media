@@ -63,6 +63,28 @@ function init(userDir, agents, standardSkill) {
   ROOT = path.join(userDir, 'library');
   seed(agents || [], standardSkill || '');
   try { removeHouse(); } catch {}
+  try { syncBundled(); } catch (e) { console.error('bundled skills', e); }
+}
+// the house skills shipped inside the app (src/skills/<name>/SKILL.md): what the jobs teach it goes in there and comes with every
+// update, so every job on every PC draws to the same rules. A copy Tom has edited himself in the library is left alone.
+const BUNDLED = path.join(__dirname, 'skills');
+const hashOf = (t) => require('crypto').createHash('sha1').update(String(t)).digest('hex').slice(0, 12);
+function syncBundled() {
+  if (!ROOT || !fs.existsSync(BUNDLED)) return [];
+  const out = [];
+  for (const d of fs.readdirSync(BUNDLED, { withFileTypes: true })) {
+    if (!d.isDirectory()) continue; const f = path.join(BUNDLED, d.name, 'SKILL.md'); if (!fs.existsSync(f)) continue;
+    const text = fs.readFileSync(f, 'utf8'), h = hashOf(text), idx = readIndex('skills');
+    const fm = (text.match(/^---\r?\n([\s\S]*?)\r?\n---/) || [])[1] || '', name = ((fm.match(/^name:\s*(.*)$/m) || [])[1] || d.name).replace(/^["']|["']$/g, '').trim();
+    const same = Object.entries(idx).find(([file, m]) => slug(m.name || file) === slug(name) || file === slug(name) + '.md');
+    if (same) { const [file, m] = same; if (m.bundled === h) continue;   // this version already in
+      let cur = ''; try { cur = fs.readFileSync(path.join(dirOf('skills'), file), 'utf8'); } catch {}
+      if (m.bundled && m.bundledBody && hashOf(cur) !== m.bundledBody) { out.push({ name, kept: true }); continue; } }   // Tom edited his copy: his wins
+    const r = upsertSkill(text, d.name); const idx2 = readIndex('skills'); const e = Object.entries(idx2).find(([file, m]) => slug(m.name || file) === slug(r.name));
+    if (e) { let body = ''; try { body = fs.readFileSync(path.join(dirOf('skills'), e[0]), 'utf8'); } catch {} idx2[e[0]] = { ...e[1], bundled: h, bundledBody: hashOf(body) }; writeIndex('skills', idx2); }
+    out.push({ name, updated: !!same });
+  }
+  return out;
 }
 
 function list(key) {
@@ -268,4 +290,4 @@ function addCorrection(agentId, text) {
   return rulebookFor(agentId);
 }
 
-module.exports = { newClient, pathOf, skillsBlock, skillsFor, CABINETS, init, list, readText, save, remove, addFiles, importSkill, importSkills, unzipText, newSkill, skillFor, rulebookFor, promptBlock, addCorrection, setRulebook, _root: () => ROOT };
+module.exports = { syncBundled, newClient, pathOf, skillsBlock, skillsFor, CABINETS, init, list, readText, save, remove, addFiles, importSkill, importSkills, unzipText, newSkill, skillFor, rulebookFor, promptBlock, addCorrection, setRulebook, _root: () => ROOT };
