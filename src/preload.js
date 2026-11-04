@@ -1,4 +1,4 @@
-const { contextBridge, ipcRenderer, webUtils } = require('electron');
+const { contextBridge, ipcRenderer, webUtils, webFrame } = require('electron');
 
 const call = (ch) => (payload) => ipcRenderer.invoke(ch, payload);
 
@@ -44,6 +44,7 @@ contextBridge.exposeInMainWorld('office', {
   social: { connect: call('social:connect'), disconnect: call('social:disconnect'), publish: call('social:publish'), canPost: call('social:canPost') },
   openExternal: call('shell:open'),
   showItem: call('shell:showItem'),
+  setZoom: (f) => { try { webFrame.setZoomFactor(Math.max(0.75, Math.min(1.6, +f || 1))); } catch {} },
   pathForFile: (file) => { try { return webUtils.getPathForFile(file) || ''; } catch { return ''; } },
   update: { install: call('update:install'), check: call('update:check'), onStatus: (fn) => ipcRenderer.on('update:status', (_e, s) => fn(s)) },
   version: call('app:version'),

@@ -158,8 +158,11 @@ async function fillLogo() {
 }
 $('#logoPick').addEventListener('click', async () => { const r = await api.logo.set(); if (r) fillLogo(); });
 $('#logoReset').addEventListener('click', async () => { await api.logo.reset(); fillLogo(); });
+// look: theme and text size are per PC (localStorage), applied at start and when Settings is saved
+function applyLook() { let th = 'dark', z = 1; try { th = localStorage.getItem('amo.theme') || 'dark'; z = +localStorage.getItem('amo.zoom') || 1; } catch {} document.documentElement.dataset.theme = th; if (api.setZoom) api.setZoom(z); const a = $('#s_theme'), b = $('#s_textSize'); if (a) a.value = th; if (b) b.value = String(z); }
+applyLook();
 function fillSettings() {
-  fillConnections(); fillLogo();
+  fillConnections(); fillLogo(); applyLook();
   for (const k of ['anthropicKey', 'openaiKey', 'googleKey', 'googleImageModel', 'higgsfieldKeyId', 'higgsfieldSecret', 'claudeModel', 'openaiImageModel', 'higgsfieldModel', 'imageProvider']) $('#s_' + k).value = settings[k] || '';
   for (const k of ['name', 'about', 'audience', 'website', 'doNot', 'knowledge']) $('#c_' + k).value = settings.company[k] || '';
   $('#s_projectRoots').value = (settings.projectRoots || []).join('\n'); $('#s_templateDir').value = settings.templateDir || '';
@@ -173,6 +176,7 @@ $('#saveSettings').addEventListener('click', async () => {
   settings.projectRoots = $('#s_projectRoots').value.split(/\r?\n/).map(x => x.trim()).filter(Boolean);
   await api.settings.set(settings);
   settings.openaiImageQuality = $('#s_openaiImageQuality').value;
+  try { localStorage.setItem('amo.theme', $('#s_theme').value); localStorage.setItem('amo.zoom', $('#s_textSize').value); } catch {} applyLook();
   updateKeyDots(); fillImageSelects(); closeModals(); toast('Settings saved'); pollCloud();
 });
 $('#pullSite').addEventListener('click', async () => {
