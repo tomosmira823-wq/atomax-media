@@ -284,6 +284,7 @@ export function initJobsUI({ api, getAgents, openIssue, onWorkOn }) {
     const cs = openList(no), pp = P.people || lastPeople();
     box.innerHTML = `<div class="jbprep-g"><div>
         <label>New revision</label><div class="jbbar" style="margin:0"><span class="st">${esc(P.rev || 'P01')}</span><span>→</span><input id="jrTo" value="${esc(P.nextRev)}" maxlength="3" style="width:70px;text-transform:uppercase"><span class="bsub">Type another to jump stage, e.g. A01 for comment, C01 for construction.</span></div>
+        <label>Revision table description</label><input id="jrDesc" maxlength="40" value="${esc(cs.length ? 'REVISED PER CLIENT COMMENTS ' + new Date().toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: '2-digit' }) : '')}" placeholder="e.g. REVISED PER CLIENT COMMENTS 04/11/26 (empty = PRELIMINARY REVISED / ISSUED FOR CONSTRUCTION by stage)" style="width:100%">
         <label>What's different <span class="bsub">(optional: leave empty for a straight revision)</span></label>
         <textarea id="jrNote" rows="4" placeholder="e.g. F3 now 125A, add a spare way on DB-01, move to C01">${esc(cs.map(c => c.comment).join('\n'))}</textarea>
         ${cs.length ? `<div class="bsub">${cs.length} logged change${cs.length === 1 ? '' : 's'} filled in above; they are marked done when the revision is made.</div>` : ''}
@@ -297,7 +298,7 @@ export function initJobsUI({ api, getAgents, openIssue, onWorkOn }) {
       if (P.agent === 'Dex') { people = Object.fromEntries(['drawn', 'checked', 'approved'].map(k => [k, box.querySelector('#jr_' + k).value.trim().toUpperCase()])); if (!people.drawn) { const f = box.querySelector('#jr_drawn'); f.focus(); f.classList.add('need'); f.placeholder = 'who drew it'; return; } try { localStorage.setItem('amo.people', JSON.stringify(people)); } catch {} }
       const want = to.value.trim().toUpperCase();
       if (want && !/^[PACX]\d{1,2}$/.test(want)) { to.classList.add('need'); return; }
-      act(() => api.jobs.revision({ jobId: O.job.id, no, to: want, note: box.querySelector('#jrNote').value.trim(), people }), `${no}: ${P.agent} is making ${want || P.nextRev}…`);
+      act(() => api.jobs.revision({ jobId: O.job.id, no, to: want, note: box.querySelector('#jrNote').value.trim(), people, desc: box.querySelector('#jrDesc').value.trim() }), `${no}: ${P.agent} is making ${want || P.nextRev}…`);
     };
   }
   // an email: on a job (changes, more deliverables) or on its own (a new job, or an existing one Eli recognises). Eli reads it first.

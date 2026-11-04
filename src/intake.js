@@ -492,6 +492,7 @@ EARTHING tasks: size every protective / earth conductor the drawing needs (MET t
       if (prior && String(prior.spec.revision || '').toUpperCase() === spec.revision) prior = dxfmaker.previousSpec(outDir, realNo || base, spec.revision) || prior;
       previous = prior;
       if (revision.note) spec.revisionNote = revision.note;
+      if (revision.desc) spec.revisionDesc = String(revision.desc).toUpperCase().slice(0, 40).replace(/(.{1,20})\s+(?=.)/, '$1\n');   // the revision table's description, over two short lines
     } else {
       // make again: the same revision the drawing has now (P01 for a first make), its revision history kept
       spec.revision = prior ? prior.spec.revision : 'P01';

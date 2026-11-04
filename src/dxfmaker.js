@@ -92,6 +92,7 @@ function cableTag(label, minH = 0) {
   return { len: 6 + bh, w: bw / 2, prims, tagged: true };
 }
 const UNDER = new Set(['motor', 'load']), UNDER_W = 30;   // motors and loads have their description centred underneath
+const HOLD_RE = /(^|\n)\s*(CABLE No\.? )?TBC\b|\bTBC\s*mm|\bTBC\s*(C|PR)\b/i;   // a cable whose number, size or cores are still to be confirmed
 function drawChain(chain, x, y) {
   const prims = [];
   for (let item of chain || []) {
@@ -99,7 +100,13 @@ function drawChain(chain, x, y) {
     const kind = symbolOf(item.symbol), col = !PHASED ? 0 : STATUS_COLOUR[String(item.status || '').toLowerCase().trim()] || 0;
     const sym = kind === 'cable' && item.label ? cableTag(item.label, item._tagH || 0) : SYMBOLS[kind]();
     if (kind === 'meter' && !sym.house) { const k = /ammeter/i.test(item.label || '') ? 'A' : /voltmeter/i.test(item.label || '') ? 'V' : ''; if (k) sym.prims = sym.prims.map(p => p.t === 'text' && p.text === 'kWh' ? { ...p, text: k, h: 3, y: p.y - 0.4 } : p); }
-    if (sym.tagged) { const from = prims.length; sym.prims.forEach(p => prims.push(moved(p, x, y))); if (col) for (let i = from; i < prims.length; i++) prims[i] = { ...prims[i], colour: col }; y -= sym.len; continue; }
+    if (sym.tagged) {   // a cable tag
+      const from = prims.length; sym.prims.forEach(p => prims.push(moved(p, x, y))); if (col) for (let i = from; i < prims.length; i++) prims[i] = { ...prims[i], colour: col };
+      const bb = primsBounds(prims.slice(from));
+      if (item._cloud && REV && Number.isFinite(bb.x0)) revCloud(prims, bb, REV, 'SLD-REVISION');   // a changed cable on a revision
+      if (HOLD_RE.test(String(item.label || '')) && Number.isFinite(bb.x0)) { revCloud(prims, bb, '', 'SLD-HOLD', 'H'); HOLDS++; }   // a cable still TBC: on hold
+      y -= sym.len; continue;
+    }
     const state = /^(open|closed)$/i.test(String(item.state || '').trim()) ? `(${String(item.state).trim().toUpperCase()})` : '';
     if (state) item = { ...item, label: [item.label, state].filter(Boolean).join('\n') };
     const from0 = prims.length;
@@ -315,6 +322,7 @@ function dashBox(prims, x0, y0, x1, y1, layer) {
   const seg = (ax, ay, bx, by) => { const len = Math.hypot(bx - ax, by - ay), ux = (bx - ax) / len, uy = (by - ay) / len; for (let d = 0; d < len; d += 9) { const e = Math.min(len, d + 6); prims.push(L(ax + ux * d, ay + uy * d, ax + ux * e, ay + uy * e, layer)); } };
   seg(x0, y1, x1, y1); seg(x1, y1, x1, y0); seg(x1, y0, x0, y0); seg(x0, y0, x0, y1);
 }
+const roomKey = (e) => String(e || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
 // a board in its room (switchroom, kiosk, hall): drawn with its dashed room box round it, every cable leaving at one level.
 // Used for the top-level boards and for any board fed from another room (PSB-01 fed from MSB-EX in the main switchroom).
 function drawRoomed(b, x0, y, prims, top, over = null, feed = null) {   // feed: { x, ceil } of the cable coming in from the other room
@@ -357,7 +365,9 @@ function drawRoomed(b, x0, y, prims, top, over = null, feed = null) {   // feed:
       // incomers from another place (a transformer in its compound, a generator in its enclosure): their cable crosses the top wall
       // the same way, so what feeds the board in sits outside the room
       const lastCable = (items) => { let k = -1; items.forEach((it, i) => { if (!it.gap && symbolOf(it.symbol) === 'cable') k = i; }); return k; };
-      const ins0 = (b.incomers || []).map(c => { const items = c.chain || [], k = lastCable(items); return k < 0 ? null : { k, h: chainHeight(items.slice(k + 1)) }; });
+      // an incomer whose source is in this same room (the DNO cut-out in the intake room): drawn wholly inside, no wall between
+      const srcInRoom = (c) => { const first = (c.chain || []).find(it => !it.gap); return !!(first && first.enclosure && roomKey(first.enclosure) === roomKey(b.enclosure)); };
+      const ins0 = (b.incomers || []).map(c => { if (srcInRoom(c)) return null; const items = c.chain || [], k = lastCable(items); return k < 0 ? null : { k, h: chainHeight(items.slice(k + 1)) }; });
       if (ins0.some(Boolean)) {
         const U = Math.max(8, ...ins0.filter(Boolean).map(x => x.h)); wallTop = U + 3;
         b = { ...b, incomers: (b.incomers || []).map((c, i) => { const x = ins0[i]; if (!x) return c; const chain = [...c.chain]; chain.splice(x.k + 1, 0, { gap: U + 5 - x.h }); return { ...c, chain }; }) };
@@ -368,7 +378,7 @@ function drawRoomed(b, x0, y, prims, top, over = null, feed = null) {   // feed:
     const from = prims.length, d = drawBoard(b, x0, y, prims, top, over);
     const placedRooms = ROOMLOG || []; ROOMLOG = null;
     if (wall !== null) {   // a dashed box round the board and its incomers, named above it
-      const inside = (p) => { const q = primsBounds([p]); return q.y0 >= y + wall - 0.5 && (wallTop === null || q.y1 <= y + wallTop + 0.5); };
+      const inside = (p) => { const q = primsBounds([p]); return q.y0 >= y + wall - 0.5 && (wallTop === null || q.y1 <= y + wallTop + 0.5 || (p._enc && roomKey(p._enc) === roomKey(b.enclosure))); };
       const bb = primsBounds(prims.slice(from).filter(inside)), m = 6, ex0 = bb.x0 - m, ex1 = bb.x1 + m, ey0 = y + wall, ey1 = feed ? Math.min(bb.y1 + m, feed.ceil - TH - 3) : wallTop === null ? bb.y1 + m : y + wallTop;
       if (roomSubs && placedRooms.length) {
         // the room steps down round each board in it: the top part down to the shallowest board's cable level, then each board's own part
@@ -385,9 +395,9 @@ function drawRoomed(b, x0, y, prims, top, over = null, feed = null) {   // feed:
   } finally { SUBLOG = keepS; ROOMLOG = keepR; }
 }
 
-let REV = '';   // the revision being drawn (for the clouds), set by layoutSld
+let REV = '', HOLDS = 0;   // the revision being drawn (for the clouds) and the holds counted, set by layoutSld
 function layoutSld(spec, opts = {}) {
-  PHASED = isPhased(spec); REV = spec.revision || '';
+  PHASED = isPhased(spec); REV = spec.revision || ''; HOLDS = 0;
   if (PHASED && spec.phase && !/\bphase\b/i.test(spec.title || '')) spec.title = `${spec.title || ''} - PHASE ${String(spec.phase).replace(/^phase\s*/i, '')}`.trim();
   const prims = [], boards = spec.boards || spec.busbars || [];
   if (!boards.length) throw new Error('The drawing has no boards');
@@ -416,6 +426,7 @@ function layoutSld(spec, opts = {}) {
     if (d.x0 !== undefined) x0 = Math.min(x0, d.x0);
     minY = Math.min(minY, d.minY); maxY = Math.max(maxY, d.maxY); maxX = Math.max(maxX, d.maxX); x0 = d.maxX + 25;
   }
+  if (HOLDS && !(spec.notes || []).some(n => /\bHOLD\b/i.test(n))) (spec.notes = spec.notes || []).push(HOLD_NOTE);
   const f = frame(prims, spec, minY, maxY, maxX, '', { fill: opts.fill, borderKey: opts.border });
   return { prims: f.prims || prims, bounds: f.bounds, sheet: f.sheet, page: f.page, border: f.border };
 }
@@ -576,7 +587,8 @@ const INTERNAL_NOTE = [
   /^\s*(?:[A-Z]{1,4}\s*-\s*[A-Z][A-Z ]{2,30}[.,;]?\s*)+$/,   // a bare list of abbreviations (PR - PAIR.)
   /\btruncated\b|\bin the workbook\b|\bworkbook (cells?|rows?|notes?)\b|\b(rows?|cells?) [A-Z]?\d+\b|\bR\d+ TO R\d+\b|\bawaiting client confirmation\b/i,
 ];
-const isInternalNote = (t) => INTERNAL_NOTE.some(re => re.test(String(t)));
+const HOLD_NOTE = 'ITEMS CLOUDED H ARE ON HOLD PENDING INFORMATION FROM THE CLIENT.';   // the engine's own note for TBC cables; stays on the drawing
+const isInternalNote = (t) => String(t).trim() !== HOLD_NOTE && INTERNAL_NOTE.some(re => re.test(String(t)));
 const cleanLabel = (t) => units(String(t).replace(/\bPFC\s+(?=\d+(?:\.\d+)?\s*kA)/gi, 'PROSPECTIVE FAULT ')).replace(/\s*[([]?\s*(?:SEE|REF(?:ER)?(?: TO)?|PER)\s+(?:TQ|RFI)[\s-]*[\w/-]*\s*[)\]]?/gi, '').replace(/\s*[([]\s*(?:TQ|RFI)[\s-]*\d+[\w/ -]*[)\]]/gi, '').replace(/[ \t]+\n/g, '\n').trim();
 function cleanLabels(spec) {   // every label on an SLD / BCD spec, in place
   const walk = (b) => { if (!b) return; if (b.label) b.label = cleanLabel(b.label); for (const c of [...(b.incomers || []), ...(b.feeders || [])]) { if (c.label) c.label = cleanLabel(c.label); for (const it of c.chain || []) { if (it.label) it.label = cleanLabel(it.label); if (it.board) walk(it.board); } } };
@@ -622,6 +634,13 @@ function fromSchedule(spec, sheets) {
   (spec.boards || spec.busbars || []).forEach(walk);
   const locs = new Map();
   for (const t of tables({ id: /^(equipment\s*)?tag$/, loc: /^location$/ })) for (const r of t.rows) { const c = r.c || [], loc = norm(c[t.col.loc]); if (loc) for (const tg of norm(c[t.col.id]).split(/\s*[,;\/]\s*|\s+&\s+/)) if (tg) locs.set(key(tg), loc); }
+  // the equipment list's ratings (800A 36kA FORM 4 TYPE 2) go on a board's label when the draft left them off
+  const ratings = new Map();
+  for (const t of tables({ id: /^(equipment\s*)?tag$/, rating: /^rating/ })) for (const r of t.rows) { const c = r.c || [], rt = norm(c[t.col.rating]); if (rt && rt !== '-') ratings.set(key(c[t.col.id]), rt); }
+  const hasRating = (txt) => /\d+(?:\.\d+)?\s?(A|kA|kVA|kW|kVAr|kWh)\b/i.test(String(txt || ''));
+  for (const n of spec.nodes || []) { const rt = ratings.get(key(n.tag)); if (rt && !hasRating(n.label) && !/^(device)$/i.test(String(n.type || '')) ) { n.label = [n.label, rt].filter(Boolean).join(', '); changed.push(`${n.tag} rating: ${rt}`); } }
+  const rateBoards = (b) => { if (!b) return; const tg = String(b.label || '').split(/\n|\\n|\s/)[0], rt = ratings.get(key(tg)); if (rt && !hasRating(b.label)) { b.label = String(b.label || '') + '\n' + rt; changed.push(`${tg} rating: ${rt}`); } for (const f of [...(b.incomers || []), ...(b.feeders || [])]) for (const it of f.chain || []) if (it.board) rateBoards(it.board); };
+  (spec.boards || spec.busbars || []).forEach(rateBoards);
   // the cable schedule's from / to locations too (an equipment list wins where both give one)
   for (const end of ['from', 'to']) for (const t of tables({ id: new RegExp('^' + end + '$'), loc: new RegExp('^' + end + '\\s*(location|loc|area|room)$') })) for (const r of t.rows) { const c = r.c || [], loc = norm(c[t.col.loc]), tg = norm(c[t.col.id]); if (loc && tg && !(r.st || []).some(Boolean) && !locs.has(key(tg))) locs.set(key(tg), loc); }
   // SLD: each board, and each load at the end of a feeder, in its room from the schedule (so every room is boxed the same way)
@@ -897,7 +916,10 @@ function layoutBcd(spec, opts = {}) {
       const sw = (col) => (x, y) => { const b = [[x, y - 2.5], [x + 12, y - 2.5], [x + 12, y + 2.5], [x, y + 2.5]]; prims.push({ t: 'fill', pts: b, layer: 'BCD-BLOCK', colour: col }); prims.push({ ...P(b, true, 'BCD-BLOCK'), colour: col }); };
       item(sw(3), 'ENERGISED'); item(sw(1), 'DE-ENERGISED');
     }
-    if (opts.diff) for (const b of boxes) if (opts.diff.added.includes(b.no) || opts.diff.changed.includes(b.no)) revCloud(prims, b, spec.revision);
+    if (opts.diff) for (const b of boxes) if (opts.diff.added.includes(b.no) || opts.diff.changed.includes(b.no)) revMark(prims, b, spec.revision);
+    // HOLD clouds: a cable whose number, cores, size or type is still TBC is clouded with an H, and one note says what H means
+    const holds = boxes.filter(b => b.hold); for (const b of holds) revCloud(prims, b, '', 'BCD-HOLD', 'H');
+    if (holds.length && !(spec.notes || []).some(n => /\bHOLD\b/i.test(n))) (spec.notes = spec.notes || []).push(HOLD_NOTE);
     const clash = cableClashes(prims); if (clash.length) throw new Error('BCD layout has cables that overlap or cross (' + clash.slice(0, 3).join('; ') + '). Not saved.');
     const label = sheets.length > 1 ? `SHEET ${i + 1} OF ${sheets.length}` : '';
     if (sheets.length > 1 && i < sheets.length - 1) prims.push({ t: 'mtext', x: BCD_X.device, y: body.minY - 2, w: 80, h: TH, text: `CONTINUED ON SHEET ${i + 2}`, attach: 1, layer: 'BCD-TEXT' });
@@ -1142,7 +1164,7 @@ function layoutPanelBcd(spec, model, opts = {}) {
       const ls = cabLines(q.c), len = Math.max(...ls.map(tw)), yc = (best[0] + best[1]) / 2;
       if (len + 2 > bl) warn(`sheet ${si + 1}: cable ${q.c.no} text is longer than its clear run`);
       ls.forEach((l, i) => { const x = textX(q.lx, i); prims.push({ t: 'text', x, y: yc, h: H, text: l, rot: 90, align: 'center', layer: 'BCD-TEXT' }); textRects.push({ x0: x - H, y0: yc - tw(l) / 2, x1: x, y1: yc + tw(l) / 2 }); });
-      boxes.push({ no: String(q.c.no || ''), x0: q.lx - 1.5 - H, y0: yc - len / 2 - 1, x1: textX(q.lx, ls.length - 1) + 0.3, y1: yc + len / 2 + 1 });
+      boxes.push({ no: String(q.c.no || ''), x0: q.lx - 1.5 - H, y0: yc - len / 2 - 1, x1: textX(q.lx, ls.length - 1) + 0.3, y1: yc + len / 2 + 1, hold: /^TBC$|^$/i.test(String(q.c.no || '').trim()) || /\bTBC\b/i.test(`${q.c.size || ''} ${q.c.cores || ''} ${q.c.type || ''}`) });
     }
     // names: top left of each box, in the band left for them, clear of every cable and word
     const rects = () => { const out = [...textRects]; for (const p of flatPrims(prims)) {
@@ -1176,7 +1198,10 @@ function layoutPanelBcd(spec, model, opts = {}) {
       dashBox(prims, scope.x0, scope.y0, scope.x1, scope.y1, hasAreas || theirs.length ? 'BCD-SCOPE' : 'BCD-AREA');
       if (site) nameBox({ box: scope }, site, areas);
     }
-    if (opts.diff) for (const b of boxes) if (opts.diff.added.includes(b.no) || opts.diff.changed.includes(b.no)) revCloud(prims, b, spec.revision);
+    if (opts.diff) for (const b of boxes) if (opts.diff.added.includes(b.no) || opts.diff.changed.includes(b.no)) revMark(prims, b, spec.revision);
+    // HOLD clouds: a cable whose number, cores, size or type is still TBC is clouded with an H, and one note says what H means
+    const holds = boxes.filter(b => b.hold); for (const b of holds) revCloud(prims, b, '', 'BCD-HOLD', 'H');
+    if (holds.length && !(spec.notes || []).some(n => /\bHOLD\b/i.test(n))) (spec.notes = spec.notes || []).push(HOLD_NOTE);
     const clash = cableClashes(prims); if (clash.length && !process.env.AMO_NOCLASH) throw new Error('BCD layout has cables that overlap or cross (' + clash.slice(0, 3).join('; ') + '). Not saved.');
     sheets.push({ P: PN, prims, boxes, cables: [...drawn].map(c => String(c.no || '')) });
   });
@@ -1306,7 +1331,7 @@ function layoutPowerBcd(spec, model, opts = {}) {
   // the legend (key) goes in the notes column under the notes, as on the National Grid drawings
   if (BSTYLE.ng) { const used = new Set(cables.map(ngCableColour)), st = new Set([...nodes.values()].map(nd => NG[String(nd.status || 'energised').toLowerCase()] || 3));
     spec.ngLegend = [...(used.has(82) ? [['dash82', 'EXISTING BY OTHERS']] : []), ...(used.has(1) ? [['line1', 'NEW BY BGEN']] : []), ...(used.has(5) ? [['line5', 'CURRENT SUPPLY CABLING']] : []), ...(st.has(3) ? [['fill3', 'ENERGISED']] : []), ...(st.has(1) ? [['fill1', 'DE-ENERGISED / NEW']] : [])]; }
-  if (opts.diff) for (const b of boxes) if (opts.diff.added.includes(b.no) || opts.diff.changed.includes(b.no)) revCloud(prims, b, spec.revision);
+  if (opts.diff) for (const b of boxes) if (opts.diff.added.includes(b.no) || opts.diff.changed.includes(b.no)) revMark(prims, b, spec.revision);
   const clash = cableClashes(prims); if (clash.length && !process.env.AMO_NOCLASH) throw new Error('BCD layout has cables that overlap or cross (' + clash.slice(0, 3).join('; ') + '). Not saved.');
   const bb = primsBounds(prims); if (process.env.AMO_DBG) console.error('power bcd size', Math.round(bb.x1 - bb.x0), Math.round(bb.y1 - bb.y0)); const key = opts.border && opts.border.geo ? opts.border : (String(opts.border || 'atomax'));
   let B = opts.noTitle ? null : borderOf(key, bb.x1 - bb.x0, bb.y1 - bb.y0);
@@ -1316,14 +1341,31 @@ function layoutPowerBcd(spec, model, opts = {}) {
 }
 function dashedSeg(prims, x1, y1, x2, y2, colour) { const len = Math.hypot(x2 - x1, y2 - y1), ux = (x2 - x1) / len, uy = (y2 - y1) / len; for (let d = 0; d < len; d += 4.5) { const e = Math.min(len, d + 3); prims.push({ ...L(x1 + ux * d, y1 + uy * d, x1 + ux * e, y1 + uy * e, 'BCD-CABLE'), colour }); } }
 // revision clouds round the cable boxes that changed, with the revision triangle beside them
-function revCloud(prims, b, rev, layer = 'BCD-REVISION') {
-  const pad = 2, x0 = b.x0 - pad, y0 = b.y0 - pad, x1 = b.x1 + pad, y1 = b.y1 + pad, r = 2;
-  const edge = (ax, ay, bx, by) => { const len = Math.hypot(bx - ax, by - ay), n = Math.max(1, Math.round(len / (2 * r))); const ang = Math.atan2(by - ay, bx - ax) * 180 / Math.PI; for (let i = 0; i < n; i++) { const cx = ax + (bx - ax) * (i + 0.5) / n, cy = ay + (by - ay) * (i + 0.5) / n; prims.push({ t: 'arc', x: cx, y: cy, r: len / n / 2, a0: ang, a1: ang + 180, layer: layer }); } };
-  edge(x0, y0, x1, y0); edge(x1, y0, x1, y1); edge(x1, y1, x0, y1); edge(x0, y1, x0, y0);
-  const tx = x1 + 4, ty = y1;
-  prims.push(P([[tx, ty - 3], [tx + 7, ty - 3], [tx + 3.5, ty + 3]], true, layer));
-  prims.push({ t: 'mtext', x: tx + 3.5, y: ty - 1, w: 8, h: TH, text: String(rev || '').replace(/^[A-Z]0*/, '') || '1', attach: 5, layer });
+// the house revision cloud (as on Atomax's issued drawings): one closed polyline of small, shallow scallops round a rounded rectangle,
+// heavy red, with the revision triangle sitting on its top edge; the triangle carries the whole revision ("P03"), or H for an item on hold
+const CLOUD_CHORD = 4, CLOUD_BULGE = 0.42, CLOUD_W = 0.5, TRI_W = 5.6, TRI_H = 4.8;
+function cloudPath(x0, y0, x1, y1, rc = 3) {   // the perimeter of a rounded rectangle, counter-clockwise, as chords of about CLOUD_CHORD
+  const pts = [], w = x1 - x0, h = y1 - y0; rc = Math.min(rc, w / 2, h / 2);
+  const straight = (ax, ay, bx, by) => { const len = Math.hypot(bx - ax, by - ay), n = Math.max(1, Math.round(len / CLOUD_CHORD)); for (let i = 0; i < n; i++) pts.push([ax + (bx - ax) * i / n, ay + (by - ay) * i / n]); };
+  const corner = (cx, cy, a0) => { const n = Math.max(1, Math.round((Math.PI / 2 * rc) / CLOUD_CHORD)); for (let i = 0; i < n; i++) { const a = a0 + (Math.PI / 2) * i / n; pts.push([cx + rc * Math.cos(a), cy + rc * Math.sin(a)]); } };
+  straight(x0 + rc, y0, x1 - rc, y0); corner(x1 - rc, y0 + rc, -Math.PI / 2);
+  straight(x1, y0 + rc, x1, y1 - rc); corner(x1 - rc, y1 - rc, 0);
+  straight(x1 - rc, y1, x0 + rc, y1); corner(x0 + rc, y1 - rc, Math.PI / 2);
+  straight(x0, y1 - rc, x0, y0 + rc); corner(x0 + rc, y0 + rc, Math.PI);
+  return pts;
 }
+// the revision triangle: apex up, the revision inside; (x, y) is the apex
+function revTriangle(prims, x, y, text, layer) {
+  prims.push({ ...P([[x - TRI_W / 2, y - TRI_H], [x + TRI_W / 2, y - TRI_H], [x, y]], true, layer, CLOUD_W) });
+  prims.push({ t: 'mtext', x, y: y - TRI_H + 1.6, w: TRI_W, h: 1.6, text, attach: 5, layer });
+}
+function revCloud(prims, b, rev, layer = 'BCD-REVISION', mark = '') {
+  const pad = 2, x0 = b.x0 - pad, y0 = b.y0 - pad, x1 = b.x1 + pad, y1 = b.y1 + pad;
+  prims.push({ t: 'pline', pts: cloudPath(x0, y0, x1, y1), closed: true, layer, width: CLOUD_W, bulge: CLOUD_BULGE });
+  revTriangle(prims, (x0 + x1) / 2, y1, mark || String(rev || '').toUpperCase() || 'P01', layer);   // on the top edge, apex just touching it
+}
+// a change on a BCD is marked with the triangle alone, beside the cable box (no cloud, as on Atomax's issued BCDs)
+function revMark(prims, b, rev, layer = 'BCD-REVISION') { revTriangle(prims, b.x0 - TRI_W / 2 - 1, b.y1 + 1, String(rev || '').toUpperCase() || 'P01', layer); }
 // what changed between two BCD specs, by cable number
 // an SLD revision: each feeder / incomer is known by its cable number (else the thing at its end); one whose chain differs from the last
 // revision, or is new, is marked (_cloud) so the layout puts a revision cloud round it. Returns what changed, by those names.
@@ -1357,7 +1399,7 @@ function bcdDiff(oldSpec, newSpec) {
 const ATOMAX_TPL = path.join(__dirname, 'cad', 'atomax-template.dxf');
 const TEMPLATE = () => fs.readFileSync(fs.existsSync(ATOMAX_TPL) ? ATOMAX_TPL : path.join(__dirname, 'dxf-template-r2010.dxf'), 'utf8');
 const n = (v) => (Math.round(v * 1000) / 1000).toString();
-const LAYERS = [['SLD-BUS', 1], ['SLD-CABLE', 3], ['SLD-SYMBOL', 7], ['SLD-TEXT', 7], ['SLD-BORDER', 8], ['SLD-NOTES', 30], ['SLD-ENCLOSURE', 8], ['SLD-REVISION', 1], ['BCD-BLOCK', 7], ['BCD-CABLE', 7], ['BCD-CABLEBOX', 2], ['BCD-TEXT', 7], ['BCD-REVISION', 1]];
+const LAYERS = [['SLD-BUS', 1], ['SLD-CABLE', 3], ['SLD-SYMBOL', 7], ['SLD-TEXT', 7], ['SLD-BORDER', 8], ['SLD-NOTES', 30], ['SLD-ENCLOSURE', 8], ['SLD-REVISION', 1], ['BCD-HOLD', 1], ['SLD-HOLD', 1], ['BCD-BLOCK', 7], ['BCD-CABLE', 7], ['BCD-CABLEBOX', 2], ['BCD-TEXT', 7], ['BCD-REVISION', 1]];
 // add any of our layers the template does not have (so a client's own title block DXF can be the template)
 function ensureLayers(tpl, h0) {
   let h = h0; const tab = tpl.match(/\n\s*0\nTABLE\n\s*2\nLAYER\n\s*5\n([0-9A-Fa-f]+)\n[\s\S]*?\n\s*0\nENDTAB\n/); if (!tab) return { tpl, h };
@@ -1397,7 +1439,7 @@ function writeDxf(prims, bounds, opts = {}) {
     else if (p.t === 'line') { head('LINE', p.layer); g(100, 'AcDbLine'); g(10, n(p.x1)); g(20, n(p.y1)); g(30, 0); g(11, n(p.x2)); g(21, n(p.y2)); g(31, 0); }
     else if (p.t === 'circle') { head('CIRCLE', p.layer); g(100, 'AcDbCircle'); g(10, n(p.x)); g(20, n(p.y)); g(30, 0); g(40, n(p.r)); }
     else if (p.t === 'arc') { head('ARC', p.layer); g(100, 'AcDbCircle'); g(10, n(p.x)); g(20, n(p.y)); g(30, 0); g(40, n(p.r)); g(100, 'AcDbArc'); g(50, n(p.a0)); g(51, n(p.a1)); }
-    else if (p.t === 'pline') { head('LWPOLYLINE', p.layer); g(100, 'AcDbPolyline'); g(90, p.pts.length); g(70, p.closed ? 1 : 0); if (p.width) g(43, n(p.width)); for (const [x, y] of p.pts) { g(10, n(x)); g(20, n(y)); } }
+    else if (p.t === 'pline') { head('LWPOLYLINE', p.layer); g(100, 'AcDbPolyline'); g(90, p.pts.length); g(70, p.closed ? 1 : 0); if (p.width) g(43, n(p.width)); for (const [x, y] of p.pts) { g(10, n(x)); g(20, n(y)); if (p.bulge) g(42, n(p.bulge)); } }
     else if (p.t === 'text') { head('TEXT', p.layer); g(100, 'AcDbText'); g(10, n(p.x)); g(20, n(p.y)); g(30, 0); g(40, n(p.h)); g(1, clean(p.text)); if (p.rot) g(50, n(p.rot)); g(41, n(p.wf || HOUSE_WF)); g(7, HOUSE_STYLE); if (p.align === 'center') { g(72, 1); g(11, n(p.x)); g(21, n(p.y)); g(31, 0); } g(100, 'AcDbText'); }
     else if (p.t === 'fill' && p.pts && p.pts.length > 2) { head('HATCH', p.layer); g(100, 'AcDbHatch'); g(10, 0); g(20, 0); g(30, 0); g(210, 0); g(220, 0); g(230, 1); g(2, 'SOLID'); g(70, 1); g(71, 0); const rings = p.rings || [p.pts]; g(91, rings.length); for (const r of rings) { g(92, 2); g(72, 0); g(73, 1); g(93, r.length); for (const [x, y] of r) { g(10, n(x)); g(20, n(y)); } g(97, 0); } g(75, 0); g(76, 1); g(98, 0); }
     else if (p.t === 'mtext') { head('MTEXT', p.layer); g(100, 'AcDbMText'); g(10, n(p.x)); g(20, n(p.y)); g(30, 0); g(40, n(p.h)); g(41, n(p.w)); g(71, p.attach || 1); g(72, 5); g(1, ((p.wf || HOUSE_WF) !== 1 ? `\\W${p.wf || HOUSE_WF};` : '') + uni(String(p.text)).replace(/\r?\n/g, '\\P')); g(7, HOUSE_STYLE); }
@@ -1416,11 +1458,16 @@ function toSvg(prims, b) {
   prims = flatPrims(prims);
   const W = b.x1 - b.x0, H = b.y1 - b.y0, Y = (y) => n(b.y1 - y), X = (x) => n(x - b.x0);
   const esc = (s) => String(s).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]);
-  const col = (layer) => ({ 'SLD-BUS': '#e03131', 'SLD-CABLE': '#2f9e44', 'SLD-BORDER': '#868e96', 'SLD-NOTES': '#e67700' })[layer] || '#1b2a41';
+  const col = (layer) => ({ 'SLD-BUS': '#e03131', 'SLD-CABLE': '#2f9e44', 'SLD-BORDER': '#868e96', 'SLD-NOTES': '#e67700', 'SLD-REVISION': '#e03131', 'SLD-HOLD': '#e03131', 'BCD-REVISION': '#e03131', 'BCD-HOLD': '#e03131' })[layer] || '#1b2a41';
   const parts = prims.map(p => {
     if (p.t === 'line') return `<line x1="${X(p.x1)}" y1="${Y(p.y1)}" x2="${X(p.x2)}" y2="${Y(p.y2)}" stroke="${col(p.layer)}" stroke-width="0.35"/>`;
     if (p.t === 'circle') return `<circle cx="${X(p.x)}" cy="${Y(p.y)}" r="${p.r}" fill="none" stroke="${col(p.layer)}" stroke-width="0.35"/>`;
     if (p.t === 'arc') { const a0 = p.a0 * Math.PI / 180, a1 = p.a1 * Math.PI / 180; return `<path d="M${X(p.x + p.r * Math.cos(a0))} ${Y(p.y + p.r * Math.sin(a0))} A${p.r} ${p.r} 0 0 0 ${X(p.x + p.r * Math.cos(a1))} ${Y(p.y + p.r * Math.sin(a1))}" fill="none" stroke="${col(p.layer)}" stroke-width="0.35"/>`; }
+    if (p.t === 'pline' && p.bulge) {   // scalloped (a revision cloud): each segment an arc; a positive bulge bows to the right of travel
+      const th = 4 * Math.atan(p.bulge), pts = p.closed ? [...p.pts, p.pts[0]] : p.pts; let d = `M${X(pts[0][0])} ${Y(pts[0][1])}`;
+      for (let i = 1; i < pts.length; i++) { const c = Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]), r = c / (2 * Math.sin(th / 2)); d += ` A${r} ${r} 0 0 ${p.bulge > 0 ? 1 : 0} ${X(pts[i][0])} ${Y(pts[i][1])}`; }
+      return `<path d="${d}" fill="none" stroke="${col(p.layer)}" stroke-width="${p.width || 0.35}"/>`;
+    }
     if (p.t === 'pline') return `<polyline points="${p.pts.map(([x, y]) => X(x) + ',' + Y(y)).join(' ')}${p.closed ? ' ' + X(p.pts[0][0]) + ',' + Y(p.pts[0][1]) : ''}" fill="none" stroke="${col(p.layer)}" stroke-width="${p.width || 0.35}"/>`;
     if (p.t === 'text') { const tf = [p.rot ? `rotate(${-p.rot} ${X(p.x)} ${Y(p.y)})` : '', `translate(${X(p.x)} ${Y(p.y)}) scale(${p.wf || HOUSE_WF} 1) translate(${-X(p.x)} ${-Y(p.y)})`].filter(Boolean).join(' '); return `<text ${tf ? `transform="${tf}" ` : ''}x="${X(p.x)}" y="${Y(p.y)}" font-size="${(p.h / 0.774).toFixed(2)}" text-anchor="${p.align === 'center' ? 'middle' : 'start'}" font-family="Arial">${esc(p.text)}</text>`; }
     if (p.t === 'fill') return `<path fill-rule="evenodd" d="${(p.rings || [p.pts]).map(r => 'M' + r.map(([x, y]) => X(x) + ' ' + Y(y)).join(' L') + ' Z').join(' ')}" fill="${p.colour === 3 ? '#40c057' : p.colour === 1 ? '#fa5252' : '#495057'}" stroke="none"/>`;
