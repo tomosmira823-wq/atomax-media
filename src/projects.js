@@ -257,7 +257,7 @@ function allJobFolders(known = []) {
   for (const r of projectsRoots(known)) {
     const own = jobFolders(path.dirname(r), known).find(f => path.resolve(f.folder) === path.resolve(r)); if (own) { add(own); continue; }
     const direct = jobFolders(r, known); direct.forEach(add);
-    let subs = []; try { subs = fs.readdirSync(r, { withFileTypes: true }).filter(e => e.isDirectory() && !SKIP.test(e.name) && !/template/i.test(e.name) && !direct.some(f => path.basename(f.folder) === e.name)); } catch {}
+    let subs = []; try { subs = fs.readdirSync(r, { withFileTypes: true }).filter(e => (e.isDirectory() || (() => { try { return fs.statSync(path.join(r, e.name)).isDirectory(); } catch { return !path.extname(e.name); } })()) && !SKIP.test(e.name) && !/template/i.test(e.name) && !direct.some(f => path.basename(f.folder) === e.name)); } catch {}
     for (const e of subs.slice(0, 60)) jobFolders(path.join(r, e.name), known).forEach(add);
   }
   return out;
@@ -267,7 +267,9 @@ function jobFolders(root, known = []) {
   if (!root) return [];
   const re = jobPattern(known), loose = /^([A-Za-z]{1,3}\d{4,6}(?:-\d{2})?)\b/;
   let ents = []; try { ents = fs.readdirSync(root, { withFileTypes: true }); } catch { return []; }
-  return ents.filter(e => e.isDirectory() && !/template/i.test(e.name) && !SKIP.test(e.name)).map(e => {
+  // OneDrive online-only folders can report as links rather than directories: check them properly
+  const isDir = (e) => { if (e.isDirectory()) return true; try { return fs.statSync(path.join(root, e.name)).isDirectory(); } catch { return !!(e.isSymbolicLink && e.isSymbolicLink() && !path.extname(e.name)); } };
+  return ents.filter(e => isDir(e) && !/template/i.test(e.name) && !SKIP.test(e.name)).map(e => {
     const m = e.name.match(re) || e.name.match(loose); if (!m) return null;
     const number = (m[0].match(/^[A-Za-z]{1,3}\d{4,6}(?:-\d{2})?/) || [m[0]])[0].toUpperCase();
     return { number, name: e.name.slice(m[0].length).replace(/^[\s_\-–.]+/, '').trim(), folder: path.join(root, e.name) };
@@ -281,7 +283,7 @@ function listDir(folder, rel = '') {
   const out = [];
   for (const e of ents) {
     if (/^(~\$|\.|desktop\.ini$|thumbs\.db$)/i.test(e.name)) continue;
-    const full = path.join(dir, e.name); let st = null; try { st = fs.statSync(full); } catch { continue; }
+    const full = path.join(dir, e.name); let st = null; try { st = fs.statSync(full); } catch { try { st = fs.lstatSync(full); } catch { st = { isDirectory: () => e.isDirectory(), size: 0, mtimeMs: 0 }; } }
     out.push({ name: e.name, rel: path.relative(base, full), dir: st.isDirectory(), size: st.isDirectory() ? 0 : st.size, mtime: st.mtimeMs, count: st.isDirectory() ? (() => { try { return fs.readdirSync(full).filter(n => !/^(~\$|\.|desktop\.ini$|thumbs\.db$)/i.test(n)).length; } catch { return 0; } })() : 0 });
   }
   return out.sort((a, b) => (b.dir - a.dir) || a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));

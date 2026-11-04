@@ -1365,7 +1365,7 @@ function parseReply(text) {
 // move / scale primitives (placing a drawing inside a client's title block)
 function place(prims, dx, dy, k = 1) {
   const X = (x) => x * k + dx, Y = (y) => y * k + dy;
-  return prims.map(p => p.t === 'insert' ? { ...p, x: X(p.x), y: Y(p.y), k: (p.k || 1) * k } : p.t === 'line' ? { ...p, x1: X(p.x1), y1: Y(p.y1), x2: X(p.x2), y2: Y(p.y2) } : p.pts ? { ...p, pts: p.pts.map(([x, y]) => [X(x), Y(y)]), ...(p.rings ? { rings: p.rings.map(r => r.map(([x, y]) => [X(x), Y(y)])) } : {}), ...(p.width ? { width: p.width * k } : {}) } : p.t === 'text' || p.t === 'mtext' ? { ...p, x: X(p.x), y: Y(p.y), w: p.w ? p.w * k : p.w, h: Math.max(p.h * k, TH) } : { ...p, x: X(p.x), y: Y(p.y), r: p.r * k });
+  return prims.map(p => p.t === 'insert' ? { ...p, x: X(p.x), y: Y(p.y), k: (p.k || 1) * k } : p.t === 'line' ? { ...p, x1: X(p.x1), y1: Y(p.y1), x2: X(p.x2), y2: Y(p.y2) } : p.pts ? { ...p, pts: p.pts.map(([x, y]) => [X(x), Y(y)]), ...(p.rings ? { rings: p.rings.map(r => r.map(([x, y]) => [X(x), Y(y)])) } : {}), ...(p.width ? { width: p.width * k } : {}) } : p.t === 'text' || p.t === 'mtext' ? { ...p, x: X(p.x), y: Y(p.y), w: p.w ? p.w * k : p.w, h: p.h * k }   /* text shrinks with the drawing: kept at 2 it ran into the next label */ : { ...p, x: X(p.x), y: Y(p.y), r: p.r * k });
 }
 // block inserts expanded to plain geometry (for previews, PDFs and measuring)
 function flatPrims(prims) { const out = []; for (const p of prims) { if (p.t === 'insert') out.push(...flatPrims(place(p.prims.map(q => ({ ...q, layer: q.layer || p.layer })), p.x, p.y, p.k || 1))); else out.push(p); } return out; }

@@ -258,9 +258,11 @@ dead is true only if the sheet itself carries a cancelled / superseded / void / 
     const out = [];
     for (const e of ents) {
       if (/^(~\$|\.|desktop\.ini$|thumbs\.db$)/i.test(e.name)) continue;   // what Explorer hides
-      const full = path.join(p, e.name); let st = null; try { st = fs.statSync(full); } catch { continue; }
-      const dir = st.isDirectory(), rec = dir ? recordFor(d, full) : null;
-      out.push({ name: e.name, path: full, dir, size: dir ? 0 : st.size, mtime: st.mtimeMs, isJob: dir && (re.test(e.name) || loose.test(e.name)), job: rec ? { id: rec.id, number: rec.number } : null });
+      // OneDrive online-only folders and files are reparse points: stat can fail or call them links, but they are listed
+      // all the same (as Explorer does), falling back to what the folder entry says
+      const full = path.join(p, e.name); let st = null; try { st = fs.statSync(full); } catch { try { st = fs.lstatSync(full); } catch { st = null; } }
+      const dir = st && !st.isSymbolicLink() ? (st.isDirectory() || (!st.isFile() && e.isDirectory())) : (e.isDirectory() || !path.extname(e.name)), rec = dir ? recordFor(d, full) : null;
+      out.push({ name: e.name, path: full, dir, size: dir || !st ? 0 : st.size, mtime: st ? st.mtimeMs : 0, isJob: dir && (re.test(e.name) || loose.test(e.name)), job: rec ? { id: rec.id, number: rec.number } : null });
     }
     out.sort((a, b) => (b.dir - a.dir) || a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));   // Explorer's name order
     return { path: p, name: path.basename(p), entries: out };
