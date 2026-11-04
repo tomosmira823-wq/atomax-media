@@ -428,7 +428,7 @@ function bcdModel(spec) {
   const nodes = new Map();
   const typeOf = (t) => /panel|rio|mcc|plc|cabinet|\bio\b|marshall/i.test(t || '') ? 'panel' : /jb|junction/i.test(t || '') ? 'jb' : 'device';
   const yes = (v) => v === true || /^(true|yes|others|by others)$/i.test(String(v || '').trim());
-  for (const n of (spec.nodes || [])) if (n && n.tag) nodes.set(String(n.tag), { tag: String(n.tag), label: String(n.label || ''), status: n.status || '', type: n.type ? typeOf(n.type) : typeOf(n.tag), location: String(n.location || '').trim(), byOthers: yes(n.byOthers) || yes(n.scope) || /\bBY OTHERS\b|\bDNO\b|\bICP\b/i.test(String(n.label || '')) });   // or said in its own words
+  for (const n of (spec.nodes || [])) if (n && n.tag) nodes.set(String(n.tag), { tag: String(n.tag), label: String(n.label || ''), status: n.status || '', type: n.type ? typeOf(n.type) : typeOf(n.tag), location: String(n.location || '').trim(), byOthers: yes(n.byOthers) || yes(n.scope) || /\bDNO\b|\bICP\b|\bUTILITY\b|NETWORK OPERATOR|\bEXISTING\b[^.]{0,30}\bBY OTHERS\b|\bBY OTHERS\b[^.]{0,30}\bEXISTING\b/i.test(String(n.label || '')) });   // or said in its own words: the DNO's kit, or existing kit by others. A package unit "by others" is still fed by our cable: ours
   const cables = (spec.cables || []).filter(c => c && c.from && c.to).map(c => ({ ...c, from: String(c.from), to: String(c.to), byOthers: yes(c.byOthers) || yes(c.scope) }));
   for (const c of cables) for (const t of [c.from, c.to]) if (!nodes.has(t)) nodes.set(t, { tag: t, label: '', type: typeOf(t) });
   return { nodes, cables };
