@@ -78,7 +78,7 @@ function register({ ipcMain, HANDLERS, BIZ, claudeFull }) {
     try {
       let r, files = [], pdfs = [];
       if (k.agent === 'Dex') {
-        const P = plan({ jobId, no }); r = await call('dex:make', { run: R.id, jobId, drawingNumber: P.number, request: (asked || P.request) + (note ? ' ' + note : ''), answers, revision, skills, drawn: people.drawn || '', checked: people.checked || '', approved: people.approved || '' });
+        const P = plan({ jobId, no }); r = await call('dex:make', { run: R.id, jobId, kind: P.kind, drawingNumber: P.number, request: (asked || P.request) + (note ? ' ' + note : ''), answers, revision, skills, drawn: people.drawn || '', checked: people.checked || '', approved: people.approved || '' });
         // a TBC row that Dex numbered when he made it (from the register / the job's QS 006 numbering): the row takes that number now
         if (/^TBC-/i.test(no) && QS.test(String(r.drawingNumber || '')) && desk.renameRow(jobId, no, r.drawingNumber)) no = r.drawingNumber;
         if (r.questions) { runs.finish(R.id, { ok: true }); return setDeliv(jobId, no, { status: 'needs you', questions: r.questions, summary: 'Dex has questions' }); }

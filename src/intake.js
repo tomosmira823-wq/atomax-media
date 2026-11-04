@@ -384,7 +384,7 @@ EARTHING tasks: size every protective / earth conductor the drawing needs (MET t
 
   // ---------- Dex makes a DXF ----------
   const runs = require('./runs');
-  ipcMain.handle('dex:make', wrap(async ({ jobId = '', request = '', answers = [], emailId = '', skills, revision = null, drawingNumber = '', drawn = '', checked = '', approved = '', run = '' }) => {
+  ipcMain.handle('dex:make', wrap(async ({ jobId = '', request = '', answers = [], emailId = '', skills, revision = null, drawingNumber = '', drawn = '', checked = '', approved = '', run = '', kind: askedKind = '' }) => {
     if (!String(request).trim()) throw new Error('Say what Dex should draw');
     const stage = (t, pct) => runs.stage(run, t, pct);
     stage('reading the job\'s inputs', 5);
@@ -396,7 +396,8 @@ EARTHING tasks: size every protective / earth conductor the drawing needs (MET t
     // the skills Tom ticked for this run win; otherwise his drawing skills (fixer-only and spreadsheet skills only when the request needs them)
     const lib = library.list('skills');
     // by default only the skills made for THIS kind of drawing (an SLD skill is not used for earthing), plus general CAD house rules; none if nothing fits
-    const DK = require('./drawkinds'), kind = DK.kindOf(request);
+    // the kind of drawing: from the deliverable row when the Jobs screen says (comments folded into the request may name other drawings), else from the request's first line
+    const DK = require('./drawkinds'), kind = ['sld', 'bcd', 'earthing', 'loop', 'layout', 'termination'].includes(String(askedKind || '').toLowerCase()) ? String(askedKind).toLowerCase() : DK.kindOf(String(request).split(/\n|\. /)[0]);
     if (kind === 'termination') throw new Error('Dex cannot draw termination diagrams yet. The Atomax termination skill is in the File Room ready for when he can (send Claude your termination examples).');
     const picked = (Array.isArray(skills) ? skills.map(f => { const i = lib.find(x => x.file === f); return i ? { name: i.name, file: i.file, text: library.readText('skills', i.file).trim() } : null; }).filter(x => x && x.text) : all.filter(sk => { const fit = DK.skillFit({ ...sk, description: (lib.find(x => x.file === sk.file) || {}).description }, kind); return fit || (wantsFix && /fix/i.test(sk.name) && !DK.skillKinds(sk).some(k => k !== kind)) || (wantsSheets && /excel|xlsx|spreadsheet/i.test(sk.name + ' ' + sk.file)); })).sort((a, b) => rank(a) - rank(b));
     let room = 30000; const used = [];
@@ -435,7 +436,7 @@ EARTHING tasks: size every protective / earth conductor the drawing needs (MET t
       try { spec = dxfmaker.parseReply(text); } catch (err2) { throw new Error(`Dex's reply could not be read twice (${String(err2.message || err2).slice(0, 100)}). Press Make again.`); }
     }
     if (spec.questions && spec.questions.length && !answers.length) return { questions: spec.questions.slice(0, 4).map(String), read: [...pdfs.map(p => path.basename(p)), ...sheetsRead, ...notesRead], skills: used };
-    if (kind === 'bcd' || (Array.isArray(spec.cables) && spec.cables.length && !spec.boards)) spec.kind = 'bcd';
+    if ((kind === 'bcd' && !spec.boards && !spec.busbars) || (Array.isArray(spec.cables) && spec.cables.length && !spec.boards)) spec.kind = 'bcd';   // what Dex drew decides when it is plainly an SLD
     // National Grid jobs and LVAC block diagrams use the National Grid style (filled energised / de-energised blocks, coloured cable runs, legend)
     if (spec.kind === 'bcd' && !spec.style && (/national grid|\bNGET?\b|\blvac\b/i.test(request) || (job && /national grid/i.test(job.client || '')))) spec.style = 'ng';
     if (spec.kind === 'bcd' ? !(spec.cables || []).length : (!spec.boards && !spec.busbars)) {
