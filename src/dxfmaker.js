@@ -224,7 +224,8 @@ function drawBoard(b, x0, y, prims, top, over = null) {
   const ext = fs.map((f, i) => { if (chainParts(f.chain).sub) return null; const tmp = [], d = drawSimple(f, fxs[i], fy(f), tmp), bb = primsBounds(tmp); return { x0: Math.min(bb.x0, fxs[i] - 10), x1: Math.max(bb.x1, fxs[i] + 10), y0: Math.min(bb.y0, d.yEnd) }; });
   // boards fed side by side (an MCC and a DB off the same board) line up: same busbar level, and their outgoing cables start at the
   // same depth below it, so the cable tags across the drawing sit in one row
-  const awayOf = (sub) => !!sub.enclosure && String(sub.enclosure).toUpperCase().trim() !== String(b.enclosure || '').toUpperCase().trim();
+  const roomKey = (e) => String(e || '').toUpperCase().replace(/[^A-Z0-9]/g, ''), sameRoom = (a, b2) => { const x = roomKey(a), y = roomKey(b2); return !x || !y || x === y || x.includes(y) || y.includes(x); };
+  const awayOf = (sub) => !!sub.enclosure && !!b.enclosure && !sameRoom(sub.enclosure, b.enclosure);
   const subYOf = (i) => { const f = fs[i], { items, sub } = chainParts(f.chain), inc = (sub.incomers || []).flatMap(c => c.chain || []), r = drawChain([...items, ...inc], fxs[i], y); if (r.ended) return null;
     const S = subs.find(s => s.i === i), under = ext.filter(e => e && e.x1 > S.x0 && e.x0 < S.x1), extra = awayOf(sub) ? wrap(sub.label, 44).length * LINE + TH + 8 : 0;
     return Math.min(r.y - SUB_GAP_MIN - extra, ...under.map(e => e.y0 - 10 - extra)); };
@@ -259,7 +260,8 @@ function drawBoard(b, x0, y, prims, top, over = null) {
   (b.incomers || []).forEach((c, i) => {
     let ix = (fxs.length ? (fxs[0] + fxs[fxs.length - 1]) / 2 : x0 + 20) + i * FEED; while (fxs.some(fx => Math.abs(fx - ix) < 8)) ix += 8; ixs.push(ix);
     const h = chainHeight(c.chain);
-    if (c.label) { const tl = wrap(c.label, 40); prims.push({ t: 'mtext', x: ix - 20, y: y + h + 3 + tl.length * LINE, w: 40, h: TH, text: tl.join('\n'), attach: 1, layer: 'SLD-TEXT' }); maxY = Math.max(maxY, y + h + 3 + tl.length * LINE); }
+    const first = (c.chain || []).find(it => !it.gap), lift = first && first.enclosure && !sameRoom(first.enclosure, b.enclosure) ? TH + 6 : 0;   // the room's name goes above the box: the supply name above that
+    if (c.label) { const tl = wrap(c.label, 40); prims.push({ t: 'mtext', x: ix - 20, y: y + h + 3 + lift + tl.length * LINE, w: 40, h: TH, text: tl.join('\n'), attach: 1, layer: 'SLD-TEXT' }); maxY = Math.max(maxY, y + h + 3 + lift + tl.length * LINE); }
     const r = drawChain(c.chain, ix, y + h); prims.push(...r.prims); maxY = Math.max(maxY, y + h);
     // the items of an incomer that sit in another room (RMU and transformer in the HV compound, the generator in its enclosure): a dashed box
     // round each room's run, named above it, so every room on the drawing is shown the same way
@@ -422,7 +424,7 @@ function bcdModel(spec) {
   const nodes = new Map();
   const typeOf = (t) => /panel|rio|mcc|plc|cabinet|\bio\b|marshall/i.test(t || '') ? 'panel' : /jb|junction/i.test(t || '') ? 'jb' : 'device';
   const yes = (v) => v === true || /^(true|yes|others|by others)$/i.test(String(v || '').trim());
-  for (const n of (spec.nodes || [])) if (n && n.tag) nodes.set(String(n.tag), { tag: String(n.tag), label: String(n.label || ''), status: n.status || '', type: n.type ? typeOf(n.type) : typeOf(n.tag), location: String(n.location || '').trim(), byOthers: yes(n.byOthers) || yes(n.scope) });
+  for (const n of (spec.nodes || [])) if (n && n.tag) nodes.set(String(n.tag), { tag: String(n.tag), label: String(n.label || ''), status: n.status || '', type: n.type ? typeOf(n.type) : typeOf(n.tag), location: String(n.location || '').trim(), byOthers: yes(n.byOthers) || yes(n.scope) || /\bBY OTHERS\b|\bDNO\b|\bICP\b/i.test(String(n.label || '')) });   // or said in its own words
   const cables = (spec.cables || []).filter(c => c && c.from && c.to).map(c => ({ ...c, from: String(c.from), to: String(c.to), byOthers: yes(c.byOthers) || yes(c.scope) }));
   for (const c of cables) for (const t of [c.from, c.to]) if (!nodes.has(t)) nodes.set(t, { tag: t, label: '', type: typeOf(t) });
   return { nodes, cables };
@@ -575,6 +577,11 @@ function cleanLabels(spec) {   // every label on an SLD / BCD spec, in place
   (spec.boards || spec.busbars || []).forEach(walk);
   for (const n of spec.nodes || []) if (n.label) n.label = cleanLabel(n.label);
   for (const c of spec.cables || []) if (c.note) c.note = cleanLabel(c.note);
+  // a cable number with a letter I or O where a digit should be (C-0I4) is a typing mistake on the schedule: TBC on the drawing and a
+  // query in the RFI register, never the mistake copied (Tom: obvious typos are flagged, not drawn)
+  const typo = (no) => /^[A-Z]{1,3}-?\d*[IO]\d*[A-Z]?$/i.test(String(no || '').trim()) && /\d/.test(String(no));
+  for (const c of spec.cables || []) if (typo(c.no)) { (spec.queries = spec.queries || []).push(`Cable number ${c.no} on the schedule looks mistyped (letter I/O among the digits): confirm the correct number. Shown as TBC.`); c.no = 'TBC'; }
+  for (const n of spec.notes || []) { const m = String(n).match(/\bC-?\d*[IO]\d+\b/i); if (m && /on hold|query|confirm|looks wrong/i.test(n)) { spec.notes = spec.notes.filter(x => x !== n); (spec.queries = spec.queries || []).push(String(n)); } }
 }
 // the schedule is the source: each BCD cable's type (with its voltage), cores, size and length, and each item's location, are copied
 // straight from the workbook's own columns, so nothing Dex retyped (a dropped "11kV") reaches the drawing. Returns what changed.
