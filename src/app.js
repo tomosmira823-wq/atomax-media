@@ -687,3 +687,21 @@ window.__o365UI = o365UI;
 // the Server Room's spend screen and racks follow the usage log every 15 seconds
 async function pushServerStatus() { try { const st = await api.server.status(); office.setServerStatus(st); await roomsUI.refreshServer(); } catch {} }
 setTimeout(pushServerStatus, 1500); setInterval(pushServerStatus, 15000);
+
+// ---------- who is working: a little face per live agent run, bottom left (hover: what they are doing, click: the job)
+(() => {
+  const box = $('#working'); if (!box || !api.runs) return;
+  const LIVE = new Map(), COLOUR = { Dex: '#3b8fe8', Cal: '#9b59b6', Lex: '#2eaa6a', Wren: '#2d6fd6', Eli: '#f39c3c', Dot: '#9b7bff', Ada: '#3ecfa4', Milo: '#1abc9c', Theo: '#c56cf0', Vera: '#ff7675' };
+  const verb = (r) => { const k = String(r.kind || ''); if (k === 'check') return 'Checking'; if (k === 'master') return 'Building the master list'; if (k === 'markup-read') return 'Reading the red pen'; if (/:revision$/.test(k)) return 'Revising'; if (/^(sld|bcd|bcd-instrument|earthing|loop|dxf)\b/.test(k)) return 'Drawing'; if (/schedule|xlsx|excel/.test(k)) return 'Writing the schedule'; if (/doc|word|report/.test(k)) return 'Writing'; return 'Working'; };
+  const fmt = (ms) => { const s = Math.round(ms / 1000); return s < 60 ? `${s}s` : `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
+  const jobName = (id) => { try { const j = (window.__jobs || []).find(x => x.id === id); return j ? j.number : ''; } catch { return ''; } };
+  function draw() {
+    const rows = [...LIVE.values()];
+    if (rows.length && !window.__jobs && api.biz && api.biz.get) api.biz.get().then(v => { window.__jobs = v.jobs; draw(); }).catch(() => {});
+    box.innerHTML = rows.map(r => { const a = (agents || []).find(x => x.name === r.who), col = (a && a.colour) || COLOUR[r.who] || '#7f8c8d'; const what = `${verb(r)}${r.no && r.no !== 'MASTER' ? ' · ' + r.no : ''}${jobName(r.jobId) ? ' · ' + jobName(r.jobId) : ''}`; return `<div class="wk" data-job="${r.jobId || ''}" style="background:${col}" aria-label="${r.who} ${what}"><span class="wktip"><b>${r.who || 'Agent'}</b> · ${what} · ${fmt(r.elapsed || 0)}</span></div>`; }).join('');
+    box.querySelectorAll('.wk').forEach(el => el.onclick = () => { if (el.dataset.job && window.__jobsUI) window.__jobsUI.show(el.dataset.job); });
+  }
+  api.runs.onProgress((p) => { if (p.done) LIVE.delete(p.id); else LIVE.set(p.id, p); draw(); });
+  api.runs.live().then(list => { for (const p of list) LIVE.set(p.id, p); draw(); }).catch(() => {});
+  setInterval(() => { if (!LIVE.size) return; for (const r of LIVE.values()) r.elapsed = (r.elapsed || 0) + 1000; box.querySelectorAll('.wk').forEach((el, i) => { const r = [...LIVE.values()][i]; const t = el.querySelector('.wktip'); if (r && t) t.lastChild.textContent = ` · ${verb(r)}${r.no && r.no !== 'MASTER' ? ' · ' + r.no : ''}${jobName(r.jobId) ? ' · ' + jobName(r.jobId) : ''} · ${fmt(r.elapsed)}`; }); }, 1000);
+})();

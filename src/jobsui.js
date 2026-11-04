@@ -66,7 +66,7 @@ export function initJobsUI({ api, getAgents, openIssue, onWorkOn }) {
   async function refresh() {
     try { if (api.runs && api.runs.live) { const live = await api.runs.live(); RUNS.clear(); for (const p of live) RUNS.set(runKey(p.jobId, p.no), p); } } catch {}   // runs still going in the main process (after a re-open or a redraw)
     await relist();
-    const v = await api.biz.get(); jobs = v.jobs.filter(j => j.status !== 'Closed');
+    const v = await api.biz.get(); jobs = v.jobs.filter(j => j.status !== 'Closed'); window.__jobs = v.jobs;
     if (sel && !jobs.some(j => j.id === sel)) sel = '';
     renderList();
     if (!sel && selPath) { renderFolder(); return; }

@@ -42,11 +42,11 @@ console.log('oakmere ok: SLD 2 incomers, rooms boxed; BCD 1 sheet A0, all', bcd.
   const F4 = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'oakmere.json'), 'utf8'));
   const sld = F4.sld; D.fromSchedule(sld, F4.sheets); const L4 = D.layoutSld(sld, { border: 'atomax' });
   const sh = L4.prims.filter(p => p.layer === 'SLD-HOLD' && p.t === 'mtext').length;
-  assert.strictEqual(sh, 1, 'one H triangle on the SLD (the TBC cable to M-206), got ' + sh);
-  assert.ok(L4.prims.some(p => /ON HOLD PENDING/.test(p.text || '')), 'hold note printed on the SLD');
+  assert.strictEqual(sh, 1, 'one HOLD flag on the SLD (the TBC cable to M-206), got ' + sh);
+  assert.ok(L4.prims.some(p => /ON HOLD PENDING|FLAGGED HOLD/.test(p.text || '')), 'hold note printed on the SLD');
   const S4 = D.layoutBcd(F4.bcd, { border: 'atomax' });
   const bh = S4.flatMap(s => s.prims).filter(p => p.layer === 'BCD-HOLD' && p.t === 'mtext').length;
-  assert.strictEqual(bh, 1, 'one H triangle on the BCD, got ' + bh);
-  assert.ok(S4[0].prims.some(p => /ON HOLD PENDING/.test(p.text || '')), 'hold note printed on the BCD');
-  console.log('oakmere HOLD ok: TBC cable clouded H on SLD and BCD, note printed');
+  assert.strictEqual(bh, 1, 'one HOLD flag on the BCD, got ' + bh);
+  assert.ok(S4[0].prims.some(p => /ON HOLD PENDING|FLAGGED HOLD/.test(p.text || '')), 'hold note printed on the BCD');
+  console.log('oakmere HOLD ok: TBC cable clouded and flagged HOLD on SLD and BCD, note printed');
 }

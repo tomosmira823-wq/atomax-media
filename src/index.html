@@ -63,6 +63,16 @@
   .svc:not(.ok):not(.warn):not(.bad) .svcico.haslogo { opacity: .45; filter: grayscale(1); } .svcico.cloud { color: #0b0f1a; } .svc:not(.ok):not(.warn):not(.bad) .svcico.cloud { color: #cfd6e3; }
   /* toasts: short messages bottom right (saved, failed, update ready) */
   #toasts { position: fixed; right: 18px; bottom: 18px; display: flex; flex-direction: column; gap: 8px; z-index: 60; pointer-events: none; }
+  /* who is working right now: one little face per live run, bottom left; hover says what they are doing */
+  #working { position: fixed; left: 16px; bottom: 16px; display: flex; gap: 10px; z-index: 60; align-items: flex-end; }
+  #working .wk { position: relative; width: 34px; height: 34px; border-radius: 50%; cursor: pointer; box-shadow: inset 0 -8px 12px rgba(0,0,0,.35), 0 4px 10px rgba(0,0,0,.4); animation: wkpulse 1.6s ease-in-out infinite; }
+  #working .wk::before, #working .wk::after { content: ''; position: absolute; top: 12px; width: 6px; height: 7px; border-radius: 50%; background: #fff; }
+  #working .wk::before { left: 9px; } #working .wk::after { right: 9px; }
+  #working .wk .wktip { position: absolute; left: 50%; bottom: 42px; transform: translateX(-50%); white-space: nowrap; background: #0c1322; color: #e8edf5; border: 1px solid #2c3850; border-radius: 6px; padding: 5px 8px; font-size: 12px; opacity: 0; pointer-events: none; transition: opacity .12s; }
+  #working .wk .wktip b { color: #9be36b; }
+  #working .wk:hover .wktip { opacity: 1; }
+  :root[data-theme=light] #working .wk .wktip { background: #fff; color: #1b2a41; border-color: #c9d2e0; }
+  @keyframes wkpulse { 0%, 100% { box-shadow: inset 0 -8px 12px rgba(0,0,0,.35), 0 0 0 0 rgba(155,227,107,.55); } 50% { box-shadow: inset 0 -8px 12px rgba(0,0,0,.35), 0 0 0 7px rgba(155,227,107,0); } }
   .toast { pointer-events: auto; background: #141c2f; border: 1px solid #2c3850; border-left: 3px solid var(--green); color: var(--text); border-radius: 10px; padding: 10px 14px; font-size: 13px; max-width: 420px; box-shadow: 0 10px 30px rgba(0,0,0,.45); animation: toastin .18s ease-out; display: flex; gap: 10px; align-items: center; }
   .toast.err { border-left-color: var(--red); } .toast.warn { border-left-color: var(--amber); } .toast.out { opacity: 0; transform: translateY(6px); transition: opacity .25s, transform .25s; }
   .toast button { margin-left: auto; } @keyframes toastin { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
@@ -698,6 +708,7 @@ body.fp canvas#scene{cursor:grab}
   <div class="body"><div id="jbList"></div><div id="jbSplit" title="Drag to resize"></div><div id="jbMain"></div></div>
 </div>
 <div id="toasts"></div>
+<div id="working" title=""></div>
 <div class="panel" id="boardPanel">
   <h2><span>Projects whiteboard</span><button class="collapse" id="bdBack" title="Back to the office (Esc)">×</button></h2>
   <div class="body">

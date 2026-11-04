@@ -422,8 +422,8 @@ EARTHING tasks: size every protective / earth conductor the drawing needs (MET t
     content.push({ type: 'text', text: `REQUEST: ${request}${answers.length ? '\n\nANSWERS FROM THE ENGINEER:\n' + answers.map(x => `Q: ${x.q}\nA: ${x.a}`).join('\n') : ''}` });
     // a big site needs a long spec: give room, retry with more if it is cut off, and never pass off a cut-off spec as complete
     stage(revision && revision.on ? 'Dex is working out the changes' : 'Dex is drawing', 20);
-    let r = await claudeFull({ system, who: 'dex', skills: false, maxTokens: 12000, messages: [{ role: 'user', content }], run });
-    if (r.stop === 'max_tokens') r = await claudeFull({ run, system: system + '\nKeep labels short (four lines at most) and give a feeder label only when it adds something the end item label does not say.', who: 'dex', skills: false, maxTokens: 24000, messages: [{ role: 'user', content }] });
+    let r = await claudeFull({ system, who: 'dex', skills: false, maxTokens: 24000, messages: [{ role: 'user', content }], run });
+    if (r.stop === 'max_tokens') r = await claudeFull({ run, system: system + '\nKeep labels short (four lines at most) and give a feeder label only when it adds something the end item label does not say.', who: 'dex', skills: false, maxTokens: 48000, messages: [{ role: 'user', content }] });
     let text = r.text, cutOff = r.stop === 'max_tokens';
     // a reply that still cannot be read (a stray quote or bracket the repair cannot place): kept for a look, and Dex is asked once to send it again as strict JSON
     let spec;
@@ -438,7 +438,7 @@ EARTHING tasks: size every protective / earth conductor the drawing needs (MET t
     if (kind === 'bcd' || (Array.isArray(spec.cables) && spec.cables.length && !spec.boards)) spec.kind = 'bcd';
     // National Grid jobs and LVAC block diagrams use the National Grid style (filled energised / de-energised blocks, coloured cable runs, legend)
     if (spec.kind === 'bcd' && !spec.style && (/national grid|\bNGET?\b|\blvac\b/i.test(request) || (job && /national grid/i.test(job.client || '')))) spec.style = 'ng';
-    if (spec.kind === 'bcd' ? !(spec.cables || []).length : (!spec.boards && !spec.busbars)) throw new Error('Dex did not produce a drawing: ' + String(text).slice(0, 200));
+    if (spec.kind === 'bcd' ? !(spec.cables || []).length : (!spec.boards && !spec.busbars)) throw new Error(cutOff ? 'Dex\'s drawing was cut off before the end (max_tokens) and could not be read. Press Make again.' : 'Dex did not produce a drawing: ' + String(text).slice(0, 200));
     const desk = require('./jobdesk'), DN = require('./docnumber');
     // REFERENCE DOCUMENTS: what Dex says he used, plus every file he was actually given (a document he read is always referenced)
     {

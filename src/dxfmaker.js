@@ -587,7 +587,7 @@ const INTERNAL_NOTE = [
   /^\s*(?:[A-Z]{1,4}\s*-\s*[A-Z][A-Z ]{2,30}[.,;]?\s*)+$/,   // a bare list of abbreviations (PR - PAIR.)
   /\btruncated\b|\bin the workbook\b|\bworkbook (cells?|rows?|notes?)\b|\b(rows?|cells?) [A-Z]?\d+\b|\bR\d+ TO R\d+\b|\bawaiting client confirmation\b/i,
 ];
-const HOLD_NOTE = 'ITEMS CLOUDED H ARE ON HOLD PENDING INFORMATION FROM THE CLIENT.';   // the engine's own note for TBC cables; stays on the drawing
+const HOLD_NOTE = 'ITEMS CLOUDED AND FLAGGED HOLD ARE ON HOLD PENDING INFORMATION FROM THE CLIENT.';   // the engine's own note for TBC cables; stays on the drawing
 const isInternalNote = (t) => String(t).trim() !== HOLD_NOTE && INTERNAL_NOTE.some(re => re.test(String(t)));
 const cleanLabel = (t) => units(String(t).replace(/\bPFC\s+(?=\d+(?:\.\d+)?\s*kA)/gi, 'PROSPECTIVE FAULT ')).replace(/\s*[([]?\s*(?:SEE|REF(?:ER)?(?: TO)?|PER)\s+(?:TQ|RFI)[\s-]*[\w/-]*\s*[)\]]?/gi, '').replace(/\s*[([]\s*(?:TQ|RFI)[\s-]*\d+[\w/ -]*[)\]]/gi, '').replace(/[ \t]+\n/g, '\n').trim();
 function cleanLabels(spec) {   // every label on an SLD / BCD spec, in place
@@ -888,7 +888,28 @@ function isPowerBcd(spec, model) {
   const tags = nodes.map(n => String(n.tag || '')).join(' ');
   return p > i || /\b(TX|MSB|SWB|MCC|DB|UPS|GEN|RMU|PFC)[-\d]/i.test(tags) && p >= i;
 }
+// the house notes on every Atomax BCD (as issued on X11481): always present, in this order, after the drawing's own first note (what it was
+// derived from); one Dex wrote in other words is replaced by the house wording, so the notes read the same on every job
+const BCD_STANDARD_NOTES = [
+  [/BS\s*7671.*(REQUIREMENTS|WIRING REG|18TH)/i, 'ALL CABLES TO BE INSTALLED IN ACCORDANCE WITH BS 7671:2018 (AS AMENDED) REQUIREMENTS FOR ELECTRICAL INSTALLATIONS (IET WIRING REGULATIONS 18TH EDITION).'],
+  [/60079/i, 'CABLES INSTALLED IN HAZARDOUS AREAS SHALL COMPLY WITH BS EN 60079-14.'],
+  [/528\.1|SEGREGATED FROM POWER/i, 'ALL SIGNAL/INSTRUMENTATION CABLES SHALL BE SEGREGATED FROM POWER CABLES AND INSTALLED IN ACCORDANCE WITH BS 7671 REGULATION 528.1 (BAND I AND BAND II SEPARATION).'],
+  [/SECTION 522|CONTAINMENT, SUPPORTS/i, "ALL CABLE CONTAINMENT, SUPPORTS AND FIXINGS TO BE INSTALLED IN ACCORDANCE WITH MANUFACTURER'S RECOMMENDATIONS AND BS 7671 SECTION 522."],
+  [/VENDOR SUPPLIED/i, 'VENDOR SUPPLIED CABLES AND CONNECTIONS TO BE VERIFIED AGAINST VENDOR DOCUMENTATION PRIOR TO INSTALLATION.'],
+  [/60445|TERMINAL BLOCKS/i, 'ALL CABLE TERMINATIONS WITHIN JUNCTION BOXES TO BE MADE USING APPROVED TERMINAL BLOCKS. TERMINALS TO BE IDENTIFIED IN ACCORDANCE WITH BS EN 60445.'],
+  [/REGULATION 514|IDENTIFICATION LABELS/i, 'CABLE IDENTIFICATION LABELS TO BE FITTED AT BOTH ENDS OF EACH CABLE AND AT EVERY DRAW-IN POINT IN ACCORDANCE WITH BS 7671 REGULATION 514.'],
+  [/ATEX|CERTIFIED EX/i, 'ALL JUNCTION BOXES, LOCAL CONTROL PANELS AND INSTRUMENTS INSTALLED IN ATEX AREAS TO BE CERTIFIED EX SUITABLE FOR THE CLASSIFIED AREA.'],
+  [/GLANDED AND EARTHED/i, 'ALL CABLES TO BE GLANDED AND EARTHED AT BOTH ENDS UNLESS OTHERWISE INDICATED. EARTH CONTINUITY TO BE VERIFIED AND RECORDED.'],
+];
+function standardBcdNotes(spec) {
+  if (spec.style === 'ng' || spec.style === 'national-grid') return;   // National Grid BCDs carry their own notes
+  const notes = (spec.notes || []).map(String).filter(n => n.trim());
+  const own = notes.filter(n => !BCD_STANDARD_NOTES.some(([re]) => re.test(n)));   // the drawing's own notes, the house ones taken out
+  const first = own.length && /DERIVED|TAKEN FROM|INFORMATION FROM|BASED ON/i.test(own[0]) ? [own.shift()] : [];
+  spec.notes = [...first, ...BCD_STANDARD_NOTES.map(([, t]) => t), ...own];
+}
 function layoutBcd(spec, opts = {}) {
+  standardBcdNotes(spec);
   const model = bcdModel(spec);
   if (!model.cables.length) throw new Error('The BCD has no cables');
   BSTYLE = { ng: spec.style === 'ng' || spec.style === 'national-grid' };
@@ -1362,7 +1383,14 @@ function revTriangle(prims, x, y, text, layer) {
 function revCloud(prims, b, rev, layer = 'BCD-REVISION', mark = '') {
   const pad = 2, x0 = b.x0 - pad, y0 = b.y0 - pad, x1 = b.x1 + pad, y1 = b.y1 + pad;
   prims.push({ t: 'pline', pts: cloudPath(x0, y0, x1, y1), closed: true, layer, width: CLOUD_W, bulge: CLOUD_BULGE });
-  revTriangle(prims, (x0 + x1) / 2, y1, mark || String(rev || '').toUpperCase() || 'P01', layer);   // on the top edge, apex just touching it
+  if (mark === 'H') holdFlag(prims, (x0 + x1) / 2, y1, layer);   // an item on hold: a HOLD flag on the cloud's top edge
+  else revTriangle(prims, (x0 + x1) / 2, y1, String(rev || '').toUpperCase() || 'P01', layer);   // on the top edge, apex just touching it
+}
+// the HOLD flag: a small box saying HOLD, sitting on the top edge of its cloud
+function holdFlag(prims, x, y, layer) {
+  const w = 11, h = 4.2;
+  prims.push(P([[x - w / 2, y], [x + w / 2, y], [x + w / 2, y + h], [x - w / 2, y + h]], true, layer, CLOUD_W));
+  prims.push({ t: 'mtext', x, y: y + h / 2, w, h: 2, text: 'HOLD', attach: 5, layer });
 }
 // a change on a BCD is marked with the triangle alone, beside the cable box (no cloud, as on Atomax's issued BCDs)
 function revMark(prims, b, rev, layer = 'BCD-REVISION') { revTriangle(prims, b.x0 - TRI_W / 2 - 1, b.y1 + 1, String(rev || '').toUpperCase() || 'P01', layer); }

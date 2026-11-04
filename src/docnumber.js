@@ -22,21 +22,30 @@ const TYPE_OF = [
 ];
 const typeCode = (what) => (TYPE_OF.find(([re]) => re.test(String(what || ''))) || [null, '26'])[1];
 // QS 006 numbers: project ref (letter + digits, may have its own -NN), then area, discipline, type and sequence
-const QS_RE = /^(X\d{4,6}(?:-\d{2})?)-([A-Z0-9]{2,4})-(\d{2})-(\d{2})-(\d{4})$/i;
-function parse(no) { const m = String(no || '').toUpperCase().match(QS_RE); return m ? { project: m[1], area: m[2], disc: m[3], type: m[4], seq: +m[5] } : null; }
-// the job's numbering habits, read from the numbers already on its register (project ref, area, discipline)
-function habits(job) {
-  const ps = (job.drawings || []).map(d => parse(d.no)).filter(Boolean);
-  const top = (k) => { const c = {}; ps.forEach(p => { c[p[k]] = (c[p[k]] || 0) + 1; }); return Object.entries(c).sort((a, b) => b[1] - a[1])[0]?.[0] || ''; };
-  return { project: top('project') || job.number, area: top('area'), disc: top('disc') || (ps.length ? '' : '06') };
+// Atomax jobs use the full form (X11481-01-WHT-06-71-0004) and a short one with no discipline (X061126-01-72-0001: project-area-type-seq)
+const QS_RE = /^(X\d{4,6}(?:-\d{2})?)-([A-Z0-9]{2,4})-(\d{2})-(\d{2})-(\d{4})$/i, QS_SHORT = /^(X\d{4,6})-([A-Z0-9]{2,4})-(\d{2})-(\d{4})$/i;
+function parse(no) {
+  const t = String(no || '').toUpperCase().replace(/[_-](?:REV)?[PACXZ]\d\d$/i, '').trim();
+  let m = t.match(QS_RE); if (m) return { project: m[1], area: m[2], disc: m[3], type: m[4], seq: +m[5], form: 'full' };
+  m = t.match(QS_SHORT); return m ? { project: m[1], area: m[2], disc: '', type: m[3], seq: +m[4], form: 'short' } : null;
 }
-// the next free number for a deliverable on a job; area/discipline can be given, else they follow the register. Returns '' when the area is unknown.
-function next(job, what, { area = '', disc = '', taken = [] } = {}) {
-  const h = habits(job), dd = typeCode(what), cc = disc || h.disc || '06', bb = String(area || h.area || '').toUpperCase();
-  if (!bb) return { no: '', why: 'No area code yet: set it on the job desk (e.g. MLT)', type: dd, disc: cc };
-  const prefix = `${h.project}-${bb}-${cc}-${dd}-`;
+// numbers in a file name (the client's schedule X071126-01-72-0001 Cable Schedule.xlsx says which area and form this job uses)
+const inName = (name) => { const m = String(name || '').toUpperCase().match(/X\d{4,6}(?:-[A-Z0-9]{2,4}){2,4}-\d{4}/g) || []; return m.map(parse).filter(Boolean); };
+// the job's numbering habits, read from the numbers already on its register, then from numbered files in the job folder (seen)
+function habits(job, seen = []) {
+  const own = (job.drawings || []).map(d => parse(d.no)).filter(Boolean), ps = own.length ? own : seen.flatMap(n => typeof n === 'string' ? inName(n) : [n]).filter(Boolean);
+  const top = (k) => { const c = {}; ps.forEach(p => { c[p[k]] = (c[p[k]] || 0) + 1; }); return Object.entries(c).sort((a, b) => b[1] - a[1])[0]?.[0] || ''; };
+  return { project: (own.length && top('project')) || job.number, area: top('area'), disc: top('disc') || (ps.length ? '' : '06'), form: top('form') || '' };
+}
+// the next free number for a deliverable on a job; area/discipline can be given, else they follow the register / the job's files. With nothing to go
+// on, area 01 in the short form (how the recent jobs are numbered) and `assumed` says so, so Tom is told rather than the sheet saying TBC.
+function next(job, what, { area = '', disc = '', taken = [], seen = [] } = {}) {
+  const h = habits(job, seen), dd = typeCode(what); let bb = String(area || h.area || '').toUpperCase(), assumed = '';
+  let form = h.form || (disc ? 'full' : ''); if (!bb) { bb = '01'; form = form || 'short'; assumed = `area ${bb}`; }
+  const cc = form === 'short' ? '' : (disc || h.disc || '06');
+  const prefix = cc ? `${h.project}-${bb}-${cc}-${dd}-` : `${h.project}-${bb}-${dd}-`;
   const used = [...(job.drawings || []).map(d => d.no), ...taken].map(n => String(n).toUpperCase()).filter(n => n.startsWith(prefix)).map(n => parseInt(n.slice(prefix.length), 10) || 0);
-  return { no: prefix + String(Math.max(0, ...used) + 1).padStart(4, '0'), type: dd, disc: cc };
+  return { no: prefix + String(Math.max(0, ...used) + 1).padStart(4, '0'), type: dd, disc: cc, assumed };
 }
 // revisions in QS 006 order; always two digits (P01)
 const STAGES = { preliminary: 'P', comment: 'A', construction: 'C', asbuilt: 'X', cancelled: 'Z' };

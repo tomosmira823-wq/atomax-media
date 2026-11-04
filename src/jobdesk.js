@@ -125,7 +125,9 @@ function makeRegister(id, writeXlsx) {
 }
 // the next number for a kind of deliverable, per Atomax QS 006 (project ref - area - discipline - type - sequence); '' when the area code is not known yet
 const DN = require('./docnumber');
-function proposeNumber(job, type, taken, id) { const d = id ? load(id) : {}; return DN.next(job, type, { area: d.area, disc: d.disc, taken }).no; }
+function proposeNumber(job, type, taken, id, seen = []) { const d = id ? load(id) : {}; return DN.next(job, type, { area: d.area, disc: d.disc, taken, seen: seen.length ? seen : seenNumbers(job) }).no; }
+// numbered files already in the job folder (the client's schedules, registers): they say how this job is numbered
+function seenNumbers(job) { try { const p = require('./projects').load(job.id); return (p && p.files || []).map(f => f.rel.split(/[\\/]/).pop()); } catch { return []; } }
 function setNumbering(id, { area, disc }) { const d = load(id); if (area != null) d.area = String(area).trim().toUpperCase().slice(0, 4); if (disc != null) d.disc = /^\d{2}$/.test(disc) ? disc : ''; return save(id, d); }
 // the kind of a drawing (by its QS 006 code, else its words): used to match emails and register rows to the row that already exists
 const QSNO = /X\d{4,6}(?:-[A-Z0-9]{2,4}){2,5}-\d{4}/i;
