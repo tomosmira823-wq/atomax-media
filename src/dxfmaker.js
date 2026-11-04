@@ -994,6 +994,10 @@ function layoutPanelBcd(spec, model, opts = {}) {
     const boardy = panels.filter(t => !/^(device|jb|motor|rio)$/i.test((nodes.get(t) || {}).type || '') || /\b(MSB|SWB|MCC|DB|PSB|LVB|BOARD|PANEL)\b/i.test(t + ' ' + ((nodes.get(t) || {}).label || '')));
     const cands = boardy.length ? boardy : panels; panels = [[...cands].sort((a, b) => reach(b) - reach(a) || panels.indexOf(a) - panels.indexOf(b))[0]]; }
   const sheetOf = (t) => panels.indexOf(t);
+  // a cable that carries power (not a control multicore, instrument pairs, data or an earth): a device fed from several places hangs under this one
+  const isPowerCable = (c) => { const cores = String(c.cores || ''), typ = String(c.type || ''); if (/PR|PAIR|TRIAD|CAT\s*[5-8]|FIBRE|FIBER|DATA|PROFIBUS|ETHERNET|BUS\b/i.test(cores + ' ' + typ)) return false; if (/INST|SCREENED OS|\bOS\b/i.test(typ) && !/VSD|SCREENED 600/i.test(typ)) return false; const n = parseInt(cores, 10); if (/^\s*1\s*C/i.test(cores) && /LSZH|CU|EARTH|BARE/i.test(typ) && !/SWA/i.test(typ)) return false; return !(n > 5 && /C\b/i.test(cores)); };
+  const powerParent = (t) => { const feeds = ins(t).filter(c => c.from && c.from !== t); if (feeds.length < 2) return ''; const pw = feeds.filter(isPowerCable); return pw.length === 1 ? pw[0].from : ''; };
+  const reachDown = (from, want, seen = new Set()) => { if (from === want) return true; if (seen.has(from)) return false; seen.add(from); return outs(from).some(c => reachDown(c.to, want, seen)); };
   const isMotor = (t) => { const n = nodes.get(t) || {}; return /^M[-_]/i.test(t) || /\bmotor\b|\bpump\b|\bfan\b|\bdrive motor\b/i.test(n.label || '') && !/control|isolator|starter|panel|board|centre|center|\bMCC\b|switch/i.test(n.label || '') && !isPanel(t); };
   const label = (t) => { const n = nodes.get(t) || {}, T = String(t).toUpperCase(); let l = units(String(n.label || '').toUpperCase()).trim(); if (l.startsWith(T)) l = l.slice(T.length).replace(/^[\s,:\-–]+/, ''); return l; };   // the tag is drawn already: never twice
   // the short name (the description before its ratings): for the title block and the links to other sheets; the full text stays in the panel box
@@ -1036,8 +1040,12 @@ function layoutPanelBcd(spec, model, opts = {}) {
     const kidsOf = (t, dir) => { const kids = [], list = (dir < 0 ? outs(t) : [...ins(t), ...outs(t).filter(c => c.to !== PN)]).sort((a, b) => order.get(a) - order.get(b));
       for (const c of list) { if (usedC.has(c)) continue; const o = c.from === t ? c.to : c.from;
         let k = kids.find(x => x.tag === o);
+        // going down: a device whose power comes from somewhere else on this sheet is drawn there; this cable ends at a pointer to it
+        const pp = dir < 0 && c.from === t && !placedHere.has(o) ? powerParent(o) : '';
+        const defer = pp && pp !== t && !(sheetOf(pp) >= 0 && pp !== PN) && reachDown(PN, pp) && !reachDown(o, pp);
         if (!k) {
-          if (placedHere.has(o)) { if (!opts._single) continue; k = { tag: o, ref: true, link: true, cables: [], kids: [] }; }
+          if (defer) { if (!placedBy.has(o)) placedBy.set(o, { by: pp, dir: -1 }); k = { tag: o, ref: true, link: true, cables: [], kids: [] }; }
+          else if (placedHere.has(o)) { if (!opts._single) continue; k = { tag: o, ref: true, link: true, cables: [], kids: [] }; }
           else { k = { tag: o, link: sheetOf(o) >= 0 && o !== PN, cables: [], kids: [] }; placedHere.add(o); placedBy.set(o, { by: t, dir }); }
           kids.push(k);
         }
@@ -1129,7 +1137,7 @@ function layoutPanelBcd(spec, model, opts = {}) {
         changed = false;
         // all the rows it feeds in the same place at once (e.g. a row of isolators and the motors under each), else one at a time
         outer: for (const A of clusters) { if (!A.loc) continue;
-          const kids = clusters.filter(B => B !== A && B.key === A.key && B.items.every(i => A.items.includes(i.parent)));
+          const kids = clusters.filter(B => B !== A && B.key === A.key && B.items.every(i => A.items.includes(i.parent) || B.items.includes(i.parent)));   // fed from A (B's own rows below count as B)
           for (const group of [kids, ...kids.map(B => [B])]) { if (!group.length) continue;
             const u = boxOf([...A.items, ...group.flatMap(B => B.items)]); if (clusters.some(Cl => Cl !== A && !group.includes(Cl) && hit(u, Cl.box, 3))) continue;
             A.items.push(...group.flatMap(B => B.items)); A.box = u; group.forEach(B => clusters.splice(clusters.indexOf(B), 1)); changed = true; break outer; } }
@@ -1141,16 +1149,18 @@ function layoutPanelBcd(spec, model, opts = {}) {
       for (let changed = true; changed;) {
         changed = false;
         tabs: for (const A of clusters) { if (!A.loc) continue; for (const B of clusters) {
-          if (A === B || B.key !== A.key || !B.items.every(i => A.items.includes(i.parent))) continue;
+          if (A === B || B.key !== A.key || !B.items.every(i => A.items.includes(i.parent) || B.items.includes(i.parent)) || !B.items.some(i => A.items.includes(i.parent))) continue;
           const b = B.box, over = A.rects.filter(R => R.x0 < b.x1 - 1 && R.x1 > b.x0 + 1);
           const above = over.filter(R => R.y0 >= b.y1).sort((p, q) => p.y0 - q.y0)[0], below = over.filter(R => R.y1 <= b.y0).sort((p, q) => q.y1 - p.y1)[0], R = above || below;
           if (!R) continue;
           const strip = above ? { x0: Math.max(b.x0, R.x0), x1: Math.min(b.x1, R.x1), y0: b.y1, y1: R.y0 } : { x0: Math.max(b.x0, R.x0), x1: Math.min(b.x1, R.x1), y0: R.y1, y1: b.y0 };
-          if (clusters.some(Cl => Cl !== A && Cl !== B && (Cl.rects || [Cl.box]).some(r => hit(strip, r, 3) || hit(b, r, 3)))) continue;
+          if (clusters.some(Cl => Cl !== A && Cl !== B && Cl.loc && (Cl.rects || [Cl.box]).some(r => hit(strip, r, 3)))) continue;   // only the strip can cover another area: B's own box already stands beside its neighbours, and a pointer label is text, not kit
           A.rects.push(strip, b); A.items.push(...B.items); clusters.splice(clusters.indexOf(B), 1); changed = true; break tabs; } }
       }
       // a link label on its own is not boxed: that panel's area is drawn on its own sheet
-      clusters.forEach(c => { if (c.items.every(i => i.link)) c.loc = ''; });
+      // kit by others in a room of ours (the DNO cut-out in the LV switchroom) is named in its block, not given a second box with the room's name;
+      // by others somewhere we have nothing (the RMU in the HV room) keeps its box so the reader knows where it is
+      clusters.forEach(c => { if (c.items.every(i => i.link) || (c.others && clusters.some(o => o !== c && !o.others && o.loc === c.loc))) c.loc = ''; });
       const shown = clusters.filter(c => c.loc);
       shown.forEach((a, i) => shown.slice(i + 1).forEach(b => { if (a.rects.some(r => b.rects.some(q => hit(r, q)))) warn(`sheet ${si + 1}: the ${a.loc} and ${b.loc} areas overlap`); }));
     }

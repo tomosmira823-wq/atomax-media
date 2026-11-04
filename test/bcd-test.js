@@ -55,7 +55,7 @@ console.log('bcd ok: no overlapping or crossing cables');
   { const one = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'hollins-bcd-run3.json'), 'utf8')), o = m.layoutBcd(one, { border: 'atomax' });
     assert.strictEqual(o.length, 1, 'run 3 on one sheet'); assert.deepStrictEqual(one._warnings || [], [], 'run 3 one sheet no warnings');
     const ot = o[0].prims.filter(p => p.t === 'mtext').map(p => p.text.replace(/\n/g, ' '));
-    assert.ok(ot.some(t => /TO FT-01 OUTLET FLOW METER/.test(t) && /SHOWN UNDER MCC-01/.test(t)), 'cross-branch cable ends at a label naming where the item is shown');
+    assert.ok(ot.some(t => /TO FT-01 OUTLET FLOW METER/.test(t) && /SHOWN UNDER DB-03/.test(t)), 'a device fed from two places hangs under its power supply (DB-03); the signal pair from MCC-01 ends at a pointer to it');
     assert.ok(!o[0].prims.some(p => p.t === 'circle' && p.layer === 'BCD-BLOCK' && Math.abs(p.r - 12.5) < 1e-6 && o[0].prims.some(q => q.t === 'mtext' && q.text === 'MCC-01' && Math.hypot(q.x - p.x, q.y - p.y) < 1)), 'MCC-01 is a board, not a motor');
     // with spec.layout "per-panel" (a job too big for A0) it splits one sheet per panel
     const sp = { ...JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'hollins-bcd-run3.json'), 'utf8')), layout: 'per-panel' }, sh = m.layoutBcd(sp, { border: 'atomax' });
@@ -91,4 +91,21 @@ console.log('bcd ok: no overlapping or crossing cables');
   assert.strictEqual(m.cleanLabel('VSD 90kW\nRATING TBC (SEE TQ)'), 'VSD 90kW\nRATING TBC');
   assert.deepStrictEqual(m.clientNotes({ notes: ['CABLE SCHEDULE NOTES R39 TO R41 ARE TRUNCATED IN THE WORKBOOK.', 'DNO/ICP DETAILS AWAITED (RFI-001 / RFI-005).', 'HOLD: UPS-01 OUTPUT MCB POLES NOT GIVEN.'] }).notes, ['HOLD: UPS-01 OUTPUT MCB POLES NOT GIVEN.']);
   console.log('panel bcd client asks ok: lengths, areas, scope, client notes');
+}
+// Northwich (X071126): one box per room. The DNO cut-out (by others, in our switchroom) is named not boxed; TEL-01, fed by the UPS (power)
+// and the MCC (signals), hangs under the UPS inside the switchroom with the MCC cable ending at a pointer; the JB's instruments join the
+// pump hall; a cable still numbered TBC is clouded HOLD; the house notes are on the sheet in order
+{
+  const spec = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'northwich-bcd.json'), 'utf8'));
+  const sheets = m.layoutBcd(spec, { border: 'atomax' }); assert.strictEqual(sheets.length, 1, 'northwich on one sheet');
+  const texts = m.flatPrims(sheets[0].prims).filter(p => p.t === 'text' || p.t === 'mtext').map(p => String(p.text).replace(/\n/g, ' '));
+  const count = (s) => texts.filter(t => t === s).length;
+  assert.strictEqual(count('LV SWITCHROOM'), 1, 'one LV switchroom box, got ' + count('LV SWITCHROOM'));
+  assert.strictEqual(count('CHLORINE STORE'), 1); assert.strictEqual(count('OFFICE'), 1); assert.strictEqual(count('TREATED WATER RESERVOIR'), 1);
+  assert.ok(count('PUMP HALL') <= 2, 'pump hall: the main box and at most the earth bar fed from the MET');
+  assert.ok(texts.some(t => /TO TEL-01/.test(t) && /SHOWN UNDER UPS-01/.test(t)), 'TEL-01 hangs under its power supply, the MCC signal cable points to it');
+  assert.ok(sheets[0].prims.some(p => p.layer === 'BCD-HOLD' && p.t === 'mtext' && p.text === 'HOLD'), 'the TBC cable is flagged HOLD');
+  assert.ok(/^ALL CABLES TO BE INSTALLED IN ACCORDANCE WITH BS 7671/.test(spec.notes[1]) && /GLANDED AND EARTHED/.test(spec.notes[9]), 'house notes 2-10 in order');
+  assert.deepStrictEqual(m.cableClashes(sheets[0].prims), [], 'northwich no cable clashes');
+  console.log('northwich bcd ok: one box per room, TEL-01 under the UPS, HOLD flagged, house notes');
 }
