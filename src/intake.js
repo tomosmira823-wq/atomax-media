@@ -40,7 +40,7 @@ Who does what (use these, do not send them to "none"):
 - SLDs and other electrical drawings: "dex".
 - Fault level, load flow, reactive power capability, protection co-ordination, harmonics (G5/5), flicker and unbalance (P28 / P29), G99 / G100 compliance studies, intertripping scheme design: "engineer" for a first-pass note (say in the detail that a full study needs PowerFactory if it does).
 - A quote or fee proposal: "documents".
-Existing jobs: the list of Atomax's jobs is given below the email. If the email is about one of them (same job number, site, client or project), set "existingJob" to that job number and do not add an "eli" task to set the job up again.
+Existing jobs: the list of Atomax's jobs (its project folders) is given below the email. If the email is about one or more of them (same job number, site, client or project, e.g. "malt" and "wheat" are two jobs), list every one in "existingJobs" (job numbers) and do not add an "eli" task to set them up again. When it is about several jobs, put the job number each change is for in that change's "job".
 Client comments and changes: if the email returns comments on issued drawings or documents (a comment sheet, a marked-up PDF, "please address the following") OR asks for changes to drawings / documents Atomax has already made, even informally ("can you change F3 to 125A on the SLD", "the generator is now 600kVA"), set "commentReturn": true, list every comment under "comments" (document number, or its title when no number is given, e.g. "SLD"; the comment or change as written; who made it) and make one task per document for the agent who changes it (drawings: "dex", schedules and registers: "excel", documents: "documents" or "word").
 Deliverables: list what Atomax is being asked to produce under "deliverables" (e.g. {"type":"BCD","title":"Block cable diagram - Malt RIO1","qty":2}, {"type":"cable schedule","title":"Cable schedule","qty":1}); type is one of BCD, cable schedule, SLD, earthing, loop, layout, document, other.
 Inputs: list every input document the client sent or refers to under "inputs" with its revision as written, and under "missingInputs" what is needed to do the work properly but has not been sent (e.g. instrument index, IO list, cable datasheets, latest tag list, panel GA).
@@ -59,10 +59,10 @@ Reply with JSON only, no markdown:
 "attachmentNotes":[{"name":"file name","what":"what it is, in a line","usefulFor":"which tasks can use it"}],
 "asks":[{"title":"short task title, e.g. Draw the earthing schematic for Gwrhyd PV Farm","detail":"everything the agent needs for this task: what to produce, which attachment to use and the key data from it, what is missing","agent":"dex|engineer|documents|cal|milo|theo|eli|none","kind":"sld|earthing|dxf-fix|drawing-check|document|study|model|admin|other","due":"deadline if given, else empty"}],
 "clientQuestions":["short question for the client"],
-"existingJob":"job number from the existing jobs list if this email is about one, else empty",
+"existingJob":"the first job number from the existing jobs list this email is about, else empty","existingJobs":["every job number from the existing jobs list this email is about"],
 "deliverables":[{"type":"BCD|cable schedule|SLD|earthing|loop|layout|document|other","title":"...","qty":1}],
 "inputs":[{"name":"document name or number as written","rev":"revision if shown","what":"what it is"}],"missingInputs":["..."],
-"commentReturn":false,"comments":[{"doc":"document number","comment":"as written","by":"name"}],
+"commentReturn":false,"comments":[{"doc":"document number","comment":"as written","by":"name","job":"job number it is for, when the email is about several jobs"}],
 "replyTo":"name <address> the reply should go to","reply":"the suggested reply"}`;
 
 // ---------- reading email files ----------
@@ -149,6 +149,17 @@ function register({ ipcMain, dialog, shell, getWin, userDir, claudeFull, checker
   const IMG = /^image\/(png|jpe?g|gif|webp)$/;
   const extMime = (n) => ({ '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp', '.pdf': 'application/pdf' })[path.extname(n).toLowerCase()] || '';
 
+  // every job an email is about (Eli's list): an app job, else the live project folder with that number (set up for drawings)
+  function matchJobs(e) {
+    const nos = [...new Set([...(Array.isArray(e.existingJobs) ? e.existingJobs : []), e.existingJob].map(x => String(x || '').trim().toUpperCase()).filter(Boolean))], ids = [];
+    let folders = null;
+    for (const no of nos) {
+      const rec = BIZ.data().jobs.find(j => String(j.number).toUpperCase() === no && j.folder && fs.existsSync(j.folder)) || BIZ.data().jobs.find(j => String(j.number).toUpperCase() === no);
+      if (rec) { ids.push(rec.id); continue; }
+      try { folders = folders || BIZ.projects.allJobFolders(BIZ.data().jobs.map(j => j.number)); const f = folders.find(x => x.number === no); if (f) ids.push(BIZ.adoptFolder(f.folder, 'Eli').id); } catch {}
+    }
+    return [...new Set(ids)];
+  }
   // the job an email is about: by job number first, then by words of the site / subject against job names and clients
   function matchJob(e) {
     const jobs = BIZ.data().jobs, hay = `${e.jobNumber} ${e.subject} ${e.site} ${e.summary}`.toLowerCase();
@@ -180,7 +191,11 @@ function register({ ipcMain, dialog, shell, getWin, userDir, claudeFull, checker
     for (const a of attach.filter(a => IMG.test(a.mime) || a.mime === 'application/pdf').slice(0, 4)) content.push(checker.contentBlock(a.mime === 'application/pdf' ? 'pdf' : 'image', a.name, fs.readFileSync(path.join(dir, a.name))));
     if (!parts.length && !content.length) throw new Error('Drop an email (.eml, .msg), a screenshot of it, or paste its text');
     content.push({ type: 'text', text: `THE EMAIL:\n${parts.join('\n\n---\n\n').slice(0, 30000)}${attach.length ? '\n\nATTACHMENTS: ' + attach.map(a => a.name).join(', ') : ''}` });
-    const jobsList = BIZ.data().jobs.filter(j => j.status !== 'Closed').slice(0, 80).map(j => `- ${j.number} ${j.name}${j.client ? ' (' + j.client + ')' : ''}`).join('\n');
+    // the jobs: Tom's live project folders (number and folder name) plus any job the app already knows
+    const seenNo = new Set(), lines0 = [];
+    try { for (const f of BIZ.projects.allJobFolders(BIZ.data().jobs.map(j => j.number))) { if (seenNo.has(f.number)) continue; seenNo.add(f.number); lines0.push(`- ${f.number} ${f.name}`); } } catch {}
+    for (const j of BIZ.data().jobs.filter(j => j.status !== 'Closed')) { if (seenNo.has(String(j.number).toUpperCase())) continue; seenNo.add(String(j.number).toUpperCase()); lines0.push(`- ${j.number} ${j.name}${j.client ? ' (' + j.client + ')' : ''}`); }
+    const jobsList = lines0.slice(0, 200).join('\n');
     content.push({ type: 'text', text: 'EXISTING JOBS:\n' + (jobsList || '(none yet)') });
     let r = await claudeFull({ system: EMAIL_SYSTEM, who: 'email', skills, maxTokens: 8000, messages: [{ role: 'user', content }] });
     if (r.stop === 'max_tokens') r = await claudeFull({ system: EMAIL_SYSTEM + '\nKeep every field short: details under 60 words, the reply under 150 words.', who: 'email', skills, maxTokens: 16000, messages: [{ role: 'user', content }] });
@@ -194,7 +209,8 @@ function register({ ipcMain, dialog, shell, getWin, userDir, claudeFull, checker
       existingJob: String(e.existingJob || ''), deliverables: Array.isArray(e.deliverables) ? e.deliverables.slice(0, 20) : [], inputs: Array.isArray(e.inputs) ? e.inputs.slice(0, 40) : [], missingInputs: Array.isArray(e.missingInputs) ? e.missingInputs.slice(0, 20).map(String) : [],
       commentReturn: !!e.commentReturn, comments: Array.isArray(e.comments) ? e.comments.slice(0, 200) : [] };
     if (!email.commentReturn) ensureDrafter(email, parts.join('\n'));
-    email.jobId = matchJob(email);
+    email.existingJobs = Array.isArray(e.existingJobs) ? e.existingJobs.map(String).slice(0, 10) : [];
+    email.jobIds = matchJobs(email); email.jobId = email.jobIds[0] || matchJob(email); if (email.jobId && !email.jobIds.includes(email.jobId)) email.jobIds.unshift(email.jobId);
     // an existing job: no second "set up the job" task; a job folder on disk that is not yet a job in the office is offered for linking
     if (email.jobId) email.asks = email.asks.filter(a => a.agent !== 'eli' || !/set ?up|new job|job number|project folder/i.test(a.title + ' ' + a.detail)).map((a, i) => ({ ...a, i }));
     else if (email.jobNumber) { try { const f = BIZ.projects.suggest({ number: email.jobNumber }, { limitMs: 2500 }).find(x => x.why && /number/i.test(x.why)); if (f) email.folderFound = f.path; } catch {} }
@@ -221,7 +237,8 @@ function register({ ipcMain, dialog, shell, getWin, userDir, claudeFull, checker
     const job = e.jobId && BIZ.data().jobs.find(j => j.id === e.jobId);
     const company = (e.people || []).find(p => /client|asking|from/i.test(p.role || '') && p.company && !/atomax/i.test(p.company)) || (e.people || []).find(p => p.company && !/atomax/i.test(p.company));
     let D = {}; try { D = BIZ.projects ? { nextNumber: BIZ.projects.nextJobNumber(BIZ.data().jobs.map(j => j.number), (loadSettings && loadSettings().jobsFolder) || BIZ.projects.jobParent(BIZ.data().jobs.map(j => j.number))) } : {}; } catch {}
-    return { email: e, job: job ? { id: job.id, number: job.number, name: job.name, client: job.client || '' } : null, suggest: { number: String(e.jobNumber || D.nextNumber || '').toUpperCase(), name: e.site || e.subject || '', client: company ? company.company : '', folderFound: e.folderFound || '' } };
+    const jobs = (jobId ? [jobId] : (e.jobIds || [])).map(id => BIZ.data().jobs.find(j => j.id === id)).filter(Boolean).map(j => ({ id: j.id, number: j.number, name: j.name, client: j.client || '' }));
+    return { jobs, email: e, job: job ? { id: job.id, number: job.number, name: job.name, client: job.client || '' } : null, suggest: { number: String(e.jobNumber || D.nextNumber || '').toUpperCase(), name: e.site || e.subject || '', client: company ? company.company : '', folderFound: e.folderFound || '' } };
   }));
   // file it: on the job (new one made if asked), its deliverables added, its changes logged against the drawings they are for, a copy kept in the job folder
   ipcMain.handle('jobs:applyEmail', wrap(({ emailId, jobId = '', newJob = null, client = '' }) => {
@@ -250,9 +267,10 @@ function register({ ipcMain, dialog, shell, getWin, userDir, claudeFull, checker
       let best = null, score = 0; for (const x of ds) { const tl = String(x.title || '').toLowerCase(); const sc = tl.includes(want) || new RegExp('\\b' + raw.replace(/[^a-z0-9 ]/g, '') + '\\b').test(tl) ? 99 : words.filter(w => tl.includes(w)).length; if (sc > score) { score = sc; best = x; } }
       return best && score >= Math.min(2, words.length) ? best.no : t; };
     const r = { job: { id: job.id, number: job.number }, deliverables: 0, comments: 0, docs: [] };
-    try { r.deliverables = (desk.addDeliverables(job.id, e.deliverables || []) || []).length; } catch {}
+    const mine = (x) => !x || !x.job || !(e.jobIds || []).length || (e.jobIds || []).length < 2 || String(job.number).toUpperCase().includes(String(x.job).trim().toUpperCase()) || String(x.job).toUpperCase().includes(String(job.number).toUpperCase());
+    try { r.deliverables = (desk.addDeliverables(job.id, (e.deliverables || []).filter(mine)) || []).length; } catch {}
     try { desk.addInputs(job.id, { inputs: e.inputs || [], missing: e.missingInputs || [], questions: e.clientQuestions || [], fromEmail: e.subject || e.from }); } catch {}
-    if (e.comments && e.comments.length) { const cs = e.comments.map(c => ({ ...c, doc: docOf(c.doc) })); try { r.comments = desk.addComments(job.id, cs, e.subject || e.from).length; } catch {} r.docs = [...new Set(cs.map(c => c.doc).filter(Boolean))]; }
+    if (e.comments && e.comments.filter(mine).length) { const cs = e.comments.filter(mine).map(c => ({ ...c, doc: docOf(c.doc) })); try { r.comments = desk.addComments(job.id, cs, e.subject || e.from).length; } catch {} r.docs = [...new Set(cs.map(c => c.doc).filter(Boolean))]; }
     if (job.folder) { try { const out = BIZ.projects.outputDir(job.folder, 'email'); for (const n of [...(e.originals || []), ...(e.attachments || []).map(x => x.name)]) { const src = path.join(DIR(), e.id, n.replace(/[\\/:*?"<>|]+/g, '_')), dst = path.join(out, n.replace(/[\\/:*?"<>|]+/g, '_')); if (fs.existsSync(src) && !fs.existsSync(dst)) fs.copyFileSync(src, dst); } } catch {} }
     e.jobId = job.id; e.desk = { ...(e.desk || {}), [job.id]: r }; save(list);
     BIZ.log({ who: 'Eli', action: 'Filed an email on the job', jobId: job.id, detail: `${e.subject || e.summary} · ${r.deliverables} deliverable(s) added · ${r.comments} change(s) logged` });

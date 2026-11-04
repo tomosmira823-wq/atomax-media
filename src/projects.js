@@ -247,8 +247,9 @@ function jobsFolder(known = []) {
 // the folders the Jobs screen lists: the Projects folders set in Settings (and the new-jobs folder), not just where new jobs go
 function projectsRoots(known = []) {
   const s = getSettings ? getSettings() : {}, ok = (p) => { try { return fs.statSync(p).isDirectory(); } catch { return false; } };
-  const rs = [...(s.projectRoots || []), s.jobsFolder].filter(Boolean).filter(ok);
-  return rs.length ? [...new Set(rs)] : [jobParent(known)].filter(Boolean);
+  // the Projects folders Tom set; only when there are none, the folder new jobs go in (never a guess: this is his live work)
+  const rs = (s.projectRoots || []).filter(Boolean).filter(ok);
+  return rs.length ? [...new Set(rs)] : [s.jobsFolder].filter(Boolean).filter(ok);
 }
 // every job folder under them: directly inside, or one level down (Projects\2026\X021126 ...); a root that is itself a job counts
 function allJobFolders(known = []) {

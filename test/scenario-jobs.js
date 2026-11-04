@@ -44,22 +44,31 @@
       return 'panel stayed open 6s while the other drawing ran';
     } catch (e) { throw new Error(at + ': ' + e.message + ' | rows: ' + [...document.querySelectorAll('.jbrow')].map(x => x.textContent.replace(/\s+/g, ' ').slice(0, 60)).join(' | ')); }
   });
-  // Tom 14:57: the jobs are the project folders: set the projects folder, its job folder shows as a job, its files list and open folder by folder
-  await step('jobs are the project folders, with their files', async () => {
-    await api.mail.setJobsFolder({ folder: '/tmp/x/jbjobs' });
-    if (document.querySelector('#jobsPanel.open')) document.querySelector('#jobsBtn').click();
-    await wait(15500); document.querySelector('#jobsBtn').click();   // the folders are read again at most every 15 s
-    await until(() => [...document.querySelectorAll('#jbList [data-j]')].some(b => /X22009/.test(b.textContent)), 30000);
-    const names = [...document.querySelectorAll('#jbList [data-j]')].filter(b => b.dataset.j).map(b => b.textContent.replace(/\s+/g, ' ').trim());
-    if (names.some(n => /X22001/.test(n))) throw new Error('a job with no project folder is still listed: ' + names.join(' | '));
-    [...document.querySelectorAll('#jbList [data-j]')].find(b => /X22009/.test(b.textContent)).click();
-    await until(() => document.querySelector('.jft-dir'), 90000);
-    const top = [...document.querySelectorAll('#jftRoot > .jft-dir .nm')].map(x => x.textContent);
-    if (top.join('|') !== '1.0 Correspondence|2.0 Inputs|10.0 Issued') throw new Error('folders in order: ' + top.join('|'));
-    const inp = [...document.querySelectorAll('#jftRoot > .jft-dir')].find(d => /2\.0 Inputs/.test(d.textContent)); inp.querySelector('summary').click();
-    await until(() => inp.querySelector('.jft-file'), 60000);
-    const f = inp.querySelector('.jft-file .nm').textContent; if (f !== 'X22009-01-SCH-0001 Cable Schedule.xlsx') throw new Error('file listed: ' + f);
-    return `${names.length} job(s) from the folder, top folders ${top.join(', ')}, ${f}`;
+  // Tom 04-11: the Jobs list IS the live Projects folder: Explorer's names and order, a year folder opens in the list,
+  // a job folder opens on the right with its live files, Deliverables sets it up for drawings there and then
+  await step('jobs list is the live Projects folder', async () => {
+    let at = 'start'; const u = async (n, f, ms = 90000) => { at = n; await until(f, ms); };
+    try {
+      await api.settings.set({ projectRoots: ['/tmp/x/jbjobs'] });
+      if (document.querySelector('#jobsPanel.open')) document.querySelector('#jobsBtn').click(); await wait(500); document.querySelector('#jobsBtn').click();
+      await u('list', () => [...document.querySelectorAll('#jbList [data-dir]')].length >= 3);
+      const names = [...document.querySelectorAll('#jbList [data-dir] b, #jbList [data-file] span')].map(x => x.textContent.replace(/^\S+\s/, ''));
+      if (names.join('|') !== '2026|Template Project Directory|X22009 Folder Test|notes.txt') throw new Error('list not as Explorer: ' + names.join('|'));
+      [...document.querySelectorAll('#jbList [data-dir]')].find(b => /2026/.test(b.textContent)).click();
+      await u('year folder opens in the list', () => /2026/.test((document.querySelector('.jbcrumbs') || {}).textContent || '') && [...document.querySelectorAll('#jbList [data-dir]')].some(b => /X22010/.test(b.textContent)));
+      document.querySelector('.jbcrumbs a[data-nav]').click();
+      await u('back up', () => [...document.querySelectorAll('#jbList [data-dir]')].some(b => /X22009/.test(b.textContent)));
+      [...document.querySelectorAll('#jbList [data-dir]')].find(b => /X22009/.test(b.textContent)).click();
+      await u('files tab', () => document.querySelector('#jftRoot .jft-dir'));
+      const top = [...document.querySelectorAll('#jftRoot > .jft-dir .nm')].map(x => x.textContent).join('|');
+      if (top !== '1.0 Correspondence|2.0 Inputs|10.0 Issued') throw new Error('folders: ' + top);
+      const inp = [...document.querySelectorAll('#jftRoot > .jft-dir')].find(d => /2\.0 Inputs/.test(d.textContent)); inp.querySelector('summary').click();
+      await u('inputs open', () => inp.querySelector('.jft-file'));
+      document.querySelector('[data-t="deliv"]').click();
+      await u('set up on Deliverables', () => /X22009/.test((document.querySelector('#jbMain h2') || {}).textContent || '') && document.querySelector('[data-t="deliv"].on'));
+      await u('marked in the list', () => [...document.querySelectorAll('#jbList [data-dir]')].some(b => /X22009/.test(b.textContent) && /set up for drawings/.test(b.textContent)), 30000);
+      return `list ${names.join(', ')} · 2026 opens in the list · X22009 files ${top} · Deliverables set it up`;
+    } catch (e) { throw new Error(at + ': ' + e.message + ' | list: ' + (document.querySelector('#jbList') || {}).textContent.replace(/\s+/g, ' ').slice(0, 200)); }
   });
   return out;
 })();

@@ -242,23 +242,49 @@ dead is true only if the sheet itself carries a cancelled / superseded / void / 
   }));
   ipcMain.handle('proj:gather', wrap(({ jobId }) => { const j = jobOf(jobId); if (!j.folder) throw new Error('Link a project folder first'); projects.gather(jobId, j.folder, { checker, dxffix }); return folderInfo(j); }));
   ipcMain.handle('proj:open', wrap(({ jobId }) => { const j = jobOf(jobId); if (j.folder) shell.openPath(j.folder); return true; }));
-  // the Jobs screen is the project folders: every job folder in the jobs folder is a job (created / linked here), its files listed live
-  ipcMain.handle('proj:sync', wrap(() => {
-    const d = data(), known = d.jobs.map(j => j.number), roots = projects.projectsRoots(known), root = roots.join('; '); if (!roots.length) return { root: '', jobIds: [], added: 0 };
-    let added = 0, linked = 0; const ids = [];
-    for (const f of projects.allJobFolders(known)) {
-      let j = d.jobs.find(x => x.number.toUpperCase() === f.number);
-      if (!j) { j = biz.saveJob(d, { number: f.number, name: f.name, folder: f.folder }, 'Office'); added++; }
-      else if (!j.folder || !fs.existsSync(j.folder)) { j.folder = f.folder; if (!j.name && f.name) j.name = f.name; linked++; }
-      ids.push(j.id);
+  // ---------- the Jobs screen IS the live Projects folder ----------
+  // Read-only: listing never writes, renames, moves or deletes anything in it, and never opens a file to read it (names, sizes and
+  // dates only). Everything is fenced to the Projects folders set in Settings. An app record for a folder (drawing numbers,
+  // revisions, comments) is only made when Tom sets that folder up for drawings, and lives in the app's own data, not the folder.
+  const norm = (p) => { const r = path.resolve(String(p || '')); return process.platform === 'win32' ? r.toLowerCase() : r; };
+  const roots = () => projects.projectsRoots();
+  const fenced = (p) => { const n = norm(p); return roots().some(r => { const rn = norm(r); return n === rn || n.startsWith(rn + path.sep); }); };
+  const recordFor = (d, p) => d.jobs.find(j => j.folder && norm(j.folder) === norm(p)) || null;
+  ipcMain.handle('proj:roots', wrap(() => ({ roots: roots().map(r => ({ path: r, name: path.basename(r) || r })) })));
+  ipcMain.handle('proj:listAt', wrap(({ path: p }) => {
+    if (!p || !fenced(p)) throw new Error('That folder is outside your Projects folders');
+    const d = data(), re = projects.jobPattern(d.jobs.map(j => j.number)), loose = /^[A-Za-z]{1,3}\d{4,6}/;
+    let ents = []; try { ents = fs.readdirSync(p, { withFileTypes: true }); } catch (e) { throw new Error('Cannot open ' + path.basename(p) + ': ' + e.code); }
+    const out = [];
+    for (const e of ents) {
+      if (/^(~\$|\.|desktop\.ini$|thumbs\.db$)/i.test(e.name)) continue;   // what Explorer hides
+      const full = path.join(p, e.name); let st = null; try { st = fs.statSync(full); } catch { continue; }
+      const dir = st.isDirectory(), rec = dir ? recordFor(d, full) : null;
+      out.push({ name: e.name, path: full, dir, size: dir ? 0 : st.size, mtime: st.mtimeMs, isJob: dir && (re.test(e.name) || loose.test(e.name)), job: rec ? { id: rec.id, number: rec.number } : null });
     }
-    if (added || linked) { biz.audit(d, { who: 'Office', action: 'Jobs read from the project folders', detail: `${root} · ${added} new, ${linked} linked` }); store.save(); }
-    return { root, jobIds: ids, added, linked };
+    out.sort((a, b) => (b.dir - a.dir) || a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));   // Explorer's name order
+    return { path: p, name: path.basename(p), entries: out };
   }));
+  ipcMain.handle('proj:openAt', wrap(({ path: p, show = false }) => { if (!p || !fenced(p)) throw new Error('That is outside your Projects folders'); if (show) shell.showItemInFolder(p); else shell.openPath(p); return true; }));
+  ipcMain.handle('proj:recordAt', wrap(({ path: p }) => { const r = p && fenced(p) ? recordFor(data(), p) : null; return r ? { id: r.id, number: r.number } : null; }));
+  // set a folder up for drawings: an app record linked to it (nothing is written into the folder)
+  function adoptFolder(p, who = 'Tom') {
+    if (!p || !fenced(p) || !fs.existsSync(p)) throw new Error('That folder is outside your Projects folders');
+    const d = data(), have = recordFor(d, p); if (have) return { id: have.id };
+    const name0 = path.basename(p), m = name0.match(/^([A-Za-z]{1,3}\d{4,6}(?:-\d{2})?)\b/), number = m ? m[1].toUpperCase() : name0;
+    const same = d.jobs.find(j => j.number.toUpperCase() === number.toUpperCase());
+    if (same) { if (same.folder && fs.existsSync(same.folder) && norm(same.folder) !== norm(p)) throw new Error(`Job ${number} is already set up on ${same.folder}`); same.folder = p; biz.audit(d, { who, action: 'Linked job to its project folder', jobId: same.id, detail: p }); store.save(); return { id: same.id }; }
+    const j = biz.saveJob(d, { number, name: m ? name0.slice(m[0].length).replace(/^[\s_\-–.]+/, '').trim() : '', folder: p }, who);
+    biz.audit(d, { who, action: 'Set up a project folder for drawings', jobId: j.id, detail: p }); store.save();
+    return { id: j.id };
+  }
+  ipcMain.handle('proj:adopt', wrap(({ path: p }) => adoptFolder(p, 'Tom')));
+  // kept for older screens: no longer makes records for every folder
+  ipcMain.handle('proj:sync', wrap(() => ({ root: roots().join('; '), jobIds: [], added: 0 })));
   ipcMain.handle('proj:tree', wrap(({ jobId, rel = '' }) => { const j = jobOf(jobId); if (!j.folder) throw new Error('No project folder for this job'); return { folder: j.folder, entries: projects.listDir(j.folder, rel) }; }));
   ipcMain.handle('proj:openFile', wrap(({ jobId, rel = '', show = false }) => { const j = jobOf(jobId); if (!j.folder) throw new Error('No project folder'); const base = path.resolve(j.folder), p = path.resolve(base, rel); if (p !== base && !p.startsWith(base + path.sep)) throw new Error('Outside the job folder'); if (show) shell.showItemInFolder(p); else shell.openPath(p); return true; }));
   const outputDirFor = (jobId, kind) => { try { const j = data().jobs.find(x => x.id === jobId); return j && j.folder ? projects.outputDir(j.folder, kind) : null; } catch { return null; } };
-  return { log, store, data, view, contextFor, outputDirFor, projects, folderOf: (id) => { const j = data().jobs.find(x => x.id === id); return j ? j.folder || '' : ''; } };
+  return { adoptFolder, log, store, data, view, contextFor, outputDirFor, projects, folderOf: (id) => { const j = data().jobs.find(x => x.id === id); return j ? j.folder || '' : ''; } };
 }
 
 module.exports = { register };
