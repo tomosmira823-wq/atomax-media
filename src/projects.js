@@ -167,8 +167,15 @@ const OLD = {
   issued: ['020', 'Issued'], 'site-data': ['005', 'Client Drawings & Specifications'],
 };
 const isOldAtomax = (folder) => { try { return fs.readdirSync(folder).filter(n => /^0(0[1-9]|1\d|20) [A-Za-z]/.test(n)).length >= 3; } catch { return false; } };
+// a job folder with the real one inside it (unzipped into a folder of the same name, "X041126 \\ X041126 \\ 7. Electrical"): the inner one
+function innerJob(folder) {
+  if (isAtomax(folder) || isOldAtomax(folder)) return folder;
+  try { const subs = fs.readdirSync(folder, { withFileTypes: true }).filter(e => e.isDirectory() && !/^(\.|~\$)/.test(e.name)).map(e => path.join(folder, e.name)).filter(p => isAtomax(p) || isOldAtomax(p)); if (subs.length === 1) return subs[0]; } catch {}
+  return folder;
+}
 function outputDir(folder, kind) {
   if (!folder || !fs.existsSync(folder)) return null;
+  folder = innerJob(folder);
   if (OLD[kind] && !isAtomax(folder) && isOldAtomax(folder)) {
     const [num, name, sub] = OLD[kind];
     let dir = findDir(folder, num) || path.join(folder, `${num} ${name}`);

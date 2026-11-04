@@ -851,7 +851,7 @@ function layoutPanelBcd(spec, model, opts = {}) {
   if (opts._single) panels = [panels[0]];   // one sheet: everything hangs off the main panel
   const sheetOf = (t) => panels.indexOf(t);
   const isMotor = (t) => { const n = nodes.get(t) || {}; return /^M[-_]/i.test(t) || /\bmotor\b|\bpump\b|\bfan\b|\bdrive motor\b/i.test(n.label || '') && !/control|isolator|starter|panel|board|centre|center|\bMCC\b|switch/i.test(n.label || '') && !isPanel(t); };
-  const label = (t) => { const n = nodes.get(t) || {}; return units(String(n.label || '').toUpperCase()); };
+  const label = (t) => { const n = nodes.get(t) || {}, T = String(t).toUpperCase(); let l = units(String(n.label || '').toUpperCase()).trim(); if (l.startsWith(T)) l = l.slice(T.length).replace(/^[\s,:\-–]+/, ''); return l; };   // the tag is drawn already: never twice
   // the short name (the description before its ratings): for the title block and the links to other sheets; the full text stays in the panel box
   const shortName = (t) => { const out = []; for (const w of label(t).split(',')[0].split(/\s+/)) { if (out.length && /\d/.test(w)) break; out.push(w); } return out.join(' ').trim(); };
   // cable text: number | cores x size | type - length (the length only when the schedule gives lengths)
@@ -1047,7 +1047,7 @@ function layoutPanelBcd(spec, model, opts = {}) {
       else if (p.t === 'circle') out.push({ x0: p.x - p.r, y0: p.y - p.r, x1: p.x + p.r, y1: p.y + p.r });
       else if ((p.t === 'text' && !p.rot) || p.t === 'mtext') out.push(primsBounds([p])); } return out; };
     const edgeRects = (b) => [{ x0: b.x0, y0: b.y1, x1: b.x1, y1: b.y1 }, { x0: b.x0, y0: b.y0, x1: b.x1, y1: b.y0 }, { x0: b.x0, y0: b.y0, x1: b.x0, y1: b.y1 }, { x0: b.x1, y0: b.y0, x1: b.x1, y1: b.y1 }];
-    const tryName = (b, w, obs) => { const yb = b.y1 - 1.6 - H; for (let x = b.x0 + 2.5; x + w <= b.x1 - 2.5; x += 0.5) { const r = { x0: x - 0.6, y0: yb - 0.6, x1: x + w + 0.6, y1: yb + H + 0.6 }; if (!obs.some(o => hit(r, o))) return { x, y: yb }; } return null; };
+    const tryName = (b, w, obs, hh = H) => { const yb = b.y1 - 1.6 - hh; for (let x = b.x0 + 2.5; x + w <= b.x1 - 2.5; x += 0.5) { const r = { x0: x - 0.6, y0: yb - 0.6, x1: x + w + 0.6, y1: yb + hh + 0.6 }; if (!obs.some(o => hit(r, o))) return { x, y: yb }; } return null; };
     // a name that will not fit beside the cables: its box is widened left or right into clear space, when there is room
     const nameBox = (c, name, others2) => {
       const b = c.box, w = tw(name) * 1.05, obs = [...rects(), ...others2.filter(o => o !== c).flatMap(outlineRects)], boxesNow = others2.filter(o => o !== c).flatMap(boxesOf);
@@ -1056,7 +1056,13 @@ function layoutPanelBcd(spec, model, opts = {}) {
         const strip = nb.x1 > b.x1 ? { x0: b.x1, y0: b.y0, x1: nb.x1, y1: b.y1 } : { x0: nb.x0, y0: b.y0, x1: b.x0, y1: b.y1 };
         if (obs.some(o => hit(strip, o, 1)) || boxesNow.some(o => hit(nb, o, 3))) continue;
         const a = tryName(nb, w, obs); if (a) { Object.assign(b, nb); at = a; break; } }
-      if (at) prims.push({ t: 'text', x: at.x, y: at.y, h: H, text: name, layer: 'BCD-TEXT' }); else warn(`sheet ${si + 1}: no clear place for the name ${name}`);
+      if (at) { prims.push({ t: 'text', x: at.x, y: at.y, h: H, text: name, layer: 'BCD-TEXT' }); return; }
+      // a narrow box (a cable down its middle): the name on two lines beside the cable, as MTEXT, rather than left off
+      const ws = name.split(' '); if (ws.length > 1) {
+        let best = null; for (let i = 1; i < ws.length; i++) { const l = [ws.slice(0, i).join(' '), ws.slice(i).join(' ')], m = Math.max(...l.map(tw)); if (!best || m < best.m) best = { l, m }; }
+        const hh = H * 2 + H * 0.6, a2 = tryName(b, best.m * 1.05, obs, hh);
+        if (a2) { prims.push({ t: 'mtext', x: a2.x, y: a2.y + hh, h: H, w: best.m * 1.1, text: best.l.join('\n'), attach: 1, layer: 'BCD-TEXT' }); return; } }
+      warn(`sheet ${si + 1}: no clear place for the name ${name}`);
     };
     for (const c of areas) nameBox(c, c.loc, areas);   // the scope box is redrawn round them afterwards
     for (const c of areas) drawArea(c, 'BCD-AREA');
