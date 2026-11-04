@@ -25,7 +25,14 @@ function register({ ipcMain, HANDLERS, BIZ }) {
   const desk = require('./jobdesk');
   const call = (ch, args) => { const h = HANDLERS[ch]; if (!h) throw new Error('Not available: ' + ch); return h({ sender: null }, args); };
   const jobOf = (id) => { const j = BIZ.data().jobs.find(x => x.id === id); if (!j) throw new Error('No such job'); return j; };
-  const delivOf = (id) => desk.load(id).deliv || {};
+  // a make or check left 'working' by an earlier run of the app (closed or updated mid-job) is stopped, so it can be made again
+  const RUN = 'r' + Date.now().toString(36);
+  const delivOf = (id) => { const d = desk.load(id), dl = d.deliv || {}; let fixed = false;
+    for (const w of Object.values(dl)) {
+      if (w.status === 'working' && w.run !== RUN) { w.status = 'failed'; w.summary = 'Stopped because the app closed or updated while this was being made. Press Make again.'; fixed = true; }
+      if (w.check && w.check.status === 'working' && w.check.run !== RUN) { w.check = null; fixed = true; }
+    }
+    if (fixed) desk.saveRaw(id, d); return dl; };
   const setDeliv = (id, no, patch) => { const d = desk.load(id); d.deliv = d.deliv || {}; d.deliv[no] = { ...(d.deliv[no] || {}), ...patch, at: new Date().toISOString() }; desk.saveRaw(id, d); return d.deliv[no]; };
   const wrap = (fn) => async (_e, a) => { try { return await fn(a || {}); } catch (e) { throw new Error(String(e && e.message || e)); } };
 
@@ -61,7 +68,7 @@ function register({ ipcMain, HANDLERS, BIZ }) {
     const prev = delivOf(jobId)[no] || {};
     if (answers && answers.length) answers = [...(prev.answers || []).filter(p => !answers.some(a => a.q === p.q)), ...answers]; else answers = prev.answers || [];   // answers given once are kept for remakes and revisions
     people = people || prev.people || {};   // drawn / checked / approved, kept for remakes and revisions
-    setDeliv(jobId, no, { status: 'working', agent: k.agent, summary: `${k.agent} is on it`, answers, people });
+    setDeliv(jobId, no, { status: 'working', run: RUN, agent: k.agent, summary: `${k.agent} is on it`, answers, people });
     try {
       let r, files = [], pdfs = [];
       if (k.agent === 'Dex') {
@@ -90,7 +97,7 @@ function register({ ipcMain, HANDLERS, BIZ }) {
     const drawings = targets.flatMap(n => [...(dl[n].pdfs || []), ...(dl[n].pdfs && dl[n].pdfs.length ? [] : dl[n].files)]).filter(p => fs.existsSync(p));
     if (!drawings.length) throw new Error('No drawings made yet to check');
     const enc = (p) => ({ name: path.basename(p), base64: fs.readFileSync(p).toString('base64') });
-    targets.forEach(n => setDeliv(jobId, n, { check: { status: 'working' } }));
+    targets.forEach(n => setDeliv(jobId, n, { check: { status: 'working', run: RUN } }));
     const r = await call('check:run', { agent: { id: 'cal' }, schedule: enc(schedule), drawings: drawings.map(enc), jobId, note: 'Check both ways and say exactly what was covered.' });
     const findings = r.findings || [], dir = r.markups && r.markups.dir || '';
     for (const n of targets) { const mine = findings.filter(f => JSON.stringify(f).includes(n)); setDeliv(jobId, n, { check: { status: findings.length ? 'needs you' : 'passed', headline: r.headline || '', count: mine.length || findings.length, markups: dir } }); }
