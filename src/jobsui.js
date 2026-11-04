@@ -94,7 +94,7 @@ export function initJobsUI({ api, getAgents, openIssue, onWorkOn }) {
     const cloudDot = (e) => e.cloud ? '<i class="jbcloud" title="Online-only in OneDrive (not downloaded to this PC yet)"></i>' : '';
     const rec = recents().filter(r => roots.some(x => r.path === x.path || r.path.startsWith(x.path)));
     const recentHtml = !query && rec.length ? `<div class="jblabel">Recent</div>` + rec.map(r => `<button class="jbj recent ${selPath === r.path ? 'on' : ''}" data-dir="${esc(r.path)}" data-job="1" title="${esc(r.path)}"><b>${esc(r.name)}</b></button>`).join('') : '';
-    if (query) body = `<div class="jblabel">${found === null ? 'Searching…' : found.length ? `${found.length} job${found.length === 1 ? '' : 's'}` : 'No job matches'}</div>` + (found || []).map(f => `<button class="jbj ${selPath === f.path ? 'on' : ''}" data-dir="${esc(f.path)}" data-job="1" title="${esc(f.path)}"><b>${esc(f.number)}${f.name ? ' · ' + esc(f.name) : ''}</b>${f.client ? `<span class="jbclient">${esc(f.client)}</span>` : ''}</button>`).join('');
+    if (query) body = `<div class="jblabel">${found === null ? 'Searching…' : found.length ? `${found.length} match${found.length === 1 ? '' : 'es'}` : 'Nothing matches'}</div>` + (found || []).map(f => `<button class="jbj ${selPath === f.path ? 'on' : ''}" data-dir="${esc(f.path)}" data-job="1" data-kind="${esc(f.kind || 'job')}" data-recid="${esc(f.job && f.job.id || '')}" title="${esc(f.path)}"><b>${f.kind && f.kind !== 'job' ? `<em class="jbkind">${esc(f.kind)}</em>` : ''}${esc(f.number)}${f.name ? ' · ' + esc(f.name) : ''}</b>${f.client ? `<span class="jbclient">${esc(f.client)}</span>` : ''}</button>`).join('');
     else if (!roots.length) body = `<div class="jblabel">Projects</div><div class="bsub" style="padding:6px 8px">Set your Projects folder (the live OneDrive one) to see your jobs here.</div><button class="jbnew" id="jbRoot">Set projects folder…</button>`;
     else if (!nav) body = recentHtml + `<div class="jblabel">Projects <a href="#" id="jbRoot" class="jbrootlink">add folder</a></div>` + roots.map(r => `<button class="jbj jbdir" data-go="${esc(r.path)}"><b>📁 ${esc(r.name)}</b><span class="bsub">${esc(r.path)}</span></button>`).join('');
     else body = recentHtml + `<div class="jblabel jbcrumbs">${crumbs()} <a href="#" id="jbRoot" class="jbrootlink">${roots.length ? 'add folder' : ''}</a></div>` + (listing && listing.error ? `<div class="bsub" style="padding:6px 8px">${esc(listing.error)}</div>` : '') +
@@ -108,7 +108,7 @@ export function initJobsUI({ api, getAgents, openIssue, onWorkOn }) {
     L.querySelectorAll('[data-dir]').forEach(b => b.onclick = async () => {
       const p = b.dataset.dir;
       if (!b.dataset.job) { nav = p; await relist(); renderList(); return; }
-      selPath = p; tab = 'files'; msg = ''; openDirs.clear(); noteRecent(p, (b.querySelector('b') || {}).textContent.replace(/^📁\s*/, '').trim());
+      selPath = p; tab = b.dataset.kind === 'drawing' ? 'deliv' : 'files'; msg = ''; openDirs.clear(); if (!b.dataset.kind || b.dataset.kind === 'job') noteRecent(p, (b.querySelector('b') || {}).textContent.replace(/^📁\s*/, '').trim());
       try { const r = await api.proj.recordAt({ path: p }); sel = r ? r.id : ''; } catch { sel = ''; }
       refresh();
     });

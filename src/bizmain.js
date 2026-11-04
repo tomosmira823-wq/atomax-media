@@ -276,8 +276,24 @@ dead is true only if the sheet itself carries a cancelled / superseded / void / 
     if (Date.now() - jobCache.t > 60e3) jobCache = { t: Date.now(), list: projects.allJobFolders() };
     const d = data(), out = [];
     for (const f of jobCache.list) { const rec = recordFor(d, f.folder), hay = [f.number, f.name, path.basename(f.folder), rec && rec.client, rec && rec.name].filter(Boolean).join(' ').toLowerCase(); if (words.every(w => hay.includes(w))) out.push({ number: f.number, name: rec && rec.name || f.name, client: rec && rec.client || '', path: f.folder, job: rec ? { id: rec.id, number: rec.number } : null }); }
-    return out.slice(0, 40);
+    // drawings by number or title (the jobs' drawing lists), and cables by number (the schedules in the job folders, read once and kept 10 min)
+    const qn = String(q || '').trim().toUpperCase();
+    for (const j of d.jobs) for (const dr of j.drawings || []) { const hay = `${dr.no} ${dr.title || ''}`.toLowerCase(); if (words.every(w => hay.includes(w)) && !out.some(x => x.kind === 'drawing' && x.no === dr.no)) out.push({ kind: 'drawing', number: j.number, name: `${dr.no} · ${dr.title || ''}`.trim(), client: j.client || '', path: j.folder || '', job: { id: j.id, number: j.number }, no: dr.no }); }
+    if (/^[A-Z]{1,3}-?\d{2,}[A-Z]?$/.test(qn)) { for (const hit of cableIndex().filter(c => c.no === qn || c.no.replace(/-/g, '') === qn.replace(/-/g, ''))) out.push({ kind: 'cable', number: hit.job.number, name: `${hit.no} · ${hit.from} → ${hit.to}`, client: hit.sheet, path: hit.folder, job: hit.job, no: hit.no }); }
+    return out.slice(0, 60);
   }));
+  // every cable number on every job's cable schedule (From / To with it): for the search box
+  let cableIdx = { t: 0, list: [] };
+  function cableIndex() {
+    if (Date.now() - cableIdx.t < 10 * 60e3) return cableIdx.list;
+    const list = [];
+    for (const j of data().jobs) { if (!j.folder || !fs.existsSync(j.folder)) continue;
+      let files = []; const walk = (dir, depth) => { if (depth > 4) return; let ents = []; try { ents = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; } for (const e of ents) { const full = path.join(dir, e.name); if (e.isDirectory()) { if (!/^(\.|~\$|archive|issued)/i.test(e.name)) walk(full, depth + 1); } else if (/cable.?schedule/i.test(e.name) && /\.(xlsx|xlsm|csv)$/i.test(e.name) && !/^~\$/.test(e.name)) files.push(full); } }; walk(j.folder, 0);
+      for (const f of files.slice(0, 3)) { try { const buf = fs.readFileSync(f), sheets = /\.csv$/i.test(f) ? checker.readCsv(buf.toString('utf8')) : checker.readXlsx(buf);
+        for (const sh of sheets) { const rows = sh.rows || []; let col = null; for (let i = 0; i < Math.min(rows.length, 15) && !col; i++) { const h = (rows[i].c || []).map(x => String(x || '').trim().toLowerCase()); const id = h.findIndex(x => /^cable\s*(no|number|ref|tag)\b|^cable$/.test(x)); if (id >= 0) col = { i, id, from: h.findIndex(x => /^from(\s*tag)?$/.test(x)), to: h.findIndex(x => /^to(\s*tag)?$/.test(x)) }; }
+          if (!col) continue; for (const r of rows.slice(col.i + 1)) { const c = r.c || [], no = String(c[col.id] || '').trim().toUpperCase(); if (no) list.push({ no, from: col.from >= 0 ? String(c[col.from] || '') : '', to: col.to >= 0 ? String(c[col.to] || '') : '', sheet: path.basename(f), folder: j.folder, job: { id: j.id, number: j.number } }); } } } catch {} } }
+    cableIdx = { t: Date.now(), list }; return list;
+  }
   // OneDrive: is it running, and are the Projects folders on it (sync itself is OneDrive's job; the app only shows whether it is there to do it)
   let cloudAt = 0, cloudLast = null;
   ipcMain.handle('cloud:status', wrap(async () => {
