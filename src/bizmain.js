@@ -251,19 +251,21 @@ dead is true only if the sheet itself carries a cancelled / superseded / void / 
   const fenced = (p) => { const n = norm(p); return roots().some(r => { const rn = norm(r); return n === rn || n.startsWith(rn + path.sep); }); };
   const recordFor = (d, p) => d.jobs.find(j => j.folder && norm(j.folder) === norm(p)) || null;
   ipcMain.handle('proj:roots', wrap(() => ({ roots: roots().map(r => ({ path: r, name: path.basename(r) || r })) })));
-  ipcMain.handle('proj:listAt', wrap(({ path: p }) => {
+  // async so a slow OneDrive folder never freezes the app; whether a subfolder is a job is remembered for a few minutes
+  const jobLook = new Map();
+  const looksJob = async (full) => { const c = jobLook.get(full); if (c && Date.now() - c.t < 5 * 60e3) return c.v; let v = false; try { v = (await fs.promises.readdir(full)).filter(n => /^\d{1,3}(\.\d+)?[\s._-]+[A-Za-z]/.test(n)).length >= 3; } catch {} jobLook.set(full, { v, t: Date.now() }); return v; };
+  ipcMain.handle('proj:listAt', wrap(async ({ path: p }) => {
     if (!p || !fenced(p)) throw new Error('That folder is outside your Projects folders');
     const d = data();
-    let ents = []; try { ents = fs.readdirSync(p, { withFileTypes: true }); } catch (e) { throw new Error('Cannot open ' + path.basename(p) + ': ' + e.code); }
-    const out = [];
-    for (const e of ents) {
-      if (/^(~\$|\.|desktop\.ini$|thumbs\.db$)/i.test(e.name)) continue;   // what Explorer hides
+    let ents = []; try { ents = await fs.promises.readdir(p, { withFileTypes: true }); } catch (e) { throw new Error('Cannot open ' + path.basename(p) + ': ' + e.code); }
+    const out = await Promise.all(ents.filter(e => !/^(~\$|\.|desktop\.ini$|thumbs\.db$)/i.test(e.name)).map(async (e) => {   // what Explorer hides
       // OneDrive online-only folders and files are reparse points: stat can fail or call them links, but they are listed
       // all the same (as Explorer does), falling back to what the folder entry says
-      const full = path.join(p, e.name); let st = null; try { st = fs.statSync(full); } catch { try { st = fs.lstatSync(full); } catch { st = null; } }
+      const full = path.join(p, e.name); let st = null; try { st = await fs.promises.stat(full); } catch { try { st = await fs.promises.lstat(full); } catch { st = null; } }
       const dir = st && !st.isSymbolicLink() ? (st.isDirectory() || (!st.isFile() && e.isDirectory())) : (e.isDirectory() || !path.extname(e.name)), rec = dir ? recordFor(d, full) : null;
-      out.push({ name: e.name, path: full, dir, size: dir || !st ? 0 : st.size, mtime: st ? st.mtimeMs : 0, isJob: dir && !/template/i.test(e.name) && (!!projects.jobNoIn(e.name) || projects.looksLikeJob(full)), job: rec ? { id: rec.id, number: rec.number } : null });
-    }
+      const isJob = dir && !/template/i.test(e.name) && (!!projects.jobNoIn(e.name) || await looksJob(full));
+      return { name: e.name, path: full, dir, size: dir || !st ? 0 : st.size, mtime: st ? st.mtimeMs : 0, isJob, job: rec ? { id: rec.id, number: rec.number } : null };
+    }));
     out.sort((a, b) => (b.dir - a.dir) || a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));   // Explorer's name order
     return { path: p, name: path.basename(p), entries: out };
   }));

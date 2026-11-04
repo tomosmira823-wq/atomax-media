@@ -1175,6 +1175,9 @@ export class Office {
   #animate() {
     requestAnimationFrame(() => this.#animate());
     if (document.hidden) return;
+    // frame cap: 30 fps normally, slow when the Jobs screen covers the office or the app is in the background (keeps the PC free)
+    const now = performance.now(), gap = !document.hasFocus() ? 500 : document.body.classList.contains('jobs-open') ? 200 : 33;
+    if (now - (this._lastFrame || 0) < gap) return; this._lastFrame = now;
     const dt = Math.min(this.clock.getDelta(), 0.05);
     // cabinet drawers slide out toward the room
     for (const c of this.newRooms?.file?.cabs || []) { const target = c.open ? 0.75 : 0; c.drawer.position.x += (target - c.drawer.position.x) * Math.min(1, dt * 7); }
