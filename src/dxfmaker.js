@@ -935,7 +935,9 @@ function layoutPanelBcd(spec, model, opts = {}) {
   const loc = (t) => String((nodes.get(t) || {}).location || '').toUpperCase().replace(/\s+/g, ' ').trim();
   const hasAreas = [...nodes.values()].some(n => n.location);
   const AP = 4, BAND = H + 3, AREA_PAD = hasAreas ? 4 : 0;
-  const others = (t) => !!(nodes.get(t) || {}).byOthers;
+  // outside our scope: by others AND not fed by one of our cables. A package unit "by others" that we cable to (a compressor, a chiller)
+  // sits in its room inside the scope: the kit is theirs, the cable and its termination are ours. The DNO's kit upstream stays outside.
+  const others = (t) => { const n = nodes.get(t) || {}; if (!n.byOthers) return false; return !ins(t).some(c => c.from && !(nodes.get(c.from) || {}).byOthers); };
   const tw = (s) => String(s).length * H * 0.92 * HOUSE_WF;
   const order = new Map(cables.map((c, i) => [c, i]));
   const outs = (t) => cables.filter(c => c.from === t), ins = (t) => cables.filter(c => c.to === t);
