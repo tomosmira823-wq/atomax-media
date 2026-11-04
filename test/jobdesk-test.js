@@ -25,7 +25,9 @@ t('register found and read onto the drawing list', () => {
 t('QS 006 numbering follows the register', () => {
   assert.strictEqual(DN.next(data().jobs[0], 'BCD').no, 'X11481-02-MLT-06-71-0004');
   assert.strictEqual(DN.next(data().jobs[0], 'SLD').no, 'X11481-02-MLT-06-70-0001');
-  assert.strictEqual(DN.next({ number: 'X301026', drawings: [] }, 'BCD').no, '');
+  const bare = DN.next({ number: 'X301026', drawings: [] }, 'BCD'); assert.strictEqual(bare.no, 'X301026-01-71-0001'); assert.strictEqual(bare.assumed, 'area 01');   // nothing to go on: never blank, area 01 assumed and said so
+  assert.strictEqual(DN.next({ number: 'X071126', drawings: [] }, 'SLD', { seen: ['X071126-01-72-0001 Cable Schedule.xlsx'] }).no, 'X071126-01-70-0001');   // the client's schedule says the area and the short form
+  assert.strictEqual(DN.next({ number: 'X071126', drawings: [{ no: 'X071126-01-70-0001' }] }, 'SLD').no, 'X071126-01-70-0002');
   assert.strictEqual(DN.jobNumber([], new Date(2026, 9, 30)), 'X301026');
   assert.strictEqual(DN.nextRev('P1', 'comment'), 'A01'); assert.strictEqual(DN.nextRev('A01'), 'A02'); assert.strictEqual(DN.nextRev('P05'), 'P06');
 });
