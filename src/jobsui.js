@@ -224,7 +224,7 @@ export function initJobsUI({ api, getAgents, openIssue, onWorkOn }) {
       act(() => api.jobs.make({ jobId: O.job.id, no, request, skills, people }), `${no}: ${P.agent} is on it…`);
     };
     box.querySelector('#jpSkills').innerHTML = '<div class="skp"><div class="skp-h">Skills for this run <span>loading…</span></div></div>';
-    const DK = api.drawKinds; picker = await renderSkillPicker(api, box.querySelector('#jpSkills'), P.agentId, { uncheck: (i) => DK && ['bcd', 'sld', 'earthing'].includes(P.kind) ? !DK.skillFit(i, P.kind) : false });
+    const DK = api.drawKinds; picker = await renderSkillPicker(api, box.querySelector('#jpSkills'), P.agentId, { uncheck: (i) => !DK ? false : ['bcd', 'sld', 'earthing'].includes(P.kind) ? !DK.skillFit(i, P.kind) : P.agent !== 'Dex' ? (DK.skillKinds(i).length > 0 || /\bdxf\b|\bcad\b|title block/i.test(`${i.name} ${i.description}`)) : false });
   }
   function goMaster() { openDeskSection('master'); tab = 'setup'; msg = ''; renderJob(); const t0 = Date.now(); const look = () => { const d = document.querySelector('details.jd[data-sec="master"]'); if (d) { d.open = true; d.scrollIntoView({ behavior: 'smooth', block: 'start' }); d.classList.add('flash'); setTimeout(() => d.classList.remove('flash'), 1600); } else if (Date.now() - t0 < 5000) setTimeout(look, 150); }; look(); }
   const openList = (no) => ((O && O.desk.crs) || []).filter(c => c.doc === no && !/responded|closed/i.test(c.status || ''));

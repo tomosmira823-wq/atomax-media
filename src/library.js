@@ -64,6 +64,7 @@ function init(userDir, agents, standardSkill) {
   seed(agents || [], standardSkill || '');
   try { removeHouse(); } catch {}
   try { syncBundled(); } catch (e) { console.error('bundled skills', e); }
+  try { untickDrawingSkills(); } catch {}
 }
 // the house skills shipped inside the app (src/skills/<name>/SKILL.md): what the jobs teach it goes in there and comes with every
 // update, so every job on every PC draws to the same rules. A copy Tom has edited himself in the library is left alone.
@@ -159,6 +160,12 @@ function unzipText(buf) {
 // what a skill is for, from its name and description; Tom can change the ticks in the File Room
 const AUTO_TICK = [[/drawing.?check|schedule.?check/i, ['cal']], [/dxf|sld|cad|earthing/i, ['dex']], [/transmittal|register|doc.?number|deliverable|issue/i, ['documents']], [/document.?format|word|docx|report|letter/i, ['word', 'documents']], [/model|3d|plant/i, ['milo', 'theo']], [/excel|xlsx|spreadsheet|schedule/i, ['excel']], [/email|inbox|mail/i, ['email']], [/fault|load.?flow|protection|study|calc|earthing.?design/i, ['engineer']]];
 
+// which agents a skill is ticked for from its words. A drawing skill (DXF / SLD / BCD / earthing drawing) is Dex's alone: the word
+// "schedule" in "earth bar schedule" does not make it a spreadsheet skill for Lex
+const DRAWING_SKILL = /\bdxf\b|\bsld\b|\bbcd\b|block cable|single line|earthing drawing|loop diagram|\bcad\b|title block/i;
+const tickFor = (words) => { let a = [...new Set(AUTO_TICK.filter(([re]) => re.test(words)).flatMap(([, x]) => x))]; if (DRAWING_SKILL.test(words)) a = a.filter(x => !['excel', 'word', 'documents', 'email'].includes(x)); return a; };
+// existing library entries: a drawing skill ticked for Lex / Wren / Dot by the old rule is unticked for them
+function untickDrawingSkills() { const idx = readIndex('skills'); let n = 0; for (const [file, m] of Object.entries(idx)) { if (!DRAWING_SKILL.test(`${m.name || file} ${m.description || ''}`)) continue; const a = (m.agents || []).filter(x => !['excel', 'word', 'documents', 'email'].includes(x)); if (a.length !== (m.agents || []).length) { idx[file] = { ...m, agents: a }; n++; } } if (n) writeIndex('skills', idx); return n; }
 // add or update one skill from SKILL.md text; a skill with the same name is updated, not duplicated
 function upsertSkill(text, fallbackName) {
   const fm = (text.match(/^---\r?\n([\s\S]*?)\r?\n---/) || [])[1] || '';
@@ -170,7 +177,7 @@ function upsertSkill(text, fallbackName) {
   const same = Object.entries(idx).find(([f, m]) => slug(m.name || f) === slug(name) || f === slug(name) + '.md');
   let file, agents;
   if (same) { file = same[0]; agents = same[1].agents || []; }
-  else { file = uniqueFile('skills', slug(name) + '.md'); agents = [...new Set(AUTO_TICK.filter(([re]) => re.test(name + ' ' + description)).flatMap(([, a]) => a))]; }
+  else { file = uniqueFile('skills', slug(name) + '.md'); agents = tickFor(name + ' ' + description); }
   fs.writeFileSync(path.join(dirOf('skills'), file), body, 'utf8');
   idx[file] = { ...(idx[file] || {}), name, description: description.slice(0, 300), agents, on: idx[file] ? idx[file].on !== false : true };
   writeIndex('skills', idx);
