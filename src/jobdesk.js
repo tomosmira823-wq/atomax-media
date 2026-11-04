@@ -228,7 +228,7 @@ function masterContent(job, projects, checker, extraFiles = []) {
   for (const p of [...pdfs, ...extraFiles].slice(0, 6)) { try { content.push({ type: 'text', text: 'Document: ' + path.basename(p) }); content.push(checker.contentBlock('pdf', path.basename(p), fs.readFileSync(p))); read.push(path.basename(p)); } catch {} }
   return { content, read };
 }
-async function buildMaster(id, { claudeFull, projects, checker, parseReply, note = '' }) {
+async function buildMaster(id, { claudeFull, projects, checker, parseReply, note = '', run = '', stage = () => {} }) {
   const job = jobOf(id); if (!job) throw new Error('No such job');
   if (!job.folder) throw new Error('Link the job\'s project folder first: the master list is built from the documents in it');
   try { projects.gather(job.id, job.folder, { checker, dxffix: require('./dxffix') }); } catch {}   // read the folder fresh so new inputs are seen
@@ -236,8 +236,10 @@ async function buildMaster(id, { claudeFull, projects, checker, parseReply, note
   if (!read.length) throw new Error('No input documents found in the job folder (instrument index, IO list, BCDs, schedules)');
   content.push({ type: 'text', text: 'Build the master device list for this job from the documents above.' + (note ? '\nNote from the engineer: ' + note : '') });
   const system = MASTER_SYSTEM + '\n\n' + BIZ.contextFor(id, 'Lex');
-  let r = await claudeFull({ system, who: 'excel', skills: false, maxTokens: 24000, messages: [{ role: 'user', content }] });
-  if (r.stop === 'max_tokens') r = await claudeFull({ system: system + '\nKeep descriptions short.', who: 'excel', skills: false, maxTokens: 48000, messages: [{ role: 'user', content }] });
+  stage(`Lex is building the list from ${read.length} document${read.length === 1 ? '' : 's'}`, 35);
+  let r = await claudeFull({ system, who: 'excel', skills: false, maxTokens: 24000, messages: [{ role: 'user', content }], run });
+  if (r.stop === 'max_tokens') { stage('The list was long: Lex is building it again, shorter', 70); r = await claudeFull({ system: system + '\nKeep descriptions short.', who: 'excel', skills: false, maxTokens: 48000, messages: [{ role: 'user', content }], run }); }
+  stage('Saving the list', 95);
   const m = parseReply(r.text);
   const d = load(id);
   d.master = { status: 'draft', builtAt: new Date().toISOString(), read, devices: (m.devices || []).slice(0, 3000), cables: (m.cables || []).slice(0, 5000), gaps: (m.gaps || []).map(String).slice(0, 200), summary: m.summary || '', incomplete: r.stop === 'max_tokens' };

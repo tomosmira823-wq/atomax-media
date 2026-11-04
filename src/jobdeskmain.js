@@ -29,7 +29,13 @@ function register({ ipcMain, dialog, getWin, claudeFull, BIZ, checker, userDir, 
   ipcMain.handle('desk:addComment', wrap(({ jobId, doc, comment, by }) => { desk.addComments(jobId, [{ doc, comment, by: by || 'Client' }]); return desk.view(jobId); }));
   ipcMain.handle('desk:crs', wrap(({ jobId, row }) => { desk.saveCrs(jobId, row); return desk.view(jobId); }));
   ipcMain.handle('desk:export', wrap(({ jobId, kind }) => { const p = desk.exportSheet(jobId, kind, writeXlsx); shell.showItemInFolder(p); return p; }));
-  ipcMain.handle('desk:buildMaster', wrap(async ({ jobId, note }) => { await desk.buildMaster(jobId, { claudeFull, projects: BIZ.projects, checker, parseReply: dxfmaker.parseReply, note }); return desk.view(jobId); }));
+  ipcMain.handle('desk:buildMaster', wrap(async ({ jobId, note }) => {
+    const runs = require('./runs'); if (runs.live().some(r => r.jobId === jobId && r.no === 'MASTER')) return desk.view(jobId);   // already building: one build at a time
+    const R = runs.start({ kind: 'master', who: 'Lex', jobId, no: 'MASTER' }); runs.stage(R.id, 'Lex is reading the job documents', 10);
+    try { await desk.buildMaster(jobId, { claudeFull, projects: BIZ.projects, checker, parseReply: dxfmaker.parseReply, note, run: R.id, stage: (t, pct) => runs.stage(R.id, t, pct) }); runs.finish(R.id); }
+    catch (e) { runs.finish(R.id, { ok: false, error: String(e && e.message || e) }); throw e; }
+    return desk.view(jobId);
+  }));
   ipcMain.handle('desk:exportMaster', wrap(({ jobId }) => { const p = desk.exportMaster(jobId, writeXlsx); shell.openPath(p); return { path: p, view: desk.view(jobId) }; }));
   ipcMain.handle('desk:importMaster', wrap(async ({ jobId, file }) => {
     if (!file) { if (process.env.AMO_PICK_FILE) file = process.env.AMO_PICK_FILE; else { const r = await dialog.showOpenDialog(getWin(), { properties: ['openFile'], filters: [{ name: 'Excel', extensions: ['xlsx', 'xlsm'] }] }); if (r.canceled) return desk.view(jobId); file = r.filePaths[0]; } }

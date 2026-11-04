@@ -64,6 +64,7 @@ export function initJobsUI({ api, getAgents, openIssue, onWorkOn }) {
   const busyPanel = () => !!document.querySelector('.jbprep');
   async function refreshWhenFree() { while (busyPanel() && panel.classList.contains('open')) await new Promise(r => setTimeout(r, 800)); return refresh(); }
   async function refresh() {
+    try { if (api.runs && api.runs.live) { const live = await api.runs.live(); RUNS.clear(); for (const p of live) RUNS.set(runKey(p.jobId, p.no), p); } } catch {}   // runs still going in the main process (after a re-open or a redraw)
     await relist();
     const v = await api.biz.get(); jobs = v.jobs.filter(j => j.status !== 'Closed');
     if (sel && !jobs.some(j => j.id === sel)) sel = '';
@@ -207,7 +208,7 @@ export function initJobsUI({ api, getAgents, openIssue, onWorkOn }) {
     const made = rows.filter(r => r.work && r.work.files && r.agent === 'Dex').length;
     el.innerHTML = `${!rows.length ? `<div class="jbempty"><b>No deliverables on this job yet.</b><span>Check or make the drawing register in Inputs &amp; setup, or forward the client's email to Eli: he lists what the job needs.</span></div>` : ''}
       ${O.needsMaster && !masterOk && V.master ? `<div class="jbbanner"><span><b>Master list built: ${V.master.devices} devices, ${V.master.cables} cables${(V.master.gaps || []).length ? `, ${V.master.gaps.length} gaps` : ''}.</b> Approve it and the BCDs and schedule can be made.</span><span class="jbbar" style="margin:0"><button class="jbbtn" id="jbToMaster">Review it</button><button class="jbbtn primary" id="jbApprove">✓ Approve it</button></span></div>` : ''}
-      ${O.needsMaster && !masterOk && !V.master ? `<div class="jbbanner">BCDs and schedules are made from the master device list. <button class="jbbtn" id="jbToMaster">${V.master ? 'Check and approve it' : 'Build it'}</button></div>` : ''}
+      ${O.needsMaster && !masterOk && !V.master ? `<div class="jbbanner">BCDs and schedules are made from the master device list. <span data-runrow="${esc(runKey(O.job.id, 'MASTER'))}">${runCell(O.job.id, 'MASTER')}</span><button class="jbbtn" id="jbToMaster" ${RUNS.has(runKey(O.job.id, 'MASTER')) ? 'disabled' : ''}>${V.master ? 'Check and approve it' : 'Build it'}</button></div>` : ''}
       ${rows.length ? `<div class="jbbar"><button class="jbbtn primary" id="jbAll" ${rows.some(r => r.agent && !r.work && (masterOk || !['bcd', 'schedule'].includes(r.kind))) ? '' : 'disabled'}>Make everything not made yet</button><button class="jbbtn" id="jbCheck" ${made ? '' : 'disabled'}>Cal: check the drawings</button><span class="bsub">Each row: the agent makes it, Cal checks it, then it goes in the issue pack.</span></div>` : ''}
       <div class="jbrows">${rows.map(r => { const w = r.work;
         return `<div class="jbrow" data-no="${esc(r.no)}">
