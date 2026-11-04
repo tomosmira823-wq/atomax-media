@@ -151,6 +151,13 @@ function tidyRows(id) {
   if (moves.length) { d.deliv = dl; save(id, d); biz.saveJob(BIZ.data(), { ...job, drawings: rows }, 'Eli'); BIZ.store.save(); BIZ.log({ who: 'Eli', action: 'Tidied the drawing list', jobId: id, detail: moves.map(m => `${m.from} -> ${m.to}`).join(', ') }); }
   return moves;
 }
+// a row gets its real number (Dex numbered a TBC drawing from the register / QS 006 when he made it): its work and comments follow it
+function renameRow(id, from, to) {
+  const job = jobOf(id); if (!job || !from || !to || from === to) return false; const r = job.drawings.find(x => x.no === from); if (!r) return false;
+  if (job.drawings.some(x => x !== r && x.no.toUpperCase() === String(to).toUpperCase())) return false;   // that number is another row: tidyRows merges those
+  const d = load(id); if (d.deliv && d.deliv[from]) { d.deliv[to] = d.deliv[from]; delete d.deliv[from]; } for (const c of d.crs || []) if (c.doc === from) c.doc = to; save(id, d);
+  r.no = to; biz.saveJob(BIZ.data(), job, 'Dex'); BIZ.store.save(); BIZ.log({ who: 'Dex', action: 'Numbered the drawing', jobId: id, detail: `${from} -> ${to}` }); return true;
+}
 // Eli's deliverables onto the drawing list: numbered like the existing ones of that kind, otherwise "TBC-<kind>-n" for Tom to number.
 // A deliverable that is a drawing the list already has (same number, or a revision / reissue of a kind the list has one of) adds nothing.
 function addDeliverables(id, list, opts = {}) {
@@ -324,4 +331,4 @@ function borderFor(job) {
 }
 
 const saveRaw = (id, d) => save(id, d);
-module.exports = { tidyRows, kindKey, setBorder, borderFor, saveRaw, setNumbering, init, load, getRules, setRules, addCorrection, clientProfile, titleBlockFor, findRegisters, readRegister, checkRegister, makeRegister, proposeNumber, addDeliverables, addInputs, saveRfi, addComments, saveCrs, buildMaster, exportMaster, importMaster, approveMaster, context, view, exportSheet, masterOf, MASTER_SYSTEM, RULES_FILE };
+module.exports = { tidyRows, kindKey, renameRow, setBorder, borderFor, saveRaw, setNumbering, init, load, getRules, setRules, addCorrection, clientProfile, titleBlockFor, findRegisters, readRegister, checkRegister, makeRegister, proposeNumber, addDeliverables, addInputs, saveRfi, addComments, saveCrs, buildMaster, exportMaster, importMaster, approveMaster, context, view, exportSheet, masterOf, MASTER_SYSTEM, RULES_FILE };
