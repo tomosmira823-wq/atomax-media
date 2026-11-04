@@ -10,6 +10,7 @@ const { pathToFileURL } = require('url');
 const { autoUpdater } = require('electron-updater');
 const social = require('./social');
 const checker = require('./checker');
+const runs = require('./runs');
 const markup = require('./markup');
 const dxffix = require('./dxffix');
 const bizmain = require('./bizmain');
@@ -643,7 +644,6 @@ ipcMain.handle('file:saveText', async (_e, { text, name }) => {
 // every Claude call goes through here: the monthly cap check, the library (rulebook + ticked files for `who`), and the usage log
 // agent working time since its last logged action, so the time lands on the job it was working on (auto timesheet lines)
 const AGENT_MS = {};
-const runs = require('./runs');
 async function claudeFull({ system, messages, maxTokens = 4000, model, tools, who = '', test = false, skills, run = '' }) {
   const s = loadSettings();
   const useModel = model || s.claudeModel;
