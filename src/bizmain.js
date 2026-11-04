@@ -244,9 +244,9 @@ dead is true only if the sheet itself carries a cancelled / superseded / void / 
   ipcMain.handle('proj:open', wrap(({ jobId }) => { const j = jobOf(jobId); if (j.folder) shell.openPath(j.folder); return true; }));
   // the Jobs screen is the project folders: every job folder in the jobs folder is a job (created / linked here), its files listed live
   ipcMain.handle('proj:sync', wrap(() => {
-    const d = data(), root = projects.jobsFolder(d.jobs.map(j => j.number)); if (!root) return { root: '', jobIds: [], added: 0 };
+    const d = data(), known = d.jobs.map(j => j.number), roots = projects.projectsRoots(known), root = roots.join('; '); if (!roots.length) return { root: '', jobIds: [], added: 0 };
     let added = 0, linked = 0; const ids = [];
-    for (const f of projects.jobFolders(root, d.jobs.map(j => j.number))) {
+    for (const f of projects.allJobFolders(known)) {
       let j = d.jobs.find(x => x.number.toUpperCase() === f.number);
       if (!j) { j = biz.saveJob(d, { number: f.number, name: f.name, folder: f.folder }, 'Office'); added++; }
       else if (!j.folder || !fs.existsSync(j.folder)) { j.folder = f.folder; if (!j.name && f.name) j.name = f.name; linked++; }

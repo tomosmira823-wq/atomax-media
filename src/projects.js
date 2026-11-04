@@ -244,6 +244,23 @@ function jobsFolder(known = []) {
   if (s.jobsFolder && fs.existsSync(s.jobsFolder)) return s.jobsFolder;
   return jobParent(known);
 }
+// the folders the Jobs screen lists: the Projects folders set in Settings (and the new-jobs folder), not just where new jobs go
+function projectsRoots(known = []) {
+  const s = getSettings ? getSettings() : {}, ok = (p) => { try { return fs.statSync(p).isDirectory(); } catch { return false; } };
+  const rs = [...(s.projectRoots || []), s.jobsFolder].filter(Boolean).filter(ok);
+  return rs.length ? [...new Set(rs)] : [jobParent(known)].filter(Boolean);
+}
+// every job folder under them: directly inside, or one level down (Projects\2026\X021126 ...); a root that is itself a job counts
+function allJobFolders(known = []) {
+  const re = jobPattern(known), out = [], seen = new Set(), add = (f) => { const k = f.folder.toLowerCase(); if (!seen.has(k)) { seen.add(k); out.push(f); } };
+  for (const r of projectsRoots(known)) {
+    const own = jobFolders(path.dirname(r), known).find(f => path.resolve(f.folder) === path.resolve(r)); if (own) { add(own); continue; }
+    const direct = jobFolders(r, known); direct.forEach(add);
+    let subs = []; try { subs = fs.readdirSync(r, { withFileTypes: true }).filter(e => e.isDirectory() && !SKIP.test(e.name) && !/template/i.test(e.name) && !direct.some(f => path.basename(f.folder) === e.name)); } catch {}
+    for (const e of subs.slice(0, 60)) jobFolders(path.join(r, e.name), known).forEach(add);
+  }
+  return out;
+}
 // the job folders in it: one per folder named like a job number (X021126 Hollins Lane ...), never the template
 function jobFolders(root, known = []) {
   if (!root) return [];
@@ -269,4 +286,4 @@ function listDir(folder, rel = '') {
   return out.sort((a, b) => (b.dir - a.dir) || a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
 }
 
-module.exports = { jobsFolder, jobFolders, listDir, templateDir, isAtomax, jobParent, nextJobNumber, jobPattern, createJobFolder, init, suggest, gather, load, contextBlock, relevantFiles, outputDir, searchRoots, extract };
+module.exports = { projectsRoots, allJobFolders, jobsFolder, jobFolders, listDir, templateDir, isAtomax, jobParent, nextJobNumber, jobPattern, createJobFolder, init, suggest, gather, load, contextBlock, relevantFiles, outputDir, searchRoots, extract };

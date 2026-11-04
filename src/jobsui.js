@@ -28,10 +28,11 @@ export function initJobsUI({ api, getAgents, openIssue, onWorkOn }) {
       O = O2; renderJob(); } else renderHome();
   }
   function renderList() {
-    $('#jbList').innerHTML = `<button class="jbnew" id="jbNew">+ New job</button><button class="jbnew mail" id="jbMail">✉ New job from an email</button><button class="jbj home ${!sel ? 'on' : ''}" data-j="">Waiting on you</button><div class="jblabel" title="${esc(root)}">${root ? `Jobs · ${esc(base(root))}` : 'Jobs'} <a href="#" id="jbRoot" class="jbrootlink">${root ? 'change' : 'set projects folder'}</a></div>` + (jobs.map(j => `<button class="jbj ${j.id === sel ? 'on' : ''}" data-j="${j.id}"><b>${esc(j.number)}</b><span>${esc(j.name || '')}</span><i>${esc(j.client || 'No client')}</i></button>`).join('') || '<div class="bhint">No jobs yet.</div>')
+    $('#jbList').innerHTML = `<button class="jbnew" id="jbNew">+ New job</button><button class="jbnew mail" id="jbMail">✉ New job from an email</button><button class="jbj home ${!sel ? 'on' : ''}" data-j="">Waiting on you</button><div class="jblabel" title="${esc(root)}">${root ? `Jobs · ${esc(root.split('; ').map(base).join(', '))}` : 'Jobs'} <a href="#" id="jbRoot" class="jbrootlink">${root ? 'add projects folder' : 'set projects folder'}</a></div>` + (jobs.map(j => `<button class="jbj ${j.id === sel ? 'on' : ''}" data-j="${j.id}"><b>${esc(j.number)}</b><span>${esc(j.name || '')}</span><i>${esc(j.client || 'No client')}</i></button>`).join('') || '<div class="bhint">No jobs yet.</div>')
 ;
     $('#jbList').querySelectorAll('[data-j]').forEach(b => b.onclick = () => { sel = b.dataset.j; tab = sel ? 'files' : 'deliv'; msg = ''; openDirs.clear(); refresh(); });
-    $('#jbRoot').onclick = async (e) => { e.preventDefault(); const f = await api.mail.pickParent(); if (!f) return; try { await api.mail.setJobsFolder({ folder: f }); } catch (err) { msg = clean(err); } lastSync = 0; refresh(); };
+    // the Projects folders (Settings): every job folder in them is listed, not just jobs made here
+    $('#jbRoot').onclick = async (e) => { e.preventDefault(); const f = await api.proj.pick(); if (!f) return; try { const st = await api.settings.get(); await api.settings.set({ projectRoots: [...new Set([...(st.projectRoots || []), f])] }); } catch (err) { msg = clean(err); } lastSync = 0; refresh(); };
     $('#jbNew').onclick = newJob;
     $('#jbMail').onclick = () => { sel = ''; renderList(); emailPanel(''); };
   }
