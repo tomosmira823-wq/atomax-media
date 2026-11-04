@@ -1,0 +1,1181 @@
+{
+ "sld": {
+  "kind": "sld",
+  "title": "SINGLE LINE DIAGRAM",
+  "drawingNumber": "X051126-01-70-0001",
+  "revision": "P01",
+  "client": "Mersey Water Services",
+  "notes": [
+   "A"
+  ],
+  "boards": [
+   {
+    "label": "MSB-01\nMAIN SWITCHBOARD 1250A\n400V 3PH+N 50Hz TN-S\n50kA FORM 4 TYPE 6\nPROSPECTIVE FAULT 36kA",
+    "enclosure": "INLET WORKS SWITCHROOM",
+    "incomers": [
+     {
+      "label": "",
+      "chain": [
+       {
+        "symbol": "supply",
+        "label": "RMU-01\nDNO RING MAIN UNIT\n(EXISTING)\n11kV"
+       },
+       {
+        "symbol": "cable",
+        "label": "C-001\n3C 95mm² XLPE/AWA/PVC\n6.35/11kV 12m"
+       },
+       {
+        "symbol": "transformer",
+        "label": "TX-01\n800kVA 11/0.433kV\nDyn11\nIMPEDANCE TBC"
+       },
+       {
+        "symbol": "cable",
+        "label": "C-002\n4C 300mm² XLPE/SWA/LSZH\n600/1000V\n3 RUNS PER PHASE 18m"
+       },
+       {
+        "symbol": "breaker",
+        "label": "TX-01 INCOMER ACB\nTBC\n(CLOSED)"
+       },
+       {
+        "symbol": "generator",
+        "label": "GEN-01\n500kVA STANDBY\nGENERATOR"
+       },
+       {
+        "symbol": "cable",
+        "label": "C-003\n4C 240mm² XLPE/SWA/LSZH\n600/1000V 35m"
+       },
+       {
+        "symbol": "breaker",
+        "label": "GEN-01 INCOMER ACB\nTBC\n(OPEN)"
+       }
+      ]
+     }
+    ],
+    "feeders": [
+     {
+      "chain": [
+       {
+        "symbol": "breaker",
+        "label": "TBC"
+       },
+       {
+        "symbol": "cable",
+        "label": "C-004\n4C 185mm² XLPE/SWA/LSZH\n600/1000V 6m"
+       },
+       {
+        "board": {
+         "label": "MCC-01\nINLET MCC 400A FORM 4b\n400V 3PH+N 50Hz",
+         "feeders": [
+          {
+           "chain": [
+            {
+             "symbol": "breaker",
+             "label": "TBC"
+            },
+            {
+             "symbol": "softstarter",
+             "label": "SOFT STARTER"
+            },
+            {
+             "symbol": "cable",
+             "label": "C-011\n4C 25mm² XLPE/SWA/LSZH\n600/1000V 85m"
+            },
+            {
+             "symbol": "isolator",
+             "label": "LOCAL ISOLATOR\nTBC"
+            },
+            {
+             "symbol": "motor",
+             "label": "M-201\nINLET SCREEN 1\n22kW"
+            }
+           ]
+          },
+          {
+           "chain": [
+            {
+             "symbol": "breaker",
+             "label": "TBC"
+            },
+            {
+             "symbol": "softstarter",
+             "label": "SOFT STARTER"
+            },
+            {
+             "symbol": "cable",
+             "label": "C-012\n4C 25mm² XLPE/SWA/LSZH\n600/1000V 88m"
+            },
+            {
+             "symbol": "isolator",
+             "label": "LOCAL ISOLATOR\nTBC"
+            },
+            {
+             "symbol": "motor",
+             "label": "M-202\nINLET SCREEN 2\n22kW"
+            }
+           ]
+          },
+          {
+           "chain": [
+            {
+             "symbol": "breaker",
+             "label": "TBC"
+            },
+            {
+             "symbol": "vsd",
+             "label": "VARIABLE SPEED\nDRIVE"
+            },
+            {
+             "symbol": "cable",
+             "label": "C-013\n4C 16mm² SWA/LSZH VSD\nSCREENED 600/1000V 90m"
+            },
+            {
+             "symbol": "isolator",
+             "label": "LOCAL ISOLATOR\nTBC"
+            },
+            {
+             "symbol": "motor",
+             "label": "M-203\nSCREENINGS WASHER\n11kW"
+            }
+           ]
+          },
+          {
+           "chain": [
+            {
+             "symbol": "breaker",
+             "label": "TBC"
+            },
+            {
+             "symbol": "dol",
+             "label": "DOL STARTER"
+            },
+            {
+             "symbol": "cable",
+             "label": "C-014\n4C 6mm² XLPE/SWA/LSZH\n600/1000V 120m"
+            },
+            {
+             "symbol": "isolator",
+             "label": "LOCAL ISOLATOR\nTBC"
+            },
+            {
+             "symbol": "motor",
+             "label": "M-204\nGRIT CLASSIFIER\n4kW"
+            }
+           ]
+          },
+          {
+           "chain": [
+            {
+             "symbol": "breaker",
+             "label": "TBC"
+            },
+            {
+             "symbol": "dol",
+             "label": "DOL STARTER"
+            },
+            {
+             "symbol": "cable",
+             "label": "C-015\n4C 6mm² XLPE/SWA/LSZH\n600/1000V 125m"
+            },
+            {
+             "symbol": "isolator",
+             "label": "LOCAL ISOLATOR\nTBC"
+            },
+            {
+             "symbol": "motor",
+             "label": "M-205\nGRIT PUMP\n5.5kW"
+            }
+           ]
+          },
+          {
+           "chain": [
+            {
+             "symbol": "breaker",
+             "label": "TBC"
+            },
+            {
+             "symbol": "dol",
+             "label": "DOL STARTER"
+            },
+            {
+             "symbol": "cable",
+             "label": "TBC\n4C 4mm² XLPE/SWA/LSZH\n600/1000V 118m"
+            },
+            {
+             "symbol": "isolator",
+             "label": "LOCAL ISOLATOR\nTBC"
+            },
+            {
+             "symbol": "motor",
+             "label": "M-206\nGRIT BLOWER\n3kW"
+            }
+           ]
+          }
+         ]
+        }
+       }
+      ]
+     },
+     {
+      "chain": [
+       {
+        "symbol": "breaker",
+        "label": "TBC"
+       },
+       {
+        "symbol": "cable",
+        "label": "C-005\n4C 25mm² XLPE/SWA/LSZH\n600/1000V 5m"
+       },
+       {
+        "symbol": "load",
+        "label": "DB-01\nSMALL POWER &\nLIGHTING DB\n100A"
+       }
+      ]
+     },
+     {
+      "chain": [
+       {
+        "symbol": "breaker",
+        "label": "TBC"
+       },
+       {
+        "symbol": "cable",
+        "label": "C-006\n4C 10mm² XLPE/SWA/LSZH\n600/1000V 4m"
+       },
+       {
+        "symbol": "ups",
+        "label": "UPS-01\n10kVA UPS"
+       },
+       {
+        "symbol": "cable",
+        "label": "C-007\n4C 6mm² XLPE/SWA/LSZH\n600/1000V 3m"
+       },
+       {
+        "symbol": "load",
+        "label": "DB-02\nUPS DB 32A\nPLC & TELEMETRY"
+       }
+      ]
+     },
+     {
+      "chain": [
+       {
+        "symbol": "breaker",
+        "label": "250A"
+       },
+       {
+        "symbol": "spare",
+        "label": "SPARE - EQUIPPED,\nOFF & LOCKED\n250A"
+       }
+      ]
+     },
+     {
+      "chain": [
+       {
+        "symbol": "breaker",
+        "label": "100A"
+       },
+       {
+        "symbol": "spare",
+        "label": "SPARE - EQUIPPED,\nOFF & LOCKED\n100A"
+       }
+      ]
+     },
+     {
+      "chain": [
+       {
+        "symbol": "cable",
+        "label": "C-031\n1C 120mm² LSZH\n450/750V 4m"
+       },
+       {
+        "symbol": "earth",
+        "label": "MET\nMAIN EARTH\nTERMINAL"
+       }
+      ]
+     },
+     {
+      "chain": [
+       {
+        "symbol": "cable",
+        "label": "C-032\n1C 120mm² LSZH\n450/750V 20m"
+       },
+       {
+        "symbol": "earth",
+        "label": "TX-01\nSTAR POINT EARTH"
+       }
+      ]
+     },
+     {
+      "chain": [
+       {
+        "symbol": "cable",
+        "label": "C-033\n1C 70mm² LSZH\n450/750V 36m"
+       },
+       {
+        "symbol": "earth",
+        "label": "GEN-01\nGENERATOR EARTH"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ "bcd": {
+  "kind": "bcd",
+  "title": "BLOCK CABLE DIAGRAM\nOAKMERE WWTW INLET WORKS",
+  "drawingNumber": "X051126-01-71-0001",
+  "revision": "P01",
+  "client": "Mersey Water Services",
+  "nodes": [
+   {
+    "tag": "RMU-01",
+    "type": "panel",
+    "label": "DNO RING MAIN UNIT, EXISTING (BY OTHERS)",
+    "location": "HV Compound",
+    "byOthers": true
+   },
+   {
+    "tag": "TX-01",
+    "type": "device",
+    "label": "NEW 800kVA 11/0.433kV Dyn11",
+    "location": "HV Compound",
+    "byOthers": false
+   },
+   {
+    "tag": "GEN-01",
+    "type": "device",
+    "label": "STANDBY GENERATOR 500kVA",
+    "location": "Generator Enclosure",
+    "byOthers": false
+   },
+   {
+    "tag": "MSB-01",
+    "type": "panel",
+    "label": "NEW MAIN SWITCHBOARD 1250A, 50kA, FORM 4 TYPE 6",
+    "location": "Inlet Works Switchroom",
+    "byOthers": false
+   },
+   {
+    "tag": "MCC-01",
+    "type": "panel",
+    "label": "INLET MCC 400A FORM 4b",
+    "location": "Inlet Works Switchroom",
+    "byOthers": false
+   },
+   {
+    "tag": "DB-01",
+    "type": "panel",
+    "label": "SMALL POWER & LIGHTING DB 100A",
+    "location": "Inlet Works Switchroom",
+    "byOthers": false
+   },
+   {
+    "tag": "UPS-01",
+    "type": "device",
+    "label": "UPS 10kVA",
+    "location": "Inlet Works Switchroom",
+    "byOthers": false
+   },
+   {
+    "tag": "DB-02",
+    "type": "panel",
+    "label": "UPS DB 32A",
+    "location": "Inlet Works Switchroom",
+    "byOthers": false
+   },
+   {
+    "tag": "SPARE-1",
+    "type": "device",
+    "label": "SPARE WAY 250A",
+    "location": "Inlet Works Switchroom",
+    "byOthers": false
+   },
+   {
+    "tag": "SPARE-2",
+    "type": "device",
+    "label": "SPARE WAY 100A",
+    "location": "Inlet Works Switchroom",
+    "byOthers": false
+   },
+   {
+    "tag": "M-201",
+    "type": "device",
+    "label": "INLET SCREEN 1 MOTOR 22kW SOFT",
+    "location": "Inlet Screen House",
+    "byOthers": false
+   },
+   {
+    "tag": "M-202",
+    "type": "device",
+    "label": "INLET SCREEN 2 MOTOR 22kW SOFT",
+    "location": "Inlet Screen House",
+    "byOthers": false
+   },
+   {
+    "tag": "M-203",
+    "type": "device",
+    "label": "SCREENINGS WASHER 11kW VSD",
+    "location": "Inlet Screen House",
+    "byOthers": false
+   },
+   {
+    "tag": "M-204",
+    "type": "device",
+    "label": "GRIT CLASSIFIER 4kW DOL",
+    "location": "Grit Plant",
+    "byOthers": false
+   },
+   {
+    "tag": "M-205",
+    "type": "device",
+    "label": "GRIT PUMP 5.5kW DOL",
+    "location": "Grit Plant",
+    "byOthers": false
+   },
+   {
+    "tag": "M-206",
+    "type": "device",
+    "label": "GRIT BLOWER 3kW DOL",
+    "location": "Grit Plant",
+    "byOthers": false
+   },
+   {
+    "tag": "LCP-201",
+    "type": "device",
+    "label": "SCREEN 1 LOCAL CONTROL PANEL",
+    "location": "Inlet Screen House",
+    "byOthers": false
+   },
+   {
+    "tag": "LCP-202",
+    "type": "device",
+    "label": "SCREEN 2 LOCAL CONTROL PANEL",
+    "location": "Inlet Screen House",
+    "byOthers": false
+   },
+   {
+    "tag": "JB-201",
+    "type": "jb",
+    "label": "INSTRUMENT JUNCTION BOX",
+    "location": "Inlet Screen House",
+    "byOthers": false
+   },
+   {
+    "tag": "LT-201",
+    "type": "device",
+    "label": "INLET CHANNEL ULTRASONIC LEVEL 4-20mA",
+    "location": "Inlet Channel",
+    "byOthers": false
+   },
+   {
+    "tag": "LT-202",
+    "type": "device",
+    "label": "DOWNSTREAM LEVEL (DIFFERENTIAL)",
+    "location": "Inlet Channel",
+    "byOthers": false
+   },
+   {
+    "tag": "FT-201",
+    "type": "device",
+    "label": "INLET FLOW METER 4-20mA",
+    "location": "Inlet Channel",
+    "byOthers": false
+   },
+   {
+    "tag": "ZS-201",
+    "type": "device",
+    "label": "SCREEN 1 HIGH LEVEL FLOAT",
+    "location": "Inlet Screen House",
+    "byOthers": false
+   },
+   {
+    "tag": "PT-201",
+    "type": "device",
+    "label": "GRIT PUMP DISCHARGE PRESSURE",
+    "location": "Grit Plant",
+    "byOthers": false
+   },
+   {
+    "tag": "MET",
+    "type": "device",
+    "label": "MAIN EARTH TERMINAL",
+    "location": "Inlet Works Switchroom",
+    "byOthers": false
+   }
+  ],
+  "cables": [
+   {
+    "no": "C-001",
+    "from": "RMU-01",
+    "to": "TX-01",
+    "type": "XLPE/AWA/PVC 6.35/11kV",
+    "cores": "3C",
+    "size": "95",
+    "length": "12"
+   },
+   {
+    "no": "C-002",
+    "from": "TX-01",
+    "to": "MSB-01",
+    "type": "XLPE/SWA/LSZH 600/1000V",
+    "cores": "4C",
+    "size": "300",
+    "length": "18"
+   },
+   {
+    "no": "C-003",
+    "from": "GEN-01",
+    "to": "MSB-01",
+    "type": "XLPE/SWA/LSZH 600/1000V",
+    "cores": "4C",
+    "size": "240",
+    "length": "35"
+   },
+   {
+    "no": "C-004",
+    "from": "MSB-01",
+    "to": "MCC-01",
+    "type": "XLPE/SWA/LSZH 600/1000V",
+    "cores": "4C",
+    "size": "185",
+    "length": "6"
+   },
+   {
+    "no": "C-005",
+    "from": "MSB-01",
+    "to": "DB-01",
+    "type": "XLPE/SWA/LSZH 600/1000V",
+    "cores": "4C",
+    "size": "25",
+    "length": "5"
+   },
+   {
+    "no": "C-006",
+    "from": "MSB-01",
+    "to": "UPS-01",
+    "type": "XLPE/SWA/LSZH 600/1000V",
+    "cores": "4C",
+    "size": "10",
+    "length": "4"
+   },
+   {
+    "no": "C-007",
+    "from": "UPS-01",
+    "to": "DB-02",
+    "type": "XLPE/SWA/LSZH 600/1000V",
+    "cores": "4C",
+    "size": "6",
+    "length": "3"
+   },
+   {
+    "no": "C-008",
+    "from": "MSB-01",
+    "to": "SPARE-1",
+    "type": "-",
+    "cores": "-",
+    "size": "-",
+    "length": "-"
+   },
+   {
+    "no": "C-009",
+    "from": "MSB-01",
+    "to": "SPARE-2",
+    "type": "-",
+    "cores": "-",
+    "size": "-",
+    "length": "-"
+   },
+   {
+    "no": "C-011",
+    "from": "MCC-01",
+    "to": "M-201",
+    "type": "XLPE/SWA/LSZH 600/1000V",
+    "cores": "4C",
+    "size": "25",
+    "length": "85"
+   },
+   {
+    "no": "C-012",
+    "from": "MCC-01",
+    "to": "M-202",
+    "type": "XLPE/SWA/LSZH 600/1000V",
+    "cores": "4C",
+    "size": "25",
+    "length": "88"
+   },
+   {
+    "no": "C-013",
+    "from": "MCC-01",
+    "to": "M-203",
+    "type": "SWA/LSZH VSD SCREENED 600/1000V",
+    "cores": "4C",
+    "size": "16",
+    "length": "90"
+   },
+   {
+    "no": "C-014",
+    "from": "MCC-01",
+    "to": "M-204",
+    "type": "XLPE/SWA/LSZH 600/1000V",
+    "cores": "4C",
+    "size": "6",
+    "length": "120"
+   },
+   {
+    "no": "C-015",
+    "from": "MCC-01",
+    "to": "M-205",
+    "type": "XLPE/SWA/LSZH 600/1000V",
+    "cores": "4C",
+    "size": "6",
+    "length": "125"
+   },
+   {
+    "no": "C-016",
+    "from": "MCC-01",
+    "to": "LCP-201",
+    "type": "XLPE/SWA/LSZH 600/1000V",
+    "cores": "12C",
+    "size": "1.5",
+    "length": "85"
+   },
+   {
+    "no": "C-017",
+    "from": "MCC-01",
+    "to": "LCP-202",
+    "type": "XLPE/SWA/LSZH 600/1000V",
+    "cores": "12C",
+    "size": "1.5",
+    "length": "88"
+   },
+   {
+    "no": "C-021",
+    "from": "MCC-01",
+    "to": "JB-201",
+    "type": "INST PVC/SWA/PVC OS 300/500V",
+    "cores": "10PR",
+    "size": "1.0",
+    "length": "85"
+   },
+   {
+    "no": "C-022",
+    "from": "JB-201",
+    "to": "LT-201",
+    "type": "INST PVC/SWA/PVC OS 300/500V",
+    "cores": "2PR",
+    "size": "1.0",
+    "length": "15"
+   },
+   {
+    "no": "C-023",
+    "from": "JB-201",
+    "to": "LT-202",
+    "type": "INST PVC/SWA/PVC OS 300/500V",
+    "cores": "2PR",
+    "size": "1.0",
+    "length": "18"
+   },
+   {
+    "no": "C-024",
+    "from": "JB-201",
+    "to": "FT-201",
+    "type": "INST PVC/SWA/PVC OS 300/500V",
+    "cores": "2PR",
+    "size": "1.0",
+    "length": "22"
+   },
+   {
+    "no": "C-025",
+    "from": "JB-201",
+    "to": "ZS-201",
+    "type": "INST PVC/SWA/PVC OS 300/500V",
+    "cores": "2PR",
+    "size": "1.0",
+    "length": "6"
+   },
+   {
+    "no": "C-026",
+    "from": "MCC-01",
+    "to": "PT-201",
+    "type": "INST PVC/SWA/PVC OS 300/500V",
+    "cores": "2PR",
+    "size": "1.0",
+    "length": "122"
+   },
+   {
+    "no": "C-031",
+    "from": "MSB-01",
+    "to": "MET",
+    "type": "LSZH 450/750V",
+    "cores": "1C",
+    "size": "120",
+    "length": "4"
+   },
+   {
+    "no": "C-032",
+    "from": "TX-01",
+    "to": "MET",
+    "type": "LSZH 450/750V",
+    "cores": "1C",
+    "size": "120",
+    "length": "20"
+   },
+   {
+    "no": "C-033",
+    "from": "GEN-01",
+    "to": "MET",
+    "type": "LSZH 450/750V",
+    "cores": "1C",
+    "size": "70",
+    "length": "36"
+   },
+   {
+    "no": "C-041",
+    "from": "MCC-01",
+    "to": "MSB-01",
+    "type": "XLPE/SWA/LSZH 600/1000V",
+    "cores": "12C",
+    "size": "1.5",
+    "length": "6"
+   },
+   {
+    "no": "TBC",
+    "from": "MCC-01",
+    "to": "M-206",
+    "type": "XLPE/SWA/LSZH 600/1000V",
+    "cores": "4C",
+    "size": "4",
+    "length": "118"
+   }
+  ],
+  "notes": [
+   "A"
+  ]
+ },
+ "sheets": [
+  {
+   "sheet": "CS",
+   "rows": [
+    {
+     "c": [
+      "Cable No",
+      "From",
+      "From Location",
+      "To",
+      "To Location",
+      "Cable Type",
+      "Voltage",
+      "Cores",
+      "CSA (mm²)",
+      "Length (m)"
+     ],
+     "st": []
+    },
+    {
+     "c": [
+      "C-001",
+      "RMU-01",
+      "HV Compound",
+      "TX-01",
+      "HV Compound",
+      "XLPE/AWA/PVC",
+      "6.35/11kV",
+      "3C",
+      "95",
+      "12"
+     ],
+     "st": []
+    },
+    {
+     "c": [
+      "C-002",
+      "TX-01",
+      "HV Compound",
+      "MSB-01",
+      "Inlet Works Switchroom",
+      "XLPE/SWA/LSZH",
+      "600/1000V",
+      "4C",
+      "300",
+      "18"
+     ],
+     "st": []
+    },
+    {
+     "c": [
+      "C-003",
+      "GEN-01",
+      "Generator Enclosure",
+      "MSB-01",
+      "Inlet Works Switchroom",
+      "XLPE/SWA/LSZH",
+      "600/1000V",
+      "4C",
+      "240",
+      "35"
+     ],
+     "st": []
+    },
+    {
+     "c": [
+      "C-004",
+      "MSB-01",
+      "Inlet Works Switchroom",
+      "MCC-01",
+      "Inlet Works Switchroom",
+      "XLPE/SWA/LSZH",
+      "600/1000V",
+      "4C",
+      "185",
+      "6"
+     ],
+     "st": []
+    },
+    {
+     "c": [
+      "C-005",
+      "MSB-01",
+      "Inlet Works Switchroom",
+      "DB-01",
+      "Inlet Works Switchroom",
+      "XLPE/SWA/LSZH",
+      "600/1000V",
+      "4C",
+      "25",
+      "5"
+     ],
+     "st": []
+    },
+    {
+     "c": [
+      "C-006",
+      "MSB-01",
+      "Inlet Works Switchroom",
+      "UPS-01",
+      "Inlet Works Switchroom",
+      "XLPE/SWA/LSZH",
+      "600/1000V",
+      "4C",
+      "10",
+      "4"
+     ],
+     "st": []
+    },
+    {
+     "c": [
+      "C-007",
+      "UPS-01",
+      "Inlet Works Switchroom",
+      "DB-02",
+      "Inlet Works Switchroom",
+      "XLPE/SWA/LSZH",
+      "600/1000V",
+      "4C",
+      "6",
+      "3"
+     ],
+     "st": []
+    },
+    {
+     "c": [
+      "C-008",
+      "MSB-01",
+      "Inlet Works Switchroom",
+      "SPARE-1",
+      "Inlet Works Switchroom",
+      "",
+      "-",
+      "-",
+      "-",
+      "-"
+     ],
+     "st": []
+    },
+    {
+     "c": [
+      "C-009",
+      "MSB-01",
+      "Inlet Works Switchroom",
+      "SPARE-2",
+      "Inlet Works Switchroom",
+      "",
+      "-",
+      "-",
+      "-",
+      "-"
+     ],
+     "st": []
+    },
+    {
+     "c": [
+      "C-011",
+      "MCC-01",
+      "Inlet Works Switchroom",
+      "M-201",
+      "Inlet Screen House",
+      "XLPE/SWA/LSZH",
+      "600/1000V",
+      "4C",
+      "25",
+      "85"
+     ],
+     "st": []
+    },
+    {
+     "c": [
+      "C-012",
+      "MCC-01",
+      "Inlet Works Switchroom",
+      "M-202",
+      "Inlet Screen House",
+      "XLPE/SWA/LSZH",
+      "600/1000V",
+      "4C",
+      "25",
+      "88"
+     ],
+     "st": []
+    },
+    {
+     "c": [
+      "C-013",
+      "MCC-01",
+      "Inlet Works Switchroom",
+      "M-203",
+      "Inlet Screen House",
+      "SWA/LSZH VSD SCREENED",
+      "600/1000V",
+      "4C",
+      "16",
+      "90"
+     ],
+     "st": []
+    },
+    {
+     "c": [
+      "C-014",
+      "MCC-01",
+      "Inlet Works Switchroom",
+      "M-204",
+      "Grit Plant",
+      "XLPE/SWA/LSZH",
+      "600/1000V",
+      "4C",
+      "6",
+      "120"
+     ],
+     "st": []
+    },
+    {
+     "c": [
+      "C-015",
+      "MCC-01",
+      "Inlet Works Switchroom",
+      "M-205",
+      "Grit Plant",
+      "XLPE/SWA/LSZH",
+      "600/1000V",
+      "4C",
+      "6",
+      "125"
+     ],
+     "st": []
+    },
+    {
+     "c": [
+      "C-016",
+      "MCC-01",
+      "Inlet Works Switchroom",
+      "LCP-201",
+      "Inlet Screen House",
+      "XLPE/SWA/LSZH",
+      "600/1000V",
+      "12C",
+      "1.5",
+      "85"
+     ],
+     "st": []
+    },
+    {
+     "c": [
+      "C-017",
+      "MCC-01",
+      "Inlet Works Switchroom",
+      "LCP-202",
+      "Inlet Screen House",
+      "XLPE/SWA/LSZH",
+      "600/1000V",
+      "12C",
+      "1.5",
+      "88"
+     ],
+     "st": []
+    },
+    {
+     "c": [
+      "C-021",
+      "MCC-01",
+      "Inlet Works Switchroom",
+      "JB-201",
+      "Inlet Screen House",
+      "INST PVC/SWA/PVC OS",
+      "300/500V",
+      "10PR",
+      "1.0",
+      "85"
+     ],
+     "st": []
+    },
+    {
+     "c": [
+      "C-022",
+      "JB-201",
+      "Inlet Screen House",
+      "LT-201",
+      "Inlet Channel",
+      "INST PVC/SWA/PVC OS",
+      "300/500V",
+      "2PR",
+      "1.0",
+      "15"
+     ],
+     "st": []
+    },
+    {
+     "c": [
+      "C-023",
+      "JB-201",
+      "Inlet Screen House",
+      "LT-202",
+      "Inlet Channel",
+      "INST PVC/SWA/PVC OS",
+      "300/500V",
+      "2PR",
+      "1.0",
+      "18"
+     ],
+     "st": []
+    },
+    {
+     "c": [
+      "C-024",
+      "JB-201",
+      "Inlet Screen House",
+      "FT-201",
+      "Inlet Channel",
+      "INST PVC/SWA/PVC OS",
+      "300/500V",
+      "2PR",
+      "1.0",
+      "22"
+     ],
+     "st": []
+    },
+    {
+     "c": [
+      "C-025",
+      "JB-201",
+      "Inlet Screen House",
+      "ZS-201",
+      "Inlet Screen House",
+      "INST PVC/SWA/PVC OS",
+      "300/500V",
+      "2PR",
+      "1.0",
+      "6"
+     ],
+     "st": []
+    },
+    {
+     "c": [
+      "C-026",
+      "MCC-01",
+      "Inlet Works Switchroom",
+      "PT-201",
+      "Grit Plant",
+      "INST PVC/SWA/PVC OS",
+      "300/500V",
+      "2PR",
+      "1.0",
+      "122"
+     ],
+     "st": []
+    },
+    {
+     "c": [
+      "C-031",
+      "MSB-01",
+      "Inlet Works Switchroom",
+      "MET",
+      "Inlet Works Switchroom",
+      "LSZH",
+      "450/750V",
+      "1C",
+      "120",
+      "4"
+     ],
+     "st": []
+    },
+    {
+     "c": [
+      "C-032",
+      "TX-01",
+      "HV Compound",
+      "MET",
+      "Inlet Works Switchroom",
+      "LSZH",
+      "450/750V",
+      "1C",
+      "120",
+      "20"
+     ],
+     "st": []
+    },
+    {
+     "c": [
+      "C-033",
+      "GEN-01",
+      "Generator Enclosure",
+      "MET",
+      "Inlet Works Switchroom",
+      "LSZH",
+      "450/750V",
+      "1C",
+      "70",
+      "36"
+     ],
+     "st": []
+    },
+    {
+     "c": [
+      "C-041",
+      "MCC-01",
+      "Inlet Works Switchroom",
+      "MSB-01",
+      "Inlet Works Switchroom",
+      "XLPE/SWA/LSZH",
+      "600/1000V",
+      "12C",
+      "1.5",
+      "6"
+     ],
+     "st": []
+    },
+    {
+     "c": [
+      "TBC",
+      "MCC-01",
+      "Inlet Works Switchroom",
+      "M-206",
+      "Grit Plant",
+      "XLPE/SWA/LSZH",
+      "600/1000V",
+      "4C",
+      "4",
+      "118"
+     ],
+     "st": []
+    }
+   ]
+  }
+ ]
+}

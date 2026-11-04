@@ -115,6 +115,7 @@ function drawChain(chain, x, y) {
       else prims.push({ t: 'mtext', x: x + sym.w + 2, y: y - 1.8, w: LABEL_W, h: TH, text: label.join('\n'), attach: 1, layer: 'SLD-TEXT' });
     }
     if (col) for (let i = from0; i < prims.length; i++) prims[i] = { ...prims[i], colour: col };
+    if (item.enclosure) for (let i = from0; i < prims.length; i++) prims[i] = { ...prims[i], _enc: String(item.enclosure).toUpperCase().trim() };   // which room this item is in (boxed by the caller)
     const labelBottom = !label.length || sym.inside ? y : sym.end && UNDER.has(kind) ? y - sym.len - 1 - label.length * LINE : y - 1.8 - label.length * LINE;
     y -= sym.len;
     if (sym.end) return { y: Math.min(y, labelBottom - 0.5), prims, ended: true };
@@ -260,6 +261,12 @@ function drawBoard(b, x0, y, prims, top, over = null) {
     const h = chainHeight(c.chain);
     if (c.label) { const tl = wrap(c.label, 40); prims.push({ t: 'mtext', x: ix - 20, y: y + h + 3 + tl.length * LINE, w: 40, h: TH, text: tl.join('\n'), attach: 1, layer: 'SLD-TEXT' }); maxY = Math.max(maxY, y + h + 3 + tl.length * LINE); }
     const r = drawChain(c.chain, ix, y + h); prims.push(...r.prims); maxY = Math.max(maxY, y + h);
+    // the items of an incomer that sit in another room (RMU and transformer in the HV compound, the generator in its enclosure): a dashed box
+    // round each room's run, named above it, so every room on the drawing is shown the same way
+    const own = String(b.enclosure || '').toUpperCase().trim(), rooms = [...new Set(r.prims.map(p => p._enc).filter(e => e && e !== own))];
+    for (const e of rooms) { const bb = primsBounds(r.prims.filter(p => p._enc === e)); if (!Number.isFinite(bb.x0)) continue;
+      const m = 5, x0 = bb.x0 - m, x1 = Math.max(bb.x1 + m, x0 + 30), y0 = bb.y0 - m, y1 = bb.y1 + m;
+      dashBox(prims, x0, y0, x1, y1, 'SLD-ENCLOSURE'); prims.push({ t: 'text', x: x0, y: y1 + 1.5, h: TH, text: e, layer: 'SLD-TEXT' }); maxY = Math.max(maxY, y1 + 1.5 + TH); }
   });
   // the busbar spans its own feeders and incomers only
   const xs = [...fxs, ...ixs], busL = xs.length ? Math.min(...xs) - 8 : x0, busR = Math.max(xs.length ? Math.max(...xs) + 14 : x0 + 30, busL + 30);
@@ -270,9 +277,9 @@ function drawBoard(b, x0, y, prims, top, over = null) {
       prims.push({ t: 'text', x: e0, y: y - EARTH_BAR + 1.6, h: TH, text: `${tag ? tag + ' ' : ''}EARTH BAR`.toUpperCase(), layer: 'SLD-TEXT' }); } }
   // a board fed from a feeder: its name above the right-hand end of its busbar, kept clear of the feeders drawn over it
   if (!top && over && b.label) {
-    const bl = wrap(b.label, 44), h = bl.length * LINE, clearX = Math.max(busL + 10, ...over.map(e => e.x1 + 3)), w = Math.min(44, Math.max(30, busR - clearX));
+    const bl = wrap(b.label, 44), clearX = Math.max(busL + 10, ...over.map(e => e.x1 + 3)), w = Math.min(44, Math.max(30, busR - clearX)), bw = wrap(b.label, w), h = bw.length * LINE;   // height from the lines as they will be drawn at that width
     const room = over.every(e => e.x1 + 2 < busR - w || e.y0 > y + h + 2 + 2);
-    if (room) prims.push({ t: 'mtext', x: busR, y: y + 1.5 + h, w, h: TH, text: wrap(b.label, w).join('\n'), attach: 3, layer: 'SLD-TEXT' });
+    if (room) prims.push({ t: 'mtext', x: busR, y: y + 1.5 + h, w, h: TH, text: bw.join('\n'), attach: 3, layer: 'SLD-TEXT' });
     else prims.push({ t: 'mtext', x: busR + 3, y: y + h / 2, w: 44, h: TH, text: bl.join('\n'), attach: 4, layer: 'SLD-TEXT' });   // no room above: past the right end
     maxY = Math.max(maxY, y + 2 + h);
   }
@@ -378,6 +385,14 @@ function layoutSld(spec, opts = {}) {
   if (PHASED && spec.phase && !/\bphase\b/i.test(spec.title || '')) spec.title = `${spec.title || ''} - PHASE ${String(spec.phase).replace(/^phase\s*/i, '')}`.trim();
   const prims = [], boards = spec.boards || spec.busbars || [];
   if (!boards.length) throw new Error('The drawing has no boards');
+  // two sources written as one incomer (transformer ... then a generator ... down to the bus): split at each source into its own incomer
+  { const SRC = new Set(['supply', 'generator']);
+    const splitInc = (b) => { if (!b) return; const out = [];
+      for (const c of b.incomers || []) { const items = c.chain || []; const starts = items.map((it, i) => !it.gap && !it.board && SRC.has(symbolOf(it.symbol)) ? i : -1).filter(i => i > 0);
+        if (!starts.length) { out.push(c); continue; }
+        let from = 0; for (const i of [...starts, items.length]) { if (i > from) out.push({ ...c, label: from === 0 ? c.label : '', chain: items.slice(from, i) }); from = i; } }
+      b.incomers = out; for (const f of b.feeders || []) for (const it of f.chain || []) if (it.board) splitInc(it.board); };
+    boards.forEach(splitInc); }
   // an SLD is the power circuits: control and instrument cables (local stations, transmitters, e-stops, pair cables) hung off a
   // busbar with no protective device are taken off (they are on the BCD), with the note saying so
   { const PROT = new Set(['breaker', 'isolator', 'switchfuse', 'fuse', 'contactor', 'link', 'ups', 'vsd', 'dol', 'softstarter']), dropped = [];
@@ -599,7 +614,7 @@ function fromSchedule(spec, sheets) {
   // SLD: each board, and each load at the end of a feeder, in its room from the schedule (so every room is boxed the same way)
   const tagOfL = (t) => key(String(t || '').split(/\n|\\n|\s/)[0]);
   const sldWalk = (b) => { if (!b) return; const l = locs.get(tagOfL(b.label)); if (l && String(b.enclosure || '').toUpperCase() !== l.toUpperCase()) { changed.push(`${tagOfL(b.label)} room: ${norm(b.enclosure) || '(none)'} -> ${l}`); b.enclosure = l; }
-    for (const f of [...(b.incomers || []), ...(b.feeders || [])]) for (const it of f.chain || []) { if (it.board) sldWalk(it.board); else if (it.label && !it.gap) { const li = locs.get(tagOfL(it.label)); if (li) it.enclosure = li; } } };
+    for (const f of [...(b.incomers || []), ...(b.feeders || [])]) for (const it of f.chain || []) { if (it.board) sldWalk(it.board); else if (it.label && !it.gap && ['supply', 'generator', 'transformer', 'load', 'motor', 'ups', 'earth', 'electrode', 'pfc', 'spd', 'grid'].includes(symbolOf(it.symbol))) { const li = locs.get(tagOfL(it.label)); if (li) it.enclosure = li; } } };
   (spec.boards || spec.busbars || []).forEach(sldWalk);
   // every spare way on the schedule is shown on its board (a breaker and SPARE), struck through or not: the client wants to see them
   if (spec.boards || spec.busbars) {
@@ -824,7 +839,8 @@ const sheetRows = (B) => B ? Math.floor((B.box.y1 - B.box.y0 - 20) / 22) : 10;  
 function isPowerBcd(spec, model) {
   if (spec.layout === 'power') return true; if (spec.layout === 'instrument') return false;
   const nodes = [...model.nodes.values()];
-  if (nodes.some(n => /^(rio|jb)$/i.test(n.type || ''))) return false;
+  if (nodes.some(n => /^rio$/i.test(n.type || ''))) return false;   // RIO racks: the instrument (National Grid style) layout
+  // a junction box alone does not make it an instrument drawing: a power BCD can carry a JB with its instruments hung off it
   const instr = (c) => /BS\s?5308|instrument|\bpairs?\b|\bCY\b|\b\d+\s?P\b|screened\s+pair/i.test(`${c.type || ''} ${c.cores || ''}`);
   const power = (c) => /SWA|XLPE|LSZH|\bkV\b|G\/Y|\d+\s?C\b/i.test(`${c.type || ''} ${c.cores || ''}`) || /^\d+$/.test(String(c.cores || '').trim());
   const p = model.cables.filter(c => power(c) && !instr(c)).length, i = model.cables.filter(instr).length;
@@ -884,6 +900,9 @@ function layoutPanelBcd(spec, model, opts = {}) {
     const saved = spec._warnings, one = layoutPanelBcd(spec, model, { ...opts, _single: true });
     if (one) return one;
     spec._warnings = saved;
+    const tight = layoutPanelBcd(spec, model, { ...opts, _single: true, _tight: true });   // closed up before giving up on one sheet
+    if (tight) return tight;
+    spec._warnings = saved;
   }
   if (!opts._dry && !opts._single) {
     const saved = spec._warnings, on = layoutPanelBcd(spec, model, { ...opts, _dry: true }); spec._warnings = saved;
@@ -893,7 +912,7 @@ function layoutPanelBcd(spec, model, opts = {}) {
     }
   }
   const drawnOn = new Map(); let curSi = 0;
-  const { nodes, cables } = model, H = 2.5, LH = H * 1.7, wrapH = (t, w) => wrap(t, w * TH / (H * HOUSE_WF)), CP = 25, MOTOR_R = 12.5, BOX_H = 16, DESC_W = 40, COL_MIN = 54;
+  const { nodes, cables } = model, H = 2.5, LH = H * 1.7, wrapH = (t, w) => wrap(t, w * TH / (H * HOUSE_WF)), CP = 25, MOTOR_R = 12.5, BOX_H = 16, DESC_W = 40, COL_MIN = opts._tight ? 46 : 54;   // tight: columns closed up so a big job still goes on one A0
   const warn = (m) => { spec._warnings = [...(spec._warnings || []), m]; };
   const loc = (t) => String((nodes.get(t) || {}).location || '').toUpperCase().replace(/\s+/g, ' ').trim();
   const hasAreas = [...nodes.values()].some(n => n.location);
@@ -907,7 +926,10 @@ function layoutPanelBcd(spec, model, opts = {}) {
   const isPanel = (t) => new Set(outs(t).map(c => c.to)).size >= 2;
   let panels = firstSeen.filter(isPanel);
   if (!panels.length) panels = [firstSeen.find(t => outs(t).length) || firstSeen[0]];
-  if (opts._single) panels = [panels[0]];   // one sheet: everything hangs off the main panel
+  // one sheet: everything hangs off the main panel: the board (not a transformer or a JB) with the most cables downstream of it
+  if (opts._single) { const reach = (t, seen = new Set()) => { if (seen.has(t)) return 0; seen.add(t); return outs(t).reduce((n, c) => n + 1 + reach(c.to, seen), 0); };
+    const boardy = panels.filter(t => !/^(device|jb|motor|rio)$/i.test((nodes.get(t) || {}).type || '') || /\b(MSB|SWB|MCC|DB|PSB|LVB|BOARD|PANEL)\b/i.test(t + ' ' + ((nodes.get(t) || {}).label || '')));
+    const cands = boardy.length ? boardy : panels; panels = [[...cands].sort((a, b) => reach(b) - reach(a) || panels.indexOf(a) - panels.indexOf(b))[0]]; }
   const sheetOf = (t) => panels.indexOf(t);
   const isMotor = (t) => { const n = nodes.get(t) || {}; return /^M[-_]/i.test(t) || /\bmotor\b|\bpump\b|\bfan\b|\bdrive motor\b/i.test(n.label || '') && !/control|isolator|starter|panel|board|centre|center|\bMCC\b|switch/i.test(n.label || '') && !isPanel(t); };
   const label = (t) => { const n = nodes.get(t) || {}, T = String(t).toUpperCase(); let l = units(String(n.label || '').toUpperCase()).trim(); if (l.startsWith(T)) l = l.slice(T.length).replace(/^[\s,:\-–]+/, ''); return l; };   // the tag is drawn already: never twice
@@ -947,8 +969,9 @@ function layoutPanelBcd(spec, model, opts = {}) {
     // the trees: down (what P feeds) and up (what feeds P). On one sheet a cable to something already drawn in another branch
     // (e.g. DB-03 to FT-01, which hangs under MCC-01) ends at a short label naming where that item is shown; each cable is drawn once.
     const usedC = new Set(), placedBy = new Map([[PN, { by: '', dir: 0 }]]);
-    const kidsOf = (t, dir) => { const kids = [], list = (dir < 0 ? outs(t) : ins(t)).sort((a, b) => order.get(a) - order.get(b));
-      for (const c of list) { if (usedC.has(c)) continue; const o = dir < 0 ? c.to : c.from;
+    // going up, a device's other cables (a transformer's star point earth to the MET, a generator's earth) go with it too, so none is left off
+    const kidsOf = (t, dir) => { const kids = [], list = (dir < 0 ? outs(t) : [...ins(t), ...outs(t).filter(c => c.to !== PN)]).sort((a, b) => order.get(a) - order.get(b));
+      for (const c of list) { if (usedC.has(c)) continue; const o = c.from === t ? c.to : c.from;
         let k = kids.find(x => x.tag === o);
         if (!k) {
           if (placedHere.has(o)) { if (!opts._single) continue; k = { tag: o, ref: true, link: true, cables: [], kids: [] }; }
@@ -979,7 +1002,7 @@ function layoutPanelBcd(spec, model, opts = {}) {
     items.push(panelItem); rows.push([panelItem]);
     // one cable: its line now, its text once the area boxes are known (centred in the clear part of its run)
     const cableRun = (c, pts, lx) => { prims.push(P(pts, false, 'BCD-CABLE')); pending.push({ c, lx, ya: pts[0][1], yb: pts[1][1] }); drawn.add(c); allDrawn.add(c); };
-    const refText = (k, dir) => { const pb = placedBy.get(k.tag) || {}; return [`${dir < 0 ? 'TO' : 'FROM'} ${[k.tag, shortName(k.tag)].filter(Boolean).join(' ')}`, pb.by ? `(SHOWN ${pb.dir < 0 ? 'UNDER' : 'ABOVE'} ${pb.by})` : '(SHOWN ABOVE)'].join('\n'); };
+    const refText = (k, dir) => { const pb = placedBy.get(k.tag) || {}, toIt = (k.cables || []).some(c => c.to === k.tag); return [`${(k.cables && k.cables.length ? toIt : dir < 0) ? 'TO' : 'FROM'} ${[k.tag, shortName(k.tag)].filter(Boolean).join(' ')}`, pb.by ? `(SHOWN ${pb.dir < 0 ? 'UNDER' : 'ABOVE'} ${pb.by})` : '(SHOWN ABOVE)'].join('\n'); };
     const linkText = (k, dir) => k.ref ? refText(k, dir) : [dir < 0 ? 'LINK TO' : 'SUPPLY FROM', [k.tag, shortName(k.tag)].filter(Boolean).join(' '), `SEE SHEET ${sheetOf(k.tag) + 1}`].join('\n');
     // a device (or a link label) whose near edge is at yEdge (top when going down, bottom when going up), centred at cx.
     // Returns where each of its cables lands, and where cables going on past it leave from.
@@ -1146,7 +1169,7 @@ function layoutPanelBcd(spec, model, opts = {}) {
   const framed = sheets.map((sh, i) => {
     const bb = primsBounds(sh.prims), key = opts.border && opts.border.geo ? opts.border : String(opts.border || 'atomax');
     let B = opts.noTitle ? null : borderOf(key, bb.x1 - bb.x0, bb.y1 - bb.y0);
-    if (opts._single && B && !(opts.border && opts.border.geo)) { const big = FAMILY[`${B.company}-A0`] || B; if (!placeIn(big, sh.prims, bb)) return null; }
+    if (opts._single && B && !(opts.border && opts.border.geo)) { const big = FAMILY[`${B.company}-A0`] || B; if (!placeIn(big, sh.prims, bb)) { if (process.env.AMO_DEBUG) console.error('single sheet: does not fit', big.page, 'needs', Math.round(bb.x1 - bb.x0), 'x', Math.round(bb.y1 - bb.y0), 'box', big.box); return null; } }
     // the smallest sheet the drawing AND its notes fit
     if (B && !(opts.border && opts.border.geo) && !/-A\d$/.test(key) && FAMILY[`${B.company}-A0`]) for (const sz of SIZES) { const Cb = FAMILY[`${B.company}-${sz}`]; if (Cb && placeIn(Cb, sh.prims, bb) && notesFit(Cb, spec)) { B = Cb; break; } }
     const sspec = opts._single ? spec : { ...spec, title: [baseTitle[0] || 'BLOCK CABLE DIAGRAM', ...baseTitle.slice(1, 2), [sh.P, shortName(sh.P)].filter(Boolean).join(' '), sheets.length > 1 ? `SHEET ${i + 1}` : ''].filter(Boolean).join('\n') };
@@ -1373,7 +1396,7 @@ You can make two kinds of drawing, both described the same way:
 - "sld": single line diagrams.
 - "earthing": earthing schematics / earthing design drawings. The "board" is the main earth bar (MET) or an earth bar, its feeders are the earth conductors and bonds (use "cable" for the conductor, labelled with its size and type) ending at what they earth: the equipment ("board", e.g. transformer, inverter, BESS, switchgear, fence), an earth rod ("electrode") or the earth mesh ("grid"); use "link" for disconnecting / test links. Put fault levels and earth fault currents from the documents in the notes. Conductor sizes come from the documents or the engineer; if they are not given, write TBC and say in the notes that they need sizing against the earth fault current (adiabatic check) and that soil resistivity is needed for the electrode / mesh design.
 Describe them as boards (busbars), joined into ONE connected diagram: when a feeder supplies another board (e.g. MV SWB > CBL-2 > RMU-WTG2, or a transformer feeding an LV board), put that board as the LAST item of the feeder's chain as {"board": {"label": "...", "feeders": [...]}}; it is drawn underneath, joined by the feeder. Only boards with nothing above them are top-level boards. Do not repeat a name: the feeder "label" is only for something the end item does not already say (leave it out otherwise).
-In earthing drawings, nest earth bars the same way: the cable screen or earth conductor feeding another substation's earth bar ends with {"board": {...}}. If an engineer's technical note in the project files gives conductor sizes or electrode design, use those values (say "per <note name>" in the notes); otherwise sizes stay TBC. Each board has incomers (chains drawn above the busbar, ending on it) and feeders (chains drawn below it). A chain is a list of items from top to bottom, each { "symbol": one of supply, generator, transformer, breaker, isolator, switchfuse, fuse, contactor, ct, meter, ups, vsd (variable speed drive), dol (DOL starter), softstarter, cable, line, link, and as the LAST item of a feeder only: board, load, motor, earth, electrode, grid, spare, spd (surge protection device), pfc (power factor correction); "label": the text beside it }. Every spare way is shown on its board (a breaker, then a spare item labelled SPARE - EQUIPPED, OFF & LOCKED, with the breaker rating if given), even when its schedule row is struck through or someone says to ignore it; never write a note saying a spare is not shown. An SLD shows the power circuits only: control and instrument cables (local control stations, transmitters, e-stops, pair cables) are not drawn on it, they are on the BCD. A drive or starter is always its own item in the way (breaker, then vsd / dol / softstarter, then the isolator, then the motor), never just words in another item's label.
+In earthing drawings, nest earth bars the same way: the cable screen or earth conductor feeding another substation's earth bar ends with {"board": {...}}. If an engineer's technical note in the project files gives conductor sizes or electrode design, use those values (say "per <note name>" in the notes); otherwise sizes stay TBC. Each board has incomers (chains drawn above the busbar, ending on it) and feeders (chains drawn below it). A chain is a list of items from top to bottom, each { "symbol": one of supply, generator, transformer, breaker, isolator, switchfuse, fuse, contactor, ct, meter, ups, vsd (variable speed drive), dol (DOL starter), softstarter, cable, line, link, and as the LAST item of a feeder only: board, load, motor, earth, electrode, grid, spare, spd (surge protection device), pfc (power factor correction); "label": the text beside it }. Every spare way is shown on its board (a breaker, then a spare item labelled SPARE - EQUIPPED, OFF & LOCKED, with the breaker rating if given), even when its schedule row is struck through or someone says to ignore it; never write a note saying a spare is not shown. Each source is its own incomer: the transformer feed is one incomer chain and the standby generator another, never one chain running through both. An SLD shows the power circuits only: control and instrument cables (local control stations, transmitters, e-stops, pair cables) are not drawn on it, they are on the BCD. A drive or starter is always its own item in the way (breaker, then vsd / dol / softstarter, then the isolator, then the motor), never just words in another item's label.
 National Grid / BGEN SLD conventions (use them on every SLD): put the cable on the conductor as a "cable" item whose label is the cable text (e.g. "EXISTING CABLE" or "C01\\n4C 240mm² SWA"); it is drawn as a tag box with the text up the box. Give switching devices a "state" of "open" or "closed" when the drawing shows a switching arrangement or phase (drawn as "(OPEN)" / "(CLOSED)"). Only on a PHASE drawing (the works split into phases, one sheet per phase): give "phase": 1, 2, ... and give items a "status" of "new" (drawn green) or "removal" (drawn red) for what is new or removed AT THAT PHASE; everything else is existing (black, no status). The next phase's sheet is its own drawing with its own statuses (what was green in phase 1 is existing black in phase 2). Not a phase drawing: no status at all, everything is black. A board in a switchroom, kiosk or generator enclosure gets "enclosure": "EXISTING LVAC SWITCHROOM" (drawn as a dashed box named above it).
 Labels: short, exactly as an engineer would write them, using what the project files say (ratings, cable sizes, tags, board names). An unknown value is just TBC: never "SEE TQ" or an RFI number in a label (questions go in "queries"). Every cable on the schedule between items on the drawing is drawn as a cable, including earthing / neutral-earth conductors such as a transformer star point to the main earth bar: never put a cable only in a note. Give "enclosure" (the room name exactly as the equipment list writes it, e.g. "LV SWITCHROOM") to the main board AND to every board fed from it that is in the same room (an MCC, DBs): the app draws one room box round them all, with what feeds them from another place (transformer compound, generator enclosure, DNO) outside and the cables to other places crossing its wall. Earthing: an earth conductor (e.g. transformer star point to the main earth bar, main earth bar to the MET) is a feeder whose chain is just the cable then an "earth" item; the app hangs it off the board's own EARTH BAR, never the phase busbar. Write prospective fault current as "PROSPECTIVE FAULT 31.5kA" (never "PFC", which is power factor correction) and frequencies as 50Hz. Use a new line (\\n) between parts of a label, e.g. "Q1\\n630A TP MCCB". Do not invent ratings, cable sizes or tags that are not in the request or the files: if one is unknown write "TBC" in the label and list it in "notes".
 BCD ("bcd", block cable diagram): do NOT use boards. A spare on the schedule (a spare cable, or a spare way with a cable number) is drawn like any other cable, to its own device box (tag SPARE-1, SPARE-2 ..., label SPARE WAY plus its rating), even when its row is struck through or someone says to ignore it; never write a note saying a spare is not shown. Give "nodes" (every panel / RIO / MCC, junction box and field device, with "type" panel|rio|mcc|jb|device and a short "label" description exactly as written; the node "tag" is the equipment tag exactly as printed in the documents, and where a document gives only a description (no tag), use that description as the tag: never make up a tag) and "cables" (every cable: "no" exactly as printed, "from" and "to" node tags, "type" e.g. BS5308 / SWA / CY, "cores" e.g. 4C, or 2PR for pairs (power BCDs write pairs as PR, never P; an abbreviations note says "PR - PAIR"), "size" e.g. 0.5 or 1.5mm², "length" in metres exactly as the schedule gives it (number only, e.g. "55"; leave it out only when no document gives lengths), and "note" for interface cables such as "LINK TO X03-MCC SEE DWG ..."). Give every node its "location" exactly as the equipment list / schedule writes it (e.g. "HV Room", "Pump Hall", "Wet Well"): the app draws a dashed area box for each location. Anything the email or documents say is by others or outside our scope (e.g. DNO / ICP equipment and cables) gets "byOthers": true on the node and the cable: the app draws it outside the scope boundary. When the job context has an APPROVED MASTER DEVICE LIST, the BCD is exactly its cables and devices for the panels asked for: nothing added, nothing left out. The app lays the blocks out (panels left, JBs middle, devices right), draws each cable with its yellow cable box and splits long BCDs over sheets. For National Grid LVAC / power block diagrams (a supply chain: intake / RMU > joints > transformer > LV board > circuits, generators > distribution units) the app draws the chain left to right with every cable joined to both ends; also give "style":"ng", each node a "status" (energised, de-energised or new) and each cable a "status" (current = current supply cabling, new = new by BGEN, existing = existing by others).
