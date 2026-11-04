@@ -247,7 +247,7 @@ function drawBoard(b, x0, y, prims, top, over = null) {
   fs.forEach((f, i) => {
     const fx = fxs[i], { items, sub } = chainParts(f.chain);
     const from0 = prims.length, cloud = () => { if (f._cloud !== true || !REV) return; const bb = primsBounds(prims.slice(from0)); if (Number.isFinite(bb.x0)) revCloud(prims, bb, REV, 'SLD-REVISION'); };
-    if (!sub) { const d = drawSimple(f, fx, fy(f), prims); minY = Math.min(minY, d.yEnd); maxX = Math.max(maxX, ext[i].x1); cloud(); return; }
+    if (!sub) { const d = drawSimple(f, fx, fy(f), prims); if (ROOMLOG && f._inRoom) ROOMLOG.push({ lobe: true, x0: ext[i].x0, x1: ext[i].x1, y: Math.min(ext[i].y0, d.yEnd) }); minY = Math.min(minY, d.yEnd); maxX = Math.max(maxX, ext[i].x1); cloud(); return; }   // a feeder kept in its room: the room's wall steps down round it
     const inc = (sub.incomers || []).flatMap(c => c.chain || []);
     const r = drawChain([...items, ...inc], fx, y); prims.push(...r.prims); cloud();   // a changed feed to a sub-board: the feed clouded, not the board under it
     let yEnd = r.y;
@@ -356,11 +356,14 @@ function drawRoomed(b, x0, y, prims, top, over = null, feed = null) {   // feed:
         let n = 0; const tagged = { ...b, feeders: (b.feeders || []).map(f => { const chain = (f.chain || []).map(it => it.board && inRoom(it.board) ? { ...it, board: { ...it.board, _room: 'r' + (n++) } } : it); return { ...f, chain }; }) };
         SUBLOG = []; drawBoard(tagged, 0, 0, [], top); const at = new Map(SUBLOG.map(e => [e.id, e.y])); SUBLOG = null;
         const subsT = tagged.feeders.map(f => chainParts(f.chain).sub).filter(sb => sb && sb._room);
-        roomWalls = new Map(subsT.map(sb => [sb._room, subD(sb)]));
-        wall = Math.min(...subsT.map(sb => at.get(sb._room) - subD(sb) - 3));
+        // one cable level for every board in the room: the deepest board's; a feeder that stays in the room (DB to its UPS) starts its cable
+        // at that level too, so the tags across the drawing sit in one row, and the wall steps down round what stays inside
+        const Dall = Math.max(8, ...subsT.map(subD));
+        roomWalls = new Map(subsT.map(sb => [sb._room, Dall]));   // a feeder that stays inside gets its own lobe below this (logged as it is drawn)
+        wall = Math.min(...subsT.map(sb => at.get(sb._room) - Dall - 3));
         // this board's own feeders that leave the room (not to a board in it): their cables cross its wall like any other room's
         if (!top) { tagged.feeders = tagged.feeders.map(f => { const sb = chainParts(f.chain).sub; if (sb && sb._room) return f; return ownIn(f) ? { ...f, _inRoom: true } : gapIn(f, D); }); wall = Math.min(wall, -D - 3); }
-        b = { ...tagged, feeders: tagged.feeders.map(f => ({ ...f, chain: (f.chain || []).map(it => it.board && it.board._room ? { ...it, board: { ...it.board, feeders: (it.board.feeders || []).map(g => endsInRoom(g) ? { ...g, _inRoom: true } : gapIn(g, subD(it.board))) } } : it) })) };
+        b = { ...tagged, feeders: tagged.feeders.map(f => ({ ...f, chain: (f.chain || []).map(it => it.board && it.board._room ? { ...it, board: { ...it.board, feeders: (it.board.feeders || []).map(g => endsInRoom(g) ? { ...gapIn(g, Dall), _inRoom: true } : gapIn(g, Dall)) } } : it) })) };
       }
       // incomers from another place (a transformer in its compound, a generator in its enclosure): their cable crosses the top wall
       // the same way, so what feeds the board in sits outside the room
@@ -382,8 +385,9 @@ function drawRoomed(b, x0, y, prims, top, over = null, feed = null) {   // feed:
       const bb = primsBounds(prims.slice(from).filter(inside)), m = 6, ex0 = bb.x0 - m, ex1 = bb.x1 + m, ey0 = y + wall, ey1 = feed ? Math.min(bb.y1 + m, feed.ceil - TH - 3) : wallTop === null ? bb.y1 + m : y + wallTop;
       if (roomSubs && placedRooms.length) {
         // the room steps down round each board in it: the top part down to the shallowest board's cable level, then each board's own part
-        const walls = placedRooms.map(e => ({ ...e, w: e.y - roomWalls.get(e.id) - 3 })), topW = Math.max(top ? -Infinity : y + ownWall, ...walls.map(e => e.w));
-        const rs = [{ x0: ex0, y0: topW, x1: ex1, y1: ey1 }, ...walls.filter(e => e.w < topW - 1e-6).map(e => ({ x0: e.x0 - m, y0: e.w, x1: e.x1 + m, y1: topW + 1 }))];
+        const walls = placedRooms.filter(e => !e.lobe).map(e => ({ ...e, w: e.y - roomWalls.get(e.id) - 3 })), topW = Math.max(top ? -Infinity : y + ownWall, ...walls.map(e => e.w));
+        const lobes = placedRooms.filter(e => e.lobe).map(e => ({ x0: e.x0 - 3, y0: e.y - 3, x1: e.x1 + 3, y1: topW + 1 })).filter(l => l.y0 < Math.min(topW, ...walls.filter(e => e.x1 > l.x0 && e.x0 < l.x1).map(e => e.w)) - 1e-6);
+        const rs = [{ x0: ex0, y0: topW, x1: ex1, y1: ey1 }, ...walls.filter(e => e.w < topW - 1e-6).map(e => ({ x0: e.x0 - m, y0: e.w, x1: e.x1 + m, y1: topW + 1 })), ...lobes];
         for (const g of unionSegs(rs)) dashPath(prims, [[g.x0, g.y0], [g.x1, g.y1]], 'SLD-ENCLOSURE', true);
       } else dashBox(prims, ex0, ey0, ex1, ey1, 'SLD-ENCLOSURE');
       // the name: centred above the box, or (incomer cables crossing the top) at its top left, inside, clear of them
@@ -590,8 +594,9 @@ const INTERNAL_NOTE = [
 const HOLD_NOTE = 'ITEMS CLOUDED AND FLAGGED HOLD ARE ON HOLD PENDING INFORMATION FROM THE CLIENT.';   // the engine's own note for TBC cables; stays on the drawing
 const isInternalNote = (t) => String(t).trim() !== HOLD_NOTE && INTERNAL_NOTE.some(re => re.test(String(t)));
 const cleanLabel = (t) => units(String(t).replace(/\bPFC\s+(?=\d+(?:\.\d+)?\s*kA)/gi, 'PROSPECTIVE FAULT ')).replace(/\s*[([]?\s*(?:SEE|REF(?:ER)?(?: TO)?|PER)\s+(?:TQ|RFI)[\s-]*[\w/-]*\s*[)\]]?/gi, '').replace(/\s*[([]\s*(?:TQ|RFI)[\s-]*\d+[\w/ -]*[)\]]/gi, '').replace(/[ \t]+\n/g, '\n').trim();
+const stripHold = (t) => String(t || '').replace(/[ \t]*\(\s*HOLD\s*\d*\s*\)/gi, '').replace(/(^|\n)\s*HOLD\s*\d*\s*(?=\n|$)/gi, '$1').replace(/\n{2,}/g, '\n').trim();   // Dex's own hold marks: the engine clouds and flags holds itself
 function cleanLabels(spec) {   // every label on an SLD / BCD spec, in place
-  const walk = (b) => { if (!b) return; if (b.label) b.label = cleanLabel(b.label); for (const c of [...(b.incomers || []), ...(b.feeders || [])]) { if (c.label) c.label = cleanLabel(c.label); for (const it of c.chain || []) { if (it.label) it.label = cleanLabel(it.label); if (it.board) walk(it.board); } } };
+  const walk = (b) => { if (!b) return; if (b.label) b.label = cleanLabel(b.label); for (const c of [...(b.incomers || []), ...(b.feeders || [])]) { if (c.label) c.label = cleanLabel(stripHold(c.label)); for (const it of c.chain || []) { if (it.label) it.label = cleanLabel(stripHold(it.label)); if (it.board) walk(it.board); } } };
   (spec.boards || spec.busbars || []).forEach(walk);
   for (const n of spec.nodes || []) if (n.label) n.label = cleanLabel(n.label);
   for (const c of spec.cables || []) if (c.note) c.note = cleanLabel(c.note);
@@ -1602,13 +1607,15 @@ const safeName = (s) => String(s).replace(/[\\/:*?"<>|]+/g, '_').replace(/\s+/g,
 // so the folder only ever holds the current revision. Nothing is deleted: a name already in the archive gets a time stamp.
 const ARCHIVE_EXT = /\.(dxf|pdf|spec\.json|svg)$/i;
 // an older copy of the SAME revision (made again before issue) is archived as _SUPERSEDED, so there are never two different P01s side by side
-function archiveOld(outDir, prefix, rev = '') {
-  if (!prefix) return [];
+// `prefixes`: every name this drawing has gone under (its number, and the draft stems used before it had one: X071126_BCD, BCD)
+function archiveOld(outDir, prefixes, rev = '') {
+  const pre = [].concat(prefixes || []).filter(Boolean).map(p => String(p).toUpperCase()); if (!pre.length) return [];
   const moved = [], arch = path.join(outDir, 'Archive');
   let list = []; try { list = fs.readdirSync(outDir); } catch { return moved; }
   for (const f of list) {
-    const full = path.join(outDir, f);
-    if (!f.toUpperCase().startsWith(prefix.toUpperCase()) || !/^[_. ]/.test(f.slice(prefix.length)) || !ARCHIVE_EXT.test(f)) continue;   // this drawing only (not -00011)
+    const full = path.join(outDir, f), F = f.toUpperCase();
+    const prefix = pre.find(p => F.startsWith(p) && /^[_. ]/.test(F.slice(p.length)));   // this drawing only (not -00011)
+    if (!prefix || !ARCHIVE_EXT.test(f)) continue;
     try { if (!fs.statSync(full).isFile()) continue; } catch { continue; }
     fs.mkdirSync(arch, { recursive: true });
     const m0 = f.match(ARCHIVE_EXT), same = rev && new RegExp('_' + rev + '(?![0-9])', 'i').test(f.slice(0, m0.index));
@@ -1634,7 +1641,7 @@ function make(spec, outDir, baseName, opts = {}) {
   fs.mkdirSync(outDir, { recursive: true });
   const stem = safeName(baseName || spec.drawingNumber || spec.title || 'SLD');
   // a drawing with its real number is saved as NUMBER_REV (e.g. X021126-01-70-0001_P02), the older versions moved to Archive first
-  const archived = opts.exact ? archiveOld(outDir, opts.archivePrefix || stem, spec.revision) : [];
+  const archived = archiveOld(outDir, opts.exact ? (opts.archivePrefix || stem) : [stem], spec.revision);   // a draft made again archives the last draft too: the folder holds one current copy
   // a new revision: what changed against the previous spec, the history carried on, clouds round changed cable boxes (BCDs)
   let diff = null;
   if (opts.previous && opts.previous.spec) {
@@ -1686,4 +1693,4 @@ function previousSpec(outDir, baseName, notRev = '') {   // notRev: skip specs o
   return null;
 }
 
-module.exports = { sldDiff, fromSchedule, cleanLabels, cleanLabel, noteLines, clientNotes, isInternalNote, notesFit, primsBounds, BORDER_NAMES, flatPrims, BORDERS, cableClashes, previousSpec, layoutBcd, bcdDiff, SYSTEM, ALIASES, SYMBOLS, symbolOf, layoutSld, writeDxf, toSvg, parseReply, make };
+module.exports = { archiveOld, sldDiff, fromSchedule, cleanLabels, cleanLabel, noteLines, clientNotes, isInternalNote, notesFit, primsBounds, BORDER_NAMES, flatPrims, BORDERS, cableClashes, previousSpec, layoutBcd, bcdDiff, SYSTEM, ALIASES, SYMBOLS, symbolOf, layoutSld, writeDxf, toSvg, parseReply, make };

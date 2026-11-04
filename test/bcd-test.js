@@ -110,3 +110,14 @@ console.log('bcd ok: no overlapping or crossing cables');
   assert.deepStrictEqual(m.cableClashes(sheets[0].prims), [], 'northwich no cable clashes');
   console.log('northwich bcd ok: one box per room, TEL-01 under the UPS, HOLD flagged, house notes');
 }
+// archiving: when a numbered drawing is written, every earlier copy of it goes to Archive, whatever it was called (the drafts made before
+// it had a number too); other drawings in the folder are left alone
+{
+  const fs = require('fs'), path = require('path'), os = require('os');
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), 'arch-'));
+  for (const f of ['X071126_BCD_DRAFT.dxf', 'X071126_BCD_DRAFT.pdf', 'X071126_BCD_DRAFT.spec.json', 'X071126_BCD_DRAFT_2.dxf', 'X071126-01-71-0001_P01.dxf', 'X071126-01-71-0002_P01.dxf', 'X071126_SLD_DRAFT.dxf']) fs.writeFileSync(path.join(d, f), 'x');
+  m.archiveOld(d, ['X071126-01-71-0001', 'X071126_BCD', 'BCD'], 'P01');
+  assert.deepStrictEqual(fs.readdirSync(d).sort(), ['Archive', 'X071126-01-71-0002_P01.dxf', 'X071126_SLD_DRAFT.dxf'], 'drafts and the old P01 archived, other drawings left');
+  assert.strictEqual(fs.readdirSync(path.join(d, 'Archive')).length, 5);
+  console.log('archive ok: drafts and superseded copies moved, other drawings left');
+}

@@ -18,9 +18,16 @@ const worst = +(ce.match(/worst offset ([\d.]+)/) || [])[1]; if (!(worst <= 0.3)
 // markup R2 (SLD): boards in the same room inside the room box, a feeder ending in the room (DB-03 to MCC-01 PLC) inside too,
 // field cables leaving through the bottom wall; earthing off its own earth bar
 { const L = D.layoutSld(JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'hollins-sld-room.json'), 'utf8')), { border: 'atomax', fill: {} }), P = D.flatPrims(L.prims);
-  const box = D.primsBounds(P.filter(p => p.layer === 'SLD-ENCLOSURE')), at = (re) => P.find(p => (p.t === 'mtext' || p.t === 'text') && re.test(p.text));
-  for (const re of [/^MCC-01\n/, /^DB-03/, /^MCC-01 PLC/, /^MET-01/, /^DB-01\n/]) { const t = at(re); if (!t || t.y < box.y0 || t.y > box.y1) throw new Error(re + ' should be inside the room box'); }
-  for (const re of [/^M-P01/, /^FT-01/, /^TX01\n/]) { const t = at(re); if (!t || (t.y >= box.y0 && t.y <= box.y1)) throw new Error(re + ' should be outside the room box'); }
+  const enc = P.filter(p => p.layer === 'SLD-ENCLOSURE'), box = D.primsBounds(enc), at = (re) => P.find(p => (p.t === 'mtext' || p.t === 'text') && re.test(p.text));
+  // the room outline steps (one cable level for every board in it, a lobe round a feeder that stays inside), so "inside" is judged in the
+  // item's own column: between the lowest wall dash spanning its x and the top of the room
+  const wallUnder = (x) => Math.min(...enc.filter(p => p.t === 'line' && Math.abs(p.y1 - p.y2) < 1e-6 && Math.min(p.x1, p.x2) <= x + 4 && Math.max(p.x1, p.x2) >= x - 4).map(p => p.y1));   // dashes: a point can sit over a gap
+  const inside = (t) => t.y > wallUnder(t.x) && t.y < box.y1;
+  for (const re of [/^MCC-01\n/, /^DB-03/, /^MCC-01 PLC/, /^MET-01/, /^DB-01\n/]) { const t = at(re); if (!t || !inside(t)) throw new Error(re + ' should be inside the room box'); }
+  for (const re of [/^M-P01/, /^FT-01/, /^TX01\n/]) { const t = at(re); if (!t || inside(t)) throw new Error(re + ' should be outside the room box'); }
+  // boards fed side by side in the room: their outgoing cables start at one level (the tags sit in one row)
+  const cabY = (re) => { const t = at(re); return t ? Math.round(t.y) : null; };
+  if (Math.abs(cabY(/^C-026/) - cabY(/^C-027/)) > 1) throw new Error('DB-03 cables not level');
   if (!at(/EARTH BAR$/) || !P.some(p => p.layer === 'SLD-EARTH')) throw new Error('no earth bar');
   if (D.cleanLabel('400V 3PH+N 50HZ\nPFC 31.5kA 3PH SYM') !== '400V 3PH+N 50Hz\nPROSPECTIVE FAULT 31.5kA 3PH SYM') throw new Error('Hz / prospective fault');
   const tmp = fs.mkdtempSync(path.join(require('os').tmpdir(), 'sldr-')); const made = D.make(JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'hollins-sld-room.json'), 'utf8')), tmp, 'R', { border: 'atomax', fill: {} });

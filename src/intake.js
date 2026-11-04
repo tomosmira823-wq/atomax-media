@@ -521,7 +521,7 @@ EARTHING tasks: size every protective / earth conductor the drawing needs (MET t
     if (bd.warning) spec.notes = [...(spec.notes || [])];
     // saved as NUMBER_REV (older versions moved to Archive); a drawing with no real number yet keeps the old draft naming
     stage('laying out the drawing', 75);
-    const res = dxfmaker.make(spec, outDir, realNo ? realNo + '_' + spec.revision : base, { exact: !!realNo, archivePrefix: realNo, template, border: bd.key, previous, fill: job ? { drawn, checked, approved, client: job.client || spec.client || '', project: `${job.number} ${job.name || ''}`.trim(), site: (desk.load(job.id).ng || {}).site || job.name || '', ngInvestment: (desk.load(job.id).ng || {}).investment || '' } : { drawn, checked, approved, client: spec.client || '' } });
+    const res = dxfmaker.make(spec, outDir, realNo ? realNo + '_' + spec.revision : base, { exact: !!realNo, archivePrefix: [realNo, job ? job.number + '_' + kindName : '', kindName], template, border: bd.key, previous, fill: job ? { drawn, checked, approved, client: job.client || spec.client || '', project: `${job.number} ${job.name || ''}`.trim(), site: (desk.load(job.id).ng || {}).site || job.name || '', ngInvestment: (desk.load(job.id).ng || {}).investment || '' } : { drawn, checked, approved, client: spec.client || '' } });
     // every DXF gets its monochrome PDF beside it (issues go out as DXF and PDF)
     stage('writing the DXF and PDF', 90);
     let madePdfs = []; try { madePdfs = await require('./pdfout').writePdfs(res); } catch (e) { (res.files || []).forEach(f => delete f.prims); }
