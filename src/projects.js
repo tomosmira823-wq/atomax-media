@@ -251,28 +251,35 @@ function projectsRoots(known = []) {
   const rs = (s.projectRoots || []).filter(Boolean).filter(ok);
   return rs.length ? [...new Set(rs)] : [s.jobsFolder].filter(Boolean).filter(ok);
 }
-// every job folder under them: directly inside, or one level down (Projects\2026\X021126 ...); a root that is itself a job counts
+// a job number anywhere in a folder name ("X021126 Hollins Lane", "Five Fords - X130726")
+const JOBNO = /(?:^|[^A-Za-z0-9])([A-Za-z]{1,3}\d{4,6}(?:-\d{2})?)(?![A-Za-z0-9])/;
+const jobNoIn = (name) => { const m = String(name || '').match(JOBNO); return m ? m[1].toUpperCase() : ''; };
+const jobNameOf = (name, no) => String(name || '').replace(new RegExp('[\\s_\\-–.]*' + no.replace(/[-]/g, '\\-') + '[\\s_\\-–.]*', 'i'), ' ').replace(/\s+/g, ' ').trim();
+// a folder holding the numbered Atomax sections (1. Safety, 2. Project Management ... 10. Site Data) is a job, number or not
+function looksLikeJob(full) { try { return fs.readdirSync(full).filter(n => /^\d{1,2}(\.\d+)?[\s._-]+[A-Za-z]/.test(n)).length >= 3; } catch { return false; } }
+const isDirEnt = (dir, e) => { if (e.isDirectory()) return true; try { return fs.statSync(path.join(dir, e.name)).isDirectory(); } catch { return !!(e.isSymbolicLink && e.isSymbolicLink() && !path.extname(e.name)); } };
+// every job folder under the Projects folders: Projects \\ job, Projects \\ client \\ job, Projects \\ year \\ client \\ job (never the template)
 function allJobFolders(known = []) {
-  const re = jobPattern(known), out = [], seen = new Set(), add = (f) => { const k = f.folder.toLowerCase(); if (!seen.has(k)) { seen.add(k); out.push(f); } };
-  for (const r of projectsRoots(known)) {
-    const own = jobFolders(path.dirname(r), known).find(f => path.resolve(f.folder) === path.resolve(r)); if (own) { add(own); continue; }
-    const direct = jobFolders(r, known); direct.forEach(add);
-    let subs = []; try { subs = fs.readdirSync(r, { withFileTypes: true }).filter(e => (e.isDirectory() || (() => { try { return fs.statSync(path.join(r, e.name)).isDirectory(); } catch { return !path.extname(e.name); } })()) && !SKIP.test(e.name) && !/template/i.test(e.name) && !direct.some(f => path.basename(f.folder) === e.name)); } catch {}
-    for (const e of subs.slice(0, 60)) jobFolders(path.join(r, e.name), known).forEach(add);
-  }
+  const out = [], seen = new Set();
+  const walk = (dir, depth) => {
+    let ents = []; try { ents = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+    for (const e of ents) {
+      if (/template/i.test(e.name) || SKIP.test(e.name) || /^(~\$|\.)/.test(e.name) || !isDirEnt(dir, e)) continue;
+      const full = path.join(dir, e.name), no = jobNoIn(e.name);
+      if (no || looksLikeJob(full)) { const k = full.toLowerCase(); if (!seen.has(k)) { seen.add(k); out.push({ number: no || e.name.toUpperCase(), name: no ? jobNameOf(e.name, no) : e.name, folder: full }); } continue; }
+      if (depth < 3 && out.length < 3000) walk(full, depth + 1);
+    }
+  };
+  for (const r of projectsRoots(known)) { const no = jobNoIn(path.basename(r)); if (no || looksLikeJob(r)) out.push({ number: no || path.basename(r).toUpperCase(), name: no ? jobNameOf(path.basename(r), no) : path.basename(r), folder: r }); else walk(r, 1); }
   return out;
 }
-// the job folders in it: one per folder named like a job number (X021126 Hollins Lane ...), never the template
+// the job folders directly inside one folder (number anywhere in the name, or the numbered sections inside)
 function jobFolders(root, known = []) {
   if (!root) return [];
-  const re = jobPattern(known), loose = /^([A-Za-z]{1,3}\d{4,6}(?:-\d{2})?)\b/;
   let ents = []; try { ents = fs.readdirSync(root, { withFileTypes: true }); } catch { return []; }
-  // OneDrive online-only folders can report as links rather than directories: check them properly
-  const isDir = (e) => { if (e.isDirectory()) return true; try { return fs.statSync(path.join(root, e.name)).isDirectory(); } catch { return !!(e.isSymbolicLink && e.isSymbolicLink() && !path.extname(e.name)); } };
-  return ents.filter(e => isDir(e) && !/template/i.test(e.name) && !SKIP.test(e.name)).map(e => {
-    const m = e.name.match(re) || e.name.match(loose); if (!m) return null;
-    const number = (m[0].match(/^[A-Za-z]{1,3}\d{4,6}(?:-\d{2})?/) || [m[0]])[0].toUpperCase();
-    return { number, name: e.name.slice(m[0].length).replace(/^[\s_\-–.]+/, '').trim(), folder: path.join(root, e.name) };
+  return ents.filter(e => !/template/i.test(e.name) && !SKIP.test(e.name) && isDirEnt(root, e)).map(e => {
+    const full = path.join(root, e.name), no = jobNoIn(e.name);
+    return no || looksLikeJob(full) ? { number: no || e.name.toUpperCase(), name: no ? jobNameOf(e.name, no) : e.name, folder: full } : null;
   }).filter(Boolean);
 }
 // one level of a job folder, for the Jobs screen: folders first, then files, in natural order (1.1, 1.2 ... 10.1)
@@ -289,4 +296,4 @@ function listDir(folder, rel = '') {
   return out.sort((a, b) => (b.dir - a.dir) || a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
 }
 
-module.exports = { projectsRoots, allJobFolders, jobsFolder, jobFolders, listDir, templateDir, isAtomax, jobParent, nextJobNumber, jobPattern, createJobFolder, init, suggest, gather, load, contextBlock, relevantFiles, outputDir, searchRoots, extract };
+module.exports = { jobNoIn, jobNameOf, looksLikeJob, projectsRoots, allJobFolders, jobsFolder, jobFolders, listDir, templateDir, isAtomax, jobParent, nextJobNumber, jobPattern, createJobFolder, init, suggest, gather, load, contextBlock, relevantFiles, outputDir, searchRoots, extract };

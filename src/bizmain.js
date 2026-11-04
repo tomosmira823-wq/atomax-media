@@ -253,7 +253,7 @@ dead is true only if the sheet itself carries a cancelled / superseded / void / 
   ipcMain.handle('proj:roots', wrap(() => ({ roots: roots().map(r => ({ path: r, name: path.basename(r) || r })) })));
   ipcMain.handle('proj:listAt', wrap(({ path: p }) => {
     if (!p || !fenced(p)) throw new Error('That folder is outside your Projects folders');
-    const d = data(), re = projects.jobPattern(d.jobs.map(j => j.number)), loose = /^[A-Za-z]{1,3}\d{4,6}/;
+    const d = data();
     let ents = []; try { ents = fs.readdirSync(p, { withFileTypes: true }); } catch (e) { throw new Error('Cannot open ' + path.basename(p) + ': ' + e.code); }
     const out = [];
     for (const e of ents) {
@@ -262,7 +262,7 @@ dead is true only if the sheet itself carries a cancelled / superseded / void / 
       // all the same (as Explorer does), falling back to what the folder entry says
       const full = path.join(p, e.name); let st = null; try { st = fs.statSync(full); } catch { try { st = fs.lstatSync(full); } catch { st = null; } }
       const dir = st && !st.isSymbolicLink() ? (st.isDirectory() || (!st.isFile() && e.isDirectory())) : (e.isDirectory() || !path.extname(e.name)), rec = dir ? recordFor(d, full) : null;
-      out.push({ name: e.name, path: full, dir, size: dir || !st ? 0 : st.size, mtime: st ? st.mtimeMs : 0, isJob: dir && (re.test(e.name) || loose.test(e.name)), job: rec ? { id: rec.id, number: rec.number } : null });
+      out.push({ name: e.name, path: full, dir, size: dir || !st ? 0 : st.size, mtime: st ? st.mtimeMs : 0, isJob: dir && !/template/i.test(e.name) && (!!projects.jobNoIn(e.name) || projects.looksLikeJob(full)), job: rec ? { id: rec.id, number: rec.number } : null });
     }
     out.sort((a, b) => (b.dir - a.dir) || a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));   // Explorer's name order
     return { path: p, name: path.basename(p), entries: out };
@@ -273,10 +273,10 @@ dead is true only if the sheet itself carries a cancelled / superseded / void / 
   function adoptFolder(p, who = 'Tom') {
     if (!p || !fenced(p) || !fs.existsSync(p)) throw new Error('That folder is outside your Projects folders');
     const d = data(), have = recordFor(d, p); if (have) return { id: have.id };
-    const name0 = path.basename(p), m = name0.match(/^([A-Za-z]{1,3}\d{4,6}(?:-\d{2})?)\b/), number = m ? m[1].toUpperCase() : name0;
+    const name0 = path.basename(p), no = projects.jobNoIn(name0), number = no || name0.toUpperCase();
     const same = d.jobs.find(j => j.number.toUpperCase() === number.toUpperCase());
     if (same) { if (same.folder && fs.existsSync(same.folder) && norm(same.folder) !== norm(p)) throw new Error(`Job ${number} is already set up on ${same.folder}`); same.folder = p; biz.audit(d, { who, action: 'Linked job to its project folder', jobId: same.id, detail: p }); store.save(); return { id: same.id }; }
-    const j = biz.saveJob(d, { number, name: m ? name0.slice(m[0].length).replace(/^[\s_\-–.]+/, '').trim() : '', folder: p }, who);
+    const j = biz.saveJob(d, { number, name: no ? projects.jobNameOf(name0, no) : '', folder: p }, who);
     biz.audit(d, { who, action: 'Set up a project folder for drawings', jobId: j.id, detail: p }); store.save();
     return { id: j.id };
   }
