@@ -1113,7 +1113,7 @@ function layoutPanelBcd(spec, model, opts = {}) {
     const boxesOf = (c) => c.rects || [c.box];
     // the scope: dashed round everything that is ours; items by others (DNO / ICP) stay outside it
     const site = String(spec.area || (opts.fill && (opts.fill.site || opts.fill.project)) || '').toUpperCase();
-    const mine = items.filter(i => !i.others), theirs = items.filter(i => i.others);
+    const mine = items.filter(i => !i.others && !i.link), theirs = items.filter(i => i.others);   // a link label (TO MET ... SHOWN UNDER) is a pointer, not equipment: it does not stretch the scope box up round the DNO's kit
     let scope = null;
     if (mine.length) {
       const u = uni([...mine.map(i => i.bb), ...areas.filter(c => !c.others).flatMap(boxesOf)]), m = hasAreas ? 6 : 12;
