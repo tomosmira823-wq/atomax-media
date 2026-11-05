@@ -21,7 +21,7 @@ Reply with JSON only, no markdown: {"reply":"what you say to Tom","actions":[...
 const cap = (s, n) => { s = String(s || ''); return s.length > n ? s.slice(0, n) + '…' : s; };
 
 // everything Eli can see about the job, as text
-function context({ job, overview, desk, files, history }) {
+function context({ job, overview, desk, files, history, nextIssue }) {
   const rows = (overview.rows || []).map(r => `${r.no}${r.alt ? ' (' + r.alt + ')' : ''} | ${r.rev || '-'} | ${r.group} | ${r.title}${r.src ? (r.src.dxf ? ' | DXF: ' + r.src.dxf.split('/').pop() : r.src.dwg ? ' | DWG only: ' + r.src.dwg.split('/').pop() : ' | no file') : ''}${r.work && r.work.status ? ' | ' + r.work.status + (r.work.rev ? ' ' + r.work.rev : '') : ''}`);
   const rfis = (desk.rfis || []).map(r => `${r.no} | ${r.status} | ${r.q}${r.answer ? ' | answer: ' + r.answer : ''}`);
   const crs = (desk.crs || []).filter(c => !/responded|closed/i.test(c.status || '')).map(c => `${c.no} | on ${c.doc === '*' ? 'every drawing' : c.doc || 'the job'} | ${c.by || ''}: ${c.comment}`);
@@ -30,7 +30,7 @@ function context({ job, overview, desk, files, history }) {
   const scope = sc.summary || sc.facts || sc.byOthers || sc.conflicts ? `SCOPE (from the documents): ${sc.summary || ''}\nFACTS: ${(sc.facts || []).map(f => `${f.name}: ${f.value}`).join('; ')}\nBY OTHERS: ${(sc.byOthers || []).map(b => `${b.title} (${b.who})`).join('; ')}\nWHERE THE DOCUMENTS DISAGREE: ${(sc.conflicts || []).join(' | ')}` : '';
   const hist = (history || []).slice(-24).map(m => `${m.role === 'tom' ? 'TOM' : 'ELI'}: ${cap(m.text, 1200)}`).join('\n');
   return [
-    `JOB: ${job.number} ${job.name || ''} | client ${job.client || '-'} | folder ${job.folder || '-'} | rules: ${cap(desk.rules || '', 1500)}`,
+    `JOB: ${job.number} ${job.name || ''} | client ${job.client || '-'} | folder ${job.folder || '-'}${nextIssue ? ` | next issue: ISSUE ${nextIssue.n}${nextIssue.previous ? ' (ISSUE ' + nextIssue.previous.n + ' is the last on file)' : ''} — issued DXF+PDF copies and the transmittal go there when Tom presses Issue; working files stay with the working set` : ''} | rules: ${cap(desk.rules || '', 1500)}`,
     `REGISTER (${rows.length} rows; number | rev | group | title | file):\n${rows.join('\n') || '(empty)'}`,
     `RFIs:\n${rfis.join('\n') || '(none)'}`,
     `OPEN CLIENT COMMENTS:\n${crs.join('\n') || '(none)'}`,

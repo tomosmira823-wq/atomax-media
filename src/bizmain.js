@@ -73,8 +73,10 @@ function register({ ipcMain, dialog, shell, Notification, getWin, userDir, claud
     // re-check the folder at the moment of approval: it may have changed since the scan
     const names = fs.readdirSync(p.srcDir).filter(n => p.files.includes(n));
     const missing = p.files.filter(n => !names.includes(n)); if (missing.length) throw new Error('These files have gone from the folder since the check: ' + missing.join(', '));
-    const stamp = new Date().toISOString().slice(0, 10);
-    let out = path.join(p.srcDir, 'ISSUE_' + stamp); let i = 2; while (fs.existsSync(out)) out = path.join(p.srcDir, `ISSUE_${stamp}_${i++}`);
+    // the issue goes in the job's transmittals folder as the next ISSUE n (Issue 12 on file -> ISSUE 13), the house way; a job without a
+    // folder keeps a dated folder beside the files
+    let out; if (job.folder && fs.existsSync(job.folder)) { const nx = projects.nextIssueDir(job.folder); out = nx.path; let i = 2; while (fs.existsSync(out)) out = path.join(path.dirname(nx.path), `ISSUE ${nx.n} (${i++})`); }
+    else { const stamp = new Date().toISOString().slice(0, 10); out = path.join(p.srcDir, 'ISSUE_' + stamp); let i = 2; while (fs.existsSync(out)) out = path.join(p.srcDir, `ISSUE_${stamp}_${i++}`); }
     fs.mkdirSync(out, { recursive: true });
     for (const n of names) fs.copyFileSync(path.join(p.srcDir, n), path.join(out, n));   // copies only: the originals stay where they are
     const rows = p.rows.map(r => ({ ...r }));

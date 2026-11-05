@@ -274,6 +274,19 @@ function projectsRoots(known = []) {
   const rs = (s.projectRoots || []).filter(Boolean).filter(ok);
   return rs.length ? [...new Set(rs)] : [s.jobsFolder].filter(Boolean).filter(ok);
 }
+// the next issue folder for a job: ISSUE n+1 under the transmittals folder (013 Transmittals & Drawing Register / 9.2 Transmittals), n being
+// the highest ISSUE n already there or under the drawings folder. Issue 12 on file -> ISSUE 13. A job with no issue yet starts at ISSUE 1.
+function issueDirs(jobFolder) {
+  const found = []; const look = (dir) => { let es = []; try { es = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; } for (const e of es) { if (!e.isDirectory()) continue; const m = e.name.match(/^ISSUE[ _-]*(\d{1,3})\b/i); if (m) found.push({ n: +m[1], path: path.join(dir, e.name) }); } };
+  for (const k of ['transmittals', 'register', 'sld']) { const d = outputDir(jobFolder, k); if (d && fs.existsSync(d)) look(d); }
+  look(jobFolder);
+  return found.sort((a, b) => a.n - b.n);
+}
+function nextIssueDir(jobFolder) {
+  const all = issueDirs(jobFolder), n = all.length ? all[all.length - 1].n + 1 : 1;
+  const base = outputDir(jobFolder, 'transmittals') || path.join(jobFolder, '013 Transmittals & Drawing Register');
+  return { n, path: path.join(base, `ISSUE ${n}`), previous: all.length ? all[all.length - 1] : null };
+}
 // a job number anywhere in a folder name ("X021126 Hollins Lane", "Five Fords - X130726")
 const JOBNO = /(?:^|[^A-Za-z0-9])([A-Za-z]{1,3}\d{4,6}(?:-\d{2})?)(?![A-Za-z0-9])/;
 const jobNoIn = (name) => { const m = String(name || '').match(JOBNO); return m ? m[1].toUpperCase() : ''; };
@@ -365,4 +378,4 @@ function fileIn(folder, paths) {
   }
   return { filed, skipped };
 }
-module.exports = { folderOfJobs, fileKind, filesUnder, fileIn, isOldAtomax, jobNoIn, jobNameOf, looksLikeJob, projectsRoots, allJobFolders, jobsFolder, jobFolders, listDir, templateDir, isAtomax, jobParent, nextJobNumber, jobPattern, createJobFolder, init, suggest, gather, load, contextBlock, relevantFiles, outputDir, searchRoots, extract };
+module.exports = { issueDirs, nextIssueDir, folderOfJobs, fileKind, filesUnder, fileIn, isOldAtomax, jobNoIn, jobNameOf, looksLikeJob, projectsRoots, allJobFolders, jobsFolder, jobFolders, listDir, templateDir, isAtomax, jobParent, nextJobNumber, jobPattern, createJobFolder, init, suggest, gather, load, contextBlock, relevantFiles, outputDir, searchRoots, extract };
