@@ -249,7 +249,7 @@ dead is true only if the sheet itself carries a cancelled / superseded / void / 
   const norm = (p) => { const r = path.resolve(String(p || '')); return process.platform === 'win32' ? r.toLowerCase() : r; };
   const roots = () => projects.projectsRoots();
   const fenced = (p) => { const n = norm(p); return roots().some(r => { const rn = norm(r); return n === rn || n.startsWith(rn + path.sep); }); };
-  const recordFor = (d, p) => d.jobs.find(j => j.folder && norm(j.folder) === norm(p)) || null;
+  const recordFor = (d, p) => { const r = d.jobs.find(j => j.folder && norm(j.folder) === norm(p)) || null; if (r && !(r.drawings || []).length) { try { if (projects.folderOfJobs(p)) return null; } catch {} } return r; };   // a record on a folder of jobs (BGEN\\National Grid set up by a tab click) with nothing on it is not a job
   ipcMain.handle('proj:roots', wrap(() => ({ roots: roots().map(r => ({ path: r, name: path.basename(r) || r })) })));
   // async so a slow OneDrive folder never freezes the app; whether a subfolder is a job is remembered for a few minutes
   const jobLook = new Map();
@@ -314,6 +314,7 @@ dead is true only if the sheet itself carries a cancelled / superseded / void / 
     if (!p || !fenced(p)) return null;
     const d = data(); let cur = path.resolve(p), candidate = null;
     while (cur && fenced(cur)) {
+      if (projects.folderOfJobs(cur)) break;   // a folder of jobs (BGEN\\National Grid): neither it nor anything above it is the job
       const rec = recordFor(d, cur); if (rec) return { id: rec.id, number: rec.number, folder: rec.folder };
       // a job the app knows whose number starts the folder name (longest number first: X051126-02 is not X051126)
       const bn = path.basename(cur).toUpperCase(), byName = d.jobs.filter(j => j.number && bn.startsWith(String(j.number).toUpperCase()) && /^[\s_\-.]|^$/.test(bn.slice(String(j.number).length))).sort((a, b) => String(b.number).length - String(a.number).length)[0];
@@ -328,6 +329,7 @@ dead is true only if the sheet itself carries a cancelled / superseded / void / 
   // set a folder up for drawings: an app record linked to it (nothing is written into the folder)
   function adoptFolder(p, who = 'Tom') {
     if (!p || !fenced(p) || !fs.existsSync(p)) throw new Error('That folder is outside your Projects folders');
+    if (projects.folderOfJobs(p)) throw new Error(path.basename(p) + ' holds several jobs. Open one of the jobs inside it.');
     const d = data(), have = recordFor(d, p); if (have) return { id: have.id };
     const name0 = path.basename(p), no = projects.jobNoIn(name0), number = no || name0.toUpperCase();
     const same = d.jobs.find(j => j.number.toUpperCase() === number.toUpperCase());

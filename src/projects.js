@@ -286,11 +286,8 @@ const JOB_SECTION = /^\d{1,3}\.?[\s_-]+[A-Za-z]/;
 // children are themselves job folders (BGEN\National Grid: 001 - Telford 132kV, 002 - Telford 400kV, 003 - Bustleholm, each with its own
 // sections) is a folder OF jobs, not a job
 const numberedIn = (full) => { try { return fs.readdirSync(full).filter(n => JOB_SECTION.test(n)); } catch { return []; } };
-function looksLikeJob(full) {
-  const kids = numberedIn(full); if (kids.length < 3) return false;
-  let jobsInside = 0; for (const k of kids.slice(0, 6)) if (numberedIn(path.join(full, k)).length >= 3) jobsInside++;
-  return jobsInside < 2;   // one numbered child with numbered folders inside can happen (7. Electrical / 7.1 ...); two or more means these are jobs
-}
+function folderOfJobs(full) { let n = 0; for (const k of numberedIn(full).slice(0, 8)) if (numberedIn(path.join(full, k)).length >= 3 && ++n >= 2) return true; return false; }   // two numbered children that are each set out as a job: these are jobs
+function looksLikeJob(full) { return numberedIn(full).length >= 3 && !folderOfJobs(full); }   // one numbered child with numbered folders inside can happen (7. Electrical / 7.1 ...)
 const isDirEnt = (dir, e) => { if (e.isDirectory()) return true; try { return fs.statSync(path.join(dir, e.name)).isDirectory(); } catch { return !!(e.isSymbolicLink && e.isSymbolicLink() && !path.extname(e.name)); } };
 // every job folder under the Projects folders: Projects \\ job, Projects \\ client \\ job, Projects \\ year \\ client \\ job (never the template)
 function allJobFolders(known = []) {
@@ -368,4 +365,4 @@ function fileIn(folder, paths) {
   }
   return { filed, skipped };
 }
-module.exports = { fileKind, filesUnder, fileIn, isOldAtomax, jobNoIn, jobNameOf, looksLikeJob, projectsRoots, allJobFolders, jobsFolder, jobFolders, listDir, templateDir, isAtomax, jobParent, nextJobNumber, jobPattern, createJobFolder, init, suggest, gather, load, contextBlock, relevantFiles, outputDir, searchRoots, extract };
+module.exports = { folderOfJobs, fileKind, filesUnder, fileIn, isOldAtomax, jobNoIn, jobNameOf, looksLikeJob, projectsRoots, allJobFolders, jobsFolder, jobFolders, listDir, templateDir, isAtomax, jobParent, nextJobNumber, jobPattern, createJobFolder, init, suggest, gather, load, contextBlock, relevantFiles, outputDir, searchRoots, extract };

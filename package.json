@@ -1,7 +1,7 @@
 {
   "name": "atomax-media-office",
   "productName": "Atomax Media Office",
-  "version": "1.34.14",
+  "version": "1.34.15",
   "description": "3D AI media office that writes Atomax social posts with per-platform agents (Claude, OpenAI, Higgsfield)",
   "main": "src/main.js",
   "author": "Tom Mira",
@@ -17,7 +17,8 @@
     "test:dxf": "node test/dxffix-test.js",
     "test:model": "node test/model-test.js",
     "test:drawings": "node test/sld-test.js && node test/bcd-test.js && node test/oakmere-test.js && node test/jobdesk-test.js",
-    "test:e2e": "node test/e2e-northwich.js"
+    "test:e2e": "node test/e2e-northwich.js",
+    "test:ng": "node test/ng-folder-test.js"
   },
   "dependencies": {
     "@pdf-lib/fontkit": "^1.1.1",
