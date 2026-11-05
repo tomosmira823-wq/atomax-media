@@ -423,18 +423,26 @@ export function initJobsUI({ api, getAgents, openIssue, onWorkOn }) {
     await renderJobDesk(api, $('#jbDesk'), job, { getAgents });
   }
 
-  // talk to Eli about this job: ask, correct the register, remove or add deliverables, close RFIs; he says what he changed
+  // talk to Eli about this job: ask, correct the register, remove or add deliverables, close RFIs; he says what he changed.
+  // A question in flight survives clicking to another tab and back (the answer lands when it comes, wherever Tom is)
+  const eliPending = new Map();   // jobId -> { text, promise }
   async function tabEli() {
     const el = $('#jbTab'), jobId = O.job.id;
     el.innerHTML = `<div class="jbcard elichat"><div class="elilog" id="eliLog"><div class="bsub">Loading…</div></div>
       <div class="jbbar elibar"><textarea id="eliIn" rows="2" placeholder="Ask Eli about the job, or tell him what to change: 'remove the three switchroom option rows', 'the cable schedule is one workbook not three', 'close RFI-002, Lee answered it'"></textarea><button class="jbbtn primary" id="eliGo">Send</button></div>
       <div class="bsub">Eli sees the register, the RFIs, the open comments, what the scope documents said and the job folder. He changes things only when you tell him to, and says exactly what he changed.</div></div>`;
-    const log = $('#eliLog');
-    const draw = (chat) => { log.innerHTML = (chat || []).length ? chat.map(m => `<div class="elim ${m.role}"><b>${m.role === 'tom' ? 'You' : 'Eli'}</b><div>${esc(m.text).replace(/\n/g, '<br>')}</div>${m.done && m.done.length ? `<div class="elidone">${m.done.map(x => `<span>✓ ${esc(x)}</span>`).join('')}</div>` : ''}</div>`).join('') : `<div class="elim eli"><b>Eli</b><div>Morning. I've got ${O.rows.length} row${O.rows.length === 1 ? '' : 's'} on the register for ${esc(O.job.number)}, ${(O.desk.rfis || []).filter(r => !/closed|answered/i.test(r.status)).length} open RFI(s) and ${(O.desk.crs || []).filter(c => !/responded|closed/i.test(c.status || '')).length} open comment(s). What do you want to know, or change?</div></div>`; log.scrollTop = log.scrollHeight; };
-    try { draw((await api.eli.chatLog({ jobId })).chat); } catch (e) { log.innerHTML = `<div class="bsub">${esc(clean(e))}</div>`; }
-    const send = async () => { const t = $('#eliIn').value.trim(); if (!t) return; $('#eliIn').value = ''; $('#eliGo').disabled = true; log.insertAdjacentHTML('beforeend', `<div class="elim tom"><b>You</b><div>${esc(t)}</div></div><div class="elim eli thinking"><b>Eli</b><div>…</div></div>`); log.scrollTop = log.scrollHeight;
-      try { const r = await api.eli.chat({ jobId, text: t }); draw(r.chat); if (r.done && r.done.length) { try { O = await api.jobs.overview({ jobId }); } catch {} renderJob(); tab = 'eli'; } } catch (e) { log.querySelector('.thinking div').textContent = clean(e); }
-      if ($('#eliGo')) $('#eliGo').disabled = false; };
+    const draw = (chat) => { const log = $('#eliLog'); if (!log) return; log.innerHTML = (chat || []).length ? chat.map(m => `<div class="elim ${m.role}"><b>${m.role === 'tom' ? 'You' : 'Eli'}</b><div>${esc(m.text).replace(/\n/g, '<br>')}</div>${m.done && m.done.length ? `<div class="elidone">${m.done.map(x => `<span>✓ ${esc(x)}</span>`).join('')}</div>` : ''}</div>`).join('') : `<div class="elim eli"><b>Eli</b><div>Morning. I've got ${O.rows.length} row${O.rows.length === 1 ? '' : 's'} on the register for ${esc(O.job.number)}, ${(O.desk.rfis || []).filter(r => !/closed|answered/i.test(r.status)).length} open RFI(s) and ${(O.desk.crs || []).filter(c => !/responded|closed/i.test(c.status || '')).length} open comment(s). What do you want to know, or change?</div></div>`;
+      const p = eliPending.get(jobId); if (p) { log.insertAdjacentHTML('beforeend', `<div class="elim eli thinking"><b>Eli</b><div>… (thinking about: ${esc(p.text.slice(0, 80))})</div></div>`); if ($('#eliGo')) $('#eliGo').disabled = true; }
+      log.scrollTop = log.scrollHeight; };
+    try { draw((await api.eli.chatLog({ jobId })).chat); } catch (e) { const log = $('#eliLog'); if (log) log.innerHTML = `<div class="bsub">${esc(clean(e))}</div>`; }
+    const send = async () => { const t = $('#eliIn').value.trim(); if (!t || eliPending.has(jobId)) return; const log = $('#eliLog'); $('#eliIn').value = ''; $('#eliGo').disabled = true; log.insertAdjacentHTML('beforeend', `<div class="elim tom"><b>You</b><div>${esc(t)}</div></div><div class="elim eli thinking"><b>Eli</b><div>…</div></div>`); log.scrollTop = log.scrollHeight;
+      const promise = api.eli.chat({ jobId, text: t }); eliPending.set(jobId, { text: t, promise });
+      let r = null, err = null; try { r = await promise; } catch (e) { err = e; } eliPending.delete(jobId);
+      const here = sel === jobId && tab === 'eli';   // still on this job's Eli tab?
+      if (err) { if (here) { const th = document.querySelector('#eliLog .thinking div'); if (th) th.textContent = clean(err); const g = $('#eliGo'); if (g) g.disabled = false; } else toast('Eli: ' + clean(err), 'err'); return; }
+      if (r.done && r.done.length) { try { O = await api.jobs.overview({ jobId }); } catch {} }
+      if (here) { if (r.done && r.done.length) renderJob(); else { draw(r.chat); const g = $('#eliGo'); if (g) g.disabled = false; } }
+      else toast(`Eli (${O.job.number}): ${r.reply.slice(0, 140)}${r.reply.length > 140 ? '…' : ''}`); };
     $('#eliGo').onclick = send; $('#eliIn').onkeydown = (ev) => { if (ev.key === 'Enter' && !ev.shiftKey) { ev.preventDefault(); send(); } }; $('#eliIn').focus();
   }
   function tabComments() {

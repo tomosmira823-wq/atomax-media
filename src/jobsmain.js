@@ -192,7 +192,8 @@ function register({ ipcMain, HANDLERS, BIZ, claudeFull }) {
     const d0 = desk.load(jobId); d0.chat = [...(d0.chat || []), { role: 'tom', text: t, at: new Date().toISOString() }].slice(-200); desk.saveRaw(jobId, d0);
     const ov = overview(jobId), files = jobFiles(jobId).map(f => f.rel);
     const ctx = E.context({ job, overview: ov, desk: desk.load(jobId), files, history: d0.chat.slice(0, -1) });
-    const r = await claudeFull({ system: E.SYSTEM, who: 'email', skills, maxTokens: 4000, messages: [{ role: 'user', content: [{ type: 'text', text: `${ctx}\n\nTOM SAYS NOW: ${t}` }] }] });
+    const R = runs.start({ kind: 'chat', who: 'Eli', jobId, no: 'CHAT' }); let r;   // Eli shows as working while he thinks
+    try { r = await claudeFull({ system: E.SYSTEM, who: 'email', skills, maxTokens: 4000, messages: [{ role: 'user', content: [{ type: 'text', text: `${ctx}\n\nTOM SAYS NOW: ${t}` }] }], run: R.id }); runs.finish(R.id); } catch (e) { runs.finish(R.id, { ok: false, error: String(e && e.message || e) }); throw e; }
     let out; try { out = require('./dxfmaker').parseReply(r.text); } catch { out = { reply: String(r.text || '').trim(), actions: [] }; }
     const reply = String(out.reply || '').trim() || '(Eli said nothing)';
     const done = E.apply(Array.isArray(out.actions) ? out.actions : [], { job, desk: desk.load(jobId), deskMod: desk, biz, BIZ, overview: ov });
