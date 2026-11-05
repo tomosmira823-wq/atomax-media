@@ -185,6 +185,24 @@ function register({ ipcMain, HANDLERS, BIZ, claudeFull }) {
   }
   ipcMain.handle('jobs:readMarkup', wrap((a) => readMarkup(a)));
   ipcMain.handle('jobs:overview', wrap(({ jobId }) => overview(jobId)));
+  // talk to Eli about the job: he sees the register, RFIs, comments, scope and folder; he changes things only when told to
+  ipcMain.handle('eli:chat', wrap(async ({ jobId, text = '', skills }) => {
+    const job = jobOf(jobId), t = String(text || '').trim(); if (!t) throw new Error('Say something to Eli');
+    const E = require('./elichat'), biz = require('./business');
+    const d0 = desk.load(jobId); d0.chat = [...(d0.chat || []), { role: 'tom', text: t, at: new Date().toISOString() }].slice(-200); desk.saveRaw(jobId, d0);
+    const ov = overview(jobId), files = jobFiles(jobId).map(f => f.rel);
+    const ctx = E.context({ job, overview: ov, desk: desk.load(jobId), files, history: d0.chat.slice(0, -1) });
+    const r = await claudeFull({ system: E.SYSTEM, who: 'email', skills, maxTokens: 4000, messages: [{ role: 'user', content: [{ type: 'text', text: `${ctx}\n\nTOM SAYS NOW: ${t}` }] }] });
+    let out; try { out = require('./dxfmaker').parseReply(r.text); } catch { out = { reply: String(r.text || '').trim(), actions: [] }; }
+    const reply = String(out.reply || '').trim() || '(Eli said nothing)';
+    const done = E.apply(Array.isArray(out.actions) ? out.actions : [], { job, desk: desk.load(jobId), deskMod: desk, biz, BIZ, overview: ov });
+    try { desk.tidyRows(jobId); } catch {}
+    try { if (done.some(x => /RFI|closed/i.test(x))) await desk.writeRfiRegister(jobId, { templateDir: BIZ.projects.templateDir() }); } catch {}
+    const d1 = desk.load(jobId); d1.chat = [...(d1.chat || []), { role: 'eli', text: reply, done, at: new Date().toISOString() }].slice(-200); desk.saveRaw(jobId, d1);
+    if (done.length) BIZ.log({ who: 'Eli', action: 'Changed the job as Tom asked in the chat', jobId, detail: done.join(' · ') });
+    return { reply, done, chat: d1.chat };
+  }));
+  ipcMain.handle('eli:chatLog', wrap(({ jobId }) => ({ chat: desk.load(jobId).chat || [] })));
   ipcMain.handle('jobs:plan', wrap((a) => plan(a)));
   ipcMain.handle('jobs:make', wrap((a) => make(a)));
   ipcMain.handle('jobs:makeAll', wrap(async ({ jobId }) => { const o = overview(jobId), done = [], masterOk = o.desk.master && o.desk.master.status === 'approved'; for (const r of o.rows.filter(r => r.agent && (!r.work || ['failed'].includes(r.work.status)) && (masterOk || !['bcd', 'schedule'].includes(r.kind)))) { try { await make({ jobId, no: r.no }); done.push(r.no); } catch {} } return { done, overview: overview(jobId) }; }));

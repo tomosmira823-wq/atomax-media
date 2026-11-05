@@ -161,7 +161,7 @@ export function initJobsUI({ api, getAgents, openIssue, onWorkOn }) {
     closeViewer(); const m = $('#jbMain'); if (!O) { m.innerHTML = `<div class="bhint">${esc(msg)}</div>`; return; }
     const j = O.job, V = O.desk, rows = O.rows;
     const openC = (V.crs || []).filter(c => !/responded|closed/i.test(c.status || '')).length;
-    const tabs = [['files', 'Files'], ['deliv', `Deliverables <em>${rows.length}</em>`], ['setup', 'Inputs &amp; setup'], ['comments', `Comments${openC ? ` <em>${openC}</em>` : ''}`], ['issue', 'Issue']];
+    const tabs = [['eli', '💬 Eli'], ['files', 'Files'], ['deliv', `Deliverables <em>${rows.length}</em>`], ['setup', 'Inputs &amp; setup'], ['comments', `Comments${openC ? ` <em>${openC}</em>` : ''}`], ['issue', 'Issue']];
     m.innerHTML = `<div class="jbhead"><div><h2>${esc(j.number)} ${esc(j.name || '')}</h2><div class="bsub">${esc(j.client || 'No client')} · border: <select id="jbBorderQ" class="jbinline" title="Drawing border for every drawing on this job">${[['auto', 'Automatic (by client)'], ['atomax', 'Atomax'], ['ng', 'National Grid'], ['bgen', 'BGEN'], ['pbe', 'PBE Group'], ['client', 'Client title block (File Room)']].map(([k, t]) => `<option value="${k}" ${(V.border || 'auto') === k ? 'selected' : ''}>${k === 'auto' ? 'Automatic: ' + (V.borderUsed || '') : t}</option>`).join('')}</select>${j.folder ? ` · <a href="#" id="jbFolder">open folder</a>` : ' · <b class="warn">no folder linked</b>'}</div></div>
         <div class="jbbar" style="margin:0"><button class="jbbtn primary" id="jbAddMail">✉ Add email / changes</button><button class="jbbtn" id="jbAddFiles" title="Drop the client's folder or files: they are filed into the job folder, emails read by Eli">📁 Add files</button><button class="jbbtn" id="jbWork">Work on this job</button></div></div>
       <div class="jbtabs">${tabs.map(([k, t]) => `<button data-t="${k}" class="${tab === k ? 'on' : ''}">${t}</button>`).join('')}</div>
@@ -173,7 +173,7 @@ export function initJobsUI({ api, getAgents, openIssue, onWorkOn }) {
     $('#jbAddFiles').onclick = () => addFiles(j);
     $('#jbAddMail').onclick = () => emailPanel(j.id);
     $('#jbWork').onclick = async () => { await api.biz.setCurrent({ id: j.id }); if (onWorkOn) onWorkOn(j.id); $('#jbWork').textContent = '✓ Job in hand'; };
-    ({ files: tabFiles, deliv: tabDeliv, setup: tabSetup, comments: tabComments, issue: tabIssue })[tab]();
+    ({ eli: tabEli, files: tabFiles, deliv: tabDeliv, setup: tabSetup, comments: tabComments, issue: tabIssue })[tab]();
     const working = rows.some(r => r.work && (r.work.status === 'working' || (r.work.check && r.work.check.status === 'working')));
     clearTimeout(poll); if (working && panel.classList.contains('open')) poll = setTimeout(refreshWhenFree, 3000);
   }
@@ -423,6 +423,20 @@ export function initJobsUI({ api, getAgents, openIssue, onWorkOn }) {
     await renderJobDesk(api, $('#jbDesk'), job, { getAgents });
   }
 
+  // talk to Eli about this job: ask, correct the register, remove or add deliverables, close RFIs; he says what he changed
+  async function tabEli() {
+    const el = $('#jbTab'), jobId = O.job.id;
+    el.innerHTML = `<div class="jbcard elichat"><div class="elilog" id="eliLog"><div class="bsub">Loading…</div></div>
+      <div class="jbbar elibar"><textarea id="eliIn" rows="2" placeholder="Ask Eli about the job, or tell him what to change: 'remove the three switchroom option rows', 'the cable schedule is one workbook not three', 'close RFI-002, Lee answered it'"></textarea><button class="jbbtn primary" id="eliGo">Send</button></div>
+      <div class="bsub">Eli sees the register, the RFIs, the open comments, what the scope documents said and the job folder. He changes things only when you tell him to, and says exactly what he changed.</div></div>`;
+    const log = $('#eliLog');
+    const draw = (chat) => { log.innerHTML = (chat || []).length ? chat.map(m => `<div class="elim ${m.role}"><b>${m.role === 'tom' ? 'You' : 'Eli'}</b><div>${esc(m.text).replace(/\n/g, '<br>')}</div>${m.done && m.done.length ? `<div class="elidone">${m.done.map(x => `<span>✓ ${esc(x)}</span>`).join('')}</div>` : ''}</div>`).join('') : `<div class="elim eli"><b>Eli</b><div>Morning. I've got ${O.rows.length} row${O.rows.length === 1 ? '' : 's'} on the register for ${esc(O.job.number)}, ${(O.desk.rfis || []).filter(r => !/closed|answered/i.test(r.status)).length} open RFI(s) and ${(O.desk.crs || []).filter(c => !/responded|closed/i.test(c.status || '')).length} open comment(s). What do you want to know, or change?</div></div>`; log.scrollTop = log.scrollHeight; };
+    try { draw((await api.eli.chatLog({ jobId })).chat); } catch (e) { log.innerHTML = `<div class="bsub">${esc(clean(e))}</div>`; }
+    const send = async () => { const t = $('#eliIn').value.trim(); if (!t) return; $('#eliIn').value = ''; $('#eliGo').disabled = true; log.insertAdjacentHTML('beforeend', `<div class="elim tom"><b>You</b><div>${esc(t)}</div></div><div class="elim eli thinking"><b>Eli</b><div>…</div></div>`); log.scrollTop = log.scrollHeight;
+      try { const r = await api.eli.chat({ jobId, text: t }); draw(r.chat); if (r.done && r.done.length) { try { O = await api.jobs.overview({ jobId }); } catch {} renderJob(); tab = 'eli'; } } catch (e) { log.querySelector('.thinking div').textContent = clean(e); }
+      if ($('#eliGo')) $('#eliGo').disabled = false; };
+    $('#eliGo').onclick = send; $('#eliIn').onkeydown = (ev) => { if (ev.key === 'Enter' && !ev.shiftKey) { ev.preventDefault(); send(); } }; $('#eliIn').focus();
+  }
   function tabComments() {
     const V = O.desk, el = $('#jbTab'), docs = O.rows.map(r => r.no);
     const byDoc = {}; (V.crs || []).forEach(c => { const k = c.doc === '*' ? 'All drawings and documents' : (c.doc || 'General'); (byDoc[k] = byDoc[k] || []).push(c); });
