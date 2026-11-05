@@ -319,4 +319,42 @@ function listDir(folder, rel = '') {
   return out.sort((a, b) => (b.dir - a.dir) || a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
 }
 
-module.exports = { isOldAtomax, jobNoIn, jobNameOf, looksLikeJob, projectsRoots, allJobFolders, jobsFolder, jobFolders, listDir, templateDir, isAtomax, jobParent, nextJobNumber, jobPattern, createJobFolder, init, suggest, gather, load, contextBlock, relevantFiles, outputDir, searchRoots, extract };
+// where a client's file belongs in the job folder, by its name and type: schedules in 7.8 / 008, datasheets in 7.1, drawings and site
+// information in site data, emails in correspondence, anything else in correspondence too (Tom can move it)
+function fileKind(name) {
+  const n = String(name || ''), ext = (n.match(/\.(\w+)$/) || ['', ''])[1].toLowerCase();
+  if (/^(eml|msg)$/.test(ext)) return 'email';
+  if (/schedule|equipment list|cable list|load list|protection|breaker|setting|io list|i\/o list|instrument list|register/i.test(n) && /^(xlsx|xlsm|xls|csv)$/.test(ext)) return 'schedules';
+  if (/datasheet|data sheet|catalogue|brochure|manual/i.test(n)) return 'datasheets';
+  if (/^(dxf|dwg|dgn)$/.test(ext) || /dno|letter|survey|existing|site|as[- ]?built|layout|drawing|sld|bcd|diagram|photo|img_|dsc_|scan/i.test(n) || /^(jpg|jpeg|png|heic)$/.test(ext)) return 'site-data';
+  return 'email';
+}
+const JUNK = /^(thumbs\.db|desktop\.ini|\.ds_store|~\$.*|.*\.(tmp|lnk|bak|dwl|dwl2))$/i;
+// every file under the dropped paths (folders walked, junk and hidden files skipped), with the path relative to what was dropped
+function filesUnder(paths, maxFiles = 2000) {
+  const out = [];
+  const walk = (p, rel, depth) => {
+    if (out.length >= maxFiles || depth > 8) return; let st; try { st = fs.statSync(p); } catch { return; }
+    const base = path.basename(p); if (base.startsWith('.') || JUNK.test(base)) return;
+    if (st.isDirectory()) { let es = []; try { es = fs.readdirSync(p); } catch { return; } for (const e of es) walk(path.join(p, e), rel ? path.join(rel, e) : e, depth + 1); }
+    else out.push({ path: p, rel: rel || base, name: base, size: st.size });
+  };
+  for (const p of [].concat(paths || [])) { let st; try { st = fs.statSync(p); } catch { continue; } walk(p, st.isDirectory() ? '' : '', 0); }
+  return out;
+}
+// file the client's files into a job folder. Returns what went where. Files already there (same name and size) are left alone; a
+// different file with the same name is kept beside it with (2). Folders dropped keep their own sub-folders under site data.
+function fileIn(folder, paths) {
+  const filed = [], skipped = [];
+  const list = Array.isArray(paths) && paths.length && typeof paths[0] === 'object' ? paths : filesUnder(paths);   // paths, or entries from filesUnder (keeps the dropped folder's sub-paths)
+  for (const f of list) {
+    const kind = fileKind(f.name), out = outputDir(folder, kind); if (!out) { skipped.push(f.rel); continue; }
+    const keepTree = kind === 'site-data' && f.rel.includes(path.sep), dstDir = keepTree ? path.join(out, path.dirname(f.rel)) : out;
+    fs.mkdirSync(dstDir, { recursive: true });
+    let dst = path.join(dstDir, f.name);
+    try { const st = fs.statSync(dst); if (st.size === f.size) { skipped.push(f.rel); continue; } const ext = path.extname(f.name); let n = 2; while (fs.existsSync(dst)) dst = path.join(dstDir, `${path.basename(f.name, ext)} (${n++})${ext}`); } catch {}
+    fs.copyFileSync(f.path, dst); filed.push({ from: f.rel, to: path.relative(folder, dst), kind });
+  }
+  return { filed, skipped };
+}
+module.exports = { fileKind, filesUnder, fileIn, isOldAtomax, jobNoIn, jobNameOf, looksLikeJob, projectsRoots, allJobFolders, jobsFolder, jobFolders, listDir, templateDir, isAtomax, jobParent, nextJobNumber, jobPattern, createJobFolder, init, suggest, gather, load, contextBlock, relevantFiles, outputDir, searchRoots, extract };

@@ -143,12 +143,13 @@ export function initJobsUI({ api, getAgents, openIssue, onWorkOn }) {
     const openC = (V.crs || []).filter(c => !/responded|closed/i.test(c.status || '')).length;
     const tabs = [['files', 'Files'], ['deliv', `Deliverables <em>${rows.length}</em>`], ['setup', 'Inputs &amp; setup'], ['comments', `Comments${openC ? ` <em>${openC}</em>` : ''}`], ['issue', 'Issue']];
     m.innerHTML = `<div class="jbhead"><div><h2>${esc(j.number)} ${esc(j.name || '')}</h2><div class="bsub">${esc(j.client || 'No client')} · border: ${esc(V.borderUsed || '')}${j.folder ? ` · <a href="#" id="jbFolder">open folder</a>` : ' · <b class="warn">no folder linked</b>'}</div></div>
-        <div class="jbbar" style="margin:0"><button class="jbbtn primary" id="jbAddMail">✉ Add email / changes</button><button class="jbbtn" id="jbWork">Work on this job</button></div></div>
+        <div class="jbbar" style="margin:0"><button class="jbbtn primary" id="jbAddMail">✉ Add email / changes</button><button class="jbbtn" id="jbAddFiles" title="Drop the client's folder or files: they are filed into the job folder, emails read by Eli">📁 Add files</button><button class="jbbtn" id="jbWork">Work on this job</button></div></div>
       <div class="jbtabs">${tabs.map(([k, t]) => `<button data-t="${k}" class="${tab === k ? 'on' : ''}">${t}</button>`).join('')}</div>
       ${msg ? `<div class="jbmsg">${esc(msg)}</div>` : ''}
       <div id="jbTab"></div>`;
     m.querySelectorAll('[data-t]').forEach(b => b.onclick = () => { tab = b.dataset.t; msg = ''; refresh(); });
     if ($('#jbFolder')) $('#jbFolder').onclick = (e) => { e.preventDefault(); api.proj.open({ jobId: j.id }).catch(() => api.showItem(j.folder)); };
+    $('#jbAddFiles').onclick = () => addFiles(j);
     $('#jbAddMail').onclick = () => emailPanel(j.id);
     $('#jbWork').onclick = async () => { await api.biz.setCurrent({ id: j.id }); if (onWorkOn) onWorkOn(j.id); $('#jbWork').textContent = '✓ Job in hand'; };
     ({ files: tabFiles, deliv: tabDeliv, setup: tabSetup, comments: tabComments, issue: tabIssue })[tab]();
@@ -398,6 +399,37 @@ export function initJobsUI({ api, getAgents, openIssue, onWorkOn }) {
   }
 
   // ---------- new job ----------
+  // a drop zone for the client's files or whole folder; returns { paths(), el }
+  function dropZone(host, { hint = 'Emails, schedules, drawings, letters, photos — a whole folder is fine' } = {}) {
+    const paths = [];
+    host.innerHTML = `<div class="emdrop" id="fdZone"><b>Drop the client's files or folder here</b><span>${esc(hint)}</span><div class="jbbar" style="margin-top:6px"><button class="jbbtn" type="button" id="fdPickFolder">Choose a folder…</button><button class="jbbtn" type="button" id="fdPickFile">Choose a file…</button></div></div><ul class="fdlist" id="fdList"></ul>`;
+    const list = host.querySelector('#fdList'), zone = host.querySelector('#fdZone');
+    const show = () => { list.innerHTML = paths.map((p, i) => `<li><span>${esc(p.split(/[\\/]/).pop())}</span><i>${esc(p)}</i><button class="x" data-i="${i}" title="Remove">×</button></li>`).join(''); list.querySelectorAll('button.x').forEach(b => b.onclick = () => { paths.splice(+b.dataset.i, 1); show(); }); };
+    const add = (ps) => { for (const p of ps) if (p && !paths.includes(p)) paths.push(p); show(); };
+    zone.ondragover = (e) => { if ([...e.dataTransfer.types].includes('Files')) { e.preventDefault(); zone.classList.add('over'); } };
+    zone.ondragleave = () => zone.classList.remove('over');
+    zone.ondrop = (e) => { e.preventDefault(); zone.classList.remove('over'); add([...e.dataTransfer.files].map(f => api.pathForFile ? api.pathForFile(f) : f.path).filter(Boolean)); };
+    host.querySelector('#fdPickFolder').onclick = async () => { const f = await api.biz.pickFolder(); if (f) add([f]); };
+    host.querySelector('#fdPickFile').onclick = async () => { const f = await api.biz.pickFile({}); if (f) add([f]); };
+    return { paths: () => paths.slice(), el: zone };
+  }
+  const filedSummary = (r) => {
+    const by = {}; for (const f of r.filed || []) { const d = f.to.split(/[\\/]/).slice(0, -1).pop() || ''; by[d] = (by[d] || 0) + 1; }
+    const parts = Object.entries(by).map(([d, n]) => `${n} → ${d}`);
+    if (r.emails && r.emails.length) parts.push(`${r.emails.length} email${r.emails.length === 1 ? '' : 's'} read by Eli (${r.emails.reduce((a, e) => a + (e.deliverables || 0), 0)} deliverable(s), ${r.emails.reduce((a, e) => a + (e.comments || 0), 0)} comment(s))`);
+    if (r.skipped && r.skipped.length) parts.push(`${r.skipped.length} already there`);
+    if (r.errors && r.errors.length) parts.push('could not read: ' + r.errors.join('; '));
+    return parts.length ? 'Filed: ' + parts.join(' · ') : 'Nothing to file.';
+  };
+  // add the client's files to an existing job
+  function addFiles(job) {
+    const m = $('#jbMain');
+    m.innerHTML = `<div class="jbhead"><div><h2>Add files · ${esc(job.number)}</h2><div class="bsub">Everything is filed into the job folder where it belongs; emails are read by Eli for scope, deliverables and comments.</div></div></div><div class="jbcard" id="fdHost"></div><div class="jbbar"><button class="jbbtn primary" id="fdGo">File them</button><button class="jbbtn" id="fdCancel">Cancel</button></div><div id="fdMsg" class="bsub"></div>`;
+    const dz = dropZone($('#fdHost'));
+    $('#fdCancel').onclick = () => refresh();
+    $('#fdGo').onclick = async () => { const paths = dz.paths(); if (!paths.length) { $('#fdMsg').textContent = 'Drop something first.'; return; } $('#fdGo').disabled = true; $('#fdMsg').textContent = 'Filing…';
+      try { const r = await api.jobs.fileIn({ jobId: job.id, paths }); msg = filedSummary(r); tab = r.suggest && r.suggest.length ? 'deliv' : 'files'; if (window.toast) window.toast(msg); refresh(); } catch (e) { $('#fdMsg').textContent = clean(e); $('#fdGo').disabled = false; } };
+  }
   async function newJob() {
     let D = { nextNumber: '', saved: '', guess: '' }; try { D = await api.mail.defaults(); } catch {}
     let parent = D.saved || D.guess || '', link = '';
@@ -408,12 +440,17 @@ export function initJobsUI({ api, getAgents, openIssue, onWorkOn }) {
         <label class="plain"><input type="radio" name="njMode" value="create" checked> New folder from the Atomax template in <b id="njParent">${esc(parent || '(choose where your job folders live)')}</b> <button class="jbbtn" id="njParentPick" type="button">Change…</button></label>
         <label class="plain"><input type="radio" name="njMode" value="link"> A folder I already have <button class="jbbtn" id="njLinkPick" type="button">Choose…</button> <span id="njLink" class="bsub"></span></label>
         <label class="plain"><input type="radio" name="njMode" value="none"> No folder yet</label>
+        <label>The client's files</label><div id="njDrop"></div>
         <div class="jbbar"><button class="jbbtn primary" id="njSave">Create job</button><button class="jbbtn" id="njCancel">Cancel</button></div><div id="njMsg" class="bsub"></div></div>`;
+    const dz = dropZone($('#njDrop'), { hint: 'Drop the whole folder the client sent: it is filed into the new job folder (emails read by Eli) as the job is created' });
     $('#njParentPick').onclick = async () => { const f = await api.mail.pickParent(); if (f) { parent = f; $('#njParent').textContent = f; } };
     $('#njLinkPick').onclick = async () => { const f = await api.biz.pickFolder(); if (f) { link = f; $('#njLink').textContent = f; m.querySelector('input[value="link"]').checked = true; } };
     $('#njCancel').onclick = () => refresh();
     $('#njSave').onclick = async () => { const mode = m.querySelector('input[name="njMode"]:checked').value; $('#njMsg').textContent = 'Creating…';
-      try { const r = await api.mail.newJob({ number: $('#njNo').value, name: $('#njName').value, client: $('#njClient').value, mode, folder: mode === 'create' ? parent : link }); sel = r.id; tab = 'setup'; msg = r.folder ? 'Job created. Next: check the inputs are in the folder, then build the drawing register.' : 'Job created.'; refresh(); } catch (e) { $('#njMsg').textContent = clean(e); } };
+      try { const r = await api.mail.newJob({ number: $('#njNo').value, name: $('#njName').value, client: $('#njClient').value, mode, folder: mode === 'create' ? parent : link }); sel = r.id; tab = 'setup'; msg = r.folder ? 'Job created. Next: check the inputs are in the folder, then build the drawing register.' : 'Job created.';
+        const paths = dz.paths(); if (paths.length && r.folder) { $('#njMsg').textContent = 'Job created. Filing the files…'; try { const f = await api.jobs.fileIn({ jobId: r.id, paths }); msg = 'Job created. ' + filedSummary(f); tab = f.suggest && f.suggest.length ? 'deliv' : 'files'; } catch (e) { msg = 'Job created, but the files could not be filed: ' + clean(e); } }
+        else if (paths.length) msg = 'Job created without a folder, so the files were not filed: give it a folder on the job desk, then Add files.';
+        refresh(); } catch (e) { $('#njMsg').textContent = clean(e); } };
   }
 
   $('#jbBack').onclick = () => hide();

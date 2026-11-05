@@ -241,16 +241,24 @@ function register({ ipcMain, dialog, shell, getWin, userDir, claudeFull, checker
     return { jobs, email: e, job: job ? { id: job.id, number: job.number, name: job.name, client: job.client || '' } : null, suggest: { number: String(e.jobNumber || D.nextNumber || '').toUpperCase(), name: e.site || e.subject || '', client: company ? company.company : '', folderFound: e.folderFound || '' } };
   }));
   // file it: on the job (new one made if asked), its deliverables added, its changes logged against the drawings they are for, a copy kept in the job folder
-  // where an email attachment belongs in the job folder, by its name and type (the email itself always goes in correspondence)
-function attachmentKind(name) {
-  const n = String(name || ''), ext = (n.match(/\.(\w+)$/) || ['', ''])[1].toLowerCase();
-  if (/\.eml$|\.msg$/i.test(n)) return 'email';
-  if (/schedule|equipment list|cable list|load list|protection|breaker|setting/i.test(n) && /^(xlsx|xlsm|xls|csv)$/.test(ext)) return 'schedules';
-  if (/datasheet|data sheet|catalogue|brochure/i.test(n)) return 'datasheets';
-  if (/^(dxf|dwg)$/.test(ext) || /dno|letter|survey|existing|site|as[- ]?built|layout|drawing|sld|bcd|diagram/i.test(n)) return 'site-data';
-  return 'email';
-}
-  ipcMain.handle('jobs:applyEmail', wrap(({ emailId, jobId = '', newJob = null, client = '' }) => {
+  const attachmentKind = (name) => BIZ.projects.fileKind(name);
+  // drop the client's whole folder (or any files) on a job: emails go through Eli (scope, deliverables, comments, their attachments filed),
+  // everything else is filed where it lives in the job folder; then the folder is read again
+  ipcMain.handle('jobs:fileIn', wrap(async ({ jobId, paths = [] }) => {
+    const d = BIZ.data(), job = d.jobs.find(j => j.id === jobId); if (!job) throw new Error('No such job');
+    if (!job.folder || !fs.existsSync(job.folder)) throw new Error('This job has no folder yet: give it one on the job desk first.');
+    const all = BIZ.projects.filesUnder(paths), mails = all.filter(f => /\.(eml|msg)$/i.test(f.name)), rest = all.filter(f => !/\.(eml|msg)$/i.test(f.name));
+    const result = { filed: [], skipped: [], emails: [], errors: [] };
+    if (rest.length) { const r = BIZ.projects.fileIn(job.folder, rest); result.filed = r.filed; result.skipped = r.skipped; }
+    for (const m of mails) { try { const e = await readEmail({ paths: [m.path] }); const a = await applyEmail({ emailId: e.id, jobId }); result.emails.push({ name: m.name, subject: e.subject || '', deliverables: (a && a.deliverables) || 0, comments: (a && a.comments) || 0, filed: (a && a.filed) || [] }); } catch (err) { result.errors.push(`${m.name}: ${String(err && err.message || err)}`); } }
+    try { BIZ.projects.gather(job.id, job.folder, { checker }); } catch {}
+    try { require('./jobdesk').checkRegister(job.id); } catch {}
+    const drawings = (BIZ.data().jobs.find(j => j.id === jobId) || {}).drawings || [];
+    result.suggest = !drawings.length && all.some(f => /cable schedule/i.test(f.name)) ? ['SLD', 'BCD'] : [];
+    BIZ.log({ who: 'Tom', action: `Filed ${result.filed.length} file${result.filed.length === 1 ? '' : 's'}${mails.length ? ` and ${mails.length} email${mails.length === 1 ? '' : 's'}` : ''} into the job folder`, jobId });
+    return result;
+  }));
+  const applyEmail = ({ emailId, jobId = '', newJob = null, client = '' }) => {
     const list = load(), e = list.find(x => x.id === emailId); if (!e) throw new Error('That email is gone');
     const d = BIZ.data(), desk = require('./jobdesk');
     let job = jobId && d.jobs.find(j => j.id === jobId);
@@ -288,7 +296,8 @@ function attachmentKind(name) {
     e.jobId = job.id; e.desk = { ...(e.desk || {}), [job.id]: r }; save(list);
     BIZ.log({ who: 'Eli', action: 'Filed an email on the job', jobId: job.id, detail: `${e.subject || e.summary} · ${r.deliverables} deliverable(s) added · ${r.comments} change(s) logged` });
     return r;
-  }));
+  };
+  ipcMain.handle('jobs:applyEmail', wrap(applyEmail));
   ipcMain.handle('mail:folders', wrap(({ id, jobId }) => { const e = load().find(x => x.id === id); const j = jobId && BIZ.data().jobs.find(x => x.id === jobId); return BIZ.projects.suggest({ number: j ? j.number : e && e.jobNumber, name: j ? j.name : '', text: e ? `${e.site} ${e.subject}` : '' }); }));
 
   // Tom says yes: job (existing or new), folder, task on the board, email filed in the job folder

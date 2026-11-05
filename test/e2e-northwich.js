@@ -109,5 +109,25 @@ const step = (name, fn) => { try { const r = fn(); if (r && r.then) return r.the
 
   // 6. the PDF: a real A0 page with the cloud drawn as arcs (not a straight-sided polygon)
   await step('PDF is an A0 page holding the drawing', async () => { const { PDFDocument } = require('pdf-lib'); const pdf = fs.readFileSync(path.join(dir74, 'X071126-01-70-0001_P01.pdf')); const doc = await PDFDocument.load(pdf); const { width, height } = doc.getPage(0).getSize(); assert.ok(Math.abs(width - 3370.39) < 1 && Math.abs(height - 2383.94) < 1, `A0 page, got ${width}x${height}`); return `${doc.getPageCount()} page, ${(pdf.length / 1024).toFixed(0)} KB`; });
+  // 7. a new job the "drop the client's folder on it" way: the folder holds an email (scope + attachments), loose schedules, a DNO letter,
+  //    a client drawing and junk; everything lands where it lives, the email goes through Eli, junk is left behind
+  const drop = path.join(TMP, 'from the client'); fs.mkdirSync(path.join(drop, 'Drawings', 'Existing'), { recursive: true }); fs.mkdirSync(path.join(drop, 'Schedules'), { recursive: true });
+  fs.copyFileSync(path.join(FX, 'northwich-cable-schedule.xlsx'), path.join(drop, 'Schedules', 'X081126-01-72-0001 Cable Schedule.xlsx'));
+  fs.copyFileSync(path.join(FX, 'northwich-protection-schedule.xlsx'), path.join(drop, 'Schedules', 'X081126-01-73-0001 Protection Schedule.xlsx'));
+  fs.writeFileSync(path.join(drop, 'DNO letter.txt'), 'Agreed capacity 800A. TN-S. 22kA.'); fs.writeFileSync(path.join(drop, 'Drawings', 'Existing', 'Existing LV SLD.dxf'), '0\nSECTION\n0\nENDSEC\n0\nEOF\n'); fs.writeFileSync(path.join(drop, 'Drawings', 'Existing', 'Site photo IMG_0012.jpg'), 'jpg');
+  fs.writeFileSync(path.join(drop, 'Thumbs.db'), 'junk'); fs.writeFileSync(path.join(drop, '~$notes.docx'), 'junk'); fs.writeFileSync(path.join(drop, 'Motor datasheet WEG W22.pdf'), 'pdf');
+  fs.writeFileSync(path.join(drop, 'RE scope.eml'), 'From: a@b.c\r\nTo: d@e.f\r\nSubject: X081126 Winsford PS - scope\r\nDate: Thu, 05 Nov 2026 09:00:00 +0000\r\n\r\nPlease do the SLD and BCD.\r\n');
+  const folder2 = projects.createJobFolder(PROJECTS, 'X081126', 'Winsford Pumping Station'); const job2 = biz.saveJob(BIZ.data(), { number: 'X081126', name: 'Winsford Pumping Station', client: 'Weaver Water Ltd', folder: folder2 }, 'Tom'); BIZ.store.save();
+  const F = await call('jobs:fileIn', { jobId: job2.id, paths: [drop] });
+  await step('drop a folder on a new job: filed where it lives, email read, junk skipped', () => {
+    const to = Object.fromEntries(F.filed.map(f => [f.from.replace(/\\/g, '/'), f.to.replace(/\\/g, '/')]));
+    assert.ok(/7\.8 Schedules\/X081126-01-72-0001 Cable Schedule\.xlsx$/.test(to['Schedules/X081126-01-72-0001 Cable Schedule.xlsx']), JSON.stringify(to));
+    assert.ok(/10\.1\. Existing Site Data\/DNO letter\.txt$/.test(to['DNO letter.txt'])); assert.ok(/10\.1\. Existing Site Data\/Drawings\/Existing\/Existing LV SLD\.dxf$/.test(to['Drawings/Existing/Existing LV SLD.dxf']), 'client drawings keep their sub-folders');
+    assert.ok(/7\.1 Datasheets\/Motor datasheet WEG W22\.pdf$/.test(to['Motor datasheet WEG W22.pdf']));
+    assert.ok(!Object.keys(to).some(k => /Thumbs|~\$/.test(k)), 'junk not filed'); assert.strictEqual(F.emails.length, 1, 'the email went through Eli'); assert.ok(fs.existsSync(path.join(folder2, '7. Electrical', '7.0 Incoming Correspondance', 'RE scope.eml')), 'email filed in correspondence');
+    assert.deepStrictEqual(F.errors, []); return F.filed.length + ' filed, ' + F.skipped.length + ' skipped';
+  });
+  const F2 = await call('jobs:fileIn', { jobId: job2.id, paths: [path.join(drop, 'Schedules')] });
+  await step('dropping the same files again files nothing twice', () => { assert.strictEqual(F2.filed.length, 0); assert.strictEqual(F2.skipped.length, 2); });
   console.log(process.exitCode ? 'E2E FAILED' : 'e2e northwich ok'); fs.rmSync(TMP, { recursive: true, force: true }); process.exit(process.exitCode || 0);
 })().catch(e => { console.error('E2E ERROR', e); process.exit(1); });
