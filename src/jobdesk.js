@@ -381,8 +381,23 @@ function view(id) {
   const hb = DN.habits(job);
   const bd = borderFor(job);
   return { sheetSize: d.sheetSize || '', ng: d.ng || { site: '', investment: '' }, border: d.border || 'auto', borderUsed: bd.name, borderWarning: bd.warning || '', area: d.area || hb.area || '', disc: d.disc || hb.disc || '', project: hb.project, rules: getRules(id), rulesFile: rulesPath(job), client: job.client || '', clientProfile: prof ? prof.name : '', titleBlock: titleBlockFor(job) ? path.basename(titleBlockFor(job)) : '',
-    scope: d.scope || null, flow: d.flow || null, autoFlow: !!d.autoFlow, registerFile: d.registerFile, registerChecked: d.registerChecked, drawings: job.drawings, inputs: d.inputs, rfis: d.rfis, crs: d.crs,
+    rfiRegisterFile: d.rfiRegisterFile || '', scope: d.scope || null, flow: d.flow || null, autoFlow: !!d.autoFlow, registerFile: d.registerFile, registerChecked: d.registerChecked, drawings: job.drawings, inputs: d.inputs, rfis: d.rfis, crs: d.crs,
     master: m ? { status: m.status, tender: !!m.tender, builtAt: m.builtAt, approvedAt: m.approvedAt, devices: m.devices.length, cables: m.cables.length, gaps: m.gaps, read: m.read, file: m.file || '', summary: m.summary, preview: m.cables.slice(0, 40), incomplete: !!m.incomplete } : null };
+}
+// the RFI register on the house template, kept in the job folder (003 Technical Queries / 9.3 RFI) and rewritten whenever the RFIs change:
+// Eli's questions from emails and scope documents land in it as soon as he raises them. Numbered <job>-<area>-01-01-0003 like the template.
+async function writeRfiRegister(id, { templateDir = '', people = {} } = {}) {
+  const job = jobOf(id), d = load(id); if (!job || !job.folder || !fs.existsSync(job.folder) || !(d.rfis || []).length) return '';
+  const dir = BIZ.outputDirFor(id, 'rfi') || path.join(job.folder, '003 Technical Queries'); fs.mkdirSync(dir, { recursive: true });
+  const area = (d.area || '').trim() || '0000', docNo = `${job.number}-${area}-01-01-0003`;
+  const prev = fs.readdirSync(dir).filter(n => /RFI REGISTER.*\.xlsx$/i.test(n) && !/^~\$/.test(n));
+  const rev = d.rfiRegisterRev || 'P01';
+  const file = path.join(dir, `${docNo} - RFI REGISTER ${rev}.xlsx`);
+  const R = require('./rfireg'), tpl = R.templatePath(templateDir);
+  const buf = await R.fill(tpl, job, { docNo, compiledBy: people.drawn || d.rfiCompiledBy || 'Eli (Atomax-UK)', revision: rev, issueDate: d.rfiRegisterIssued || undefined, discipline: d.disc === '05' ? 'E&I' : 'Electrical', issueTo: job.client || '' }, d.rfis.map(r => ({ ...r, to: r.to || job.client || '' })));
+  for (const n of prev) if (path.join(dir, n) !== file && !/\(archive\)/i.test(n)) { try { const a = path.join(dir, 'Archive'); fs.mkdirSync(a, { recursive: true }); fs.renameSync(path.join(dir, n), path.join(a, n)); } catch {} }   // an older copy under another name goes to Archive
+  fs.writeFileSync(file, buf); d.rfiRegisterFile = file; d.rfiRegisterIssued = d.rfiRegisterIssued || new Date().toISOString(); save(id, d);
+  return file;
 }
 function exportSheet(id, kind, writeXlsx) {
   const job = jobOf(id), d = load(id);
@@ -415,4 +430,4 @@ function borderFor(job) {
 }
 
 const saveRaw = (id, d) => save(id, d);
-module.exports = { kindTag, GROUPS, setCount, setBase, setScopeNotes, tidyRows, kindKey, renameRow, setBorder, borderFor, saveRaw, setNumbering, init, load, getRules, setRules, addCorrection, clientProfile, titleBlockFor, findRegisters, readRegister, checkRegister, makeRegister, proposeNumber, addDeliverables, addInputs, saveRfi, addComments, saveCrs, buildMaster, exportMaster, importMaster, approveMaster, context, view, exportSheet, masterOf, MASTER_SYSTEM, RULES_FILE };
+module.exports = { writeRfiRegister, kindTag, GROUPS, setCount, setBase, setScopeNotes, tidyRows, kindKey, renameRow, setBorder, borderFor, saveRaw, setNumbering, init, load, getRules, setRules, addCorrection, clientProfile, titleBlockFor, findRegisters, readRegister, checkRegister, makeRegister, proposeNumber, addDeliverables, addInputs, saveRfi, addComments, saveCrs, buildMaster, exportMaster, importMaster, approveMaster, context, view, exportSheet, masterOf, MASTER_SYSTEM, RULES_FILE };

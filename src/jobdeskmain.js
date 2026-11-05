@@ -28,7 +28,7 @@ function register({ ipcMain, dialog, getWin, claudeFull, BIZ, checker, userDir, 
   ipcMain.handle('desk:addRfi', wrap(({ jobId, q }) => { desk.addInputs(jobId, { questions: [q] }); return desk.view(jobId); }));
   ipcMain.handle('desk:addComment', wrap(({ jobId, doc, comment, by }) => { desk.addComments(jobId, [{ doc, comment, by: by || 'Client' }]); return desk.view(jobId); }));
   ipcMain.handle('desk:crs', wrap(({ jobId, row }) => { desk.saveCrs(jobId, row); return desk.view(jobId); }));
-  ipcMain.handle('desk:export', wrap(({ jobId, kind }) => { const p = desk.exportSheet(jobId, kind, writeXlsx); shell.showItemInFolder(p); return p; }));
+  ipcMain.handle('desk:export', wrap(async ({ jobId, kind }) => { let p = ''; if (kind === 'rfi') { try { p = await desk.writeRfiRegister(jobId, { templateDir: BIZ.projects.templateDir() }); } catch (e) { throw new Error('RFI register: ' + String(e.message || e)); } if (!p) throw new Error('No RFIs on this job yet, or the job has no folder.'); } else p = desk.exportSheet(jobId, kind, writeXlsx); shell.showItemInFolder(p); return p; }));
   ipcMain.handle('desk:buildMaster', wrap(async ({ jobId, note }) => {
     const runs = require('./runs'); if (runs.live().some(r => r.jobId === jobId && r.no === 'MASTER')) return desk.view(jobId);   // already building: one build at a time
     const R = runs.start({ kind: 'master', who: 'Lex', jobId, no: 'MASTER' }); runs.stage(R.id, 'Lex is reading the job documents', 10);

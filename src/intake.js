@@ -343,6 +343,7 @@ function register({ ipcMain, dialog, shell, getWin, userDir, claudeFull, checker
     let added = 0; try { added = (desk.addDeliverables(jobId, rows, { source: 'scope' }) || []).length; } catch {}
     try { desk.tidyRows(jobId); } catch {}
     try { desk.addInputs(jobId, { inputs: out.inputs || [], missing: out.missingInputs || [], questions: [] }); } catch {}
+    try { await desk.writeRfiRegister(jobId, { templateDir: BIZ.projects.templateDir() }); } catch {}
     try { desk.setScopeNotes && desk.setScopeNotes(jobId, { summary: out.summary || '', facts: out.facts || [], byOthers: out.byOthers || [], conflicts: out.conflicts || [], from: files.map(f => f.name) }); } catch {}
     BIZ.log({ who: 'Eli', action: `Read the scope documents: ${rows.length} deliverable(s) listed, ${added} added${(out.conflicts || []).length ? `, ${out.conflicts.length} point(s) where the documents disagree` : ''}`, jobId, detail: files.map(f => f.name).join(', ') });
     return { listed: rows.length, added, conflicts: out.conflicts || [], byOthers: out.byOthers || [], summary: out.summary || '', files: files.map(f => f.name) };
@@ -414,6 +415,7 @@ function register({ ipcMain, dialog, shell, getWin, userDir, claudeFull, checker
     try { r.deliverables = (desk.addDeliverables(job.id, (e.deliverables || []).filter(mine), { commentReturn: !!e.commentReturn }) || []).length; } catch {}
     try { desk.tidyRows(job.id); } catch {}
     try { desk.addInputs(job.id, { inputs: e.inputs || [], missing: e.missingInputs || [], questions: e.clientQuestions || [], fromEmail: e.subject || e.from }); } catch {}
+    try { r.rfiRegister = await desk.writeRfiRegister(job.id, { templateDir: BIZ.projects.templateDir() }); } catch (err) { BIZ.log({ who: 'Eli', action: 'Could not write the RFI register: ' + String(err.message || err), jobId: job.id }); }   // the questions go on the house RFI register in the job folder
     if (e.comments && e.comments.filter(mine).length) { const cs = e.comments.filter(mine).map(c => ({ ...c, doc: docOf(c.doc) })); try { r.comments = desk.addComments(job.id, cs, e.subject || e.from).length; } catch {} r.docs = [...new Set(cs.map(c => c.doc).filter(Boolean))]; }
     // the email itself goes in correspondence; its attachments go where that kind of file lives in the job folder (schedules in 7.8 / 008, drawings and
     // site information in site data), so Dex and Lex find them where Tom would look

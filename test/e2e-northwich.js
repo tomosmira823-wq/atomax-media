@@ -202,6 +202,14 @@ const step = (name, fn) => { try { const r = fn(); if (r && r.then) return r.the
     assert.ok(!O.rows.some(r => /stage by stage/i.test(r.title)), 'no TBC package row for the SLDs'); assert.ok(O.rows.some(r => /Cable schedules/.test(r.title)), 'the package with nothing on file stays a row');
     assert.ok((O.desk.inputs || []).some(i => /accepted DID/.test(i.name) && /already in the job folder/.test(i.what)), 'DID recorded as received');
     assert.ok(!(O.desk.rfis || []).some(r => /accepted DID|Drawing 153|Andy Stabler/.test(r.q)), 'no RFI for things on file: ' + JSON.stringify((O.desk.rfis || []).map(r => r.q)));
+    // the RFI register on the house template, written into 003 Technical Queries by Eli as the questions are raised
+    { require('../src/jobdesk').addInputs(J.id, { inputs: [], missing: [], questions: ['What S codes should the DCAAR drawings carry?'], fromEmail: 'FW: Bustleholm' });
+      const p = await call('desk:export', { jobId: J.id, kind: 'rfi' }); assert.ok(/003 Technical Queries[\\/]005 -BUSTLEHOLM - DCAAR-0000-01-01-0003 - RFI REGISTER P01\.xlsx$/.test(p), 'register path: ' + p); assert.ok(fs.existsSync(p));
+      const sh = checker.readXlsx(fs.readFileSync(p)); const cells = []; for (const s0 of sh) for (const r of s0.rows || []) cells.push((Array.isArray(r) ? r : r.c || Object.values(r)).map(x => String(x ?? '').trim()));
+      const flat = cells.map(c => c.join('|')).join('\n');
+      assert.ok(/BGEN Ltd/.test(flat) && /005 -BUSTLEHOLM - DCAAR Bustleholm DCAAR/.test(flat) && /005 -BUSTLEHOLM - DCAAR-0000-01-01-0003/.test(flat), 'header block filled: ' + flat.slice(0, 400));
+      const q = cells.find(c => c[0] === 'RFI-001'); assert.ok(q && /S codes/.test(q[2]) && q[1] === 'Electrical' && q[3] === 'Atomax-UK' && q[4] === 'BGEN Ltd' && q[7] === 'MEDIUM' && q[13] === 'OPEN', 'RFI-001 row: ' + JSON.stringify(q));
+      assert.ok(/Quantity of RFIs Raised/.test(flat) && /RFI-050/.test(flat), 'template summary and spare rows kept'); }
     const r153 = O.rows.find(r => r.no === 'X11475-BGN-ZZ-XX-DR-E-7153'); assert.ok(r153 && r153.rev === 'P03', 'drawing 153 is a row at P03'); const c153 = (O.desk.crs || []).filter(c => c.doc === 'X11475-BGN-ZZ-XX-DR-E-7153'); assert.strictEqual(c153.length, 1, 'the comment landed on 7153: ' + JSON.stringify((O.desk.crs || []).map(c => c.doc)));
     assert.strictEqual((O.desk.crs || []).filter(c => c.doc === '*').length, 1, 'the all-drawings comment is job-wide');
     const r7147 = O.rows.find(r => r.no === 'X11475-BGN-ZZ-XX-DR-E-7147'); assert.ok(r7147 && r7147.rev === 'P03' && r7147.alt === '42_BG_0055' && r7147.group === 'drawing', 'register row with current rev and our number: ' + JSON.stringify(r7147 && [r7147.rev, r7147.alt, r7147.group]));
