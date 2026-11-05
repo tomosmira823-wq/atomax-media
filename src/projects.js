@@ -279,7 +279,10 @@ const JOBNO = /(?:^|[^A-Za-z0-9])([A-Za-z]{1,3}\d{4,6}(?:-\d{2})?)(?![A-Za-z0-9]
 const jobNoIn = (name) => { const m = String(name || '').match(JOBNO); return m ? m[1].toUpperCase() : ''; };
 const jobNameOf = (name, no) => String(name || '').replace(new RegExp('[\\s_\\-–.]*' + no.replace(/[-]/g, '\\-') + '[\\s_\\-–.]*', 'i'), ' ').replace(/\s+/g, ' ').trim();
 // a folder holding the numbered Atomax sections (1. Safety, 2. Project Management ... 10. Site Data) is a job, number or not
-function looksLikeJob(full) { try { return fs.readdirSync(full).filter(n => /^\d{1,3}(\.\d+)?[\s._-]+[A-Za-z]/.test(n)).length >= 3; } catch { return false; } }
+// a job folder holds top-level sections ("1. Safety", "10. Site Data", "001 Incoming Correspondence"); a discipline folder inside one holds
+// sub-sections ("7.0 Incoming Correspondance", "7.3 Block Diagrams") and is not a job
+const JOB_SECTION = /^\d{1,3}\.?[\s_-]+[A-Za-z]/;
+function looksLikeJob(full) { try { return fs.readdirSync(full).filter(n => JOB_SECTION.test(n)).length >= 3; } catch { return false; } }
 const isDirEnt = (dir, e) => { if (e.isDirectory()) return true; try { return fs.statSync(path.join(dir, e.name)).isDirectory(); } catch { return !!(e.isSymbolicLink && e.isSymbolicLink() && !path.extname(e.name)); } };
 // every job folder under the Projects folders: Projects \\ job, Projects \\ client \\ job, Projects \\ year \\ client \\ job (never the template)
 function allJobFolders(known = []) {
