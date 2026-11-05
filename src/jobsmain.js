@@ -191,6 +191,7 @@ function register({ ipcMain, HANDLERS, BIZ, claudeFull }) {
     const job = jobOf(jobId), t = String(text || '').trim(); if (!t) throw new Error('Say something to Eli');
     const E = require('./elichat'), biz = require('./business');
     const d0 = desk.load(jobId); d0.chat = [...(d0.chat || []), { role: 'tom', text: t, at: new Date().toISOString() }].slice(-200); desk.saveRaw(jobId, d0);
+    try { if (job.folder && fs.existsSync(job.folder)) BIZ.projects.gather(job.id, job.folder, { checker: require('./checker') }); } catch {}   // the folder as it is now, not as it was: Eli never answers from a stale file list
     const ov = overview(jobId), files = jobFiles(jobId).map(f => f.rel);
     let nextIssue = null; try { if (job.folder) { const oi = desk.load(jobId).openIssue; nextIssue = oi && oi.path && fs.existsSync(oi.path) ? { n: oi.n, previous: { n: oi.n - 1 }, open: true } : BIZ.projects.nextIssueDir(job.folder); } } catch {}
     const ctx = E.context({ job, overview: ov, desk: desk.load(jobId), files, history: d0.chat.slice(0, -1), nextIssue, needNg: ov.needNg });
