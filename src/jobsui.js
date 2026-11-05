@@ -79,6 +79,8 @@ export function initJobsUI({ api, getAgents, openIssue, onWorkOn }) {
     try { roots = (await api.proj.roots()).roots || []; } catch { roots = []; }
     const inside = (p) => p && roots.some(r => p === r.path || p.startsWith(r.path.replace(/[\\/]+$/, '') + (r.path.includes('\\') ? '\\' : '/')));
     if (!inside(nav)) nav = roots.length === 1 ? roots[0].path : '';
+    // the list never shows the inside of a job folder (that is the Files tab): parked in one, it lifts to the folder holding the job
+    if (nav) { try { const J = await api.proj.jobFor({ path: nav }); if (J && J.folder && inside(J.folder)) { const up = J.folder.replace(/[\\/][^\\/]+$/, ''); if (inside(up)) { selFolder = selFolder || J.folder; nav = up; } } } catch {} }
     if (!nav) { listing = null; return; }
     try { listing = await api.proj.listAt({ path: nav }); } catch (e) { listing = { path: nav, name: base(nav), entries: [], error: clean(e) }; }
   }
@@ -118,7 +120,6 @@ export function initJobsUI({ api, getAgents, openIssue, onWorkOn }) {
       else { sel = ''; selPath = J.folder; tab = 'files'; msg = ''; }
       refresh();
     });
-    L.querySelectorAll('[data-dir][data-job="1"]').forEach(b => b.ondblclick = async () => { nav = b.dataset.dir; await relist(); renderList(); });
     L.querySelectorAll('[data-go]').forEach(b => b.onclick = async () => { nav = b.dataset.go; await relist(); renderList(); });
     L.querySelectorAll('[data-nav]').forEach(a => a.onclick = async (e) => { e.preventDefault(); nav = a.dataset.nav; await relist(); renderList(); });
     L.querySelectorAll('[data-file]').forEach(b => b.onclick = () => api.proj.openAt({ path: b.dataset.file }).catch(err => { msg = clean(err); }));
