@@ -185,7 +185,7 @@ function register({ ipcMain, dialog, shell, getWin, userDir, claudeFull, checker
     return best ? best.id : '';
   }
 
-  const readEmail = async ({ files = [], text = '', reuseId = '', paths = [], skills }) => {
+  const readEmail = async ({ files = [], text = '', reuseId = '', paths = [], skills, run = '' }) => {
     files = [...files, ...paths.filter(p => fs.existsSync(p)).map(p => ({ name: path.basename(p), mime: extMime(p), base64: fs.readFileSync(p).toString('base64') }))];
     const id = reuseId || uid(), dir = path.join(DIR(), id); fs.mkdirSync(dir, { recursive: true });
     const content = [], parts = [], originals = [], attach = [];
@@ -211,7 +211,7 @@ function register({ ipcMain, dialog, shell, getWin, userDir, claudeFull, checker
     for (const j of BIZ.data().jobs.filter(j => j.status !== 'Closed')) { if (seenNo.has(String(j.number).toUpperCase())) continue; seenNo.add(String(j.number).toUpperCase()); lines0.push(`- ${j.number} ${j.name}${j.client ? ' (' + j.client + ')' : ''}`); }
     const jobsList = lines0.slice(0, 200).join('\n');
     content.push({ type: 'text', text: 'EXISTING JOBS:\n' + (jobsList || '(none yet)') });
-    let r = await claudeFull({ system: EMAIL_SYSTEM, who: 'email', skills, maxTokens: 8000, messages: [{ role: 'user', content }] });
+    let r = await claudeFull({ system: EMAIL_SYSTEM, who: 'email', skills, maxTokens: 8000, messages: [{ role: 'user', content }], run });
     if (r.stop === 'max_tokens') r = await claudeFull({ system: EMAIL_SYSTEM + '\nKeep every field short: details under 60 words, the reply under 150 words.', who: 'email', skills, maxTokens: 16000, messages: [{ role: 'user', content }] });
     const reply = r.text;
     try { fs.writeFileSync(path.join(dir, 'eli-reply.txt'), String(reply || '')); } catch {}   // kept next to the email so a bad reply can be looked at
@@ -260,7 +260,7 @@ function register({ ipcMain, dialog, shell, getWin, userDir, claudeFull, checker
   const SCOPE_DOC = /scope|proposal|quot(e|ation)|requirement|specification|enquiry|\benq\d|tender|\bitt\b|\brfq\b|order|brief|works information|employer/i;
   const isScopeDoc = (f) => SCOPE_DOC.test(f.name) && /\.(docx|pdf|txt|md)$/i.test(f.name) && !/superseded|\bold\b|copy\b/i.test(f.rel || f.name);
   async function docText(p) { const ext = path.extname(p).toLowerCase(); if (ext === '.docx') { try { const JSZip = require('jszip'); const z = await JSZip.loadAsync(fs.readFileSync(p)); const f = z.file('word/document.xml'); if (!f) return ''; const xml = await f.async('string'); return xml.replace(/<\/w:p>/g, '\n').replace(/<w:tab\/>/g, '\t').replace(/<[^>]+>/g, '').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#(\d+);/g, (_m, n) => String.fromCharCode(+n)); } catch { return ''; } } if (ext === '.txt' || ext === '.md') { try { return fs.readFileSync(p, 'utf8'); } catch { return ''; } } return ''; }
-  async function readScope({ jobId, files = [], skills }) {
+  async function readScope({ jobId, files = [], skills, run = '' }) {
     const content = []; let n = 0;
     for (const f of files.slice(0, 8)) {
       const ext = path.extname(f.name).toLowerCase(); let mt = 0; try { mt = fs.statSync(f.path).mtimeMs; } catch {}
@@ -269,7 +269,7 @@ function register({ ipcMain, dialog, shell, getWin, userDir, claudeFull, checker
       else { const t = (await docText(f.path)).trim(); if (t) content.push({ type: 'text', text: `${head}\n${t.slice(0, 60000)}` }); }
     }
     if (!content.length) return null;
-    const r = await claudeFull({ system: SCOPE_SYSTEM, who: 'email', skills, maxTokens: 12000, messages: [{ role: 'user', content }] });
+    const r = await claudeFull({ system: SCOPE_SYSTEM, who: 'email', skills, maxTokens: 12000, messages: [{ role: 'user', content }], run });
     let out; try { out = JSON.parse(String(r.text || '').replace(/^```(?:json)?/i, '').replace(/```\s*$/, '').trim()); } catch { const m = String(r.text || '').match(/\{[\s\S]*\}/); out = m ? JSON.parse(m[0]) : null; }
     if (!out || typeof out !== 'object') return null;
     const desk = require('./jobdesk');
@@ -287,13 +287,22 @@ function register({ ipcMain, dialog, shell, getWin, userDir, claudeFull, checker
   ipcMain.handle('jobs:fileIn', wrap(async ({ jobId, paths = [] }) => {
     const d = BIZ.data(), job = d.jobs.find(j => j.id === jobId); if (!job) throw new Error('No such job');
     if (!job.folder || !fs.existsSync(job.folder)) throw new Error('This job has no folder yet: give it one on the job desk first.');
-    const all = BIZ.projects.filesUnder(paths), mails = all.filter(f => /\.(eml|msg)$/i.test(f.name)), rest = all.filter(f => !/\.(eml|msg)$/i.test(f.name));
+    const runs = require('./runs'); if (runs.live().some(r => r.jobId === jobId && r.no === 'FILES')) throw new Error('Files are already being filed on this job. Wait for that to finish.');
+    const R = runs.start({ kind: 'file-in', who: 'Eli', jobId, no: 'FILES' }), stage = (t, pct) => runs.stage(R.id, t, pct);
     const result = { filed: [], skipped: [], emails: [], errors: [] };
-    if (rest.length) { const r = BIZ.projects.fileIn(job.folder, rest); result.filed = r.filed; result.skipped = r.skipped; }
-    for (const m of mails) { try { const e = await readEmail({ paths: [m.path] }); const a = await applyEmail({ emailId: e.id, jobId }); result.emails.push({ name: m.name, subject: e.subject || '', deliverables: (a && a.deliverables) || 0, comments: (a && a.comments) || 0, filed: (a && a.filed) || [] }); } catch (err) { result.errors.push(`${m.name}: ${String(err && err.message || err)}`); } }
-    const scopeDocs = all.filter(isScopeDoc); if (scopeDocs.length) { try { result.scope = await readScope({ jobId, files: scopeDocs }); } catch (err) { result.errors.push('scope documents: ' + String(err && err.message || err)); } }
-    try { BIZ.projects.gather(job.id, job.folder, { checker }); } catch {}
-    try { require('./jobdesk').checkRegister(job.id); } catch {}
+    try {
+      stage('Looking at what was dropped', 2);
+      const all = BIZ.projects.filesUnder(paths), mails = all.filter(f => /\.(eml|msg)$/i.test(f.name)), rest = all.filter(f => !/\.(eml|msg)$/i.test(f.name));
+      stage(`Filing ${rest.length} file${rest.length === 1 ? '' : 's'} into the job folder`, 8);
+      if (rest.length) { const r = BIZ.projects.fileIn(job.folder, rest); result.filed = r.filed; result.skipped = r.skipped; }
+      let i = 0; for (const m of mails) { if (runs.aborted(R.id)) break; stage(`Eli is reading email ${++i} of ${mails.length}: ${m.name}`, 15 + Math.round(35 * (i - 1) / Math.max(1, mails.length))); try { const e = await readEmail({ paths: [m.path], run: R.id }); const a = await applyEmail({ emailId: e.id, jobId }); result.emails.push({ name: m.name, subject: e.subject || '', deliverables: (a && a.deliverables) || 0, comments: (a && a.comments) || 0, filed: (a && a.filed) || [] }); } catch (err) { result.errors.push(`${m.name}: ${String(err && err.message || err)}`); } }
+      const scopeDocs = all.filter(isScopeDoc); if (scopeDocs.length && !runs.aborted(R.id)) { stage(`Eli is reading the scope documents (${scopeDocs.length}): ${scopeDocs.map(f => f.name).join(', ').slice(0, 120)}`, 55); try { result.scope = await readScope({ jobId, files: scopeDocs, run: R.id }); } catch (err) { result.errors.push('scope documents: ' + String(err && err.message || err)); } }
+      stage('Reading the job folder', 90);
+      try { BIZ.projects.gather(job.id, job.folder, { checker }); } catch {}
+      try { require('./jobdesk').checkRegister(job.id); } catch {}
+      runs.finish(R.id, { ok: !runs.aborted(R.id) });
+    } catch (e) { runs.finish(R.id, { ok: false, error: String(e && e.message || e) }); throw e; }
+    if (runs.aborted(R.id)) { result.errors.push('Stopped before everything was read.'); }
     const drawings = (BIZ.data().jobs.find(j => j.id === jobId) || {}).drawings || [];
     result.suggest = !drawings.length && all.some(f => /cable schedule/i.test(f.name)) ? ['SLD', 'BCD'] : [];
     BIZ.log({ who: 'Tom', action: `Filed ${result.filed.length} file${result.filed.length === 1 ? '' : 's'}${mails.length ? ` and ${mails.length} email${mails.length === 1 ? '' : 's'}` : ''} into the job folder`, jobId });

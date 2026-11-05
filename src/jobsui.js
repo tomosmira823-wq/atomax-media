@@ -436,7 +436,7 @@ export function initJobsUI({ api, getAgents, openIssue, onWorkOn }) {
     m.innerHTML = `<div class="jbhead"><div><h2>Add files · ${esc(job.number)}</h2><div class="bsub">Everything is filed into the job folder where it belongs; emails are read by Eli for scope, deliverables and comments.</div></div></div><div class="jbcard" id="fdHost"></div><div class="jbbar"><button class="jbbtn primary" id="fdGo">File them</button><button class="jbbtn" id="fdCancel">Cancel</button></div><div id="fdMsg" class="bsub"></div>`;
     const dz = dropZone($('#fdHost'));
     $('#fdCancel').onclick = () => refresh();
-    $('#fdGo').onclick = async () => { const paths = dz.paths(); if (!paths.length) { $('#fdMsg').textContent = 'Drop something first.'; return; } $('#fdGo').disabled = true; $('#fdMsg').textContent = 'Filing…';
+    $('#fdGo').onclick = async () => { const paths = dz.paths(); if (!paths.length) { $('#fdMsg').textContent = 'Drop something first.'; return; } $('#fdGo').disabled = true; $('#fdMsg').innerHTML = `<span data-runrow="${esc(runKey(job.id, 'FILES'))}">${runCell(job.id, 'FILES') || 'Starting…'}</span>`;
       try { const r = await api.jobs.fileIn({ jobId: job.id, paths }); msg = filedSummary(r); tab = r.suggest && r.suggest.length ? 'deliv' : 'files'; if (window.toast) window.toast(msg); refresh(); } catch (e) { $('#fdMsg').textContent = clean(e); $('#fdGo').disabled = false; } };
   }
   async function newJob() {
@@ -457,7 +457,7 @@ export function initJobsUI({ api, getAgents, openIssue, onWorkOn }) {
     $('#njCancel').onclick = () => refresh();
     $('#njSave').onclick = async () => { const mode = m.querySelector('input[name="njMode"]:checked').value; $('#njMsg').textContent = 'Creating…';
       try { const r = await api.mail.newJob({ number: $('#njNo').value, name: $('#njName').value, client: $('#njClient').value, mode, folder: mode === 'create' ? parent : link }); sel = r.id; tab = 'setup'; msg = r.folder ? 'Job created. Next: check the inputs are in the folder, then build the drawing register.' : 'Job created.';
-        const paths = dz.paths(); if (paths.length && r.folder) { $('#njMsg').textContent = 'Job created. Filing the files…'; try { const f = await api.jobs.fileIn({ jobId: r.id, paths }); msg = 'Job created. ' + filedSummary(f); tab = f.suggest && f.suggest.length ? 'deliv' : 'files'; } catch (e) { msg = 'Job created, but the files could not be filed: ' + clean(e); } }
+        const paths = dz.paths(); if (paths.length && r.folder) { $('#njMsg').innerHTML = `Job created. <span data-runrow="${esc(runKey(r.id, 'FILES'))}">Filing the files…</span>`; try { const f = await api.jobs.fileIn({ jobId: r.id, paths }); msg = 'Job created. ' + filedSummary(f); tab = f.suggest && f.suggest.length ? 'deliv' : 'files'; } catch (e) { msg = 'Job created, but the files could not be filed: ' + clean(e); } }
         else if (paths.length) msg = 'Job created without a folder, so the files were not filed: give it a folder on the job desk, then Add files.';
         refresh(); } catch (e) { $('#njMsg').textContent = clean(e); } };
   }
