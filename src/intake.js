@@ -284,6 +284,7 @@ function register({ ipcMain, dialog, shell, getWin, userDir, claudeFull, checker
     const t = String(text || '').trim(); if (!t) throw new Error('Type what you want to tell Eli');
     e.notes = [...(e.notes || []), { text: t, at: new Date().toISOString() }];
     const job = BIZ.data().jobs.find(j => j.id === (jobId || e.jobId));
+    if (job) { try { const desk = require('./jobdesk'), d = desk.load(job.id); if (!(d.rules || '').includes(t)) desk.setRules(job.id, `${d.rules ? d.rules + '\n' : ''}${t}`); } catch {} }   // what Tom tells Eli about the job is a job rule from then on (the chat and the agents see it)
     if (!job) { save(list); return { email: e, reply: 'Noted. Pick the job first and I will look in its folder.' }; }
     e.matchedJob = ''; const ok = await matchFolder(job, e);
     save(list); return { email: e, reply: ok ? (e.eliSays || 'Noted.') : 'Noted, but I could not look at the job folder (is it linked?).' };

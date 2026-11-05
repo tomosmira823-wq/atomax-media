@@ -197,6 +197,7 @@ const step = (name, fn) => { try { const r = fn(); if (r && r.then) return r.the
     global.__match = { ...global.__match, found: [...global.__match.found, { need: "Andy Stabler's list of deliverables", files: ['013 Transmittals & Drawing Register/Document Transmittal ISSUE 12.pdf'] }], reply: 'Found the list in the transmittal folder; nothing is missing now.' };
     const T = await call('mail:tell', { id: e.id, jobId: J.id, text: 'the deliverables list is in the transmittal folder' }); e = T.email;
     assert.ok(/TOM SAYS: the deliverables list is in the transmittal folder/.test(global.__matchAsked), 'Eli was given the note'); assert.deepStrictEqual(e.missingInputs, [], 'nothing still needed: ' + JSON.stringify(e.missingInputs)); assert.ok(/transmittal/.test(T.reply), T.reply); assert.strictEqual((e.notes || []).length, 1);
+    assert.ok(/deliverables list is in the transmittal folder/.test(require('../src/jobdesk').load(J.id).rules || ''), 'what Tom told Eli on the email is a job rule now');
     await call('jobs:applyEmail', { emailId: e.id, jobId: J.id });
     const O = await call('jobs:overview', { jobId: J.id }); const sld = O.rows.filter(r => r.no === 'X11475-BGN-ZZ-XX-DR-E-7147' || r.no === '42_BG_0056');   // phase 0 is in the register under the client's number; phase 1 is not in the register, so it keeps ours
     assert.strictEqual(sld.length, 2, O.rows.map(r => r.no + ' ' + r.title).join(' | ')); assert.ok(sld.every(r => /^P0[23]$/.test(r.rev) && r.group === 'drawing'), JSON.stringify(sld.map(r => [r.no, r.rev, r.group])));
