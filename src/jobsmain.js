@@ -173,10 +173,10 @@ function register({ ipcMain, HANDLERS, BIZ, claudeFull }) {
   // the revision asked for: typed in the box (e.g. C01), or said in the note ("move to C01"), else the next one at the same stage
   const askedRev = (to, note) => { const t = String(to || '').trim().toUpperCase().replace(/^([A-Z])(\d)$/, '$10$2'); if (/^[PACX]\d{2}$/.test(t)) return t; const m = String(note || '').match(/\b(?:moved?\s+(?:up\s+)?to|go(?:ing)?\s+to|up\s+to|rev(?:ision)?|issue[d]?\s+(?:as|at))\s*([PACX])\s?0?(\d{1,2})\b/i); return m ? m[1].toUpperCase() + m[2].padStart(2, '0') : ''; };
   ipcMain.handle('jobs:revision', wrap(async ({ jobId, no, note = '', to = '', people, desc = '' }) => {
-    const desk = require('./jobdesk'), V = desk.load(jobId), open = (V.crs || []).filter(c => c.doc === no && !/responded|closed/i.test(c.status || ''));
+    const desk = require('./jobdesk'), V = desk.load(jobId), open = (V.crs || []).filter(c => (c.doc === no || c.doc === '*') && !/responded|closed/i.test(c.status || ''));   // '*': a change asked for on every drawing
     const said = String(note || '').trim(), rev = askedRev(to, said);
     const r = await make({ jobId, no, people, revision: { on: true, to: rev, stage: '', note: said.slice(0, 2000), desc: String(desc || '').trim() }, note: said ? `Changes for this revision: ${said}` : 'New revision: no other changes asked for.' });
-    if (r && r.status === 'made') for (const c of open) { try { desk.saveCrs(jobId, { no: c.no, status: 'Responded', response: `Revised in ${r.rev}` }); } catch {} }
+    if (r && r.status === 'made') for (const c of open) { if (c.doc === '*') continue; /* asked for on every drawing: stays open until Tom closes it */ try { desk.saveCrs(jobId, { no: c.no, status: 'Responded', response: `Revised in ${r.rev}` }); } catch {} }
     return r;
   }));
   ipcMain.handle('jobs:setStatus', wrap(({ jobId, no, status }) => setDeliv(jobId, no, { status })));
