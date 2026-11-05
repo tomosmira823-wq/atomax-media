@@ -289,10 +289,10 @@ function register({ ipcMain, dialog, shell, getWin, userDir, claudeFull, checker
     if (!job.folder || !fs.existsSync(job.folder)) throw new Error('This job has no folder yet: give it one on the job desk first.');
     const runs = require('./runs'); if (runs.live().some(r => r.jobId === jobId && r.no === 'FILES')) throw new Error('Files are already being filed on this job. Wait for that to finish.');
     const R = runs.start({ kind: 'file-in', who: 'Eli', jobId, no: 'FILES' }), stage = (t, pct) => runs.stage(R.id, t, pct);
-    const result = { filed: [], skipped: [], emails: [], errors: [] };
+    const result = { filed: [], skipped: [], emails: [], errors: [] }; let all = [], mails = [];
     try {
       stage('Looking at what was dropped', 2);
-      const all = BIZ.projects.filesUnder(paths), mails = all.filter(f => /\.(eml|msg)$/i.test(f.name)), rest = all.filter(f => !/\.(eml|msg)$/i.test(f.name));
+      all = BIZ.projects.filesUnder(paths); mails = all.filter(f => /\.(eml|msg)$/i.test(f.name)); const rest = all.filter(f => !/\.(eml|msg)$/i.test(f.name));
       stage(`Filing ${rest.length} file${rest.length === 1 ? '' : 's'} into the job folder`, 8);
       if (rest.length) { const r = BIZ.projects.fileIn(job.folder, rest); result.filed = r.filed; result.skipped = r.skipped; }
       let i = 0; for (const m of mails) { if (runs.aborted(R.id)) break; stage(`Eli is reading email ${++i} of ${mails.length}: ${m.name}`, 15 + Math.round(35 * (i - 1) / Math.max(1, mails.length))); try { const e = await readEmail({ paths: [m.path], run: R.id }); const a = await applyEmail({ emailId: e.id, jobId }); result.emails.push({ name: m.name, subject: e.subject || '', deliverables: (a && a.deliverables) || 0, comments: (a && a.comments) || 0, filed: (a && a.filed) || [] }); } catch (err) { result.errors.push(`${m.name}: ${String(err && err.message || err)}`); } }
