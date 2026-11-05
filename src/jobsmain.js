@@ -192,7 +192,7 @@ function register({ ipcMain, HANDLERS, BIZ, claudeFull }) {
     const E = require('./elichat'), biz = require('./business');
     const d0 = desk.load(jobId); d0.chat = [...(d0.chat || []), { role: 'tom', text: t, at: new Date().toISOString() }].slice(-200); desk.saveRaw(jobId, d0);
     const ov = overview(jobId), files = jobFiles(jobId).map(f => f.rel);
-    let nextIssue = null; try { if (job.folder) nextIssue = BIZ.projects.nextIssueDir(job.folder); } catch {}
+    let nextIssue = null; try { if (job.folder) { const oi = desk.load(jobId).openIssue; nextIssue = oi && oi.path && fs.existsSync(oi.path) ? { n: oi.n, previous: { n: oi.n - 1 }, open: true } : BIZ.projects.nextIssueDir(job.folder); } } catch {}
     const ctx = E.context({ job, overview: ov, desk: desk.load(jobId), files, history: d0.chat.slice(0, -1), nextIssue, needNg: ov.needNg });
     const R = runs.start({ kind: 'chat', who: 'Eli', jobId, no: 'CHAT' }); let r;   // Eli shows as working while he thinks
     try { r = await claudeFull({ system: E.SYSTEM, who: 'email', skills, maxTokens: 4000, messages: [{ role: 'user', content: [{ type: 'text', text: `${ctx}\n\nTOM SAYS NOW: ${t}` }] }], run: R.id }); runs.finish(R.id); } catch (e) { runs.finish(R.id, { ok: false, error: String(e && e.message || e) }); throw e; }
@@ -224,6 +224,19 @@ function register({ ipcMain, HANDLERS, BIZ, claudeFull }) {
   // Rev up: the next revision of a drawing that exists as a DXF in the job folder, title block only. The revision text is changed (P03 ->
   // P04), the issue status text if asked (ISSUED FOR COMMENT), the file saved as <row number>_<rev>.dxf in the drawings folder with the old
   // revision archived. The drawing's content is not touched; the comments stay open for Tom or Dex to do by hand.
+  // the issue folder being built: remembered on the job desk from the first rev up until the issue goes out
+  function openIssueDir(jobId) {
+    const job = jobOf(jobId), d = desk.load(jobId);
+    if (d.openIssue && d.openIssue.path && fs.existsSync(d.openIssue.path)) return d.openIssue.path;
+    // an issue folder made by hand that has not gone out yet (DXFs but no PDFs: issued copies always carry their PDFs) is the open one
+    const all = BIZ.projects.issueDirs(job.folder), last = all[all.length - 1];
+    if (last) { let pdfs = 0, any = 0; try { for (const n of fs.readdirSync(last.path)) { any++; if (/\.pdf$/i.test(n)) pdfs++; } } catch {}
+      let transmitted = false; try { transmitted = fs.readdirSync(path.dirname(last.path)).some(n => !fs.statSync(path.join(path.dirname(last.path), n)).isDirectory() && /transmittal|\bTR-?\d/i.test(n) && new RegExp('(issue|tr)[ _-]*0?' + last.n + '\\b', 'i').test(n)); } catch {}   // "Document Transmittal ISSUE 12.pdf", "TR-12.pdf": that issue went out
+      if (any && !pdfs && !transmitted) { d.openIssue = { n: last.n, path: last.path, openedAt: new Date().toISOString(), found: true }; desk.saveRaw(jobId, d); return last.path; } }
+    const nx = BIZ.projects.nextIssueDir(job.folder); d.openIssue = { n: nx.n, path: nx.path, openedAt: new Date().toISOString() }; desk.saveRaw(jobId, d);
+    BIZ.log({ who: 'Dex', action: `Opened ISSUE ${nx.n} for the next issue`, jobId, detail: nx.path });
+    return nx.path;
+  }
   async function revUp({ jobId, no, to = '', status = '', people = null }) {
     const job = jobOf(jobId), d = job.drawings.find(x => x.no === no); if (!d) throw new Error('No such row');
     const src = sourceFor(d, jobFiles(jobId)); if (!src.dxf) throw new Error(`${no} has no DXF in the job folder${src.dwg ? ` (only ${src.dwg.split('/').pop()}): save it as DXF from AutoCAD next to the DWG` : ''}.`);
@@ -236,9 +249,12 @@ function register({ ipcMain, HANDLERS, BIZ, claudeFull }) {
     catch (e) { throw new Error(`${no}: ${src.dxf.split('/').pop()} could not be revved up (${String(e.message || e)}). Rev it by hand this time.`); }
     if (r.from !== cur && cur && !/^P0?1$/i.test(cur)) BIZ.log({ who: 'Dex', action: `Note: the register says ${no} is at ${cur} but the sheet reads ${r.from}; revved from the sheet`, jobId });
     const next = r.to;
-    const workDxf = jobFiles(jobId).filter(f => /\.dxf$/i.test(f.name) && !/(^|\/)ISSUE ?\d+(\/|$)/i.test(f.rel) && sourceFor(d, [f]).dxf).sort((a, b) => b.mtime - a.mtime)[0];
-    const outDir = workDxf ? path.join(job.folder, path.dirname(workDxf.rel)) : (BIZ.outputDirFor(jobId, 'sld') || path.dirname(full)); fs.mkdirSync(outDir, { recursive: true });   // where the working DXFs live (CLAUDE DESGIN), never an ISSUE record folder
-    const base = `${no}_${next}`; let archived = 0; try { archived = require('./dxfmaker').archiveOld(outDir, [no, String(d.alt || '')].filter(Boolean), next); } catch {}
+    // the new revision goes in the issue being built: the next ISSUE n folder under 013 Transmittals & Drawing Register (ISSUE 12 on file ->
+    // ISSUE 13), opened by the first rev up and used by every one after it until Tom presses Issue. The working set and the earlier issue
+    // folders are never written to or moved: a rev up is a new file in the new issue folder, nothing else
+    const outDir = openIssueDir(jobId); fs.mkdirSync(outDir, { recursive: true });
+    const base = `${no}_${next}`; let archived = 0;
+    for (const n of fs.readdirSync(outDir)) if (new RegExp('^' + no.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '[ _-]P\\d\\d\\.dxf$', 'i').test(n) && n !== base + '.dxf') { try { const a = path.join(outDir, 'Superseded'); fs.mkdirSync(a, { recursive: true }); fs.renameSync(path.join(outDir, n), path.join(a, n)); archived++; } catch {} }   // only an earlier rev-up of the same drawing in this same issue folder moves aside
     const outPath = path.join(outDir, base + '.dxf'); fs.writeFileSync(outPath, r.buf);
     const pdfs = [];   // no PDF: the app cannot plot a DXF it did not draw; the PDF comes from AutoCAD when the sheet is issued
     d.rev = next; require('./business').saveJob(BIZ.data(), job, 'Dex'); BIZ.store.save();

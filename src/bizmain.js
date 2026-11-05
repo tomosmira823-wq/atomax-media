@@ -75,10 +75,11 @@ function register({ ipcMain, dialog, shell, Notification, getWin, userDir, claud
     const missing = p.files.filter(n => !names.includes(n)); if (missing.length) throw new Error('These files have gone from the folder since the check: ' + missing.join(', '));
     // the issue goes in the job's transmittals folder as the next ISSUE n (Issue 12 on file -> ISSUE 13), the house way; a job without a
     // folder keeps a dated folder beside the files
-    let out; if (job.folder && fs.existsSync(job.folder)) { const nx = projects.nextIssueDir(job.folder); out = nx.path; let i = 2; while (fs.existsSync(out)) out = path.join(path.dirname(nx.path), `ISSUE ${nx.n} (${i++})`); }
+    let out; if (job.folder && fs.existsSync(job.folder)) { let open = null; try { open = require('./jobdesk').load(job.id).openIssue; } catch {} if (open && open.path && fs.existsSync(open.path)) out = open.path; else { const nx = projects.nextIssueDir(job.folder); out = nx.path; let i = 2; while (fs.existsSync(out)) out = path.join(path.dirname(nx.path), `ISSUE ${nx.n} (${i++})`); } }   // the issue folder the rev ups have been going into, else the next one
     else { const stamp = new Date().toISOString().slice(0, 10); out = path.join(p.srcDir, 'ISSUE_' + stamp); let i = 2; while (fs.existsSync(out)) out = path.join(p.srcDir, `ISSUE_${stamp}_${i++}`); }
     fs.mkdirSync(out, { recursive: true });
-    for (const n of names) fs.copyFileSync(path.join(p.srcDir, n), path.join(out, n));   // copies only: the originals stay where they are
+    for (const n of names) { const dst = path.join(out, n); if (path.resolve(path.join(p.srcDir, n)) !== path.resolve(dst)) fs.copyFileSync(path.join(p.srcDir, n), dst); }   // copies only: the originals stay where they are (a file already in the issue folder is left as it is)
+    try { const dk = require('./jobdesk'), dd = dk.load(job.id); if (dd.openIssue) { dd.issued = [...(dd.issued || []), { ...dd.openIssue, issuedAt: new Date().toISOString() }]; delete dd.openIssue; dk.saveRaw(job.id, dd); } } catch {}   // the issue is out: the next rev up opens the next folder
     const rows = p.rows.map(r => ({ ...r }));
     const docNumber = p.docNumber || biz.nextDocNumber(d, job);
     const cfg = biz.transmittalConfig({ job, rows, revision: p.revision || 'P01', docNumber, to: p.to, purpose: p.purpose, prepared: p.prepared });
