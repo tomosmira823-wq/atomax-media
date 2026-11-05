@@ -20,7 +20,15 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-      - run: npm ci
+      # the Electron binary comes from GitHub's release CDN, which times out now and then (504): try up to four times
+      - name: Install (retried)
+        shell: bash
+        run: |
+          for i in 1 2 3 4; do
+            npm ci && exit 0
+            echo "npm ci failed (attempt $i), retrying in 45s"; rm -rf node_modules; sleep 45
+          done
+          exit 1
       - name: Read version
         id: ver
         shell: bash
