@@ -199,7 +199,7 @@ function register({ ipcMain, HANDLERS, BIZ, claudeFull }) {
     try { r = await claudeFull({ system: E.SYSTEM, who: 'email', skills, maxTokens: 4000, messages: [{ role: 'user', content: [{ type: 'text', text: `${ctx}\n\nTOM SAYS NOW: ${t}` }] }], run: R.id }); runs.finish(R.id); } catch (e) { runs.finish(R.id, { ok: false, error: String(e && e.message || e) }); throw e; }
     let out; try { out = require('./dxfmaker').parseReply(r.text); } catch { out = { reply: String(r.text || '').trim(), actions: [] }; }
     const reply = String(out.reply || '').trim() || '(Eli said nothing)';
-    const doers = { revUp: (a) => revUp({ jobId, no: a.no, to: a.to || '', status: a.status || '', people: a.people || null }), make: (a) => make({ jobId, no: a.no, people: a.people || {}, note: a.note || '' }), rows: () => overview(jobId).rows, docRequest: (a) => docRequest({ jobId, submittedBy: a.submittedBy || '', nos: a.nos || null }) };
+    const doers = { revUp: (a) => revUp({ jobId, no: a.no, to: a.to || '', status: a.status || '', people: a.people || null }), make: (a) => make({ jobId, no: a.no, people: a.people || {}, note: a.note || '' }), rows: () => overview(jobId).rows, docRequest: (a) => docRequest({ jobId, submittedBy: a.submittedBy || '', nos: a.nos || null }), plot: (a) => plotIssue({ jobId, files: a.files || null }) };
     const done = await E.apply(Array.isArray(out.actions) ? out.actions : [], { job, desk: desk.load(jobId), deskMod: desk, biz, BIZ, overview: ov, doers });
     try { desk.tidyRows(jobId); } catch {}
     try { if (done.some(x => /RFI|closed/i.test(x))) await desk.writeRfiRegister(jobId, { templateDir: BIZ.projects.templateDir() }); } catch {}
@@ -284,6 +284,25 @@ function register({ ipcMain, HANDLERS, BIZ, claudeFull }) {
     return { file, rows: rows.map(r => ({ no: r.no, title: r.title, category: DR.category(r) })) };
   }
   ipcMain.handle('jobs:docRequest', wrap((a) => docRequest(a)));
+  // PDFs for the issue being built: AutoCAD's core console plots every DXF in the open issue folder that has no PDF yet (or the ones named)
+  async function plotIssue({ jobId, files = null, run = '' }) {
+    const job = jobOf(jobId), PL = require('./plot'), core = PL.coreConsole();
+    if (!core) throw new Error('AutoCAD is not installed on this PC (no accoreconsole.exe under Program Files\\Autodesk), so the PDFs have to be plotted by hand.');
+    const dir = openIssueDir(jobId);
+    let list = (Array.isArray(files) && files.length ? files : fs.readdirSync(dir).filter(n => /\.dxf$/i.test(n)).map(n => path.join(dir, n))).filter(f => fs.existsSync(f));
+    list = list.filter(f => !fs.existsSync(f.replace(/\.dxf$/i, '.pdf')) || (Array.isArray(files) && files.length));
+    if (!list.length) return { dir, done: [], failed: [], note: 'every DXF in the issue folder already has its PDF' };
+    const done = [], failed = []; let i = 0;
+    for (const f of list) { i++; if (run) runs.stage(run, `AutoCAD ${core.year} is plotting ${path.basename(f)} (${i} of ${list.length})`, Math.round(5 + 90 * (i - 1) / list.length)); try { const r = await PL.plotOne(f, { console: core }); done.push({ dxf: f, pdf: r.pdf, layout: r.layout }); } catch (e) { failed.push({ dxf: f, error: String(e.message || e) }); } }
+    BIZ.log({ who: 'Dex', action: `Plotted ${done.length} PDF${done.length === 1 ? '' : 's'} with AutoCAD ${core.year}${failed.length ? `, ${failed.length} failed` : ''}`, jobId, detail: [...done.map(d => path.basename(d.pdf)), ...failed.map(f => path.basename(f.dxf) + ': ' + f.error)].join(' · ') });
+    try { BIZ.projects.gather(job.id, job.folder, { checker: require('./checker') }); } catch {}
+    return { dir, done, failed, core: core.year };
+  }
+  ipcMain.handle('jobs:plot', wrap(async ({ jobId, files = null }) => {
+    if (runs.live().some(r => r.jobId === jobId && r.no === 'PLOT')) throw new Error('Plotting is already running on this job.');
+    const R = runs.start({ kind: 'plot', who: 'Dex', jobId, no: 'PLOT' });
+    try { const r = await plotIssue({ jobId, files, run: R.id }); runs.finish(R.id, { ok: !r.failed.length, error: r.failed.length ? r.failed.map(f => f.error).join(' · ') : '' }); return r; } catch (e) { runs.finish(R.id, { ok: false, error: String(e && e.message || e) }); throw e; }
+  }));
   ipcMain.handle('jobs:setStatus', wrap(({ jobId, no, status }) => setDeliv(jobId, no, { status })));
   ipcMain.handle('jobs:waiting', wrap(() => waiting()));
   return { overview, make, check, waiting, kindOf };

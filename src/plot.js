@@ -1,0 +1,61 @@
+// PDFs the way Tom plots them: AutoCAD itself, through its command-line core (accoreconsole.exe), using the page setup saved on the
+// sheet's layout ("New": DWG To PDF.pc3, ISO full bleed A1, monochrome). Nothing is guessed about paper or pens: the layout already
+// knows. One PDF beside each DXF, named the same; the console output is kept in plot-console.log next to them.
+'use strict';
+const fs = require('fs'), path = require('path'), { spawn } = require('child_process');
+
+// the newest AutoCAD on this PC
+function coreConsole() {
+  const roots = [process.env.ProgramFiles || 'C:\\Program Files', process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)'];
+  const found = [];
+  for (const r of roots) { const a = path.join(r, 'Autodesk'); let es = []; try { es = fs.readdirSync(a); } catch { continue; } for (const e of es) { const m = e.match(/^AutoCAD (?:LT )?(\d{4})$/i); if (!m) continue; const exe = path.join(a, e, 'accoreconsole.exe'); if (fs.existsSync(exe)) found.push({ year: +m[1], exe, lt: /LT/i.test(e) }); } }
+  found.sort((a, b) => (a.lt - b.lt) || (b.year - a.year));
+  return found[0] || null;
+}
+
+// the paper-space layouts of a DXF with their saved plot device, in tab order: the one to plot is the first set up for a PDF device
+function layouts(dxfPath) {
+  const lines = fs.readFileSync(dxfPath, 'latin1').split(/\r?\n/); const out = [];   // code / value pairs: a value that happens to be "0" cannot be mistaken for a code
+  for (let i = 0; i + 1 < lines.length; i += 2) {
+    if (lines[i].trim() !== '0' || lines[i + 1].trim() !== 'LAYOUT') continue;
+    let name = '', device = '', paper = '', order = 99, seen1 = 0;
+    for (let j = i + 2; j + 1 < lines.length; j += 2) { const c = lines[j].trim(), v = lines[j + 1].trim(); if (c === '0') { i = j - 2; break; } if (c === '1') { seen1++; if (seen1 === 2) name = v; } else if (c === '2' && !device) device = v; else if (c === '4' && !paper) paper = v; else if (c === '71') order = parseInt(v, 10) || 0; }
+    if (name && name !== 'Model') out.push({ name, device, paper, order });
+  }
+  return out.sort((a, b) => a.order - b.order);
+}
+function layoutToPlot(dxfPath) {
+  const L = layouts(dxfPath); if (!L.length) return null;
+  return L.find(l => /pdf/i.test(l.device) && !/nitro|cute|bullzip|microsoft print/i.test(l.device)) || L.find(l => /pdf/i.test(l.device)) || L[0];
+}
+
+// plot one DXF to <same name>.pdf beside it; resolves { pdf, log } or throws with the console's own words
+function plotOne(dxfPath, { console: core, timeoutMs = 180000, layoutName = '' } = {}) {
+  return new Promise((resolve, reject) => {
+    const dir = path.dirname(dxfPath), base = path.basename(dxfPath).replace(/\.dxf$/i, ''), pdf = path.join(dir, base + '.pdf');
+    const lay = layoutName || (layoutToPlot(dxfPath) || {}).name; if (!lay) return reject(new Error(`${base}: no paper-space layout found on the sheet`));
+    const scr = path.join(dir, `.plot-${base.replace(/[^A-Za-z0-9_-]+/g, '_')}.scr`);
+    try { if (fs.existsSync(pdf)) fs.unlinkSync(pdf); } catch {}
+    // a layout already set up for a PDF device plots with its own page setup; one set up for a plotter (A0 BORDER -> HP Designjet) gets
+    // the house PDF setup spelled out: DWG To PDF.pc3, ISO full bleed A1, extents fitted and centred, monochrome.ctb (what Tom's plot logs show)
+    const L = (layoutToPlot(dxfPath) || {}); const pdfSetup = /pdf/i.test(L.device || '') && L.name === lay;
+    const lines = pdfSetup
+      ? ['FILEDIA 0', 'CMDDIA 0', 'BACKGROUNDPLOT 0', '_.-PLOT', '_N', lay, 'DWG To PDF.pc3', pdf, '_N', '_Y', '_.DELAY 2000', '_.QUIT', '_Y']
+      : ['FILEDIA 0', 'CMDDIA 0', 'BACKGROUNDPLOT 0', '_.-PLOT', '_Y', lay, 'DWG To PDF.pc3', 'ISO full bleed A1 (841.00 x 594.00 MM)', '_M', '_L', '_N', '_E', '_F', '_C', '_Y', 'monochrome.ctb', '_Y', '_N', '_N', '_N', pdf, '_N', '_Y', '_.DELAY 2000', '_.QUIT', '_Y'];
+    fs.writeFileSync(scr, lines.join('\r\n') + '\r\n', 'latin1');
+    const child = spawn(core.exe, ['/i', dxfPath, '/s', scr, '/l', 'en-US'], { cwd: dir, windowsHide: true });
+    let out = ''; child.stdout.on('data', (b) => { out += b.toString('latin1'); }); child.stderr.on('data', (b) => { out += b.toString('latin1'); });
+    const t = setTimeout(() => { try { child.kill(); } catch {} }, timeoutMs);
+    child.on('error', (e) => { clearTimeout(t); try { fs.unlinkSync(scr); } catch {} reject(new Error(`${base}: could not start AutoCAD core console (${e.message})`)); });
+    child.on('close', () => {
+      clearTimeout(t); try { fs.unlinkSync(scr); } catch {}
+      const log = out.replace(/\r/g, '').split('\n').filter(l => l.trim()).slice(-60).join('\n');
+      try { fs.appendFileSync(path.join(dir, 'plot-console.log'), `\n===== ${new Date().toISOString()} ${base} (layout ${lay})\n${log}\n`); } catch {}
+      // the PDF can land a moment after the console exits
+      const waitFor = (n) => { if (fs.existsSync(pdf) && fs.statSync(pdf).size > 1024) return resolve({ pdf, layout: lay, log }); if (n <= 0) return reject(new Error(`${base}: AutoCAD did not write the PDF (layout "${lay}"). Last console lines: ${log.split('\n').slice(-6).join(' | ')}`)); setTimeout(() => waitFor(n - 1), 500); };
+      waitFor(20);
+    });
+  });
+}
+
+module.exports = { coreConsole, layouts, layoutToPlot, plotOne };
