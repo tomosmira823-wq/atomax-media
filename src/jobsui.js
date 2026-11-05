@@ -417,6 +417,7 @@ export function initJobsUI({ api, getAgents, openIssue, onWorkOn }) {
     const by = {}; for (const f of r.filed || []) { const d = f.to.split(/[\\/]/).slice(0, -1).pop() || ''; by[d] = (by[d] || 0) + 1; }
     const parts = Object.entries(by).map(([d, n]) => `${n} → ${d}`);
     if (r.emails && r.emails.length) parts.push(`${r.emails.length} email${r.emails.length === 1 ? '' : 's'} read by Eli (${r.emails.reduce((a, e) => a + (e.deliverables || 0), 0)} deliverable(s), ${r.emails.reduce((a, e) => a + (e.comments || 0), 0)} comment(s))`);
+    if (r.scope) parts.push(`scope documents read: ${r.scope.listed} deliverable(s) listed, ${r.scope.added} added${(r.scope.conflicts || []).length ? `, ${r.scope.conflicts.length} point(s) where the documents disagree (Inputs & setup)` : ''}`);
     if (r.skipped && r.skipped.length) parts.push(`${r.skipped.length} already there`);
     if (r.errors && r.errors.length) parts.push('could not read: ' + r.errors.join('; '));
     return parts.length ? 'Filed: ' + parts.join(' · ') : 'Nothing to file.';

@@ -29,6 +29,7 @@ let claudeCalls = [];
 async function claudeFull(a) {
   claudeCalls.push({ who: a.who, system: String(a.system || '').slice(0, 60) });
   const sys = String(a.system || ''), user = JSON.stringify(a.messages || []);
+  if (/DELIVERABLES REGISTER/.test(sys)) return { text: JSON.stringify({ summary: 'Gas mixing pipework design for UU via EMFS', facts: [{ name: 'Enquiry', value: 'ENQ10560' }], deliverables: [{ type: 'SLD', title: 'LV single line diagram - new PDB', qty: 1, discipline: 'E&I' }, { type: 'BCD', title: 'Block cable diagram', qty: 1, discipline: 'E&I' }, { type: 'document', title: 'Rotork actuator schematic', qty: 8, discipline: 'E&I' }, { type: 'cable schedule', title: 'Cable schedule (power, control, instrument)', qty: 1, discipline: 'E&I' }], byOthers: [{ title: 'P&IDs', who: 'Insight Technical' }], conflicts: ['Draft A scope lists protection studies; the P05 fee proposal excludes them'], inputs: [{ name: 'Requirements Statement', rev: 'Rev 2', what: 'UU/Costain order requirements' }], missingInputs: ['existing P&IDs'] }), stop: 'end_turn' };
   if (a.who === 'dex' || /You are Dex/i.test(sys)) { const req = (user.match(/REQUEST: ([^"]{0,200})/) || [])[1] || ''; return { text: /block cable/i.test(req) ? dexBcd : dexSld, stop: 'end_turn' }; }
   return { text: '{}', stop: 'end_turn' };
 }
@@ -116,6 +117,7 @@ const step = (name, fn) => { try { const r = fn(); if (r && r.then) return r.the
   fs.copyFileSync(path.join(FX, 'northwich-protection-schedule.xlsx'), path.join(drop, 'Schedules', 'X081126-01-73-0001 Protection Schedule.xlsx'));
   fs.writeFileSync(path.join(drop, 'DNO letter.txt'), 'Agreed capacity 800A. TN-S. 22kA.'); fs.writeFileSync(path.join(drop, 'Drawings', 'Existing', 'Existing LV SLD.dxf'), '0\nSECTION\n0\nENDSEC\n0\nEOF\n'); fs.writeFileSync(path.join(drop, 'Drawings', 'Existing', 'Site photo IMG_0012.jpg'), 'jpg');
   fs.writeFileSync(path.join(drop, 'Thumbs.db'), 'junk'); fs.writeFileSync(path.join(drop, '~$notes.docx'), 'junk'); fs.writeFileSync(path.join(drop, 'Motor datasheet WEG W22.pdf'), 'pdf');
+  { const JSZip = require('jszip'); const z = new JSZip(); z.file('[Content_Types].xml', '<Types/>'); z.file('word/document.xml', '<w:document><w:body><w:p><w:r><w:t>Scope of Works ENQ10560: Atomax-UK to produce the LV single line diagram, block cable diagram, 8 actuator schematics and the cable schedule.</w:t></w:r></w:p></w:body></w:document>'); fs.writeFileSync(path.join(drop, 'Atomax-UK Scope of Works - ENQ10560.docx'), await z.generateAsync({ type: 'nodebuffer' })); fs.mkdirSync(path.join(drop, 'Superseded')); fs.writeFileSync(path.join(drop, 'Superseded', 'Fee Proposal P02.docx'), 'old'); }
   fs.writeFileSync(path.join(drop, 'RE scope.eml'), 'From: a@b.c\r\nTo: d@e.f\r\nSubject: X081126 Winsford PS - scope\r\nDate: Thu, 05 Nov 2026 09:00:00 +0000\r\n\r\nPlease do the SLD and BCD.\r\n');
   const folder2 = projects.createJobFolder(PROJECTS, 'X081126', 'Winsford Pumping Station'); const job2 = biz.saveJob(BIZ.data(), { number: 'X081126', name: 'Winsford Pumping Station', client: 'Weaver Water Ltd', folder: folder2 }, 'Tom'); BIZ.store.save();
   const F = await call('jobs:fileIn', { jobId: job2.id, paths: [drop] });
@@ -126,6 +128,14 @@ const step = (name, fn) => { try { const r = fn(); if (r && r.then) return r.the
     assert.ok(/7\.1 Datasheets\/Motor datasheet WEG W22\.pdf$/.test(to['Motor datasheet WEG W22.pdf']));
     assert.ok(!Object.keys(to).some(k => /Thumbs|~\$/.test(k)), 'junk not filed'); assert.strictEqual(F.emails.length, 1, 'the email went through Eli'); assert.ok(fs.existsSync(path.join(folder2, '7. Electrical', '7.0 Incoming Correspondance', 'RE scope.eml')), 'email filed in correspondence');
     assert.deepStrictEqual(F.errors, []); return F.filed.length + ' filed, ' + F.skipped.length + ' skipped';
+  });
+  await step('the scope document is read for the deliverables register (8 schematics = 8 rows; the superseded copy ignored)', () => {
+    assert.ok(F.scope, 'scope read ran'); assert.deepStrictEqual(F.scope.files, ['Atomax-UK Scope of Works - ENQ10560.docx'], JSON.stringify(F.scope.files));
+    const rows = BIZ.data().jobs.find(j => j.id === job2.id).drawings; const titles = rows.map(r => r.title);
+    assert.ok(titles.includes('LV single line diagram - new PDB') && titles.includes('Block cable diagram') && titles.includes('Cable schedule (power, control, instrument)'), JSON.stringify(titles));
+    assert.strictEqual(titles.filter(t => /^Rotork actuator schematic \(sheet \d\)$/.test(t)).length, 8, 'eight actuator schematics');
+    assert.ok(rows.find(r => r.title === 'LV single line diagram - new PDB').no.startsWith('X081126-01-70-'), 'numbered from the schedule in the drop: ' + rows.find(r => r.title === 'LV single line diagram - new PDB').no);
+    assert.strictEqual(F.scope.conflicts.length, 1); return rows.length + ' rows';
   });
   const F2 = await call('jobs:fileIn', { jobId: job2.id, paths: [path.join(drop, 'Schedules')] });
   await step('dropping the same files again files nothing twice', () => { assert.strictEqual(F2.filed.length, 0); assert.strictEqual(F2.skipped.length, 2); });

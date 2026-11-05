@@ -65,6 +65,20 @@ Reply with JSON only, no markdown:
 "commentReturn":false,"comments":[{"doc":"document number","comment":"as written","by":"name","job":"job number it is for, when the email is about several jobs"}],
 "replyTo":"name <address> the reply should go to","reply":"the suggested reply"}`;
 
+const SCOPE_SYSTEM = `You are Eli at Atomax-UK, an electrical engineering consultancy. You are given the documents that define a job: a scope of works, a fee proposal or quotation, a client requirements statement or specification, an enquiry, an order.
+Work out the DELIVERABLES REGISTER: every drawing, schedule, calculation and document Atomax-UK itself must produce on this job. Rules:
+- Where the documents disagree (a draft scope lists more than the fee proposal that was priced), the latest and most contractual document wins (an order > an accepted fee proposal > a quotation > a draft scope), and you list each disagreement under "conflicts" so the engineer can decide.
+- Only Atomax-UK's own deliverables go in "deliverables". Work by subconsultants or others (process, structural, installer, system integrator) goes in "byOthers" with who does it.
+- One row per deliverable as it will be issued: a set of 8 identical actuator schematics is one row with qty 8; "LV single line diagram" and "earthing drawing" are two rows. Keep the client's wording in the title, with the system or area, and copy quantities, counts, circuit numbers and references exactly as written.
+- type: SLD, BCD, earthing, loop, layout, cable schedule, schedule (any other schedule: load, I/O, actuator, label, PDB, telemetry), calculation, document, other.
+- "inputs": every client document, drawing, standard or record Atomax needs or has been given, with its revision as written; "missingInputs": what is needed but not seen.
+- "facts": the job's key facts as written (end client, intermediate client, references such as enquiry / order / UU numbers, site, design stages, standards).
+Do not invent deliverables; if a document lists them, use that list. Plain British English.
+Reply with JSON only, no markdown:
+{"summary":"three lines: the job, who it is for, what Atomax produces","facts":[{"name":"...","value":"..."}],
+"deliverables":[{"type":"SLD|BCD|earthing|loop|layout|cable schedule|schedule|calculation|document|other","title":"...","qty":1,"discipline":"E&I|piping|mechanical|structural|process|general","source":"document and section it comes from"}],
+"byOthers":[{"title":"...","who":"..."}],"conflicts":["..."],"inputs":[{"name":"...","rev":"...","what":"..."}],"missingInputs":["..."]}`;
+
 // ---------- reading email files ----------
 const decodeWords = (s) => String(s || '').replace(/=\?([^?]+)\?([BbQq])\?([^?]*)\?=/g, (_m, cs, enc, txt) => {
   try { const buf = /b/i.test(enc) ? Buffer.from(txt, 'base64') : Buffer.from(txt.replace(/_/g, ' ').replace(/=([0-9A-F]{2})/gi, (_x, h) => String.fromCharCode(parseInt(h, 16))), 'latin1'); return buf.toString(/utf-?8/i.test(cs) ? 'utf8' : 'latin1'); } catch { return txt; }
@@ -242,6 +256,32 @@ function register({ ipcMain, dialog, shell, getWin, userDir, claudeFull, checker
   }));
   // file it: on the job (new one made if asked), its deliverables added, its changes logged against the drawings they are for, a copy kept in the job folder
   const attachmentKind = (name) => BIZ.projects.fileKind(name);
+  // the documents that define a job (scope of works, fee proposal, requirements, enquiry, order): Eli reads them for the deliverables register
+  const SCOPE_DOC = /scope|proposal|quot(e|ation)|requirement|specification|enquiry|\benq\d|tender|\bitt\b|\brfq\b|order|brief|works information|employer/i;
+  const isScopeDoc = (f) => SCOPE_DOC.test(f.name) && /\.(docx|pdf|txt|md)$/i.test(f.name) && !/superseded|\bold\b|copy\b/i.test(f.rel || f.name);
+  async function docText(p) { const ext = path.extname(p).toLowerCase(); if (ext === '.docx') { try { const JSZip = require('jszip'); const z = await JSZip.loadAsync(fs.readFileSync(p)); const f = z.file('word/document.xml'); if (!f) return ''; const xml = await f.async('string'); return xml.replace(/<\/w:p>/g, '\n').replace(/<w:tab\/>/g, '\t').replace(/<[^>]+>/g, '').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#(\d+);/g, (_m, n) => String.fromCharCode(+n)); } catch { return ''; } } if (ext === '.txt' || ext === '.md') { try { return fs.readFileSync(p, 'utf8'); } catch { return ''; } } return ''; }
+  async function readScope({ jobId, files = [], skills }) {
+    const content = []; let n = 0;
+    for (const f of files.slice(0, 8)) {
+      const ext = path.extname(f.name).toLowerCase(); let mt = 0; try { mt = fs.statSync(f.path).mtimeMs; } catch {}
+      const head = `DOCUMENT ${++n}: ${f.name} (file dated ${mt ? new Date(mt).toISOString().slice(0, 10) : 'unknown'})`;
+      if (ext === '.pdf') { content.push({ type: 'text', text: head }); try { content.push(checker.contentBlock('pdf', f.name, fs.readFileSync(f.path))); } catch {} }
+      else { const t = (await docText(f.path)).trim(); if (t) content.push({ type: 'text', text: `${head}\n${t.slice(0, 60000)}` }); }
+    }
+    if (!content.length) return null;
+    const r = await claudeFull({ system: SCOPE_SYSTEM, who: 'email', skills, maxTokens: 12000, messages: [{ role: 'user', content }] });
+    let out; try { out = JSON.parse(String(r.text || '').replace(/^```(?:json)?/i, '').replace(/```\s*$/, '').trim()); } catch { const m = String(r.text || '').match(/\{[\s\S]*\}/); out = m ? JSON.parse(m[0]) : null; }
+    if (!out || typeof out !== 'object') return null;
+    const desk = require('./jobdesk');
+    try { desk.checkRegister(jobId, checker); } catch {}
+    const rows = (out.deliverables || []).filter(d => d && d.title).map(d => ({ type: d.type || 'document', title: d.title, qty: d.qty || 1, discipline: d.discipline || '', source: d.source || '' }));
+    let added = 0; try { added = (desk.addDeliverables(jobId, rows, { source: 'scope' }) || []).length; } catch {}
+    try { desk.tidyRows(jobId); } catch {}
+    try { desk.addInputs(jobId, { inputs: out.inputs || [], missing: out.missingInputs || [], questions: [] }); } catch {}
+    try { desk.setScopeNotes && desk.setScopeNotes(jobId, { summary: out.summary || '', facts: out.facts || [], byOthers: out.byOthers || [], conflicts: out.conflicts || [], from: files.map(f => f.name) }); } catch {}
+    BIZ.log({ who: 'Eli', action: `Read the scope documents: ${rows.length} deliverable(s) listed, ${added} added${(out.conflicts || []).length ? `, ${out.conflicts.length} point(s) where the documents disagree` : ''}`, jobId, detail: files.map(f => f.name).join(', ') });
+    return { listed: rows.length, added, conflicts: out.conflicts || [], byOthers: out.byOthers || [], summary: out.summary || '', files: files.map(f => f.name) };
+  }
   // drop the client's whole folder (or any files) on a job: emails go through Eli (scope, deliverables, comments, their attachments filed),
   // everything else is filed where it lives in the job folder; then the folder is read again
   ipcMain.handle('jobs:fileIn', wrap(async ({ jobId, paths = [] }) => {
@@ -251,6 +291,7 @@ function register({ ipcMain, dialog, shell, getWin, userDir, claudeFull, checker
     const result = { filed: [], skipped: [], emails: [], errors: [] };
     if (rest.length) { const r = BIZ.projects.fileIn(job.folder, rest); result.filed = r.filed; result.skipped = r.skipped; }
     for (const m of mails) { try { const e = await readEmail({ paths: [m.path] }); const a = await applyEmail({ emailId: e.id, jobId }); result.emails.push({ name: m.name, subject: e.subject || '', deliverables: (a && a.deliverables) || 0, comments: (a && a.comments) || 0, filed: (a && a.filed) || [] }); } catch (err) { result.errors.push(`${m.name}: ${String(err && err.message || err)}`); } }
+    const scopeDocs = all.filter(isScopeDoc); if (scopeDocs.length) { try { result.scope = await readScope({ jobId, files: scopeDocs }); } catch (err) { result.errors.push('scope documents: ' + String(err && err.message || err)); } }
     try { BIZ.projects.gather(job.id, job.folder, { checker }); } catch {}
     try { require('./jobdesk').checkRegister(job.id); } catch {}
     const drawings = (BIZ.data().jobs.find(j => j.id === jobId) || {}).drawings || [];

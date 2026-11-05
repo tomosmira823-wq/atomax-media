@@ -308,13 +308,15 @@ function context(id, who = '') {
   }
   return L.length ? L.join('\n\n') : '';
 }
+// what Eli took from the scope documents (summary, facts, by others, where the documents disagree): shown on the job desk
+function setScopeNotes(id, notes) { const d = load(id); d.scope = { ...(notes || {}), at: new Date().toISOString() }; save(id, d); return d.scope; }
 function view(id) {
   const job = jobOf(id); if (!job) throw new Error('No such job');
   const d = load(id), prof = clientProfile(job), m = d.master;
   const hb = DN.habits(job);
   const bd = borderFor(job);
   return { sheetSize: d.sheetSize || '', ng: d.ng || { site: '', investment: '' }, border: d.border || 'auto', borderUsed: bd.name, borderWarning: bd.warning || '', area: d.area || hb.area || '', disc: d.disc || hb.disc || '', project: hb.project, rules: getRules(id), rulesFile: rulesPath(job), client: job.client || '', clientProfile: prof ? prof.name : '', titleBlock: titleBlockFor(job) ? path.basename(titleBlockFor(job)) : '',
-    flow: d.flow || null, autoFlow: !!d.autoFlow, registerFile: d.registerFile, registerChecked: d.registerChecked, drawings: job.drawings, inputs: d.inputs, rfis: d.rfis, crs: d.crs,
+    scope: d.scope || null, flow: d.flow || null, autoFlow: !!d.autoFlow, registerFile: d.registerFile, registerChecked: d.registerChecked, drawings: job.drawings, inputs: d.inputs, rfis: d.rfis, crs: d.crs,
     master: m ? { status: m.status, builtAt: m.builtAt, approvedAt: m.approvedAt, devices: m.devices.length, cables: m.cables.length, gaps: m.gaps, read: m.read, file: m.file || '', summary: m.summary, preview: m.cables.slice(0, 40), incomplete: !!m.incomplete } : null };
 }
 function exportSheet(id, kind, writeXlsx) {
@@ -348,4 +350,4 @@ function borderFor(job) {
 }
 
 const saveRaw = (id, d) => save(id, d);
-module.exports = { tidyRows, kindKey, renameRow, setBorder, borderFor, saveRaw, setNumbering, init, load, getRules, setRules, addCorrection, clientProfile, titleBlockFor, findRegisters, readRegister, checkRegister, makeRegister, proposeNumber, addDeliverables, addInputs, saveRfi, addComments, saveCrs, buildMaster, exportMaster, importMaster, approveMaster, context, view, exportSheet, masterOf, MASTER_SYSTEM, RULES_FILE };
+module.exports = { setScopeNotes, tidyRows, kindKey, renameRow, setBorder, borderFor, saveRaw, setNumbering, init, load, getRules, setRules, addCorrection, clientProfile, titleBlockFor, findRegisters, readRegister, checkRegister, makeRegister, proposeNumber, addDeliverables, addInputs, saveRfi, addComments, saveCrs, buildMaster, exportMaster, importMaster, approveMaster, context, view, exportSheet, masterOf, MASTER_SYSTEM, RULES_FILE };
