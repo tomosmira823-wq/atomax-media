@@ -204,12 +204,16 @@ const step = (name, fn) => { try { const r = fn(); if (r && r.then) return r.the
     assert.ok((O.desk.inputs || []).some(i => /accepted DID/.test(i.name) && /already in the job folder/.test(i.what)), 'DID recorded as received');
     assert.ok(!(O.desk.rfis || []).some(r => /accepted DID|Drawing 153|Andy Stabler/.test(r.q)), 'no RFI for things on file: ' + JSON.stringify((O.desk.rfis || []).map(r => r.q)));
     // the RFI register on the house template, written into 003 Technical Queries by Eli as the questions are raised
-    { require('../src/jobdesk').addInputs(J.id, { inputs: [], missing: [], questions: ['What S codes should the DCAAR drawings carry?'], fromEmail: 'FW: Bustleholm' });
+    { const dk = require('../src/jobdesk'); dk.addInputs(J.id, { inputs: [], missing: ['Bustleholm deliverables list'], questions: ['What S codes should the DCAAR drawings carry?'], fromEmail: 'FW: Bustleholm' });
+      dk.addInputs(J.id, { inputs: [], missing: [], questions: ['Please send the Bustleholm deliverables list from 19 Oct.', 'Please send drawing 153 (long switchroom option) at its latest revision.'], fromEmail: 'To do for Bustleholm' });
+      const qs = (await call('jobs:overview', { jobId: J.id })).desk.rfis; assert.strictEqual(qs.filter(r => /deliverables list/i.test(r.q)).length, 1, 'the same ask twice is one RFI: ' + JSON.stringify(qs.map(r => r.q)));
+      dk.closeRfisFor(J.id, 'Drawing 153', '013/ISSUE 12/7153 P03.dxf'); const q153 = (await call('jobs:overview', { jobId: J.id })).desk.rfis.find(r => /drawing 153/i.test(r.q)); assert.ok(q153 && q153.status === 'Closed' && /On file/.test(q153.answer), 'RFI for a thing found on file closes: ' + JSON.stringify(q153));
       const p = await call('desk:export', { jobId: J.id, kind: 'rfi' }); assert.ok(/003 Technical Queries[\\/]005 -BUSTLEHOLM - DCAAR-0000-01-01-0003 - RFI REGISTER P01\.xlsx$/.test(p), 'register path: ' + p); assert.ok(fs.existsSync(p));
       const sh = checker.readXlsx(fs.readFileSync(p)); const cells = []; for (const s0 of sh) for (const r of s0.rows || []) cells.push((Array.isArray(r) ? r : r.c || Object.values(r)).map(x => String(x ?? '').trim()));
       const flat = cells.map(c => c.join('|')).join('\n');
       assert.ok(/BGEN Ltd/.test(flat) && /005 -BUSTLEHOLM - DCAAR Bustleholm DCAAR/.test(flat) && /005 -BUSTLEHOLM - DCAAR-0000-01-01-0003/.test(flat), 'header block filled: ' + flat.slice(0, 400));
-      const q = cells.find(c => c[0] === 'RFI-001'); assert.ok(q && /S codes/.test(q[2]) && q[1] === 'Electrical' && q[3] === 'Atomax-UK' && q[4] === 'BGEN Ltd' && q[7] === 'MEDIUM' && q[13] === 'OPEN', 'RFI-001 row: ' + JSON.stringify(q));
+      const q = cells.find(c => /S codes/.test(c[2] || '')); assert.ok(q && /^RFI-\d{3}$/.test(q[0]) && q[1] === 'Electrical' && q[3] === 'Atomax-UK' && q[4] === 'BGEN Ltd' && q[7] === 'MEDIUM' && q[13] === 'OPEN', 'S codes row: ' + JSON.stringify(q));
+      const qc = cells.find(c => /drawing 153/i.test(c[2] || '')); assert.ok(qc && qc[13] === 'CLOSED' && qc[12], 'closed RFI shows CLOSED with a date: ' + JSON.stringify(qc));
       assert.ok(/Quantity of RFIs Raised/.test(flat) && /RFI-050/.test(flat), 'template summary and spare rows kept'); }
     const r153 = O.rows.find(r => r.no === 'X11475-BGN-ZZ-XX-DR-E-7153'); assert.ok(r153 && r153.rev === 'P03', 'drawing 153 is a row at P03'); const c153 = (O.desk.crs || []).filter(c => c.doc === 'X11475-BGN-ZZ-XX-DR-E-7153'); assert.strictEqual(c153.length, 1, 'the comment landed on 7153: ' + JSON.stringify((O.desk.crs || []).map(c => c.doc)));
     assert.strictEqual((O.desk.crs || []).filter(c => c.doc === '*').length, 1, 'the all-drawings comment is job-wide');

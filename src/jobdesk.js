@@ -255,8 +255,18 @@ function addInputs(id, { inputs = [], missing = [], questions = [], fromEmail = 
   const d = load(id);
   for (const x of inputs) { if (!x || !x.name) continue; const old = d.inputs.find(i => i.name.toLowerCase() === String(x.name).toLowerCase()); if (old) { if (x.rev) old.rev = x.rev; old.received = today(); } else d.inputs.push({ name: String(x.name), rev: String(x.rev || ''), what: String(x.what || ''), received: today(), from: fromEmail }); }
   const ask = [...missing.map(m => 'Please send: ' + m), ...questions];
-  for (const q of ask) { const t = String(q || '').trim(); if (!t || d.rfis.some(r => r.q.toLowerCase() === t.toLowerCase())) continue; d.rfis.push({ no: 'RFI-' + String(d.rfis.length + 1).padStart(3, '0'), q: t, status: 'Draft', raised: today(), answer: '', from: fromEmail }); }
+  for (const q of ask) { const t = String(q || '').trim(); if (!t || d.rfis.some(r => sameAsk(r.q, t))) continue; d.rfis.push({ no: 'RFI-' + String(d.rfis.length + 1).padStart(3, '0'), q: t, status: 'Draft', raised: today(), answer: '', from: fromEmail }); }
   return save(id, d);
+}
+// the same question asked twice in other words ("Please send: Bustleholm deliverables list" / "Please send the Bustleholm deliverables
+// list from 19 Oct") is one RFI: the words that carry meaning mostly overlap
+const askWords = (q) => new Set(String(q || '').toLowerCase().replace(/please (send|confirm|provide|advise)|can you|could you|at its latest revision|if (possible|you can)/g, ' ').split(/[^a-z0-9&]+/).filter(w => w.length > 1 && !/^(the|and|for|of|to|a|an|in|on|from|is|are|be|it|its|this|that|with|any|do|does|not|have|has|we|you|your|our|us|what|which|do|yet|one|list)$/.test(w)));
+function sameAsk(a, b) { const A = askWords(a), B = askWords(b); if (!A.size || !B.size) return String(a).toLowerCase() === String(b).toLowerCase(); let both = 0; for (const w of A) if (B.has(w)) both++; const small = Math.min(A.size, B.size); return both >= 2 && both / small >= 0.75; }
+// what the client was asked for has turned up (on file, or sent): the RFI closes itself
+function closeRfisFor(id, need, where = '') {
+  const d = load(id); let n = 0; const want = String(need || '').trim(); if (!want) return 0;
+  for (const r of d.rfis || []) { if (/closed|answered/i.test(r.status || '')) continue; if (sameAsk(r.q, want) || sameAsk(r.q, 'Please send: ' + want) || r.q.toLowerCase().includes(want.toLowerCase())) { r.status = 'Closed'; r.answer = r.answer || `On file${where ? ': ' + where : ''}`; r.closed = today(); n++; } }
+  if (n) save(id, d); return n;
 }
 function saveRfi(id, rfi) { const d = load(id), r = d.rfis.find(x => x.no === rfi.no); if (!r) throw new Error('No such RFI'); Object.assign(r, { status: rfi.status || r.status, answer: rfi.answer ?? r.answer, q: rfi.q || r.q }); save(id, d); return d; }
 
@@ -430,4 +440,4 @@ function borderFor(job) {
 }
 
 const saveRaw = (id, d) => save(id, d);
-module.exports = { writeRfiRegister, kindTag, GROUPS, setCount, setBase, setScopeNotes, tidyRows, kindKey, renameRow, setBorder, borderFor, saveRaw, setNumbering, init, load, getRules, setRules, addCorrection, clientProfile, titleBlockFor, findRegisters, readRegister, checkRegister, makeRegister, proposeNumber, addDeliverables, addInputs, saveRfi, addComments, saveCrs, buildMaster, exportMaster, importMaster, approveMaster, context, view, exportSheet, masterOf, MASTER_SYSTEM, RULES_FILE };
+module.exports = { closeRfisFor, sameAsk, writeRfiRegister, kindTag, GROUPS, setCount, setBase, setScopeNotes, tidyRows, kindKey, renameRow, setBorder, borderFor, saveRaw, setNumbering, init, load, getRules, setRules, addCorrection, clientProfile, titleBlockFor, findRegisters, readRegister, checkRegister, makeRegister, proposeNumber, addDeliverables, addInputs, saveRfi, addComments, saveCrs, buildMaster, exportMaster, importMaster, approveMaster, context, view, exportSheet, masterOf, MASTER_SYSTEM, RULES_FILE };

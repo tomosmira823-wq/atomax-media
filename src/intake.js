@@ -411,7 +411,7 @@ function register({ ipcMain, dialog, shell, getWin, userDir, claudeFull, checker
     const mine = (x) => !x || !x.job || !(e.jobIds || []).length || (e.jobIds || []).length < 2 || String(job.number).toUpperCase().includes(String(x.job).trim().toUpperCase()) || String(x.job).toUpperCase().includes(String(job.number).toUpperCase());
     try { desk.checkRegister(job.id, checker); } catch {}   // the register's numbers first, so the email's deliverables land on the rows that exist
     if (e.matchedJob !== job.id) { try { await matchFolder(job, e); } catch {} }   // filed on a job other than the one it was read against: match that job's folder
-    for (const f of e.foundInputs || []) { e.inputs = [...(e.inputs || []), { name: f.need, rev: '', what: 'already in the job folder: ' + f.files.join(', ') }]; }
+    for (const f of e.foundInputs || []) { e.inputs = [...(e.inputs || []), { name: f.need, rev: '', what: 'already in the job folder: ' + f.files.join(', ') }]; try { desk.closeRfisFor(job.id, f.need, f.files.join(', ')); } catch {} }   // an RFI raised for it earlier closes itself
     try { r.deliverables = (desk.addDeliverables(job.id, (e.deliverables || []).filter(mine), { commentReturn: !!e.commentReturn }) || []).length; } catch {}
     try { desk.tidyRows(job.id); } catch {}
     try { desk.addInputs(job.id, { inputs: e.inputs || [], missing: e.missingInputs || [], questions: e.clientQuestions || [], fromEmail: e.subject || e.from }); } catch {}
