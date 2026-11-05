@@ -273,7 +273,7 @@ function register({ ipcMain, dialog, shell, getWin, userDir, claudeFull, checker
   // Eli reads it; on a job's page the job is that job
   ipcMain.handle('jobs:addEmail', wrap(async ({ files = [], text = '', jobId = '' }) => {
     const e = await readEmail({ files, text });
-    if (jobId) { e.jobId = jobId; const list = load(), i = list.findIndex(x => x.id === e.id); if (i >= 0) { list[i] = e; save(list); } }
+    if (jobId) { e.jobId = jobId; if (e.matchedJob !== jobId && !e.commentReturn) { try { await matchFolder(BIZ.data().jobs.find(j => j.id === jobId), e); } catch {} } const list = load(), i = list.findIndex(x => x.id === e.id); if (i >= 0) { list[i] = e; save(list); } }   // added on a job's page: that job's folder, even when Eli did not name the job himself
     const job = e.jobId && BIZ.data().jobs.find(j => j.id === e.jobId);
     const company = (e.people || []).find(p => /client|asking|from/i.test(p.role || '') && p.company && !/atomax/i.test(p.company)) || (e.people || []).find(p => p.company && !/atomax/i.test(p.company));
     let D = {}; try { D = BIZ.projects ? { nextNumber: BIZ.projects.nextJobNumber(BIZ.data().jobs.map(j => j.number), (loadSettings && loadSettings().jobsFolder) || BIZ.projects.jobParent(BIZ.data().jobs.map(j => j.number))) } : {}; } catch {}
