@@ -308,6 +308,19 @@ dead is true only if the sheet itself carries a cancelled / superseded / void / 
     cloudAt = Date.now(); cloudLast = out; return out;
   }));
   ipcMain.handle('proj:openAt', wrap(({ path: p, show = false }) => { if (!p || !fenced(p)) throw new Error('That is outside your Projects folders'); if (show) shell.showItemInFolder(p); else shell.openPath(p); return true; }));
+  // the job a folder belongs to: the folder itself or any folder above it (up to the Projects root) that is a job's folder, or that
+  // carries a job number the app knows; else the nearest folder that looks like a job (for "set this up as a job")
+  ipcMain.handle('proj:jobFor', wrap(async ({ path: p }) => {
+    if (!p || !fenced(p)) return null;
+    const d = data(); let cur = path.resolve(p), candidate = null;
+    while (cur && fenced(cur)) {
+      const rec = recordFor(d, cur); if (rec) return { id: rec.id, number: rec.number, folder: rec.folder };
+      const no = projects.jobNoIn(path.basename(cur)); if (no) { const byNo = d.jobs.find(j => String(j.number).toUpperCase() === no.toUpperCase()); if (byNo) return { id: byNo.id, number: byNo.number, folder: cur, recordedFolder: byNo.folder || '' }; if (!candidate) candidate = { folder: cur, number: no, name: path.basename(cur) }; }
+      else if (!candidate && !/template/i.test(path.basename(cur)) && await looksJob(cur)) candidate = { folder: cur, number: '', name: path.basename(cur) };
+      const up = path.dirname(cur); if (up === cur) break; cur = up;
+    }
+    return candidate;
+  }));
   ipcMain.handle('proj:recordAt', wrap(({ path: p }) => { const r = p && fenced(p) ? recordFor(data(), p) : null; return r ? { id: r.id, number: r.number } : null; }));
   // set a folder up for drawings: an app record linked to it (nothing is written into the folder)
   function adoptFolder(p, who = 'Tom') {

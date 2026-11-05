@@ -110,6 +110,13 @@ const step = (name, fn) => { try { const r = fn(); if (r && r.then) return r.the
 
   // 6. the PDF: a real A0 page with the cloud drawn as arcs (not a straight-sided polygon)
   await step('PDF is an A0 page holding the drawing', async () => { const { PDFDocument } = require('pdf-lib'); const pdf = fs.readFileSync(path.join(dir74, 'X071126-01-70-0001_P01.pdf')); const doc = await PDFDocument.load(pdf); const { width, height } = doc.getPage(0).getSize(); assert.ok(Math.abs(width - 3370.39) < 1 && Math.abs(height - 2383.94) < 1, `A0 page, got ${width}x${height}`); return `${doc.getPageCount()} page, ${(pdf.length / 1024).toFixed(0)} KB`; });
+  // 6b. the Jobs list: any folder inside a job belongs to that job (Explorer navigation shows the job on the right); a discipline folder is not a job
+  await step('a folder inside the job resolves to the job; the job folder itself too; a stray folder to nothing', async () => {
+    const a = await call('proj:jobFor', { path: path.join(folder, '7. Electrical', '7.3 Block Diagrams') }); assert.ok(a && a.id === job.id, JSON.stringify(a));
+    const b = await call('proj:jobFor', { path: folder }); assert.ok(b && b.id === job.id);
+    fs.mkdirSync(path.join(PROJECTS, 'Misc'), { recursive: true }); const c = await call('proj:jobFor', { path: path.join(PROJECTS, 'Misc') }); assert.strictEqual(c, null);
+    const L = await call('proj:listAt', { path: folder }); const e7 = L.entries.find(e => e.name === '7. Electrical'); assert.ok(e7 && !e7.isJob, '7. Electrical is not a job folder');
+  });
   // 7. a new job the "drop the client's folder on it" way: the folder holds an email (scope + attachments), loose schedules, a DNO letter,
   //    a client drawing and junk; everything lands where it lives, the email goes through Eli, junk is left behind
   const drop = path.join(TMP, 'from the client'); fs.mkdirSync(path.join(drop, 'Drawings', 'Existing'), { recursive: true }); fs.mkdirSync(path.join(drop, 'Schedules'), { recursive: true });

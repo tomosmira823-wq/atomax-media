@@ -11,7 +11,7 @@ export function initJobsUI({ api, getAgents, openIssue, onWorkOn }) {
   const panel = $('#jobsPanel');
   let jobs = [], sel = '', tab = 'files', O = null, msg = '', busy = {}, poll = null;
   // the Jobs list IS the live Projects folder: nav = the folder being listed, selPath = the job folder open on the right
-  let roots = [], nav = '', listing = null, selPath = '', listTimer = null; const openDirs = new Set();
+  let roots = [], nav = '', listing = null, selPath = '', filesAt = '', listTimer = null; const openDirs = new Set();   // filesAt = the folder the Files tab is showing (inside the job folder)
   // live agent runs (stage, elapsed, estimate) keyed by job|drawing, from the main process; the row shows them and offers Stop
   const RUNS = new Map(); const runKey = (jobId, no) => `${jobId}|${no}`;
   const fmtT = (ms) => { const sec = Math.round(ms / 1000); return sec < 60 ? `${sec}s` : `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`; };
@@ -106,18 +106,19 @@ export function initJobsUI({ api, getAgents, openIssue, onWorkOn }) {
     const L = $('#jbList');
     L.querySelector('[data-j=""]').onclick = () => { sel = ''; selPath = ''; tab = 'deliv'; msg = ''; refresh(); };
     // a job folder opens on the right; any other folder (a year, a client) opens in the list, like Explorer
+    // like Explorer: a click on any folder goes into it (the list shows what is inside); the right-hand side shows the job that folder
+    // belongs to (the folder itself or one above it), with the Files tab open at that folder. A folder outside any job just lists.
     L.querySelectorAll('[data-dir]').forEach(b => b.onclick = async () => {
-      const p = b.dataset.dir;
-      if (!b.dataset.job) { nav = p; await relist(); renderList(); return; }
-      selPath = p; tab = b.dataset.kind === 'drawing' ? 'deliv' : 'files'; msg = ''; openDirs.clear(); if (!b.dataset.kind || b.dataset.kind === 'job') noteRecent(p, (b.querySelector('b') || {}).textContent.replace(/^📁\s*/, '').trim());
-      try { const r = await api.proj.recordAt({ path: p }); sel = r ? r.id : ''; } catch { sel = ''; }
-      refresh();
+      const p = b.dataset.dir; nav = p; await relist(); renderList();
+      let J = null; try { J = await api.proj.jobFor({ path: p }); } catch {}
+      if (J && J.id) { if (sel !== J.id) { tab = b.dataset.kind === 'drawing' ? 'deliv' : 'files'; msg = ''; openDirs.clear(); } sel = J.id; selPath = ''; filesAt = p; noteRecent(J.folder || p, `${J.number || ''} ${J.name || ''}`.trim() || base(J.folder || p)); refresh(); }
+      else if (J && J.folder) { sel = ''; selPath = J.folder; filesAt = p; tab = 'files'; msg = ''; refresh(); }
+      else { sel = ''; selPath = ''; filesAt = ''; renderList(); }
     });
-    L.querySelectorAll('[data-dir][data-job="1"]').forEach(b => b.ondblclick = async () => { nav = b.dataset.dir; await relist(); renderList(); });
     L.querySelectorAll('[data-go]').forEach(b => b.onclick = async () => { nav = b.dataset.go; await relist(); renderList(); });
     L.querySelectorAll('[data-nav]').forEach(a => a.onclick = async (e) => { e.preventDefault(); nav = a.dataset.nav; await relist(); renderList(); });
     L.querySelectorAll('[data-file]').forEach(b => b.onclick = () => api.proj.openAt({ path: b.dataset.file }).catch(err => { msg = clean(err); }));
-    L.querySelectorAll('[data-j]').forEach(b => { if (b.dataset.j) b.onclick = () => { sel = b.dataset.j; selPath = ''; tab = 'files'; msg = ''; openDirs.clear(); refresh(); }; });
+    L.querySelectorAll('[data-j]').forEach(b => { if (b.dataset.j) b.onclick = () => { sel = b.dataset.j; selPath = ''; filesAt = ''; tab = 'files'; msg = ''; openDirs.clear(); refresh(); }; });
     const pick = async (e) => { if (e) e.preventDefault(); const f = await api.proj.pick(); if (!f) return; try { const st = await api.settings.get(); await api.settings.set({ projectRoots: [...new Set([...(st.projectRoots || []), f])] }); } catch (err) { msg = clean(err); } nav = f; refresh(); };
     if ($('#jbRoot')) $('#jbRoot').onclick = pick;
     $('#jbNew').onclick = newJob;
@@ -163,10 +164,13 @@ export function initJobsUI({ api, getAgents, openIssue, onWorkOn }) {
   const fDate = (t) => { if (!t) return ''; const d = new Date(t); return [d.getDate(), d.getMonth() + 1, d.getFullYear() % 100].map(v => String(v).padStart(2, '0')).join('.'); };
   // the job folder, live: inside the Projects folders it is read by path; an older job's folder elsewhere by the job
   async function tabFiles(folder = O && O.job && O.job.folder, jobId = O && O.job && O.job.id) {
-    const el = $('#jbTab');
+    const el = $('#jbTab'); const root = folder;
+    if (folder && filesAt && filesAt.toLowerCase().startsWith(folder.toLowerCase()) && /[\\/]/.test(filesAt.charAt(folder.length))) folder = filesAt;   // the folder clicked in the list, inside this job
     if (!folder) { el.innerHTML = `<div class="jbempty"><b>No project folder for this job.</b><span>Pick its folder in your Projects folder.</span><button class="jbbtn primary" id="jftPick">Choose the folder…</button></div>`; $('#jftPick').onclick = async () => { const f = await api.proj.pick(); if (f) { await api.proj.setFolder({ jobId, folder: f }); refresh(); } }; return; }
-    el.innerHTML = `<div class="jbcard jft"><div class="jft-top"><b>${esc(base(folder))}</b><span class="bsub">${esc(folder)}</span><button class="jbbtn" id="jftRe" title="Read the folder again">↻</button><button class="jbbtn" id="jftOpen">Open in Explorer</button></div><div id="jftRoot" class="jft-list"><div class="bsub">Reading the folder…</div></div></div>`;
+    const crumb = folder !== root ? `<a href="#" id="jftUp" class="jbrootlink" title="${esc(root)}">${esc(base(root))}</a> › ` : '';
+    el.innerHTML = `<div class="jbcard jft"><div class="jft-top"><b>${crumb}${esc(base(folder))}</b><span class="bsub">${esc(folder)}</span><button class="jbbtn" id="jftRe" title="Read the folder again">↻</button><button class="jbbtn" id="jftOpen">Open in Explorer</button></div><div id="jftRoot" class="jft-list"><div class="bsub">Reading the folder…</div></div></div>`;
     $('#jftOpen').onclick = () => api.proj.openAt({ path: folder }).catch(() => jobId && api.proj.open({ jobId }));
+    if ($('#jftUp')) $('#jftUp').onclick = (e) => { e.preventDefault(); filesAt = ''; tabFiles(root, jobId); };
     $('#jftRe').onclick = () => tabFiles(folder, jobId);
     let byPath = true; try { await api.proj.listAt({ path: folder }); } catch { byPath = false; }
     await fillDir($('#jftRoot'), { folder, jobId, byPath }, '');
@@ -459,7 +463,7 @@ export function initJobsUI({ api, getAgents, openIssue, onWorkOn }) {
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && panel.classList.contains('open') && !document.querySelector('.modal.open')) hide(); });
   return {
     focusSearch() { const q = $('#jbQ'); if (q) { q.focus(); q.select(); } },
-    async show(jobId) { if (jobId !== undefined) { sel = jobId; selPath = ''; tab = 'deliv'; } clearInterval(listTimer); listTimer = setInterval(async () => { if (!panel.classList.contains('open') || busyPanel() || !nav || !document.hasFocus()) return; const before = JSON.stringify(listing && listing.entries.map(e => e.name + e.dir)); await relist(); if (JSON.stringify(listing && listing.entries.map(e => e.name + e.dir)) !== before) renderList(); }, 15000); panel.classList.remove('collapsed'); panel.classList.add('open'); document.body.classList.add('jobs-open'); document.body.classList.remove('jobs-full'); if ($('#jbFull')) { $('#jbFull').textContent = '⛶'; $('#jbFull').title = 'Full screen (F11)'; } document.querySelectorAll('#top .tabs:not(.rooms) button').forEach(x => x.classList.toggle('active', x.id === 'jobsBtn')); await refresh().catch(e => { $('#jbMain').innerHTML = `<div class="bhint">${esc(clean(e))}</div>`; }); },
+    async show(jobId) { if (jobId !== undefined) { sel = jobId; selPath = ''; filesAt = ''; tab = 'deliv'; } clearInterval(listTimer); listTimer = setInterval(async () => { if (!panel.classList.contains('open') || busyPanel() || !nav || !document.hasFocus()) return; const before = JSON.stringify(listing && listing.entries.map(e => e.name + e.dir)); await relist(); if (JSON.stringify(listing && listing.entries.map(e => e.name + e.dir)) !== before) renderList(); }, 15000); panel.classList.remove('collapsed'); panel.classList.add('open'); document.body.classList.add('jobs-open'); document.body.classList.remove('jobs-full'); if ($('#jbFull')) { $('#jbFull').textContent = '⛶'; $('#jbFull').title = 'Full screen (F11)'; } document.querySelectorAll('#top .tabs:not(.rooms) button').forEach(x => x.classList.toggle('active', x.id === 'jobsBtn')); await refresh().catch(e => { $('#jbMain').innerHTML = `<div class="bhint">${esc(clean(e))}</div>`; }); },
     hide, refresh, isOpen: () => panel.classList.contains('open')
   };
 }
