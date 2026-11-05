@@ -11,7 +11,7 @@ function kindOf(d) {
   if (t === '71' || /\bbcd\b|block cable/i.test(s)) return { agent: 'Dex', kind: 'bcd', verb: 'Draw the BCD' };
   if (t === '70' || /single line|\bsld\b/i.test(s)) return { agent: 'Dex', kind: 'sld', verb: 'Draw the SLD' };
   if (t === '74' || /earthing/i.test(s)) return { agent: 'Dex', kind: 'earthing', verb: 'Draw the earthing drawing' };
-  if (/\b(survey|site visit|point cloud|laser scan|3d model|modelling|inspection|attendance|witness)\b/i.test(s)) return { agent: '', kind: 'manual', verb: '' };   // site work and models: nobody in the office makes those
+  if (/\b(survey|site visit|point cloud|laser scan|3d model|modelling|inspection|attendance|witness|package)\b/i.test(s)) return { agent: '', kind: 'manual', verb: '' };   // site work and models: nobody in the office makes those
   if (t === '23' || /\b(schedules?|registers?|lists?)\b/i.test(s)) return { agent: 'Lex', kind: 'schedule', verb: 'Make the' };   // whole words: a "registered point cloud" is not a register
   if (['00', '03', '05', '08', '09', '15', '20', '21', '22'].includes(t) || /report|spec|calc|method|rams|itp|query/i.test(s)) return { agent: 'Wren', kind: 'document', verb: 'Write the' };
   return { agent: '', kind: 'manual', verb: '' };   // termination / interconnection / layouts: not made by an agent yet

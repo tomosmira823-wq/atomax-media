@@ -77,9 +77,12 @@ function walk(dir, depth, out, max = 4000) {
 function findRegisters(job) {
   if (!job || !job.folder || !fs.existsSync(job.folder)) return [];
   // the document register (9.1 Document Register in an Atomax folder), not the RFI, transmittal, vendor, risk or variation registers
-  return walk(job.folder, 4, []).filter(p => { const n = path.basename(p); return (REGISTER_RE.test(n) || /[\\/]9\.1 Document Register[\\/]/i.test(p)) && !/rfi|transmittal|vendor|risk|variation|action|comment/i.test(n) && /\.(xlsx|xlsm|csv)$/i.test(n) && !/^~\$/.test(n); })
-    .map(p => ({ path: p, name: path.basename(p), mtime: fs.statSync(p).mtimeMs, inReg: /9\.1 Document Register/i.test(p) ? 1 : 0, numbered: /^X\d/i.test(path.basename(p)) ? 1 : 0 }))
-    .sort((a, b) => b.inReg - a.inReg || b.numbered - a.numbered || b.mtime - a.mtime);
+  // the older Atomax folders keep the drawing register inside the master transmittal workbook ("013 Transmittals & Drawing Register \ Document
+  // Transmittal (master ...)"): in a Drawing Register folder the master workbook is the register; elsewhere a transmittal is not
+  const inRegFolder = (p) => /[\\/](9\.1 Document Register|[^\\/]*Drawing Register)[\\/][^\\/]+$/i.test(p);
+  return walk(job.folder, 4, []).filter(p => { const n = path.basename(p); if (!/\.(xlsx|xlsm|csv)$/i.test(n) || /^~\$/.test(n) || /document request/i.test(n)) return false; if (inRegFolder(p)) return REGISTER_RE.test(n) || /master/i.test(n); return REGISTER_RE.test(n) && !/rfi|transmittal|vendor|risk|variation|action|comment/i.test(n); })
+    .map(p => ({ path: p, name: path.basename(p), mtime: fs.statSync(p).mtimeMs, inReg: inRegFolder(p) ? 1 : 0, master: /master/i.test(path.basename(p)) ? 1 : 0, numbered: /^X\d/i.test(path.basename(p)) ? 1 : 0 }))
+    .sort((a, b) => b.inReg - a.inReg || b.master - a.master || b.numbered - a.numbered || b.mtime - a.mtime);
 }
 // read rows out of a register workbook: any row with a drawing number; title / rev / status from the other cells
 function readRegister(file, checker) {
@@ -90,12 +93,13 @@ function readRegister(file, checker) {
     const cells = (Array.isArray(r) ? r : Array.isArray(r.c) ? r.c : Object.values(r)).map(c => String(c ?? '').trim());
     const struck = !!(r && Array.isArray(r.st) && r.st.some(Boolean));   // a struck-through row is a cancelled drawing
     const i = cells.findIndex(c => biz.DRAWING_NO.test(c)); if (i < 0) continue;
-    const no = cells[i].match(biz.DRAWING_NO)[0].toUpperCase(); if (rows.some(x => x.no === no)) continue;
+    const no = cells[i].match(biz.DRAWING_NO)[0].toUpperCase(); if (rows.some(x => x.no === no) || /-DIR-\d+$/.test(no) || cells.some(c => /transmittal register/i.test(c))) continue;   // the transmittal register sheets themselves are not deliverables
     const rest = cells.filter((c, k) => k !== i && c);
-    const rev = rest.find(c => /^(rev\.?\s*)?([A-Z]{1,2}\d{1,2}|[A-Z])$/i.test(c) && c.length <= 6) || '';
+    const revs = rest.filter(c => /^(rev\.?\s*)?([PCA]\d{1,2}|[A-Z]\d{1,2}|[A-Z])$/i.test(c) && c.length <= 6), rev = revs.length ? revs[revs.length - 1] : '';   // one column per issue: the last filled is the current revision
     const status = struck || rest.find(c => /cancel|void|supersed|struck|withdrawn/i.test(c)) ? 'Cancelled' : 'Live';
-    const title = rest.filter(c => c !== rev && !/^\d+([./-]\d+)*$/.test(c) && c.length > 3).sort((a, b) => b.length - a.length)[0] || '';
-    rows.push({ no, title: title.slice(0, 160), rev: rev.replace(/^rev\.?\s*/i, '').toUpperCase(), status });
+    const title = rest.filter(c => !revs.includes(c) && !/^\d+([./-]\d+)*$/.test(c) && !/^\d{2}_[A-Z]{2}_\d{4}$/i.test(c) && !biz.DRAWING_NO.test(c) && !/^\d{1,2}[\/.-]\d{1,2}[\/.-]\d{2,4}$/.test(c) && c.length > 3).sort((a, b) => b.length - a.length)[0] || '';
+    const ours = rest.find(c => /^\d{2}_[A-Z]{2}_\d{4}$/i.test(c)) || '';   // Atomax's own number alongside the client's (42_BG_0055)
+    rows.push({ no, title: title.slice(0, 160), rev: rev.replace(/^rev\.?\s*/i, '').toUpperCase(), status, ...(ours ? { alt: ours.toUpperCase() } : {}) });
   }
   return rows;
 }
@@ -107,7 +111,7 @@ function checkRegister(id, checker) {
   if (!found.length) { d.registerFile = ''; save(id, d); return { found: false, folder: job.folder || '', drawings: job.drawings.length }; }
   const rows = readRegister(found[0].path, checker);
   const merged = [...job.drawings];
-  for (const r of rows) { const old = merged.find(x => x.no.toUpperCase() === r.no); if (old) { if (r.rev) old.rev = r.rev; if (r.title && !old.title) old.title = r.title; if (r.status === 'Cancelled') old.status = 'Cancelled'; } else merged.push(r); }
+  for (const r of rows) { const old = merged.find(x => x.no.toUpperCase() === r.no || (r.alt && x.no.toUpperCase() === r.alt)); if (old) { if (r.rev) old.rev = r.rev; if (r.title && !old.title) old.title = r.title; if (r.status === 'Cancelled') old.status = 'Cancelled'; if (r.alt) old.alt = r.alt; if (old.no.toUpperCase() === r.alt) old.no = r.no; } else merged.push(r); }   // a row under our own number takes the client's number from the register
   biz.saveJob(BIZ.data(), { ...job, drawings: merged }, 'Eli'); BIZ.store.save();
   d.registerFile = found[0].path; save(id, d);
   BIZ.log({ who: 'Eli', action: 'Read the drawing register', jobId: id, detail: `${found[0].name} · ${rows.length} drawings` });
@@ -148,6 +152,7 @@ const KIND_TAGS = [
   ['drawing', 'SLD', /single.?line|\bsld\b/i], ['drawing', 'BCD', /\bbcd\b|block cable/i], ['drawing', 'EARTH', /earthing|bonding/i],
   ['drawing', 'LOOP', /\bloop\b/i], ['drawing', 'PID', /p&id|\bpid\b/i], ['drawing', 'GA', /\bgas?\b|general arrangement|layout|location plan|destruct|removal drawing|tie-in/i], ['drawing', 'ISO', /isometric|\biso\b|spool/i],
   ['drawing', 'SCH', /schematic|circuit|wiring|termination|interconnection|containment|architecture|hazardous area|block diagram|drawing/i],
+  ['document', 'PKG', /\bpackage\b/i],
   ['schedule', 'CABLES', /cable schedule/i], ['schedule', 'IO', /\bi\/?o\b.*(schedule|list|count)/i],
   ['schedule', 'LIST', /\b(schedules?|registers?|lists?|take-?off|mto|index)\b/i],
   ['document', 'CALC', /calc|stress|analysis|sizing|verification/i], ['document', 'DS', /datasheet|data sheet/i], ['document', 'SPEC', /specification|\bspec\b|standard\b/i],
@@ -220,7 +225,7 @@ function addDeliverables(id, list, opts = {}) {
   const added = [], taken = []; let renamed = false;
   for (const dl0 of list) {
     if (dl0.no) {   // a document Atomax already has in the job folder (matched by Eli): its own number, title and latest revision
-      const no = String(dl0.no).trim(); if (!no || job.drawings.some(d => d.no.toUpperCase() === no.toUpperCase()) || added.some(a => a.no.toUpperCase() === no.toUpperCase())) continue;
+      const no = String(dl0.no).trim(), up = no.toUpperCase(); if (!no || job.drawings.some(d => d.no.toUpperCase() === up || (d.alt && d.alt.toUpperCase() === up)) || added.some(a => a.no.toUpperCase() === up)) continue;   // on the list already, under this number or as our number beside the client's
       const kt = kindTag(dl0.type, dl0.title); added.push({ no, title: String(dl0.title || no), rev: String(dl0.rev || ''), status: 'To do', type: String(dl0.type || ''), group: kt.group }); continue;
     }
     const sc = setCount(dl0.title || dl0.type, dl0.qty), dl = { ...dl0, title: cap(sc.title) };

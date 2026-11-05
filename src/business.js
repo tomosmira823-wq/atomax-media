@@ -6,7 +6,7 @@ const path = require('path');
 const zlib = require('zlib');
 
 // Atomax numbers: X123456-10-20-0042 and the longer project style X11481-02-MLT-06-71-0001
-const DRAWING_NO = /X\d{5,6}(?:-[A-Z0-9]{2,4}){1,4}-\d{3,4}/i;
+const DRAWING_NO = /X\d{5,6}(?:-[A-Z0-9]{1,4}){1,6}-\d{3,4}/i;   // Atomax QS 006 (X071126-01-06-70-0001) and client schemes such as BGEN's X11475-BGN-ZZ-XX-DR-E-7147
 const JUNK = [/^~\$/, /\.(bak|tmp|temp|log|lnk)$/i, /^thumbs\.db$/i, /^desktop\.ini$/i, /^\.ds_store$/i, /\.dwl2?$/i, /\.sv\$$/i];
 const ISSUE_EXT = new Set(['.pdf', '.dxf', '.dwg', '.docx', '.xlsx', '.xls', '.csv']);
 const DEAD_WORDS = /\b(cancel+ed|superseded|void|obsolete|withdrawn|not for (issue|use)|struck|hatched)\b/i;
@@ -43,7 +43,7 @@ function saveJob(data, j, who = 'Tom') {
   const clean = {
     id: old ? old.id : uid('j'), number, name: String(j.name || '').trim(), client: String(j.client || '').trim(),
     status: JOB_STATUS.includes(j.status) ? j.status : 'Active', budgetHours: Math.max(0, Number(j.budgetHours) || 0), dueDate: String(j.dueDate || ''), notes: String(j.notes || ''), folder: String(j.folder || (old && old.folder) || '').trim(),
-    drawings: (j.drawings || []).map(d => ({ no: String(d.no || '').trim(), title: String(d.title || '').trim(), rev: String(d.rev || '').trim(), status: String(d.status || 'Live').trim(), ...(d.type ? { type: String(d.type) } : {}) })).filter(d => d.no),   // type: what the scope / email called it (SLD, loop, cable schedule...), kept for grouping
+    drawings: (j.drawings || []).map(d => ({ no: String(d.no || '').trim(), title: String(d.title || '').trim(), rev: String(d.rev || '').trim(), status: String(d.status || 'Live').trim(), ...(d.type ? { type: String(d.type) } : {}), ...(d.alt ? { alt: String(d.alt) } : {}) })).filter(d => d.no),   // alt: Atomax's own number when the row carries the client's (42_BG_0055 for X11475-BGN-ZZ-XX-DR-E-7147)   // type: what the scope / email called it (SLD, loop, cable schedule...), kept for grouping
     createdAt: old ? old.createdAt : new Date().toISOString(), updatedAt: new Date().toISOString()
   };
   if (!old && data.jobs.some(x => x.number.toLowerCase() === number.toLowerCase())) throw new Error('There is already a job numbered ' + number + '.');
