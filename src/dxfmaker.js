@@ -1702,4 +1702,4 @@ function previousSpec(outDir, baseName, notRev = '') {   // notRev: skip specs o
   return null;
 }
 
-module.exports = { archiveOld, sldDiff, fromSchedule, cleanLabels, cleanLabel, noteLines, clientNotes, isInternalNote, notesFit, primsBounds, BORDER_NAMES, flatPrims, BORDERS, cableClashes, previousSpec, layoutBcd, bcdDiff, SYSTEM, ALIASES, SYMBOLS, symbolOf, layoutSld, writeDxf, toSvg, parseReply, make };
+module.exports = { repairJson, archiveOld, sldDiff, fromSchedule, cleanLabels, cleanLabel, noteLines, clientNotes, isInternalNote, notesFit, primsBounds, BORDER_NAMES, flatPrims, BORDERS, cableClashes, previousSpec, layoutBcd, bcdDiff, SYSTEM, ALIASES, SYMBOLS, symbolOf, layoutSld, writeDxf, toSvg, parseReply, make };

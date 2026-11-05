@@ -29,6 +29,7 @@ let claudeCalls = [];
 async function claudeFull(a) {
   claudeCalls.push({ who: a.who, system: String(a.system || '').slice(0, 60) });
   const sys = String(a.system || ''), user = JSON.stringify(a.messages || []);
+  if (/DELIVERABLES REGISTER/.test(sys) && global.__scopeBad) return { text: '{"summary":"x","facts":[],"deliverables":[{"type":"SLD","title":"LV single line diagram - new PDB","qty":1},{"type":"other","title":"Pipework isometric - 8" gas main","qty":1},{"type":"cable schedule","title":"Cable schedule (power, control, instrument)","qty":1}],"byOthers":[],"conflicts":[],"inputs":[],"missingInputs":[]}', stop: 'end_turn' };
   if (/DELIVERABLES REGISTER/.test(sys)) return { text: JSON.stringify({ summary: 'Gas mixing pipework design for UU via EMFS', facts: [{ name: 'Enquiry', value: 'ENQ10560' }], deliverables: [{ type: 'SLD', title: 'LV single line diagram - new PDB', qty: 1, discipline: 'E&I' }, { type: 'BCD', title: 'Block cable diagram', qty: 1, discipline: 'E&I' }, { type: 'document', title: 'Rotork actuator schematic', qty: 8, discipline: 'E&I' }, { type: 'cable schedule', title: 'Cable schedule (power, control, instrument)', qty: 1, discipline: 'E&I' }], byOthers: [{ title: 'P&IDs', who: 'Insight Technical' }], conflicts: ['Draft A scope lists protection studies; the P05 fee proposal excludes them'], inputs: [{ name: 'Requirements Statement', rev: 'Rev 2', what: 'UU/Costain order requirements' }], missingInputs: ['existing P&IDs'] }), stop: 'end_turn' };
   if (a.who === 'dex' || /You are Dex/i.test(sys)) { const req = (user.match(/REQUEST: ([^"]{0,200})/) || [])[1] || ''; return { text: /block cable/i.test(req) ? dexBcd : dexSld, stop: 'end_turn' }; }
   return { text: '{}', stop: 'end_turn' };
@@ -146,5 +147,24 @@ const step = (name, fn) => { try { const r = fn(); if (r && r.then) return r.the
   });
   const F2 = await call('jobs:fileIn', { jobId: job2.id, paths: [path.join(drop, 'Schedules'), path.join(drop, 'RE scope.eml')] });
   await step('dropping the same files again files nothing twice and does not read the email again', () => { assert.strictEqual(F2.filed.length, 0); assert.strictEqual(F2.emails.length, 0, 'email not re-read'); assert.ok(F2.skipped.some(x => /email already read/.test(x)), JSON.stringify(F2.skipped)); });
+  // the email was first read by a version that did not fingerprint files (X051126-02): it is still the same email, by sender + subject + date
+  const EM = path.join(USER, 'intake', 'emails.json'), emFile = fs.existsSync(EM) ? EM : (() => { const f = require('child_process').execSync(`find ${JSON.stringify(USER)} -name emails.json`).toString().trim().split('\n')[0]; return f; })();
+  { const list = JSON.parse(fs.readFileSync(emFile, 'utf8')); for (const e of list) delete e.fileHash; fs.writeFileSync(emFile, JSON.stringify(list)); }
+  const rowsBefore = (await call('jobs:overview', { jobId: job2.id })).rows.length, crsBefore = ((await call('jobs:overview', { jobId: job2.id })).desk.crs || []).length;
+  const F3 = await call('jobs:fileIn', { jobId: job2.id, paths: [path.join(drop, 'RE scope.eml')] });
+  await step('an email first read before files were fingerprinted is still not read twice (same sender, subject, date)', async () => { assert.strictEqual(F3.emails.length, 0, 'email re-read: ' + JSON.stringify(F3)); assert.ok(F3.skipped.some(x => /email already read/.test(x)), JSON.stringify(F3.skipped)); const O = await call('jobs:overview', { jobId: job2.id }); assert.strictEqual(O.rows.length, rowsBefore, 'rows unchanged'); assert.strictEqual((O.desk.crs || []).length, crsBefore, 'comments unchanged'); });
+  // Eli's scope reply with a quote inside a title (8" gas main) is read all the same, and a register row comes from it
+  global.__scopeBad = true;
+  const F4 = await call('jobs:fileIn', { jobId: job2.id, paths: [path.join(drop, 'Atomax-UK Scope of Works - ENQ10560.docx')] }).catch(e => ({ errors: [String(e)] }));
+  await step('a scope reply with a quote inside a title is still read (no JSON position error on the desk)', async () => { assert.ok(!(F4.errors || []).some(x => /scope documents/.test(x)), JSON.stringify(F4.errors)); const O = await call('jobs:overview', { jobId: job2.id }); assert.ok(O.rows.some(r => /8" gas main/.test(r.title)), O.rows.map(r => r.title).join(' | ')); assert.ok(!JSON.stringify(O.desk.scope || {}).includes('could not read'), JSON.stringify(O.desk.scope)); });
+  global.__scopeBad = false;
+  // tidyRows: a second TBC row saying the same in other words, and a comment repeated word for word, left by an email read twice
+  await step('rows and comments left by an email read twice are tidied away', async () => {
+    const desk = require('../src/jobdesk'); const O0 = await call('jobs:overview', { jobId: job2.id }); const biz = require('../src/business');
+    const d = BIZ.data(), j = d.jobs.find(x => x.id === job2.id); j.drawings.push({ no: 'TBC-DOCUMENT-77', title: 'Fee proposal / quotation - UU Mixing pipework (ENQ10560)', rev: '', status: 'To do' }, { no: 'TBC-DOCUMENT-78', title: 'Quotation / fee proposal - UU Mixing pipework (ENQ10560)', rev: '', status: 'To do' }); BIZ.store.save();
+    desk.addComments(job2.id, [{ doc: 'TBC-DOCUMENT-77', comment: 'Please confirm the tower loading', by: 'Dan' }, { doc: 'TBC-DOCUMENT-77', comment: 'Please confirm the tower loading', by: 'Dan' }], 'RE scope');
+    const O = await call('jobs:overview', { jobId: job2.id }); const t = O.rows.filter(r => /fee proposal|quotation/i.test(r.title) && /UU Mixing/.test(r.title)); assert.strictEqual(t.length, 1, O.rows.map(r => r.no + ' ' + r.title).join(' | '));
+    const same = (O.desk.crs || []).filter(c => /tower loading/.test(c.comment)); assert.strictEqual(same.length, 1, JSON.stringify(same)); assert.strictEqual(same[0].doc, t[0].no, 'comment follows the kept row');
+  });
   console.log(process.exitCode ? 'E2E FAILED' : 'e2e northwich ok'); fs.rmSync(TMP, { recursive: true, force: true }); process.exit(process.exitCode || 0);
 })().catch(e => { console.error('E2E ERROR', e); process.exit(1); });

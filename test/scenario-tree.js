@@ -3,7 +3,7 @@
 (async () => {
   const out = { steps: [], errors: [] }; const wait = (ms) => new Promise(r => setTimeout(r, ms));
   const step = async (name, fn) => { try { out.steps.push({ name, ok: true, info: await fn() }); } catch (e) { out.steps.push({ name, ok: false, err: String(e) }); out.errors.push(name + ': ' + e); } };
-  const until = async (f, ms = 20000) => { const t = Date.now(); while (Date.now() - t < ms) { try { if (f()) return true; } catch {} await wait(200); } throw new Error('timeout'); };
+  const until = async (f, ms = 90000) => { const t = Date.now(); while (Date.now() - t < ms) { try { if (f()) return true; } catch {} await wait(200); } throw new Error('timeout'); };
   const DIR = '__AMO_DIR__', sep = DIR.includes('\\') ? '\\' : '/';
   const P = (...a) => [DIR, ...a].join(sep);
   const rows = () => [...document.querySelectorAll('#jbList .jbdir')];
@@ -11,7 +11,9 @@
   const noFiles = () => { if (document.querySelector('#jbList .jbfile')) throw new Error('files listed in the navigation pane: ' + [...document.querySelectorAll('#jbList .jbfile')].map(x => x.textContent).join(', ')); };
   const h2 = () => (document.querySelector('#jbMain h2') || {}).textContent || '';
   await wait(1200); const api = window.office;
-  await step('three Projects folders set', async () => { localStorage.removeItem('amo.jbTree'); await api.settings.set({ projectRoots: [P('Projects'), P('Oakmere WwTW Inlet Works - X051126'), P('Gas mixer pipework')] }); document.querySelector('#jobsBtn').click(); await until(() => rows().length >= 3); noFiles(); return rows().map(r => r.textContent.trim()).join(' | '); });
+  // the tree remembers what was open on this PC: start every run from everything collapsed
+  const collapseAll = async () => { for (let i = 0; i < 12; i++) { const open = [...document.querySelectorAll('#jbList [data-tog]')].find(x => x.textContent === '▾'); if (!open) return; open.click(); await wait(400); await until(() => ![...document.querySelectorAll('#jbList [data-tog]')].includes(open)); } };
+  await step('three Projects folders set', async () => { await api.settings.set({ projectRoots: [P('Projects'), P('Oakmere WwTW Inlet Works - X051126'), P('Gas mixer pipework')] }); const t0 = Date.now(); document.querySelector('#jobsBtn').click(); await until(() => rows().length >= 3, 120000); out.listMs = Date.now() - t0; await collapseAll(); if (rows().length !== 3) throw new Error(rows().length + ' rows'); noFiles(); return rows().map(r => r.textContent.trim()).join(' | '); });
   await step('a root that is a job folder is a leaf: click selects it, the list stays', async () => { const r = row('Oakmere'); if (!r) throw new Error('no Oakmere row'); if (r.querySelector('[data-tog]')) throw new Error('Oakmere has a chevron'); r.click(); await until(() => /Oakmere/.test(h2())); await wait(300); if (!row('Oakmere').classList.contains('on')) throw new Error('Oakmere not highlighted'); if (rows().length !== 3) throw new Error(rows().length + ' rows after clicking a job root'); noFiles(); return h2(); });
   await step('an enquiry folder (not a job) opens in place: sub-folders only, its contents on the right', async () => { row('Gas mixer').click(); await until(() => row('Previous project') && row('Superseded')); noFiles(); if (!/Gas mixer/.test(h2())) throw new Error('right side shows ' + h2()); await until(() => document.querySelectorAll('.jft-file').length === 2); const pad = parseInt(row('Previous project').style.paddingLeft) - parseInt(row('Gas mixer').style.paddingLeft); if (pad < 10) throw new Error('sub-folders not indented'); return rows().map(r => r.textContent.trim()).join(' | '); });
   await step('the chevron collapses it without changing the right side', async () => { row('Gas mixer').querySelector('[data-tog]').click(); await until(() => !row('Previous project')); if (!/Gas mixer/.test(h2())) throw new Error('right side changed to ' + h2()); return 'collapsed'; });

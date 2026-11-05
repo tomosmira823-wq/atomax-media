@@ -147,6 +147,14 @@ function kindKey(no, title) { const t = (String(no || '').match(/-(\d{2})-\d{4}(
 function tidyRows(id) {
   const job = jobOf(id); if (!job) return []; const d = load(id), dl = d.deliv || {}, moves = [];
   const rows = job.drawings; const hasWork = (r) => !!(dl[r.no] && (dl[r.no].files || dl[r.no].status));
+  // the same email read twice (before files were fingerprinted) left its rows and comments twice: a TBC row saying the same as an
+  // earlier one in other words ("Quotation / fee proposal" = "Fee proposal / quotation"), with no work on it, goes; so does a comment
+  // repeating an earlier one word for word against the same drawing
+  let dups = 0;
+  const words = (t) => String(t || '').toLowerCase().replace(/\(sheet \d+\)/g, '').split(/[^a-z0-9]+/).filter(Boolean).sort().join(' ');
+  for (const r of [...rows]) { if (!/^TBC-/i.test(r.no) || hasWork(r)) continue; const first = rows.find(x => x !== r && rows.indexOf(x) < rows.indexOf(r) && words(x.title) === words(r.title)); if (!first) continue;
+    for (const c of d.crs || []) if (String(c.doc).toUpperCase() === r.no.toUpperCase()) c.doc = first.no; rows.splice(rows.indexOf(r), 1); moves.push({ from: r.no, to: first.no }); dups++; }
+  const seenC = new Set(); d.crs = (d.crs || []).filter(c => { const k = `${String(c.doc || '').toUpperCase()}|${String(c.comment || '').trim().toLowerCase()}|${String(c.by || '').trim().toLowerCase()}`; if (seenC.has(k) && !c.response) { dups++; return false; } seenC.add(k); return true; });
   for (const kind of ['sld', 'bcd', 'earthing']) {
     const same = rows.filter(r => kindKey(r.no, r.title) === kind && !/cancel|superseded/i.test(r.status || '')); if (same.length < 2) continue;
     const distinct = (r) => /\b(sheet|phase|area|zone|stage|rio\s*\d|mcc\s*\d|\d+\s+of\s+\d+)\b/i.test(r.title || '') || /\(\s*sheet/i.test(r.title || '');   // a second drawing of the kind, not a duplicate
@@ -163,7 +171,7 @@ function tidyRows(id) {
   let repointed = 0;
   for (const c of d.crs || []) { if (!c.doc || rows.some(r => r.no.toUpperCase() === String(c.doc).toUpperCase())) continue;
     const k = kindKey(c.doc, c.doc), of = k ? rows.filter(r => kindKey(r.no, r.title) === k && !/cancel|superseded/i.test(r.status || '')) : []; if (of.length === 1) { c.doc = of[0].no; repointed++; } }
-  if (moves.length || repointed) { d.deliv = dl; save(id, d); biz.saveJob(BIZ.data(), { ...job, drawings: rows }, 'Eli'); BIZ.store.save(); BIZ.log({ who: 'Eli', action: 'Tidied the drawing list', jobId: id, detail: [...moves.map(m => `${m.from} -> ${m.to}`), repointed ? `${repointed} comment(s) put on their drawing` : ''].filter(Boolean).join(', ') }); }
+  if (moves.length || repointed || dups) { d.deliv = dl; save(id, d); biz.saveJob(BIZ.data(), { ...job, drawings: rows }, 'Eli'); BIZ.store.save(); BIZ.log({ who: 'Eli', action: 'Tidied the drawing list', jobId: id, detail: [...moves.map(m => `${m.from} -> ${m.to}`), repointed ? `${repointed} comment(s) put on their drawing` : ''].filter(Boolean).join(', ') }); }
   return moves;
 }
 // a row gets its real number (Dex numbered a TBC drawing from the register / QS 006 when he made it): its work and comments follow it
@@ -210,7 +218,8 @@ function saveRfi(id, rfi) { const d = load(id), r = d.rfis.find(x => x.no === rf
 // ---------- client comments (CRS) ----------
 function addComments(id, comments = [], fromEmail = '') {
   const d = load(id), added = [];
-  for (const c of comments) { if (!c || !c.comment) continue; const row = { no: 'C-' + String(d.crs.length + 1).padStart(3, '0'), doc: String(c.doc || ''), comment: String(c.comment), by: String(c.by || ''), response: '', agent: String(c.agent || ''), status: 'Open', raised: today(), from: fromEmail }; d.crs.push(row); added.push(row); }
+  const key = (c) => `${String(c.doc || '').toUpperCase()}|${String(c.comment || '').trim().toLowerCase()}`, have = new Set(d.crs.map(key));
+  for (const c of comments) { if (!c || !c.comment || have.has(key(c))) continue; have.add(key(c)); const row = { no: 'C-' + String(d.crs.length + 1).padStart(3, '0'), doc: String(c.doc || ''), comment: String(c.comment), by: String(c.by || ''), response: '', agent: String(c.agent || ''), status: 'Open', raised: today(), from: fromEmail }; d.crs.push(row); added.push(row); }
   save(id, d); return added;
 }
 function saveCrs(id, row) { const d = load(id), r = d.crs.find(x => x.no === row.no); if (!r) throw new Error('No such comment'); Object.assign(r, { response: row.response ?? r.response, status: row.status || r.status }); save(id, d); return d; }

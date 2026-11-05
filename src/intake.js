@@ -188,12 +188,12 @@ function register({ ipcMain, dialog, shell, getWin, userDir, claudeFull, checker
   const readEmail = async ({ files = [], text = '', reuseId = '', paths = [], skills, run = '' }) => {
     files = [...files, ...paths.filter(p => fs.existsSync(p)).map(p => ({ name: path.basename(p), mime: extMime(p), base64: fs.readFileSync(p).toString('base64') }))];
     const id = reuseId || uid(), dir = path.join(DIR(), id); fs.mkdirSync(dir, { recursive: true });
-    const content = [], parts = [], originals = [], attach = [];
+    const content = [], parts = [], originals = [], attach = []; let hdr = null;   // the headers as written in the email file: what the record says it is, whatever Eli made of it
     for (const f of files) {
       const buf = Buffer.from(f.base64, 'base64'), ext = path.extname(f.name).toLowerCase(), mime = f.mime || extMime(f.name);
       fs.writeFileSync(path.join(dir, f.name.replace(/[\\/:*?"<>|]+/g, '_')), buf); originals.push(f.name);
-      if (ext === '.eml') { const m = parseEml(buf); parts.push(`From: ${m.from}\nTo: ${m.to}${m.cc ? '\nCc: ' + m.cc : ''}\nDate: ${m.date}\nSubject: ${m.subject}\n\n${m.body}`); m.attachments.forEach(a => { const n = a.name.replace(/[\\/:*?"<>|]+/g, '_'); fs.writeFileSync(path.join(dir, n), a.data); attach.push({ name: n, mime: a.mime }); }); }
-      else if (ext === '.msg') { const m = parseMsg(buf); parts.push(`From: ${m.from}\nTo: ${m.to}${m.cc ? '\nCc: ' + m.cc : ''}\nDate: ${m.date}\nSubject: ${m.subject}\n\n${m.body}`); m.attachments.forEach(a => { const n = a.name.replace(/[\\/:*?"<>|]+/g, '_'); fs.writeFileSync(path.join(dir, n), a.data); attach.push({ name: n, mime: a.mime || extMime(n) }); }); }
+      if (ext === '.eml') { const m = parseEml(buf); hdr = hdr || m; parts.push(`From: ${m.from}\nTo: ${m.to}${m.cc ? '\nCc: ' + m.cc : ''}\nDate: ${m.date}\nSubject: ${m.subject}\n\n${m.body}`); m.attachments.forEach(a => { const n = a.name.replace(/[\\/:*?"<>|]+/g, '_'); fs.writeFileSync(path.join(dir, n), a.data); attach.push({ name: n, mime: a.mime }); }); }
+      else if (ext === '.msg') { const m = parseMsg(buf); hdr = hdr || m; parts.push(`From: ${m.from}\nTo: ${m.to}${m.cc ? '\nCc: ' + m.cc : ''}\nDate: ${m.date}\nSubject: ${m.subject}\n\n${m.body}`); m.attachments.forEach(a => { const n = a.name.replace(/[\\/:*?"<>|]+/g, '_'); fs.writeFileSync(path.join(dir, n), a.data); attach.push({ name: n, mime: a.mime || extMime(n) }); }); }
       else if (IMG.test(mime)) { attach.push({ name: f.name, mime }); }
       else if (mime === 'application/pdf') { attach.push({ name: f.name, mime }); }
       else parts.push(buf.toString('utf8'));
@@ -216,7 +216,7 @@ function register({ ipcMain, dialog, shell, getWin, userDir, claudeFull, checker
     const reply = r.text;
     try { fs.writeFileSync(path.join(dir, 'eli-reply.txt'), String(reply || '')); } catch {}   // kept next to the email so a bad reply can be looked at
     let e; try { e = dxfmaker.parseReply(reply); } catch (err) { throw new Error(`Eli got a reply he could not read (${r.stop === 'max_tokens' ? 'it was cut off' : String(err.message || err).slice(0, 80)}). It is saved as eli-reply.txt with the email. Press Read it again.`); }
-    const email = { id, at: new Date().toISOString(), from: e.from || '', subject: e.subject || '', date: e.date || '', summary: e.summary || '', site: e.site || '', jobNumber: e.jobNumber || '', reply: e.reply || '', replyTo: e.replyTo || '',
+    const email = { id, at: new Date().toISOString(), from: (hdr && hdr.from) || e.from || '', subject: (hdr && hdr.subject) || e.subject || '', date: (hdr && hdr.date) || e.date || '', summary: e.summary || '', site: e.site || '', jobNumber: e.jobNumber || '', reply: e.reply || '', replyTo: e.replyTo || '',
       people: Array.isArray(e.people) ? e.people.slice(0, 8) : [], urgency: e.urgency === 'urgent' ? 'urgent' : 'normal', urgencyWhy: e.urgencyWhy || '', attachmentNotes: Array.isArray(e.attachmentNotes) ? e.attachmentNotes.slice(0, 10) : [], clientQuestions: Array.isArray(e.clientQuestions) ? e.clientQuestions.slice(0, 8).map(String) : [],
       asks: (e.asks || []).map((a, i) => ({ i, title: String(a.title || 'Task').slice(0, 160), detail: String(a.detail || ''), agent: AGENTS[a.agent] ? a.agent : 'none', kind: a.kind || 'other', due: a.due || '', status: 'proposed' })),
       originals, attachments: attach, pasted: text || '',
@@ -259,7 +259,19 @@ function register({ ipcMain, dialog, shell, getWin, userDir, claudeFull, checker
   // the documents that define a job (scope of works, fee proposal, requirements, enquiry, order): Eli reads them for the deliverables register
   const SCOPE_DOC = /scope|proposal|quot(e|ation)|requirement|specification|enquiry|\benq\d|tender|\bitt\b|\brfq\b|order|brief|works information|employer/i;
   const isScopeDoc = (f) => SCOPE_DOC.test(f.name) && /\.(docx|pdf|txt|md)$/i.test(f.name) && !/superseded|\bold\b|copy\b/i.test(f.rel || f.name);
+  // what makes an email the same email: who sent it, what it is called, when (the file can differ: re-saved from Outlook, forwarded copy)
+  const mailIdentity = (e) => { const f = String(e.from || '').toLowerCase(), addr = (f.match(/[\w.+-]+@[\w.-]+/) || [f.replace(/<.*$/, '').trim()])[0], subj = String(e.subject || '').toLowerCase().replace(/^(re|fw|fwd)\s*:\s*/g, '').replace(/\s+/g, ' ').trim(); let d = ''; try { const t = Date.parse(e.date || ''); if (t) d = String(Math.round(t / 60000)); } catch {} return addr && subj ? `${addr}|${subj}|${d}` : ''; };
   async function docText(p) { const ext = path.extname(p).toLowerCase(); if (ext === '.docx') { try { const JSZip = require('jszip'); const z = await JSZip.loadAsync(fs.readFileSync(p)); const f = z.file('word/document.xml'); if (!f) return ''; const xml = await f.async('string'); return xml.replace(/<\/w:p>/g, '\n').replace(/<w:tab\/>/g, '\t').replace(/<[^>]+>/g, '').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#(\d+);/g, (_m, n) => String.fromCharCode(+n)); } catch { return ''; } } if (ext === '.txt' || ext === '.md') { try { return fs.readFileSync(p, 'utf8'); } catch { return ''; } } return ''; }
+  // Eli's scope reply as an object: plain JSON first, then the same repair Dex's replies get (a quote inside a title such as 8" main,
+  // a cut-off tail); the reply is kept on disk when it still cannot be read, and the error says so instead of quoting a JSON position
+  function scopeJson(text, stop) {
+    const raw = String(text || '').replace(/^```(?:json)?/i, '').replace(/```\s*$/, '').trim();
+    try { return JSON.parse(raw); } catch {}
+    try { return dxfmaker.repairJson(raw); } catch (e) {
+      let kept = ''; try { kept = path.join(DIR(), 'scope-reply-' + Date.now() + '.txt'); fs.mkdirSync(DIR(), { recursive: true }); fs.writeFileSync(kept, raw); } catch { kept = ''; }
+      throw new Error(`Eli's reply could not be read${stop === 'max_tokens' ? ' (it was cut off)' : ''}${kept ? '; it is saved as ' + path.basename(kept) : ''}. Drop the documents on the job again to retry.`);
+    }
+  }
   async function readScope({ jobId, files = [], skills, run = '' }) {
     const content = []; let n = 0;
     for (const f of files.slice(0, 8)) {
@@ -269,8 +281,8 @@ function register({ ipcMain, dialog, shell, getWin, userDir, claudeFull, checker
       else { const t = (await docText(f.path)).trim(); if (t) content.push({ type: 'text', text: `${head}\n${t.slice(0, 60000)}` }); }
     }
     if (!content.length) return null;
-    const r = await claudeFull({ system: SCOPE_SYSTEM, who: 'email', skills, maxTokens: 12000, messages: [{ role: 'user', content }], run });
-    let out; try { out = JSON.parse(String(r.text || '').replace(/^```(?:json)?/i, '').replace(/```\s*$/, '').trim()); } catch { const m = String(r.text || '').match(/\{[\s\S]*\}/); out = m ? JSON.parse(m[0]) : null; }
+    const r = await claudeFull({ system: SCOPE_SYSTEM, who: 'email', skills, maxTokens: 16000, messages: [{ role: 'user', content }], run });
+    const out = scopeJson(r.text, r.stop);
     if (!out || typeof out !== 'object') return null;
     const desk = require('./jobdesk');
     try { desk.checkRegister(jobId, checker); } catch {}
@@ -297,7 +309,9 @@ function register({ ipcMain, dialog, shell, getWin, userDir, claudeFull, checker
       if (rest.length) { const r = BIZ.projects.fileIn(job.folder, rest); result.filed = r.filed; result.skipped = r.skipped; }
       let i = 0; for (const m of mails) { if (runs.aborted(R.id)) break; stage(`Eli is reading email ${++i} of ${mails.length}: ${m.name}`, 15 + Math.round(35 * (i - 1) / Math.max(1, mails.length)));
         let h = ''; try { h = require('crypto').createHash('sha1').update(fs.readFileSync(m.path)).digest('hex'); } catch {}
-        const before = load().find(x => x.fileHash && x.fileHash === h && (x.jobIds || []).includes(jobId) || (x.jobId === jobId && x.fileHash === h)); if (before) { result.skipped.push(m.rel + ' (email already read)'); continue; }   // the same email dropped again: its tasks and comments are already on the job
+        const onJob = (x) => (x.jobIds || []).includes(jobId) || x.jobId === jobId;
+        let idn = ''; try { const buf = fs.readFileSync(m.path), hd = /\.msg$/i.test(m.name) ? parseMsg(buf) : parseEml(buf); idn = mailIdentity(hd); } catch {}
+        const before = load().find(x => onJob(x) && ((h && x.fileHash === h) || (idn && mailIdentity(x) === idn))); if (before) { result.skipped.push(m.rel + ' (email already read)'); continue; }   // the same email dropped again (by file, or by sender + subject + date when it was first read before files were fingerprinted): its tasks and comments are already on the job
         try { const e = await readEmail({ paths: [m.path], run: R.id }); try { const list = load(), rec = list.find(x => x.id === e.id); if (rec) { rec.fileHash = h; rec.jobId = jobId; fs.writeFileSync(FILE(), JSON.stringify(list)); } } catch {} const a = await applyEmail({ emailId: e.id, jobId }); result.emails.push({ name: m.name, subject: e.subject || '', deliverables: (a && a.deliverables) || 0, comments: (a && a.comments) || 0, filed: (a && a.filed) || [] }); } catch (err) { result.errors.push(`${m.name}: ${String(err && err.message || err)}`); } }
       const scopeDocs = all.filter(isScopeDoc); if (scopeDocs.length && !runs.aborted(R.id)) { stage(`Eli is reading the scope documents (${scopeDocs.length}): ${scopeDocs.map(f => f.name).join(', ').slice(0, 120)}`, 55); try { result.scope = await readScope({ jobId, files: scopeDocs, run: R.id }); if (!result.scope) result.errors.push('scope documents: Eli could not read anything usable from ' + scopeDocs.map(f => f.name).join(', ')); } catch (err) { result.errors.push('scope documents: ' + String(err && err.message || err)); try { require('./jobdesk').setScopeNotes(jobId, { summary: '', facts: [], byOthers: [], conflicts: ['Eli could not read the scope documents: ' + String(err && err.message || err)], from: scopeDocs.map(f => f.name) }); } catch {} } }
       stage('Reading the job folder', 90);

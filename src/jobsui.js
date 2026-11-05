@@ -14,7 +14,7 @@ export function initJobsUI({ api, getAgents, openIssue, onWorkOn }) {
   // expand in place; a job folder is a leaf (click = select it); what is inside a job is browsed in the Files tab on the right.
   // treeOpen = folders expanded in the tree (remembered); kids = what each expanded folder holds (sub-folders only), read live
   let roots = [], selPath = '', filesAt = '', selFolder = '', listTimer = null; const openDirs = new Set();   // filesAt = the folder the Files tab is showing (inside the job folder); selFolder = the job folder highlighted in the list
-  const kids = new Map(), isJobAt = new Map();
+  let kids = new Map(), isJobAt = new Map();   // swapped whole after each read, never emptied in place: a redraw mid-read still has the last full picture
   const treeOpen = new Set((() => { try { return JSON.parse(localStorage.getItem('amo.jbTree') || '[]'); } catch { return []; } })());
   const rememberTree = () => { try { localStorage.setItem('amo.jbTree', JSON.stringify([...treeOpen])); } catch {} };
   const treeSig = () => JSON.stringify([...kids].map(([k, v]) => k + ':' + v.map(e => e.name).join('|')));
@@ -82,16 +82,16 @@ export function initJobsUI({ api, getAgents, openIssue, onWorkOn }) {
   }
   // the tree, read live (nothing cached between reads, nothing renamed or hidden beyond what Explorer hides): the roots, whether
   // each root is a job (a leaf) and the sub-folders of every expanded folder. A job folder is never expanded, whatever was remembered.
-  const jobAt = async (p) => { const k = p.toLowerCase(); if (!isJobAt.has(k)) { let J = null; try { J = await api.proj.jobFor({ path: p }); } catch {} isJobAt.set(k, J); } return isJobAt.get(k); };
   async function relist() {
     try { roots = (await api.proj.roots()).roots || []; } catch { roots = []; }
     const under = (p) => roots.some(r => p === r.path || p.startsWith(r.path.replace(/[\\/]+$/, '') + (r.path.includes('\\') ? '\\' : '/')));
-    isJobAt.clear(); await Promise.all(roots.map(r => jobAt(r.path)));   // a root that is a job folder itself is a leaf
+    const J2 = new Map(), K2 = new Map();
+    const jobAt = async (p) => { const k = p.toLowerCase(); if (!J2.has(k)) { let J = null; try { J = await api.proj.jobFor({ path: p }); } catch {} J2.set(k, J); } return J2.get(k); };
+    await Promise.all(roots.map(r => jobAt(r.path)));   // a root that is a job folder itself is a leaf
     if (roots.length === 1 && !treeOpen.size && !(await jobAt(roots[0].path))) treeOpen.add(roots[0].path);   // one Projects folder: it starts open
-    for (const p of [...treeOpen]) if (!under(p) || await jobAt(p)) treeOpen.delete(p);
-    const want = [...treeOpen];
-    await Promise.all(want.map(async (p) => { try { const l = await api.proj.listAt({ path: p }); kids.set(p, l.entries.filter(e => e.dir)); } catch (e) { kids.set(p, []); } }));
-    for (const k of [...kids.keys()]) if (!treeOpen.has(k)) kids.delete(k);
+    await Promise.all([...treeOpen].map(async (p) => { if (!under(p) || await jobAt(p)) treeOpen.delete(p); }));
+    await Promise.all([...treeOpen].map(async (p) => { try { const l = await api.proj.listAt({ path: p }); K2.set(p, l.entries.filter(e => e.dir)); } catch (e) { K2.set(p, []); } }));
+    isJobAt = J2; kids = K2;
   }
   // one row of the tree: a folder with a chevron if it can open, indented by depth; a job folder is a leaf
   function treeRow(p, name, depth, job, extra) {
@@ -125,7 +125,7 @@ export function initJobsUI({ api, getAgents, openIssue, onWorkOn }) {
     L.querySelectorAll('[data-dir]').forEach(b => b.onclick = async () => {
       const p = b.dataset.dir; let J = null; try { J = await api.proj.jobFor({ path: p }); } catch {}
       // not a job (a year, a client, an enquiry folder): it opens in the tree and its contents show on the right, like Explorer
-      if (!J) { sel = ''; selPath = p; selFolder = ''; filesAt = ''; tab = 'files'; msg = ''; if (!treeOpen.has(p)) { treeOpen.add(p); rememberTree(); } await relist(); renderList(); renderFolder(); return; }
+      if (!J) { sel = ''; selPath = p; selFolder = ''; filesAt = ''; tab = 'files'; msg = ''; renderFolder(); if (!treeOpen.has(p)) { treeOpen.add(p); rememberTree(); } await relist(); renderList(); return; }
       selFolder = J.folder || p; filesAt = (J.folder && p.toLowerCase() !== J.folder.toLowerCase()) ? p : '';
       if (J.id) { if (sel !== J.id) { tab = b.dataset.kind === 'drawing' ? 'deliv' : 'files'; msg = ''; openDirs.clear(); } sel = J.id; selPath = ''; noteRecent(J.folder || p, `${J.number || ''} ${J.name || ''}`.trim() || base(J.folder || p)); }
       else { sel = ''; selPath = J.folder; tab = 'files'; msg = ''; }
