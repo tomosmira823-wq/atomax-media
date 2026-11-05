@@ -254,7 +254,10 @@ function register({ ipcMain, HANDLERS, BIZ, claudeFull }) {
     let rows = DR.needsRequest(ov.rows); if (Array.isArray(nos) && nos.length) rows = rows.filter(r => nos.some(n => r.no.toUpperCase() === String(n).toUpperCase() || (r.alt && r.alt.toUpperCase() === String(n).toUpperCase())));
     if (!rows.length) throw new Error('Every deliverable on this job already has its NG number; nothing to request.');
     const dir = BIZ.outputDirFor(jobId, 'transmittals') || path.join(job.folder, '013 Transmittals & Drawing Register'); fs.mkdirSync(dir, { recursive: true });
-    const site = (job.name || '').replace(/\b(lvac|dcaar|&|and|diesel|replacement|generator|design|stage \d+)\b/gi, '').replace(/[^A-Za-z ]+/g, ' ').trim().split(/\s+/)[0] || job.number;
+    // the site name the way the earlier request forms spell it ("Document Request - Bustleholme 7.xlsx"), else the first word of the job name
+    let site = ''; try { for (const f of fs.readdirSync(dir)) { const m = f.match(/^Document Request - (.+?) \d+\.(xlsx|pdf)$/i); if (m) site = m[1]; } } catch {}
+    if (!site) site = (job.name || job.number).replace(/^\d{1,3}\s*-?\s*/, '').replace(/\b(lvac|dcaar|&|and|diesel|replacement|generator|design|stage \d+)\b/gi, '').replace(/[^A-Za-z ]+/g, ' ').trim().split(/\s+/)[0] || job.number;
+    site = site.charAt(0).toUpperCase() + site.slice(1).toLowerCase();
     const file = DR.nextFormPath(dir, site);
     const projNo = (job.number.match(/^X\d{5,6}/i) || [])[0] || ov.rows.map(r => (String(r.no).match(/^X\d{5,6}(?=-)/i) || [])[0]).find(Boolean) || job.number;   // the client's project number: ours when it is one, else the one the NG numbers carry (X11475)
     const buf = await DR.fill(DR.templatePath(BIZ.projects.templateDir()), { projectTitle: job.name || '', projectNumber: projNo, submittedBy }, rows.map(r => ({ ...r, rev: r.rev || 'P01' })));

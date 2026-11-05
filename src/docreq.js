@@ -22,8 +22,8 @@ function category(row) {
   if (/cable rout|equipment location|site layout|layout of|routing/.test(t)) return '70';
   if (/switchroom|building|floor plan/.test(t)) return '32';
   if (/foundation|civil/.test(t)) return '15';
-  if (/calc|report|spec|intent|document|register|philosophy|study|procedure|manual/.test(t)) return '09';
-  return '';
+  if (/calc|report|spec|intent|document|register|philosophy|study|procedure|manual|package|list/.test(t)) return '09';
+  return '09';   // a document of some kind until document control say otherwise
 }
 const isDrawing = (row) => row.group === 'drawing' || /drawing|diagram|layout|schematic|sld|bcd/i.test(`${row.type || ''} ${row.title || ''}`);
 const dmy = (d = new Date()) => `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
