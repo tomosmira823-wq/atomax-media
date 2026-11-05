@@ -27,7 +27,9 @@ function sourceFor(d, files) {
   const keys = [d.no, d.alt].filter(Boolean).map(k => String(k).toUpperCase().replace(/[^A-Z0-9]+/g, ''));
   const norm = (n) => String(n).toUpperCase().replace(/\.[A-Z0-9]+$/, '').replace(/[^A-Z0-9]+/g, '');
   let mine = files.filter(f => { const n = norm(f.name); return keys.some(k => k.length >= 6 && n.includes(k)); });
-  if (!mine.length && d.title) { const words = String(d.title).toUpperCase().split(/[^A-Z0-9]+/).filter(w => w.length > 2 && !/^(THE|AND|FOR|NEW|DIAGRAM|DRAWING|LAYOUT|PROPOSED)$/.test(w)); if (words.length >= 2) mine = files.filter(f => /\.(dxf|dwg|pdf)$/i.test(f.name) && words.every(w => f.name.toUpperCase().includes(w))); }
+  // by title only when the file carries no drawing number of its own (a file numbered for another drawing is that drawing's)
+  const numbered = (n) => /X\d{5,6}(?:-[A-Z0-9]{1,4}){1,6}-\d{3,4}|\b\d{2}_[A-Z]{2}_\d{4}\b/i.test(n);
+  if (!mine.length && d.title) { const words = String(d.title).toUpperCase().split(/[^A-Z0-9]+/).filter(w => w.length > 2 && !/^(THE|AND|FOR|NEW|DIAGRAM|DRAWING|LAYOUT|PROPOSED)$/.test(w)); if (words.length >= 2) mine = files.filter(f => /\.(dxf|dwg|pdf)$/i.test(f.name) && !numbered(f.name) && words.every(w => f.name.toUpperCase().includes(w))); }
   const pick = (ext) => mine.filter(f => new RegExp('\\.' + ext + '$', 'i').test(f.name)).sort((a, b) => (revInName(b.name) > revInName(a.name) ? 1 : revInName(b.name) < revInName(a.name) ? -1 : 0) || b.mtime - a.mtime)[0];
   const dxf = pick('dxf'), dwg = pick('dwg'), pdf = pick('pdf');
   return { dxf: dxf ? dxf.rel : '', dwg: dwg ? dwg.rel : '', pdf: pdf ? pdf.rel : '', fileRev: revInName((dxf || dwg || pdf || {}).name || '') };
@@ -65,8 +67,8 @@ function register({ ipcMain, HANDLERS, BIZ, claudeFull }) {
     try { const dd = desk.load(jobId), j0 = jobOf(jobId); if (j0.folder && fs.existsSync(j0.folder)) { const chk = Date.parse(dd.registerChecked || '') || 0; let stale = !chk || chk < Date.parse('2026-11-05T13:20:00Z'); if (!stale && dd.registerFile) { try { stale = fs.statSync(dd.registerFile).mtimeMs > chk; } catch { stale = true; } } if (!stale && !dd.registerFile && Date.now() - chk > 10 * 60e3) stale = true; if (stale) desk.checkRegister(jobId, require('./checker')); } } catch {}
     try { desk.tidyRows(jobId); } catch {}   // one row per drawing (a TBC row and the register's numbered row of the same kind are the same drawing)
     const job = jobOf(jobId), V = desk.view(jobId), dl = delivOf(jobId);
-    const files = jobFiles(jobId);
-    const rows = job.drawings.filter(d => !/cancel|superseded/i.test(d.status)).map(d => { const src = sourceFor(d, files), k = kindOf(d); return { ...d, ...k, group: d.group || groupOf(d), num: realNo(d) || d.no, ctitle: cleanTitle(d) || d.title, work: dl[d.no] || null, src, canRev: !!(k.agent === 'Dex' || src.dxf) }; });
+    const files = jobFiles(jobId), anyIssued = job.drawings.some(x => x.rev);   // a job with issued drawings: a numbered row with no rev and no file is a reserved number, not work to do
+    const rows = job.drawings.filter(d => !/cancel|superseded/i.test(d.status)).map(d => { const src = sourceFor(d, files), k = kindOf(d); const reserved = !d.rev && !src.dxf && !src.dwg && !src.pdf && !dl[d.no] && !/^TBC-/i.test(d.no) && anyIssued; return { ...d, ...k, group: reserved ? 'reserved' : (d.group || groupOf(d)), num: realNo(d) || d.no, ctitle: cleanTitle(d) || d.title, work: dl[d.no] || null, src, canRev: !reserved && !!(k.agent === 'Dex' || src.dxf) }; });   // reserved: a number in the register never issued and with no file: listed, not counted
     return { job: { id: job.id, number: job.number, name: job.name, client: job.client, folder: job.folder, status: job.status }, desk: V, rows, needsMaster: rows.some(r => r.kind === 'bcd' || r.kind === 'schedule') };
   }
 
