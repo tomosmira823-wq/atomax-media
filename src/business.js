@@ -43,7 +43,7 @@ function saveJob(data, j, who = 'Tom') {
   const clean = {
     id: old ? old.id : uid('j'), number, name: String(j.name || '').trim(), client: String(j.client || '').trim(),
     status: JOB_STATUS.includes(j.status) ? j.status : 'Active', budgetHours: Math.max(0, Number(j.budgetHours) || 0), dueDate: String(j.dueDate || ''), notes: String(j.notes || ''), folder: String(j.folder || (old && old.folder) || '').trim(),
-    drawings: (j.drawings || []).map(d => ({ no: String(d.no || '').trim(), title: String(d.title || '').trim(), rev: String(d.rev || '').trim(), status: String(d.status || 'Live').trim() })).filter(d => d.no),
+    drawings: (j.drawings || []).map(d => ({ no: String(d.no || '').trim(), title: String(d.title || '').trim(), rev: String(d.rev || '').trim(), status: String(d.status || 'Live').trim(), ...(d.type ? { type: String(d.type) } : {}) })).filter(d => d.no),   // type: what the scope / email called it (SLD, loop, cable schedule...), kept for grouping
     createdAt: old ? old.createdAt : new Date().toISOString(), updatedAt: new Date().toISOString()
   };
   if (!old && data.jobs.some(x => x.number.toLowerCase() === number.toLowerCase())) throw new Error('There is already a job numbered ' + number + '.');

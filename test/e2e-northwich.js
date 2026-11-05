@@ -137,13 +137,18 @@ const step = (name, fn) => { try { const r = fn(); if (r && r.then) return r.the
     assert.ok(!Object.keys(to).some(k => /Thumbs|~\$/.test(k)), 'junk not filed'); assert.strictEqual(F.emails.length, 1, 'the email went through Eli'); assert.ok(fs.existsSync(path.join(folder2, '7. Electrical', '7.0 Incoming Correspondance', 'RE scope.eml')), 'email filed in correspondence');
     assert.deepStrictEqual(F.errors, []); return F.filed.length + ' filed, ' + F.skipped.length + ' skipped';
   });
-  await step('the scope document is read for the deliverables register (8 schematics = 8 rows; the superseded copy ignored)', () => {
+  await step('the scope document is read for the deliverables register (8 schematics = 8 rows; the superseded copy ignored)', async () => {
     assert.ok(F.scope, 'scope read ran'); assert.deepStrictEqual(F.scope.files, ['Atomax-UK Scope of Works - ENQ10560.docx'], JSON.stringify(F.scope.files));
     const rows = BIZ.data().jobs.find(j => j.id === job2.id).drawings; const titles = rows.map(r => r.title);
     assert.ok(titles.includes('LV single line diagram - new PDB') && titles.includes('Block cable diagram') && titles.includes('Cable schedule (power, control, instrument)'), JSON.stringify(titles));
     assert.strictEqual(titles.filter(t => /^Rotork actuator schematic \(sheet \d\)$/.test(t)).length, 8, 'eight actuator schematics');
     assert.ok(rows.find(r => r.title === 'LV single line diagram - new PDB').no.startsWith('X081126-01-70-'), 'numbered from the schedule in the drop: ' + rows.find(r => r.title === 'LV single line diagram - new PDB').no);
-    assert.strictEqual(F.scope.conflicts.length, 1); return rows.length + ' rows';
+    assert.strictEqual(F.scope.conflicts.length, 1);
+    // the register says what each row is: drawings grouped and tagged by kind, schedules apart
+    const V = await call('jobs:overview', { jobId: job2.id }), rot = V.rows.filter(r => /^Rotork actuator schematic/.test(r.title)); assert.strictEqual(rot.length, 8); assert.ok(rot.every(r => r.group === 'drawing'), JSON.stringify(rot.map(r => [r.no, r.group])));
+    assert.strictEqual(V.rows.find(r => r.title === 'Cable schedule (power, control, instrument)').group, 'schedule'); assert.strictEqual(V.rows.find(r => r.title === 'Block cable diagram').group, 'drawing');
+    const groups = [...new Set(V.rows.map(r => r.group))]; assert.ok(groups.includes('drawing') && groups.includes('schedule'), groups.join());
+    return rows.length + ' rows';
   });
   const F2 = await call('jobs:fileIn', { jobId: job2.id, paths: [path.join(drop, 'Schedules'), path.join(drop, 'RE scope.eml')] });
   await step('dropping the same files again files nothing twice and does not read the email again', () => { assert.strictEqual(F2.filed.length, 0); assert.strictEqual(F2.emails.length, 0, 'email not re-read'); assert.ok(F2.skipped.some(x => /email already read/.test(x)), JSON.stringify(F2.skipped)); });

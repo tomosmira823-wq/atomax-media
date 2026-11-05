@@ -141,6 +141,28 @@ const QSNO = /X\d{4,6}(?:-[A-Z0-9]{2,4}){2,5}-\d{4}/i;
 function kindKey(no, title) { const t = (String(no || '').match(/-(\d{2})-\d{4}(?:\b|_)/) || [])[1] || '', s = `${title || ''} ${no || ''}`;
   if (t === '71' || /\bbcd\b|block cable/i.test(s)) return 'bcd'; if (t === '70' || /single.?line|\bsld\b/i.test(s)) return 'sld'; if (t === '74' || /earthing/i.test(s)) return 'earthing';
   if (t === '72' || t === '23' || /cable schedule/i.test(s)) return 'schedule'; if (/\bloop\b/i.test(s)) return 'loop'; return ''; }
+// what a deliverable is, from its type and title: the tag goes in its TBC number (TBC-GA-03), the group heads it on the Deliverables tab
+const KIND_TAGS = [
+  ['site', 'SITE', /\b(survey|laser scan|point cloud|site visit|inspection|attendance|witness|commissioning|meeting)\b/i],
+  ['site', 'MODEL', /\b(3d model|modelling|plant 3d|model review)\b/i],
+  ['drawing', 'SLD', /single.?line|\bsld\b/i], ['drawing', 'BCD', /\bbcd\b|block cable/i], ['drawing', 'EARTH', /earthing|bonding/i],
+  ['drawing', 'LOOP', /\bloop\b/i], ['drawing', 'PID', /p&id|\bpid\b/i], ['drawing', 'GA', /\bgas?\b|general arrangement|layout|location plan|destruct|removal drawing|tie-in/i], ['drawing', 'ISO', /isometric|\biso\b|spool/i],
+  ['drawing', 'SCH', /schematic|circuit|wiring|termination|interconnection|containment|architecture|hazardous area|block diagram|drawing/i],
+  ['schedule', 'CABLES', /cable schedule/i], ['schedule', 'IO', /\bi\/?o\b.*(schedule|list|count)/i],
+  ['schedule', 'LIST', /\b(schedules?|registers?|lists?|take-?off|mto|index)\b/i],
+  ['document', 'CALC', /calc|stress|analysis|sizing|verification/i], ['document', 'DS', /datasheet|data sheet/i], ['document', 'SPEC', /specification|\bspec\b|standard\b/i],
+  ['document', 'RPT', /report|study|assessment|philosophy/i], ['document', 'PROC', /procedure|test pack|method|rams|\bitp\b|plan\b/i], ['document', 'RFI', /query|\brfi\b|\btq\b|question/i],
+  ['document', 'DOC', /./]
+];
+function kindTag(type, title) {
+  const t = String(type || '').toLowerCase(), s = `${type || ''} ${title || ''}`;
+  if (/^(sld|bcd|earthing|loop)$/.test(t)) return { group: 'drawing', tag: t === 'earthing' ? 'EARTH' : t.toUpperCase() };
+  if (t === 'cable schedule') return { group: 'schedule', tag: 'CABLES' };
+  if (t === 'calculation') return { group: 'document', tag: 'CALC' };
+  for (const [group, tag, re] of KIND_TAGS) if (re.test(s)) return { group, tag };
+  return { group: 'document', tag: 'DOC' };
+}
+const GROUPS = { drawing: 'Drawings', schedule: 'Schedules & lists', document: 'Documents & calculations', site: 'Site work & models' };
 // one row per drawing: a TBC row and a numbered row of the same kind (the email's deliverable and the register's row, or a "Rev P02" the
 // email asked for) are the same drawing. The row with work done keeps its work; it takes the real number; the other row goes, and the
 // comments logged against it move across. Returns the renames made ({from, to}).
@@ -196,8 +218,9 @@ function addDeliverables(id, list, opts = {}) {
       const sameKind = kind && ['sld', 'bcd', 'earthing'].includes(kind) ? job.drawings.filter(d => kindKey(d.no, d.title) === kind && !/cancel|superseded/i.test(d.status || '')) : [];
       if (num && sameKind.length === 1 && /^TBC-/i.test(sameKind[0].no)) { const r = sameKind[0], d0 = load(id); if (d0.deliv && d0.deliv[r.no]) { d0.deliv[num] = d0.deliv[r.no]; delete d0.deliv[r.no]; save(id, d0); } for (const c of (d0.crs || [])) if (c.doc === r.no) c.doc = num; save(id, d0); r.no = num; renamed = true; BIZ.log({ who: 'Eli', action: 'Numbered a drawing from the email', jobId: id, detail: `${title}: ${num}` }); continue; }   // the TBC row IS this drawing
       if (sameKind.length && (opts.commentReturn || /\brev(ision)?\b|reissue|re-issue|\b[PC]\d\d\b|updated?\b/i.test(title))) continue;   // a revision of a drawing we have is not a new drawing
-      const no = proposeNumber(job, dl.title + ' ' + dl.type, taken, id) || `TBC-${String(dl.type || 'DOC').toUpperCase().replace(/[^A-Z0-9]+/g, '')}-${String(job.drawings.filter(d => /^TBC-/.test(d.no)).length + added.length + 1).padStart(2, '0')}`;
-      taken.push(no); added.push({ no, title, rev: '', status: 'To do' });
+      const kt = kindTag(dl.type, dl.title);
+      const no = proposeNumber(job, dl.title + ' ' + dl.type, taken, id) || `TBC-${kt.tag}-${String(job.drawings.filter(d => /^TBC-/.test(d.no)).length + added.length + 1).padStart(2, '0')}`;
+      taken.push(no); added.push({ no, title, rev: '', status: 'To do', type: String(dl.type || ''), group: kt.group });
     }
   }
   if (renamed && !added.length) { biz.saveJob(BIZ.data(), job, 'Eli'); BIZ.store.save(); }
@@ -359,4 +382,4 @@ function borderFor(job) {
 }
 
 const saveRaw = (id, d) => save(id, d);
-module.exports = { setScopeNotes, tidyRows, kindKey, renameRow, setBorder, borderFor, saveRaw, setNumbering, init, load, getRules, setRules, addCorrection, clientProfile, titleBlockFor, findRegisters, readRegister, checkRegister, makeRegister, proposeNumber, addDeliverables, addInputs, saveRfi, addComments, saveCrs, buildMaster, exportMaster, importMaster, approveMaster, context, view, exportSheet, masterOf, MASTER_SYSTEM, RULES_FILE };
+module.exports = { kindTag, GROUPS, setScopeNotes, tidyRows, kindKey, renameRow, setBorder, borderFor, saveRaw, setNumbering, init, load, getRules, setRules, addCorrection, clientProfile, titleBlockFor, findRegisters, readRegister, checkRegister, makeRegister, proposeNumber, addDeliverables, addInputs, saveRfi, addComments, saveCrs, buildMaster, exportMaster, importMaster, approveMaster, context, view, exportSheet, masterOf, MASTER_SYSTEM, RULES_FILE };
