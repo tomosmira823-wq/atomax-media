@@ -18,6 +18,20 @@ function kindOf(d) {
 }
 
 const QS = /X\d{4,6}(?:-[A-Z0-9]{2,4}){2,5}-\d{4}/i;   // the drawing number however the job writes it
+// the files in the job folder that ARE a drawing on the list: by the client's number (X11475-BGN-ZZ-XX-DR-E-7153), our number (32_BG_0006)
+// or, failing those, the title; never Archive / Superseded copies. The latest revision in the file name wins. Tells the tab what can be
+// revved now (a DXF) and what needs exporting from AutoCAD first (DWG only)
+function jobFiles(jobId) { try { const p = require('./projects').load(jobId); return (p && p.files || []).map(f => ({ rel: f.rel.replace(/\\/g, '/'), name: f.rel.split(/[\\/]/).pop(), mtime: f.mtime || 0 })).filter(f => !/(^|\/)(archive|superseded|markups?|old|fixed)(\/|$)/i.test(f.rel)); } catch { return []; } }
+const revInName = (n) => { const m = String(n).match(/[\s_-]([PCAX]\d{2})(?=[\s_.)-]|$)/i); return m ? m[1].toUpperCase() : ''; };
+function sourceFor(d, files) {
+  const keys = [d.no, d.alt].filter(Boolean).map(k => String(k).toUpperCase().replace(/[^A-Z0-9]+/g, ''));
+  const norm = (n) => String(n).toUpperCase().replace(/\.[A-Z0-9]+$/, '').replace(/[^A-Z0-9]+/g, '');
+  let mine = files.filter(f => { const n = norm(f.name); return keys.some(k => k.length >= 6 && n.includes(k)); });
+  if (!mine.length && d.title) { const words = String(d.title).toUpperCase().split(/[^A-Z0-9]+/).filter(w => w.length > 2 && !/^(THE|AND|FOR|NEW|DIAGRAM|DRAWING|LAYOUT|PROPOSED)$/.test(w)); if (words.length >= 2) mine = files.filter(f => /\.(dxf|dwg|pdf)$/i.test(f.name) && words.every(w => f.name.toUpperCase().includes(w))); }
+  const pick = (ext) => mine.filter(f => new RegExp('\\.' + ext + '$', 'i').test(f.name)).sort((a, b) => (revInName(b.name) > revInName(a.name) ? 1 : revInName(b.name) < revInName(a.name) ? -1 : 0) || b.mtime - a.mtime)[0];
+  const dxf = pick('dxf'), dwg = pick('dwg'), pdf = pick('pdf');
+  return { dxf: dxf ? dxf.rel : '', dwg: dwg ? dwg.rel : '', pdf: pdf ? pdf.rel : '', fileRev: revInName((dxf || dwg || pdf || {}).name || '') };
+}
 // the group a row sits in on the Deliverables tab: a numbered drawing (QS 006 disciplines 70-79 are drawings, 23 a schedule) or by its words
 const groupOf = (d) => { const t = (String(d.no).match(/-(\d{2})-\d{4}(?:\b|_)/) || [])[1] || ''; if (/^7\d$/.test(t)) return 'drawing'; if (t === '23') return 'schedule'; return require('./jobdesk').kindTag(d.type || '', d.title).group; };
 const realNo = (d) => /^TBC-/i.test(d.no) ? ((String(d.title).match(QS) || [])[0] || '') : d.no;
@@ -48,7 +62,8 @@ function register({ ipcMain, HANDLERS, BIZ, claudeFull }) {
     }
     try { desk.tidyRows(jobId); } catch {}   // one row per drawing (a TBC row and the register's numbered row of the same kind are the same drawing)
     const job = jobOf(jobId), V = desk.view(jobId), dl = delivOf(jobId);
-    const rows = job.drawings.filter(d => !/cancel|superseded/i.test(d.status)).map(d => ({ ...d, ...kindOf(d), group: d.group || groupOf(d), num: realNo(d) || d.no, ctitle: cleanTitle(d) || d.title, work: dl[d.no] || null }));
+    const files = jobFiles(jobId);
+    const rows = job.drawings.filter(d => !/cancel|superseded/i.test(d.status)).map(d => { const src = sourceFor(d, files), k = kindOf(d); return { ...d, ...k, group: d.group || groupOf(d), num: realNo(d) || d.no, ctitle: cleanTitle(d) || d.title, work: dl[d.no] || null, src, canRev: !!(k.agent === 'Dex' || src.dxf) }; });
     return { job: { id: job.id, number: job.number, name: job.name, client: job.client, folder: job.folder, status: job.status }, desk: V, rows, needsMaster: rows.some(r => r.kind === 'bcd' || r.kind === 'schedule') };
   }
 
@@ -178,6 +193,29 @@ function register({ ipcMain, HANDLERS, BIZ, claudeFull }) {
     const r = await make({ jobId, no, people, revision: { on: true, to: rev, stage: '', note: said.slice(0, 2000), desc: String(desc || '').trim() }, note: said ? `Changes for this revision: ${said}` : 'New revision: no other changes asked for.' });
     if (r && r.status === 'made') for (const c of open) { if (c.doc === '*') continue; /* asked for on every drawing: stays open until Tom closes it */ try { desk.saveCrs(jobId, { no: c.no, status: 'Responded', response: `Revised in ${r.rev}` }); } catch {} }
     return r;
+  }));
+  // Rev up: the next revision of a drawing that exists as a DXF in the job folder, title block only. The revision text is changed (P03 ->
+  // P04), the issue status text if asked (ISSUED FOR COMMENT), the file saved as <row number>_<rev>.dxf in the drawings folder with the old
+  // revision archived. The drawing's content is not touched; the comments stay open for Tom or Dex to do by hand.
+  ipcMain.handle('jobs:revUp', wrap(async ({ jobId, no, to = '', status = '' }) => {
+    const job = jobOf(jobId), d = job.drawings.find(x => x.no === no); if (!d) throw new Error('No such row');
+    const src = sourceFor(d, jobFiles(jobId)); if (!src.dxf) throw new Error(`${no} has no DXF in the job folder${src.dwg ? ` (only ${src.dwg.split('/').pop()}): save it as DXF from AutoCAD next to the DWG` : ''}.`);
+    const dxffix = require('./dxffix'), full = path.join(job.folder, src.dxf), buf = fs.readFileSync(full), cur = d.rev || src.fileRev || '';
+    if (!cur) throw new Error(`${no}: the current revision is not known (not in the register or the file name).`);
+    const next = askedRev(to, '') || cur.replace(/\d+$/, (n) => String(+n + 1).padStart(n.length, '0'));
+    const fixes = [{ id: 'rev', before: cur, after: next }];
+    if (status) { const seen = new Set(); for (const e of dxffix.parseDxf(buf).ents) { const t = String(e.plain || '').trim(); if (e.section !== 'BLOCKS' && /^(ISSUED? FOR [A-Z ]+|PRELIMINARY|FOR CONSTRUCTION|FOR APPROVAL|FOR INFORMATION|FOR COMMENT|FOR TENDER)$/i.test(t) && !seen.has(t) && t.toUpperCase() !== status.toUpperCase()) { seen.add(t); fixes.push({ id: 'status' + seen.size, before: t, after: status.toUpperCase() }); } } }   // the issue status written on the sheet
+    const r = dxffix.applyFixes(buf, fixes); const rev = r.results.find(x => x.id === 'rev');
+    if (!rev || rev.status !== 'applied') throw new Error(`${no}: the revision "${cur}" was not found as text on ${src.dxf.split('/').pop()}, so it could not be revved up safely.`);
+    const outDir = BIZ.outputDirFor(jobId, 'sld') || path.dirname(full); fs.mkdirSync(outDir, { recursive: true });
+    const base = `${no}_${next}`; let archived = 0; try { archived = require('./dxfmaker').archiveOld(outDir, [no, String(d.alt || '')].filter(Boolean), next); } catch {}
+    const outPath = path.join(outDir, base + '.dxf'); fs.writeFileSync(outPath, r.buf);
+    const pdfs = [];   // no PDF: the app cannot plot a DXF it did not draw; the PDF comes from AutoCAD when the sheet is issued
+    d.rev = next; require('./business').saveJob(BIZ.data(), job, 'Dex'); BIZ.store.save();
+    const statusDone = fixes.slice(1).filter(f => r.results.find(x => x.id === f.id && x.status === 'applied')).length;
+    const w = setDeliv(jobId, no, { status: 'made', rev: next, files: [outPath], pdfs, archived, by: 'Dex', summary: `Rev up ${cur} -> ${next} (title block only${statusDone ? ', status ' + status.toUpperCase() : status ? ', status text not found on the sheet' : ''}); drawing content unchanged`, source: src.dxf });
+    BIZ.log({ who: 'Dex', action: `Revved up ${no} ${cur} -> ${next} (title block only)`, jobId, detail: path.basename(outPath) });
+    return w;
   }));
   ipcMain.handle('jobs:setStatus', wrap(({ jobId, no, status }) => setDeliv(jobId, no, { status })));
   ipcMain.handle('jobs:waiting', wrap(() => waiting()));

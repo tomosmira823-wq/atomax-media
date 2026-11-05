@@ -205,7 +205,21 @@ const step = (name, fn) => { try { const r = fn(); if (r && r.then) return r.the
     assert.strictEqual((O.desk.crs || []).filter(c => c.doc === '*').length, 1, 'the all-drawings comment is job-wide');
     const r7147 = O.rows.find(r => r.no === 'X11475-BGN-ZZ-XX-DR-E-7147'); assert.ok(r7147 && r7147.rev === 'P03' && r7147.alt === '42_BG_0055' && r7147.group === 'drawing', 'register row with current rev and our number: ' + JSON.stringify(r7147 && [r7147.rev, r7147.alt, r7147.group]));
     assert.ok(!O.rows.some(r => /-DIR-/.test(r.no)), 'transmittal register sheets are not rows'); assert.ok(!O.rows.some(r => r.no === '42_BG_0055'), 'our-number row merged into the client-number row: ' + O.rows.map(r => r.no).join(', '));
-    global.__eliEmail = null; return O.rows.map(r => r.no).join(', ');
+    global.__eliEmail = null;
+    // Rev up (Tom 13:17: "it knows I need to uprev loads of docs but it's not letting me"): a drawing with a DXF on file gets its next P
+    // rev, title block only, saved under the row's number; a DWG-only drawing is named as needing a DXF, not silently skipped
+    const dxm = require('../src/dxfmaker.js'); const dxfBuf = dxm.writeDxf([{ t: 'text', x: 0, y: 0, text: 'P03', h: 2, align: 'center', layer: 'TB' }, { t: 'text', x: 0, y: 10, text: 'ISSUED FOR TENDER', h: 2, align: 'center', layer: 'TB' }, { t: 'line', x1: 0, y1: 0, x2: 100, y2: 0, layer: 'SLD' }], { x0: 0, y0: 0, x1: 100, y1: 20 });
+    fs.writeFileSync(path.join(F, '013 Transmittals & Drawing Register', 'ISSUE 12', 'X11475-BGN-ZZ-XX-DR-E-7153 P03.dxf'), dxfBuf);
+    await call('proj:gather', { jobId: J.id }).catch(() => {}); const O1 = await call('jobs:overview', { jobId: J.id });
+    const r153b = O1.rows.find(r => r.no === 'X11475-BGN-ZZ-XX-DR-E-7153'), r147 = O1.rows.find(r => r.no === 'X11475-BGN-ZZ-XX-DR-E-7147');
+    assert.ok(r153b.src && /7153 P03\.dxf$/.test(r153b.src.dxf) && r153b.canRev, 'row knows its DXF: ' + JSON.stringify(r153b.src));
+    assert.ok(r147.src && !r147.src.dxf && /42_BG_0055_P02/.test(r147.src.dwg), 'the SLD knows it is DWG only: ' + JSON.stringify(r147.src));
+    const W = await call('jobs:revUp', { jobId: J.id, no: 'X11475-BGN-ZZ-XX-DR-E-7153', status: 'ISSUED FOR COMMENT' });
+    assert.strictEqual(W.rev, 'P04', JSON.stringify(W)); assert.ok(/X11475-BGN-ZZ-XX-DR-E-7153_P04\.dxf$/.test(W.files[0]) && fs.existsSync(W.files[0]), 'saved under the row number: ' + W.files[0]);
+    const txt = fs.readFileSync(W.files[0], 'utf8'); assert.ok(/\nP04\r?\n/.test(txt) && !/\nP03\r?\n/.test(txt) && /ISSUED FOR COMMENT/.test(txt) && !/ISSUED FOR TENDER/.test(txt), 'rev and status changed on the sheet');
+    const O2 = await call('jobs:overview', { jobId: J.id }); assert.strictEqual(O2.rows.find(r => r.no === 'X11475-BGN-ZZ-XX-DR-E-7153').rev, 'P04', 'register row at P04');
+    let err = ''; try { await call('jobs:revUp', { jobId: J.id, no: 'X11475-BGN-ZZ-XX-DR-E-7147' }); } catch (e) { err = e.message; } assert.ok(/no DXF/.test(err) && /42_BG_0055_P02/.test(err) && /save it as DXF/i.test(err), 'DWG-only drawing says what it needs: ' + err);
+    return O.rows.map(r => r.no).join(', ');
   });
   // Eli's scope reply with a quote inside a title (8" gas main) is read all the same, and a register row comes from it
   global.__scopeBad = true;
