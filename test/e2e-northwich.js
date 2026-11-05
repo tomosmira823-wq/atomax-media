@@ -30,7 +30,7 @@ async function claudeFull(a) {
   claudeCalls.push({ who: a.who, system: String(a.system || '').slice(0, 60) });
   const sys = String(a.system || ''), user = JSON.stringify(a.messages || []);
   if (/DELIVERABLES REGISTER/.test(sys) && global.__scopeBad) return { text: '{"summary":"x","facts":[],"deliverables":[{"type":"SLD","title":"LV single line diagram - new PDB","qty":1},{"type":"other","title":"Pipework isometric - 8" gas main","qty":1},{"type":"cable schedule","title":"Cable schedule (power, control, instrument)","qty":1}],"byOthers":[],"conflicts":[],"inputs":[],"missingInputs":[]}', stop: 'end_turn' };
-  if (/DELIVERABLES REGISTER/.test(sys)) return { text: JSON.stringify({ summary: 'Gas mixing pipework design for UU via EMFS', facts: [{ name: 'Enquiry', value: 'ENQ10560' }], deliverables: [{ type: 'SLD', title: 'LV single line diagram - new PDB', qty: 1, discipline: 'E&I' }, { type: 'BCD', title: 'Block cable diagram', qty: 1, discipline: 'E&I' }, { type: 'document', title: 'Rotork actuator schematic', qty: 8, discipline: 'E&I' }, { type: 'cable schedule', title: 'Cable schedule (power, control, instrument)', qty: 1, discipline: 'E&I' }], byOthers: [{ title: 'P&IDs', who: 'Insight Technical' }], conflicts: ['Draft A scope lists protection studies; the P05 fee proposal excludes them'], inputs: [{ name: 'Requirements Statement', rev: 'Rev 2', what: 'UU/Costain order requirements' }], missingInputs: ['existing P&IDs'] }), stop: 'end_turn' };
+  if (/DELIVERABLES REGISTER/.test(sys)) return { text: JSON.stringify({ summary: 'Gas mixing pipework design for UU via EMFS', facts: [{ name: 'Enquiry', value: 'ENQ10560' }], deliverables: [{ type: 'loop', title: 'IS loop drawings (16 off)', qty: 1, discipline: 'E&I', source: 'scope' }, { type: 'SLD', title: 'LV single line diagram - new PDB', qty: 1, discipline: 'E&I' }, { type: 'BCD', title: 'Block cable diagram', qty: 1, discipline: 'E&I' }, { type: 'document', title: 'Rotork actuator schematic', qty: 8, discipline: 'E&I' }, { type: 'cable schedule', title: 'Cable schedule (power, control, instrument)', qty: 1, discipline: 'E&I' }], byOthers: [{ title: 'P&IDs', who: 'Insight Technical' }], conflicts: ['Draft A scope lists protection studies; the P05 fee proposal excludes them'], inputs: [{ name: 'Requirements Statement', rev: 'Rev 2', what: 'UU/Costain order requirements' }], missingInputs: ['existing P&IDs'] }), stop: 'end_turn' };
   if (a.who === 'dex' || /You are Dex/i.test(sys)) { const req = (user.match(/REQUEST: ([^"]{0,200})/) || [])[1] || ''; return { text: /block cable/i.test(req) ? dexBcd : dexSld, stop: 'end_turn' }; }
   return { text: '{}', stop: 'end_turn' };
 }
@@ -148,6 +148,8 @@ const step = (name, fn) => { try { const r = fn(); if (r && r.then) return r.the
     const V = await call('jobs:overview', { jobId: job2.id }), rot = V.rows.filter(r => /^Rotork actuator schematic/.test(r.title)); assert.strictEqual(rot.length, 8); assert.ok(rot.every(r => r.group === 'drawing'), JSON.stringify(rot.map(r => [r.no, r.group])));
     assert.strictEqual(V.rows.find(r => r.title === 'Cable schedule (power, control, instrument)').group, 'schedule'); assert.strictEqual(V.rows.find(r => r.title === 'Block cable diagram').group, 'drawing');
     const groups = [...new Set(V.rows.map(r => r.group))]; assert.ok(groups.includes('drawing') && groups.includes('schedule'), groups.join());
+    await call('jobs:overview', { jobId: job2.id }); const V2 = await call('jobs:overview', { jobId: job2.id }); assert.strictEqual(V2.rows.filter(r => /^IS loop drawings \(sheet \d+\)$/.test(r.title)).length, 16, 'the 16 sheets survive the tidy on opening the job twice');
+    const loops = V.rows.filter(r => /^IS loop drawings \(sheet \d+\)$/.test(r.title)); assert.strictEqual(loops.length, 16, 'a "(16 off)" set left at qty 1 is 16 sheets: ' + V.rows.filter(r => /loop/i.test(r.title)).map(r => r.title).join(' | ')); assert.ok(!V.rows.some(r => /16 off/.test(r.title)), 'count taken out of the title');
     return rows.length + ' rows';
   });
   const F2 = await call('jobs:fileIn', { jobId: job2.id, paths: [path.join(drop, 'Schedules'), path.join(drop, 'RE scope.eml')] });
@@ -158,6 +160,16 @@ const step = (name, fn) => { try { const r = fn(); if (r && r.then) return r.the
   const rowsBefore = (await call('jobs:overview', { jobId: job2.id })).rows.length, crsBefore = ((await call('jobs:overview', { jobId: job2.id })).desk.crs || []).length;
   const F3 = await call('jobs:fileIn', { jobId: job2.id, paths: [path.join(drop, 'RE scope.eml')] });
   await step('an email first read before files were fingerprinted is still not read twice (same sender, subject, date)', async () => { assert.strictEqual(F3.emails.length, 0, 'email re-read: ' + JSON.stringify(F3)); assert.ok(F3.skipped.some(x => /email already read/.test(x)), JSON.stringify(F3.skipped)); const O = await call('jobs:overview', { jobId: job2.id }); assert.strictEqual(O.rows.length, rowsBefore, 'rows unchanged'); assert.strictEqual((O.desk.crs || []).length, crsBefore, 'comments unchanged'); });
+  // the master device list at tender stage: no index or schedule in the job folder, so it is built from the scope documents (Tom, 11:26:
+  // "it still wont let me build the master document")
+  await step('master list builds from the scope documents when there is no schedule yet', async () => {
+    const folder3 = projects.createJobFolder(PROJECTS, 'X051126-02', 'Gas mixer pipework'); const job3 = biz.saveJob(BIZ.data(), { number: 'X051126-02', name: 'Gas mixer pipework', client: 'United Utilities', folder: folder3 }, 'Tom'); BIZ.store.save();
+    const F = await call('jobs:fileIn', { jobId: job3.id, paths: [path.join(drop, 'Atomax-UK Scope of Works - ENQ10560.docx')] }); assert.ok(F.filed.length === 1, JSON.stringify(F));
+    const V = await call('desk:buildMaster', { jobId: job3.id }).catch(e => { throw new Error('build refused: ' + e.message); });
+    assert.ok(V.master && V.master.tender, 'tender-stage flag: ' + JSON.stringify(V.master && { status: V.master.status, tender: V.master.tender, read: V.master.read }));
+    assert.ok(V.master.read.some(f => /Scope of Works/.test(f)), 'read the scope: ' + V.master.read.join(', '));
+    const sys = claudeCalls.filter(c => /MASTER DEVICE LIST/.test(c.system)); assert.ok(sys.length >= 1, 'Lex was asked');
+  });
   // Eli's scope reply with a quote inside a title (8" gas main) is read all the same, and a register row comes from it
   global.__scopeBad = true;
   const F4 = await call('jobs:fileIn', { jobId: job2.id, paths: [path.join(drop, 'Atomax-UK Scope of Works - ENQ10560.docx')] }).catch(e => ({ errors: [String(e)] }));
@@ -166,10 +178,11 @@ const step = (name, fn) => { try { const r = fn(); if (r && r.then) return r.the
   // tidyRows: a second TBC row saying the same in other words, and a comment repeated word for word, left by an email read twice
   await step('rows and comments left by an email read twice are tidied away', async () => {
     const desk = require('../src/jobdesk'); const O0 = await call('jobs:overview', { jobId: job2.id }); const biz = require('../src/business');
-    const d = BIZ.data(), j = d.jobs.find(x => x.id === job2.id); j.drawings.push({ no: 'TBC-DOCUMENT-77', title: 'Fee proposal / quotation - UU Mixing pipework (ENQ10560)', rev: '', status: 'To do' }, { no: 'TBC-DOCUMENT-78', title: 'Quotation / fee proposal - UU Mixing pipework (ENQ10560)', rev: '', status: 'To do' }); BIZ.store.save();
+    const d = BIZ.data(), j = d.jobs.find(x => x.id === job2.id); j.drawings.push({ no: 'TBC-DOCUMENT-77', title: 'Fee proposal / quotation - UU Mixing pipework (ENQ10560)', rev: '', status: 'To do' }, { no: 'TBC-DOCUMENT-78', title: 'Quotation / fee proposal - UU Mixing pipework (ENQ10560)', rev: '', status: 'To do' }, { no: 'TBC-SCH-80', title: 'Local containment drawings (sheet 1)', rev: '', status: 'To do' }, { no: 'TBC-SCH-81', title: 'Local containment drawings (sheet 2)', rev: '', status: 'To do' }); BIZ.store.save();
     desk.addComments(job2.id, [{ doc: 'TBC-DOCUMENT-77', comment: 'Please confirm the tower loading', by: 'Dan' }, { doc: 'TBC-DOCUMENT-77', comment: 'Please confirm the tower loading', by: 'Dan' }], 'RE scope');
     const O = await call('jobs:overview', { jobId: job2.id }); const t = O.rows.filter(r => /fee proposal|quotation/i.test(r.title) && /UU Mixing/.test(r.title)); assert.strictEqual(t.length, 1, O.rows.map(r => r.no + ' ' + r.title).join(' | '));
     const same = (O.desk.crs || []).filter(c => /tower loading/.test(c.comment)); assert.strictEqual(same.length, 1, JSON.stringify(same)); assert.strictEqual(same[0].doc, t[0].no, 'comment follows the kept row');
+    assert.strictEqual(O.rows.filter(r => /^Local containment drawings \(sheet \d\)$/.test(r.title)).length, 2, 'two TBC sheets of one set are two drawings, not a duplicate');
   });
   console.log(process.exitCode ? 'E2E FAILED' : 'e2e northwich ok'); fs.rmSync(TMP, { recursive: true, force: true }); process.exit(process.exitCode || 0);
 })().catch(e => { console.error('E2E ERROR', e); process.exit(1); });

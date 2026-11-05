@@ -69,14 +69,20 @@ export function initJobsUI({ api, getAgents, openIssue, onWorkOn }) {
   // updates of other rows wait until he presses Start or Cancel
   const busyPanel = () => !!document.querySelector('.jbprep');
   async function refreshWhenFree() { while (busyPanel() && panel.classList.contains('open')) await new Promise(r => setTimeout(r, 800)); return refresh(); }
+  // a redraw reads slowly (OneDrive folders, the overview); if what is selected changed while it was reading, its result is stale and dropped,
+  // so clicking a job and then a folder leaves the folder on screen, not the job that finished loading later
+  let refreshGen = 0;
   async function refresh() {
+    const g = ++refreshGen, want = () => `${sel}|${selPath}|${tab}`, at = want();
     try { if (api.runs && api.runs.live) { const live = await api.runs.live(); RUNS.clear(); for (const p of live) RUNS.set(runKey(p.jobId, p.no), p); } } catch {}   // runs still going in the main process (after a re-open or a redraw)
     await relist();
     const v = await api.biz.get(); jobs = v.jobs.filter(j => j.status !== 'Closed'); window.__jobs = v.jobs;
+    if (g !== refreshGen && want() !== at) return;
     if (sel && !jobs.some(j => j.id === sel)) sel = '';
     renderList();
     if (!sel && selPath) { renderFolder(); return; }
     if (sel) { let O2 = null; try { O2 = await api.jobs.overview({ jobId: sel }); } catch (e) { msg = clean(e); }
+      if (g !== refreshGen && want() !== at) return;
       if (busyPanel()) { refreshWhenFree(); return; }   // a Make / Revision panel opened while this was fetching: redraw once it closes
       O = O2; renderJob(); } else renderHome();
   }
@@ -156,13 +162,14 @@ export function initJobsUI({ api, getAgents, openIssue, onWorkOn }) {
     const j = O.job, V = O.desk, rows = O.rows;
     const openC = (V.crs || []).filter(c => !/responded|closed/i.test(c.status || '')).length;
     const tabs = [['files', 'Files'], ['deliv', `Deliverables <em>${rows.length}</em>`], ['setup', 'Inputs &amp; setup'], ['comments', `Comments${openC ? ` <em>${openC}</em>` : ''}`], ['issue', 'Issue']];
-    m.innerHTML = `<div class="jbhead"><div><h2>${esc(j.number)} ${esc(j.name || '')}</h2><div class="bsub">${esc(j.client || 'No client')} · border: ${esc(V.borderUsed || '')}${j.folder ? ` · <a href="#" id="jbFolder">open folder</a>` : ' · <b class="warn">no folder linked</b>'}</div></div>
+    m.innerHTML = `<div class="jbhead"><div><h2>${esc(j.number)} ${esc(j.name || '')}</h2><div class="bsub">${esc(j.client || 'No client')} · border: <select id="jbBorderQ" class="jbinline" title="Drawing border for every drawing on this job">${[['auto', 'Automatic (by client)'], ['atomax', 'Atomax'], ['ng', 'National Grid'], ['bgen', 'BGEN'], ['pbe', 'PBE Group'], ['client', 'Client title block (File Room)']].map(([k, t]) => `<option value="${k}" ${(V.border || 'auto') === k ? 'selected' : ''}>${k === 'auto' ? 'Automatic: ' + (V.borderUsed || '') : t}</option>`).join('')}</select>${j.folder ? ` · <a href="#" id="jbFolder">open folder</a>` : ' · <b class="warn">no folder linked</b>'}</div></div>
         <div class="jbbar" style="margin:0"><button class="jbbtn primary" id="jbAddMail">✉ Add email / changes</button><button class="jbbtn" id="jbAddFiles" title="Drop the client's folder or files: they are filed into the job folder, emails read by Eli">📁 Add files</button><button class="jbbtn" id="jbWork">Work on this job</button></div></div>
       <div class="jbtabs">${tabs.map(([k, t]) => `<button data-t="${k}" class="${tab === k ? 'on' : ''}">${t}</button>`).join('')}</div>
       ${msg ? `<div class="jbmsg">${esc(msg)}</div>` : ''}
       <div id="jbTab"></div>`;
     m.querySelectorAll('[data-t]').forEach(b => b.onclick = () => { tab = b.dataset.t; msg = ''; refresh(); });
     if ($('#jbFolder')) $('#jbFolder').onclick = (e) => { e.preventDefault(); api.proj.open({ jobId: j.id }).catch(() => api.showItem(j.folder)); };
+    $('#jbBorderQ').onchange = async () => { try { await api.desk.border({ jobId: j.id, key: $('#jbBorderQ').value }); msg = $('#jbBorderQ').value === 'ng' ? 'National Grid border set. Put the NG site and Investment No. in Inputs & setup → Numbering; they go in the title box.' : ''; } catch (e) { msg = clean(e); } refresh(); };
     $('#jbAddFiles').onclick = () => addFiles(j);
     $('#jbAddMail').onclick = () => emailPanel(j.id);
     $('#jbWork').onclick = async () => { await api.biz.setCurrent({ id: j.id }); if (onWorkOn) onWorkOn(j.id); $('#jbWork').textContent = '✓ Job in hand'; };
@@ -225,11 +232,13 @@ export function initJobsUI({ api, getAgents, openIssue, onWorkOn }) {
     const masterOk = !O.needsMaster || (V.master && V.master.status === 'approved');
     const made = rows.filter(r => r.work && r.work.files && r.agent === 'Dex').length;
     el.innerHTML = `${!rows.length ? `<div class="jbempty"><b>No deliverables on this job yet.</b><span>Check or make the drawing register in Inputs &amp; setup, or forward the client's email to Eli: he lists what the job needs.</span></div>` : ''}
-      ${O.needsMaster && !masterOk && V.master ? `<div class="jbbanner"><span><b>Master list built: ${V.master.devices} devices, ${V.master.cables} cables${(V.master.gaps || []).length ? `, ${V.master.gaps.length} gaps` : ''}.</b> Approve it and the BCDs and schedule can be made.</span><span class="jbbar" style="margin:0"><button class="jbbtn" id="jbToMaster">Review it</button><button class="jbbtn primary" id="jbApprove">✓ Approve it</button></span></div>` : ''}
+      ${O.needsMaster && !masterOk && V.master ? `<div class="jbbanner"><span><b>Master list built${V.master.tender ? ' from the scope documents (tender stage: tags and cable numbers to be allocated)' : ''}: ${V.master.devices} devices, ${V.master.cables} cables${(V.master.gaps || []).length ? `, ${V.master.gaps.length} gaps` : ''}.</b> Approve it and the BCDs and schedule can be made.</span><span class="jbbar" style="margin:0"><button class="jbbtn" id="jbToMaster">Review it</button><button class="jbbtn primary" id="jbApprove">✓ Approve it</button></span></div>` : ''}
       ${O.needsMaster && !masterOk && !V.master ? `<div class="jbbanner">BCDs and schedules are made from the master device list. <span data-runrow="${esc(runKey(O.job.id, 'MASTER'))}">${runCell(O.job.id, 'MASTER')}</span><button class="jbbtn" id="jbToMaster" ${RUNS.has(runKey(O.job.id, 'MASTER')) ? 'disabled' : ''}>${V.master ? 'Check and approve it' : 'Build it'}</button></div>` : ''}
       ${rows.length ? `<div class="jbbar"><button class="jbbtn primary" id="jbAll" ${rows.some(r => r.agent && !r.work && (masterOk || !['bcd', 'schedule'].includes(r.kind))) ? '' : 'disabled'}>Make everything not made yet</button><button class="jbbtn" id="jbCheck" ${made ? '' : 'disabled'}>Cal: check the drawings</button><span class="bsub">Each row: the agent makes it, Cal checks it, then it goes in the issue pack.</span></div>` : ''}
       <div class="jbrows">${['drawing', 'schedule', 'document', 'site'].map(g => { const R = rows.filter(r => (r.group || 'document') === g); if (!R.length) return ''; const made = R.filter(r => r.work && r.work.files).length;
-        return `<div class="jbgroup"><b>${{ drawing: 'Drawings', schedule: 'Schedules & lists', document: 'Documents & calculations', site: 'Site work & models' }[g]}</b><span class="bsub">${R.length}${made ? ` · ${made} made` : ''}</span></div>` + R.map(r => { const w = r.work;
+        // a set (the 16 loop drawings, the 15 spool GAs) is one line, its sheets inside it; a single document is its own line
+        const setOf = (r) => String(r.ctitle || r.title).replace(/\s*\(sheet \d+\)\s*$/i, '').trim().toLowerCase(); const sets = new Map(); for (const r of R) { const k = /\(sheet \d+\)\s*$/i.test(r.ctitle || r.title) ? setOf(r) : r.no; if (!sets.has(k)) sets.set(k, []); sets.get(k).push(r); }
+        const rowHtml = (r) => { const w = r.work;
         return `<div class="jbrow" data-no="${esc(r.no)}">
           <div class="c1"><b>${esc(r.num)}</b><span>${esc(r.ctitle)}</span>${w && w.summary && w.status !== 'made' && w.status !== 'working' ? `<i>${esc(w.summary)}</i>` : ''}${w && (w.status === 'working' || (w.check && w.check.status === 'working')) ? `<div class="jbrunrow" data-runrow="${esc(runKey(O.job.id, r.no))}">${runCell(O.job.id, r.no)}</div>` : ''}${w && w.warning ? `<i class="warn">${esc(w.warning)}</i>` : ''}</div>
           <div class="c2">${r.agent ? esc(r.agent) : '<span class="bsub">by hand</span>'}</div>
@@ -237,7 +246,11 @@ export function initJobsUI({ api, getAgents, openIssue, onWorkOn }) {
           <div class="c4">${files(w)}${w && w.check && w.check.markups ? `<button class="jbfile" data-show="${esc(w.check.markups)}">MARKUPS</button>` : ''}${w && w.given ? `<button class="jbfile jbgiven" data-given="${esc(r.no)}" title="What ${esc(r.agent)} was given for this run">GIVEN</button>` : ''}</div>
           <div class="c5">${r.agent ? (() => { const off = (w && w.status === 'working') || (!masterOk && (r.kind === 'bcd' || r.kind === 'schedule')) ? 'disabled' : ''; return w && w.files ? `<button class="jbbtn" data-make="${esc(r.no)}" ${off} title="Make this revision again (the old copy goes to Archive)">Make again</button><button class="jbbtn ${openFor(r.no) ? 'primary' : ''}" data-rev="${esc(r.no)}" ${off} title="Next revision (e.g. P01 to P02); older versions go to Archive">Revision</button>` : `<button class="jbbtn primary" data-make="${esc(r.no)}" ${off}>Make</button>`; })() : ''}</div>
           ${w && w.questions ? `<div class="jbq"><b>${esc(r.agent)} asks:</b>${w.questions.map((q, i) => `<label class="plain">${esc(q)}</label><input data-ans="${i}" placeholder="Your answer">`).join('')}<button class="jbbtn primary" data-answer="${esc(r.no)}">Send answers</button></div>` : ''}
-        </div>`; }).join(''); }).join('')}</div>`;
+        </div>`; };
+        const setHtml = (k, S) => { if (S.length === 1) return rowHtml(S[0]); const m = S.filter(r => r.work && r.work.files).length, busy = S.filter(r => r.work && r.work.status === 'working').length, need = S.filter(r => r.work && (r.work.status === 'needs you' || r.work.status === 'failed')).length, chg = S.reduce((n, r) => n + openFor(r.no), 0), open = openDirs.has('set:' + k);
+          return `<details class="jbset" data-set="${esc(k)}" ${open ? 'open' : ''}><summary class="jbrow jbsetrow"><div class="c1"><b>${esc(String(S[0].ctitle || S[0].title).replace(/\s*\(sheet \d+\)\s*$/i, ''))}</b><span>${S.length} sheets · ${esc(S[0].num.replace(/\d+$/, ''))}${esc(S[0].num.match(/\d+$/) ? S[0].num.match(/\d+$/)[0] : '')} – ${esc(S[S.length - 1].num.match(/\d+$/) ? S[S.length - 1].num.match(/\d+$/)[0] : S[S.length - 1].num)}</span></div><div class="c2">${S[0].agent ? esc(S[0].agent) : '<span class="bsub">by hand</span>'}</div><div class="c3">${chg ? `<span class="st st-needsyou">${chg} change${chg === 1 ? '' : 's'}</span>` : ''}${busy ? '<span class="st st-working">Working…</span>' : ''}${need ? `<span class="st st-needsyou">${need} need you</span>` : ''}<span class="st ${m === S.length ? 'st-made' : 'st-todo'}">${m} of ${S.length} made</span></div><div class="c4"></div><div class="c5"><span class="bsub">${open ? 'Hide sheets' : 'Show sheets'}</span></div></summary><div class="jbsetrows">${S.map(rowHtml).join('')}</div></details>`; };
+        return `<div class="jbgroup"><b>${{ drawing: 'Drawings', schedule: 'Schedules & lists', document: 'Documents & calculations', site: 'Site work & models' }[g]}</b><span class="bsub">${sets.size} item${sets.size === 1 ? '' : 's'} · ${R.length} document${R.length === 1 ? '' : 's'}${made ? ` · ${made} made` : ''}</span></div>` + [...sets].map(([k, S]) => setHtml(k, S)).join(''); }).join('')}</div>`;
+    el.querySelectorAll('details.jbset').forEach(d => d.addEventListener('toggle', () => { if (d.open) openDirs.add('set:' + d.dataset.set); else openDirs.delete('set:' + d.dataset.set); const l = d.querySelector('summary .c5 .bsub'); if (l) l.textContent = d.open ? 'Hide sheets' : 'Show sheets'; }));
     // Build it: Lex builds the list now; once built, the button takes you to it (open, in view) to check and approve
     if ($('#jbApprove')) $('#jbApprove').onclick = () => act(async () => { await api.desk.approveMaster({ jobId: O.job.id }); msg = 'Master list approved. Make the BCD and the cable schedule from their rows.'; }, 'Approving…');
     if ($('#jbToMaster')) $('#jbToMaster').onclick = () => {
@@ -455,6 +468,7 @@ export function initJobsUI({ api, getAgents, openIssue, onWorkOn }) {
     const m = $('#jbMain');
     m.innerHTML = `<div class="jbhead"><div><h2>New job</h2><div class="bsub">The number is X + today's date unless you change it.</div></div></div>
       <div class="jbcard jbform"><label>Job number</label><input id="njNo" value="${esc(D.nextNumber || '')}"><label>Job name / site</label><input id="njName" placeholder="e.g. Eakring Training Centre"><label>Client</label><input id="njClient" placeholder="e.g. National Grid">
+        <label>Drawing border</label><div class="jbseg" id="njBorder">${[['auto', 'Automatic (by client)'], ['atomax', 'Atomax'], ['ng', 'National Grid'], ['bgen', 'BGEN'], ['pbe', 'PBE Group'], ['client', 'Client title block (File Room)']].map(([k, t]) => `<button type="button" data-b="${k}" class="${k === 'auto' ? 'on' : ''}">${t}</button>`).join('')}</div>
         <label>Project folder</label>
         <label class="plain"><input type="radio" name="njMode" value="create" checked> New folder from the Atomax template in <b id="njParent">${esc(parent || '(choose where your job folders live)')}</b> <button class="jbbtn" id="njParentPick" type="button">Change…</button></label>
         <label class="plain"><input type="radio" name="njMode" value="link"> A folder I already have <button class="jbbtn" id="njLinkPick" type="button">Choose…</button> <span id="njLink" class="bsub"></span></label>
@@ -462,11 +476,12 @@ export function initJobsUI({ api, getAgents, openIssue, onWorkOn }) {
         <label>The client's files</label><div id="njDrop"></div>
         <div class="jbbar"><button class="jbbtn primary" id="njSave">Create job</button><button class="jbbtn" id="njCancel">Cancel</button></div><div id="njMsg" class="bsub"></div></div>`;
     const dz = dropZone($('#njDrop'), { hint: 'Drop the whole folder the client sent: it is filed into the new job folder (emails read by Eli) as the job is created' });
+    $('#njBorder').querySelectorAll('button').forEach(b => b.onclick = () => { $('#njBorder').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); });
     $('#njParentPick').onclick = async () => { const f = await api.mail.pickParent(); if (f) { parent = f; $('#njParent').textContent = f; } };
     $('#njLinkPick').onclick = async () => { const f = await api.biz.pickFolder(); if (f) { link = f; $('#njLink').textContent = f; m.querySelector('input[value="link"]').checked = true; } };
     $('#njCancel').onclick = () => refresh();
     $('#njSave').onclick = async () => { const mode = m.querySelector('input[name="njMode"]:checked').value; $('#njMsg').textContent = 'Creating…';
-      try { const r = await api.mail.newJob({ number: $('#njNo').value, name: $('#njName').value, client: $('#njClient').value, mode, folder: mode === 'create' ? parent : link }); sel = r.id; tab = 'setup'; msg = r.folder ? 'Job created. Next: check the inputs are in the folder, then build the drawing register.' : 'Job created.';
+      try { const r = await api.mail.newJob({ number: $('#njNo').value, name: $('#njName').value, client: $('#njClient').value, mode, folder: mode === 'create' ? parent : link }); const bk = (($('#njBorder') || {}).querySelector || (() => null)).call($('#njBorder'), 'button.on'); if (bk && bk.dataset.b !== 'auto') { try { await api.desk.border({ jobId: r.id, key: bk.dataset.b }); } catch {} } sel = r.id; tab = 'setup'; msg = r.folder ? 'Job created. Next: check the inputs are in the folder, then build the drawing register.' : 'Job created.';
         const paths = dz.paths(); if (paths.length && r.folder) { $('#njMsg').innerHTML = `Job created. <span data-runrow="${esc(runKey(r.id, 'FILES'))}">Filing the files…</span>`; try { const f = await api.jobs.fileIn({ jobId: r.id, paths }); msg = 'Job created. ' + filedSummary(f); tab = f.suggest && f.suggest.length ? 'deliv' : 'files'; } catch (e) { msg = 'Job created, but the files could not be filed: ' + clean(e); } }
         else if (paths.length) msg = 'Job created without a folder, so the files were not filed: give it a folder on the job desk, then Add files.';
         refresh(); } catch (e) { $('#njMsg').textContent = clean(e); } };

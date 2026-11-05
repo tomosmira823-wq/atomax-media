@@ -253,7 +253,7 @@ dead is true only if the sheet itself carries a cancelled / superseded / void / 
   ipcMain.handle('proj:roots', wrap(() => ({ roots: roots().map(r => ({ path: r, name: path.basename(r) || r })) })));
   // async so a slow OneDrive folder never freezes the app; whether a subfolder is a job is remembered for a few minutes
   const jobLook = new Map();
-  const looksJob = async (full) => { const c = jobLook.get(full); if (c && Date.now() - c.t < 5 * 60e3) return c.v; let v = false; try { v = (await fs.promises.readdir(full)).filter(n => /^\d{1,3}\.?[\s_-]+[A-Za-z]/.test(n)).length >= 3; } catch {} jobLook.set(full, { v, t: Date.now() }); return v; };   // top-level sections only: "7.3 Block Diagrams" inside a job is not a job
+  const looksJob = async (full) => { const c = jobLook.get(full); if (c && Date.now() - c.t < 5 * 60e3) return c.v; let v = false; try { v = projects.looksLikeJob(full); } catch {} jobLook.set(full, { v, t: Date.now() }); return v; };   // one rule for the whole app (projects.looksLikeJob): a folder of jobs is not a job   // top-level sections only: "7.3 Block Diagrams" inside a job is not a job
   ipcMain.handle('proj:listAt', wrap(async ({ path: p }) => {
     if (!p || !fenced(p)) throw new Error('That folder is outside your Projects folders');
     const d = data();

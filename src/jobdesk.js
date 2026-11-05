@@ -173,7 +173,7 @@ function tidyRows(id) {
   // earlier one in other words ("Quotation / fee proposal" = "Fee proposal / quotation"), with no work on it, goes; so does a comment
   // repeating an earlier one word for word against the same drawing
   let dups = 0;
-  const words = (t) => String(t || '').toLowerCase().replace(/\(sheet \d+\)/g, '').split(/[^a-z0-9]+/).filter(Boolean).sort().join(' ');
+  const words = (t) => String(t || '').toLowerCase().split(/[^a-z0-9]+/).filter(Boolean).sort().join(' ');   // the sheet number counts: sheet 1 and sheet 2 of a set are two drawings
   for (const r of [...rows]) { if (!/^TBC-/i.test(r.no) || hasWork(r)) continue; const first = rows.find(x => x !== r && rows.indexOf(x) < rows.indexOf(r) && words(x.title) === words(r.title)); if (!first) continue;
     for (const c of d.crs || []) if (String(c.doc).toUpperCase() === r.no.toUpperCase()) c.doc = first.no; rows.splice(rows.indexOf(r), 1); moves.push({ from: r.no, to: first.no }); dups++; }
   const seenC = new Set(); d.crs = (d.crs || []).filter(c => { const k = `${String(c.doc || '').toUpperCase()}|${String(c.comment || '').trim().toLowerCase()}|${String(c.by || '').trim().toLowerCase()}`; if (seenC.has(k) && !c.response) { dups++; return false; } seenC.add(k); return true; });
@@ -205,11 +205,24 @@ function renameRow(id, from, to) {
 }
 // Eli's deliverables onto the drawing list: numbered like the existing ones of that kind, otherwise "TBC-<kind>-n" for Tom to number.
 // A deliverable that is a drawing the list already has (same number, or a revision / reissue of a kind the list has one of) adds nothing.
+// the count of a set when Eli left it in the title ("IS loop drawings (16 off)", "8 x Rotork schematics", "15 spool GAs"), and the title without it
+const COUNT_IN = [/\((\d{1,2})\s*(?:off|no\.?|nr|sheets?|drawings?|circuits?|loops?)\)/i, /\b(\d{1,2})\s*(?:off|no\.|nr)\b/i, /[x×]\s*(\d{1,2})\b/i, /\b(\d{1,2})\s*[x×]\s/i, /^(\d{1,2})\s+(?=[a-z])/i];
+function setCount(title, qty) {
+  const t = String(title || ''); const n = parseInt(qty, 10) || 1;
+  if (n > 1) return { qty: n, title: t.replace(COUNT_IN[0], '').replace(/\s{2,}/g, ' ').trim() };
+  for (const re of COUNT_IN) { const m = t.match(re); if (m && +m[1] > 1 && !/calcs?|cases?|days?|digesters?|pots?|circuits? per|per\b/i.test(t.slice(m.index, m.index + m[0].length + 14))) return { qty: +m[1], title: t.replace(m[0], ' ').replace(/\(\s*\)/g, '').replace(/\s{2,}/g, ' ').trim() }; }
+  return { qty: 1, title: t };
+}
+const cap = (t) => t.replace(/^[a-z]/, (c) => c.toUpperCase());
+const setBase = (title) => String(title || '').toLowerCase().replace(/\s*\(sheet \d+\)\s*$/, '').replace(COUNT_IN[0], '').replace(/\s{2,}/g, ' ').trim();
 function addDeliverables(id, list, opts = {}) {
   const job = jobOf(id); if (!job || !Array.isArray(list) || !list.length) return [];
   const added = [], taken = []; let renamed = false;
-  for (const dl of list) {
-    const qty = Math.max(1, Math.min(60, parseInt(dl.qty, 10) || 1));
+  for (const dl0 of list) {
+    const sc = setCount(dl0.title || dl0.type, dl0.qty), dl = { ...dl0, title: cap(sc.title) };
+    const qty = Math.max(1, Math.min(60, sc.qty));
+    // a set the list already holds as one row ("IS loop drawings (16 off)" from an earlier read, no work on it): that row becomes sheet 1
+    if (qty > 1) { const one = job.drawings.find(d => /^TBC-/i.test(d.no) && !/\(sheet \d+\)/i.test(d.title) && setBase(d.title) === setBase(dl.title)); if (one) { const d0 = load(id); if (!(d0.deliv && d0.deliv[one.no])) { one.title = `${dl.title} (sheet 1)`; renamed = true; } } }
     for (let i = 0; i < qty; i++) {
       const title = qty > 1 ? `${dl.title || dl.type} (sheet ${i + 1})` : (dl.title || dl.type);
       if (job.drawings.some(d => d.title.toLowerCase() === String(title).toLowerCase())) continue;
@@ -261,20 +274,31 @@ Reply with JSON only, no markdown:
 "cables":[{"no":"cable number exactly as printed","from":"tag","to":"tag","type":"e.g. BS5308 / SWA / CY","cores":"","size":"","source":"document, rev, sheet"}],
 "gaps":["what is missing, disagrees or was corrected, one per line"],"summary":"one line"}`;
 
-function masterContent(job, projects, checker, extraFiles = []) {
+// a Word document's text (scope of works, fee proposal): what the master list is built from before any schedule exists
+async function docxText(p) { try { const JSZip = require('jszip'); const z = await JSZip.loadAsync(fs.readFileSync(p)); const f = z.file('word/document.xml'); if (!f) return ''; const xml = await f.async('string'); return xml.replace(/<\/w:p>/g, '\n').replace(/<w:tab\/>/g, '\t').replace(/<[^>]+>/g, '').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#(\d+);/g, (_m, n) => String.fromCharCode(+n)); } catch { return ''; } }
+const SCOPE_FILE = /scope|proposal|quot(e|ation)|requirement|specification|enquiry|\benq\d|tender|order|brief|works information/i;
+async function masterContent(job, projects, checker, extraFiles = []) {
   const content = [], read = [];
   const pdfs = projects.relevantFiles(job.id, 'instrument index io list tag list bcd block cable diagram cable schedule p&id panel', { exts: ['.pdf'], max: 5 });
   const sheets = projects.relevantFiles(job.id, 'instrument index io list tag list cable schedule register', { exts: ['.xlsx', '.xlsm', '.csv'], max: 5 }).filter(p => !REGISTER_RE.test(path.basename(p)));
   for (const p of sheets) { try { const b = fs.readFileSync(p); content.push({ type: 'text', text: `WORKBOOK ${path.basename(p)}:\n` + checker.sheetsAsText(/\.csv$/i.test(p) ? checker.readCsv(b.toString('utf8')) : checker.readXlsx(b), 40000) }); read.push(path.basename(p)); } catch {} }
   for (const p of [...pdfs, ...extraFiles].slice(0, 6)) { try { content.push({ type: 'text', text: 'Document: ' + path.basename(p) }); content.push(checker.contentBlock('pdf', path.basename(p), fs.readFileSync(p))); read.push(path.basename(p)); } catch {} }
-  return { content, read };
+  // tender / early design: no index or schedule yet, so the list is built from the documents that define the job (scope of works, fee
+  // proposal, requirements statement). Every device and circuit those documents count becomes a row, tags left empty for the design to fill.
+  let tender = false;
+  if (!read.length) {
+    const docs = projects.relevantFiles(job.id, 'scope of works fee proposal quotation quote requirements statement specification enquiry order tender', { exts: ['.pdf', '.docx'], max: 8 }).filter(p => SCOPE_FILE.test(path.basename(p)) && !/superseded|\bold\b/i.test(p));
+    for (const p of docs.slice(0, 6)) { try { if (/\.docx$/i.test(p)) { const t = (await docxText(p)).trim(); if (!t) continue; content.push({ type: 'text', text: `SCOPE DOCUMENT ${path.basename(p)}:\n${t.slice(0, 60000)}` }); } else { content.push({ type: 'text', text: 'Scope document: ' + path.basename(p) }); content.push(checker.contentBlock('pdf', path.basename(p), fs.readFileSync(p))); } read.push(path.basename(p)); } catch {} }
+    if (read.length) { tender = true; content.unshift({ type: 'text', text: 'TENDER-STAGE LIST: there is no instrument index, I/O list or schedule on this job yet. Build the list from the scope documents: one row per device and per circuit they count (8 actuators = 8 device rows, 16 level instruments = 16 rows, 8 trace heating supplies = 8 rows, each with its power / control / instrument cable where the scope says there is one), description as the document words it with the system or area, "tag" and cable "no" left empty (they are not written anywhere yet) and a single line under "gaps" saying tags and cable numbers are to be allocated in design. I/O counts per device as the document states them.' }); }
+  }
+  return { content, read, tender };
 }
 async function buildMaster(id, { claudeFull, projects, checker, parseReply, note = '', run = '', stage = () => {} }) {
   const job = jobOf(id); if (!job) throw new Error('No such job');
   if (!job.folder) throw new Error('Link the job\'s project folder first: the master list is built from the documents in it');
   try { projects.gather(job.id, job.folder, { checker, dxffix: require('./dxffix') }); } catch {}   // read the folder fresh so new inputs are seen
-  const { content, read } = masterContent(job, projects, checker);
-  if (!read.length) throw new Error('No input documents found in the job folder (instrument index, IO list, BCDs, schedules)');
+  const { content, read, tender } = await masterContent(job, projects, checker);
+  if (!read.length) throw new Error('No input documents found in the job folder (instrument index, IO list, BCDs, schedules, or a scope of works / fee proposal to start from)');
   content.push({ type: 'text', text: 'Build the master device list for this job from the documents above.' + (note ? '\nNote from the engineer: ' + note : '') });
   const system = MASTER_SYSTEM + '\n\n' + BIZ.contextFor(id, 'Lex');
   stage(`Lex is building the list from ${read.length} document${read.length === 1 ? '' : 's'}`, 35);
@@ -283,7 +307,7 @@ async function buildMaster(id, { claudeFull, projects, checker, parseReply, note
   stage('Saving the list', 95);
   const m = parseReply(r.text);
   const d = load(id);
-  d.master = { status: 'draft', builtAt: new Date().toISOString(), read, devices: (m.devices || []).slice(0, 3000), cables: (m.cables || []).slice(0, 5000), gaps: (m.gaps || []).map(String).slice(0, 200), summary: m.summary || '', incomplete: r.stop === 'max_tokens' };
+  d.master = { status: 'draft', tender: !!tender, builtAt: new Date().toISOString(), read, devices: (m.devices || []).slice(0, 3000), cables: (m.cables || []).slice(0, 5000), gaps: (m.gaps || []).map(String).slice(0, 200), summary: m.summary || '', incomplete: r.stop === 'max_tokens' };
   if (d.master.incomplete) d.master.gaps.unshift('INCOMPLETE: the list was cut off before the end. Build it again, or split the job by panel.');
   save(id, d);
   BIZ.log({ who: 'Lex', action: 'Built the master device list (draft)', jobId: id, detail: `${d.master.devices.length} devices · ${d.master.cables.length} cables · ${d.master.gaps.length} gaps · from ${read.join(', ')}` });
@@ -349,7 +373,7 @@ function view(id) {
   const bd = borderFor(job);
   return { sheetSize: d.sheetSize || '', ng: d.ng || { site: '', investment: '' }, border: d.border || 'auto', borderUsed: bd.name, borderWarning: bd.warning || '', area: d.area || hb.area || '', disc: d.disc || hb.disc || '', project: hb.project, rules: getRules(id), rulesFile: rulesPath(job), client: job.client || '', clientProfile: prof ? prof.name : '', titleBlock: titleBlockFor(job) ? path.basename(titleBlockFor(job)) : '',
     scope: d.scope || null, flow: d.flow || null, autoFlow: !!d.autoFlow, registerFile: d.registerFile, registerChecked: d.registerChecked, drawings: job.drawings, inputs: d.inputs, rfis: d.rfis, crs: d.crs,
-    master: m ? { status: m.status, builtAt: m.builtAt, approvedAt: m.approvedAt, devices: m.devices.length, cables: m.cables.length, gaps: m.gaps, read: m.read, file: m.file || '', summary: m.summary, preview: m.cables.slice(0, 40), incomplete: !!m.incomplete } : null };
+    master: m ? { status: m.status, tender: !!m.tender, builtAt: m.builtAt, approvedAt: m.approvedAt, devices: m.devices.length, cables: m.cables.length, gaps: m.gaps, read: m.read, file: m.file || '', summary: m.summary, preview: m.cables.slice(0, 40), incomplete: !!m.incomplete } : null };
 }
 function exportSheet(id, kind, writeXlsx) {
   const job = jobOf(id), d = load(id);
@@ -382,4 +406,4 @@ function borderFor(job) {
 }
 
 const saveRaw = (id, d) => save(id, d);
-module.exports = { kindTag, GROUPS, setScopeNotes, tidyRows, kindKey, renameRow, setBorder, borderFor, saveRaw, setNumbering, init, load, getRules, setRules, addCorrection, clientProfile, titleBlockFor, findRegisters, readRegister, checkRegister, makeRegister, proposeNumber, addDeliverables, addInputs, saveRfi, addComments, saveCrs, buildMaster, exportMaster, importMaster, approveMaster, context, view, exportSheet, masterOf, MASTER_SYSTEM, RULES_FILE };
+module.exports = { kindTag, GROUPS, setCount, setBase, setScopeNotes, tidyRows, kindKey, renameRow, setBorder, borderFor, saveRaw, setNumbering, init, load, getRules, setRules, addCorrection, clientProfile, titleBlockFor, findRegisters, readRegister, checkRegister, makeRegister, proposeNumber, addDeliverables, addInputs, saveRfi, addComments, saveCrs, buildMaster, exportMaster, importMaster, approveMaster, context, view, exportSheet, masterOf, MASTER_SYSTEM, RULES_FILE };
