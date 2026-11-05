@@ -60,6 +60,9 @@ function register({ ipcMain, HANDLERS, BIZ, claudeFull }) {
       for (const d of job.drawings) { const real = realNo(d); if (/^TBC-/i.test(d.no) && real && !job.drawings.some(x => x !== d && x.no.toUpperCase() === real.toUpperCase())) { if (dd.deliv && dd.deliv[d.no]) { dd.deliv[real] = dd.deliv[d.no]; delete dd.deliv[d.no]; } d.no = real; d.title = cleanTitle(d) || d.title; changed = true; } }
       if (changed) { desk.saveRaw(jobId, dd); require('./business').saveJob(BIZ.data(), job, 'Office'); BIZ.store.save(); }
     }
+    // the job's drawing register is read when the job opens: never checked, checked by an older version (the master transmittal was not a
+    // register before 1.34.19), or the register file changed since. Cheap when nothing changed (one stat).
+    try { const dd = desk.load(jobId), j0 = jobOf(jobId); if (j0.folder && fs.existsSync(j0.folder)) { const chk = Date.parse(dd.registerChecked || '') || 0; let stale = !chk || chk < Date.parse('2026-11-05T13:20:00Z'); if (!stale && dd.registerFile) { try { stale = fs.statSync(dd.registerFile).mtimeMs > chk; } catch { stale = true; } } if (!stale && !dd.registerFile && Date.now() - chk > 10 * 60e3) stale = true; if (stale) desk.checkRegister(jobId, require('./checker')); } } catch {}
     try { desk.tidyRows(jobId); } catch {}   // one row per drawing (a TBC row and the register's numbered row of the same kind are the same drawing)
     const job = jobOf(jobId), V = desk.view(jobId), dl = delivOf(jobId);
     const files = jobFiles(jobId);
