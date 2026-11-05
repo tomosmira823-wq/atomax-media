@@ -200,24 +200,26 @@ function register({ ipcMain, HANDLERS, BIZ, claudeFull }) {
   // Rev up: the next revision of a drawing that exists as a DXF in the job folder, title block only. The revision text is changed (P03 ->
   // P04), the issue status text if asked (ISSUED FOR COMMENT), the file saved as <row number>_<rev>.dxf in the drawings folder with the old
   // revision archived. The drawing's content is not touched; the comments stay open for Tom or Dex to do by hand.
-  ipcMain.handle('jobs:revUp', wrap(async ({ jobId, no, to = '', status = '' }) => {
+  ipcMain.handle('jobs:revUp', wrap(async ({ jobId, no, to = '', status = '', people = null }) => {
     const job = jobOf(jobId), d = job.drawings.find(x => x.no === no); if (!d) throw new Error('No such row');
     const src = sourceFor(d, jobFiles(jobId)); if (!src.dxf) throw new Error(`${no} has no DXF in the job folder${src.dwg ? ` (only ${src.dwg.split('/').pop()}): save it as DXF from AutoCAD next to the DWG` : ''}.`);
     const dxffix = require('./dxffix'), full = path.join(job.folder, src.dxf), buf = fs.readFileSync(full), cur = d.rev || src.fileRev || '';
-    if (!cur) throw new Error(`${no}: the current revision is not known (not in the register or the file name).`);
-    const next = askedRev(to, '') || cur.replace(/\d+$/, (n) => String(+n + 1).padStart(n.length, '0'));
-    const fixes = [{ id: 'rev', before: cur, after: next }];
-    if (status) { const seen = new Set(); for (const e of dxffix.parseDxf(buf).ents) { const t = String(e.plain || '').trim(); if (e.section !== 'BLOCKS' && /^(ISSUED? FOR [A-Z ]+|PRELIMINARY|FOR CONSTRUCTION|FOR APPROVAL|FOR INFORMATION|FOR COMMENT|FOR TENDER)$/i.test(t) && !seen.has(t) && t.toUpperCase() !== status.toUpperCase()) { seen.add(t); fixes.push({ id: 'status' + seen.size, before: t, after: status.toUpperCase() }); } } }   // the issue status written on the sheet
-    const r = dxffix.applyFixes(buf, fixes); const rev = r.results.find(x => x.id === 'rev');
-    if (!rev || rev.status !== 'applied') throw new Error(`${no}: the revision "${cur}" was not found as text on ${src.dxf.split('/').pop()}, so it could not be revved up safely.`);
-    const outDir = BIZ.outputDirFor(jobId, 'sld') || path.dirname(full); fs.mkdirSync(outDir, { recursive: true });
+
+    const want = askedRev(to, '') || '';
+    const pp = people || {}; let r;
+    // a new issue box beside the last one (P04 next to P01 P02 P03: date, initials, status), the title block ISSUE field to the new rev
+    try { r = require('./revup').revUp(buf, { to: want, status, drawn: pp.drawn || '', checked: pp.checked || '', approved: pp.approved || '' }); }
+    catch (e) { throw new Error(`${no}: ${src.dxf.split('/').pop()} could not be revved up (${String(e.message || e)}). Rev it by hand this time.`); }
+    if (r.from !== cur && cur && !/^P0?1$/i.test(cur)) BIZ.log({ who: 'Dex', action: `Note: the register says ${no} is at ${cur} but the sheet reads ${r.from}; revved from the sheet`, jobId });
+    const next = r.to;
+    const workDxf = jobFiles(jobId).filter(f => /\.dxf$/i.test(f.name) && !/(^|\/)ISSUE ?\d+(\/|$)/i.test(f.rel) && sourceFor(d, [f]).dxf).sort((a, b) => b.mtime - a.mtime)[0];
+    const outDir = workDxf ? path.join(job.folder, path.dirname(workDxf.rel)) : (BIZ.outputDirFor(jobId, 'sld') || path.dirname(full)); fs.mkdirSync(outDir, { recursive: true });   // where the working DXFs live (CLAUDE DESGIN), never an ISSUE record folder
     const base = `${no}_${next}`; let archived = 0; try { archived = require('./dxfmaker').archiveOld(outDir, [no, String(d.alt || '')].filter(Boolean), next); } catch {}
     const outPath = path.join(outDir, base + '.dxf'); fs.writeFileSync(outPath, r.buf);
     const pdfs = [];   // no PDF: the app cannot plot a DXF it did not draw; the PDF comes from AutoCAD when the sheet is issued
     d.rev = next; require('./business').saveJob(BIZ.data(), job, 'Dex'); BIZ.store.save();
-    const statusDone = fixes.slice(1).filter(f => r.results.find(x => x.id === f.id && x.status === 'applied')).length;
-    const w = setDeliv(jobId, no, { status: 'made', rev: next, files: [outPath], pdfs, archived, by: 'Dex', summary: `Rev up ${cur} -> ${next} (title block only${statusDone ? ', status ' + status.toUpperCase() : status ? ', status text not found on the sheet' : ''}); drawing content unchanged`, source: src.dxf });
-    BIZ.log({ who: 'Dex', action: `Revved up ${no} ${cur} -> ${next} (title block only)`, jobId, detail: path.basename(outPath) });
+    const w = setDeliv(jobId, no, { status: 'made', rev: next, files: [outPath], pdfs, archived, by: 'Dex', summary: `Rev up ${r.from} -> ${next}: new issue box (${[r.changes.date ? 'dated today' : '', r.changes.status ? status.toUpperCase() : '', r.changes.people ? 'initials' : ''].filter(Boolean).join(', ') || 'copied from ' + r.from}); drawing content unchanged`, source: src.dxf });
+    BIZ.log({ who: 'Dex', action: `Revved up ${no} ${r.from} -> ${next} (new issue box, title block)`, jobId, detail: path.basename(outPath) });
     return w;
   }));
   ipcMain.handle('jobs:setStatus', wrap(({ jobId, no, status }) => setDeliv(jobId, no, { status })));

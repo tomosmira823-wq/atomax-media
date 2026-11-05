@@ -209,15 +209,31 @@ const step = (name, fn) => { try { const r = fn(); if (r && r.then) return r.the
     global.__eliEmail = null;
     // Rev up (Tom 13:17: "it knows I need to uprev loads of docs but it's not letting me"): a drawing with a DXF on file gets its next P
     // rev, title block only, saved under the row's number; a DWG-only drawing is named as needing a DXF, not silently skipped
-    const dxm = require('../src/dxfmaker.js'); const dxfBuf = dxm.writeDxf([{ t: 'text', x: 0, y: 0, text: 'P03', h: 2, align: 'center', layer: 'TB' }, { t: 'text', x: 0, y: 10, text: 'ISSUED FOR TENDER', h: 2, align: 'center', layer: 'TB' }, { t: 'line', x1: 0, y1: 0, x2: 100, y2: 0, layer: 'SLD' }], { x0: 0, y0: 0, x1: 100, y1: 20 });
+    // a sheet like the NG one: three issue boxes along the bottom (P01 P02 P03 with labels, initials, status, date, box lines) and the
+    // title block's own ISSUE field further right
+    const dxm = require('../src/dxfmaker.js'); const prims = [];
+    [['P01', '25/04/26'], ['P02', '07/05/26'], ['P03', '23/10/26']].forEach(([rev, date], i) => { const x = i * 160; prims.push(
+      { t: 'text', x: x + 14, y: 54, text: 'ISSUE', h: 3, layer: 'TB' }, { t: 'mtext', x: x + 61, y: 56, text: rev, h: 5, layer: 'TB' }, { t: 'text', x: x + 84, y: 55, text: 'NG Investment No. TBC', h: 3, layer: 'TB' },
+      { t: 'text', x: x + 14, y: 43, text: 'DRAWN', h: 3, layer: 'TB' }, { t: 'mtext', x: x + 61, y: 44, text: 'TM', h: 2.5, layer: 'TB' }, { t: 'mtext', x: x + 85, y: 45, text: 'ISSUED FOR TENDER', h: 2.5, layer: 'TB' },
+      { t: 'text', x: x + 14, y: 31, text: 'CHECKED', h: 3, layer: 'TB' }, { t: 'mtext', x: x + 61, y: 32, text: 'JA', h: 2.5, layer: 'TB' },
+      { t: 'text', x: x + 14, y: 19, text: 'APPROVED', h: 3, layer: 'TB' }, { t: 'mtext', x: x + 61, y: 21, text: 'DM', h: 2.5, layer: 'TB' }, { t: 'text', x: x + 84, y: 19, text: 'DATE', h: 3, layer: 'TB' }, { t: 'mtext', x: x + 115, y: 21, text: date, h: 2.5, layer: 'TB' },
+      { t: 'line', x1: x + 11, y1: 15, x2: x + 171, y2: 15, layer: 'TB' }, { t: 'line', x1: x + 11, y1: 61, x2: x + 171, y2: 61, layer: 'TB' }, { t: 'line', x1: x + 11, y1: 15, x2: x + 11, y2: 61, layer: 'TB' }, { t: 'line', x1: x + 171, y1: 15, x2: x + 171, y2: 61, layer: 'TB' }); });
+    prims.push({ t: 'text', x: 1141, y: 19, text: 'P03', h: 5, layer: 'TB' }, { t: 'line', x1: 0, y1: 200, x2: 500, y2: 200, layer: 'SLD' });
+    const dxfBuf = dxm.writeDxf(prims, { x0: 0, y0: 0, x1: 1200, y1: 400 });
     fs.writeFileSync(path.join(F, '013 Transmittals & Drawing Register', 'ISSUE 12', 'X11475-BGN-ZZ-XX-DR-E-7153 P03.dxf'), dxfBuf);
     await call('proj:gather', { jobId: J.id }).catch(() => {}); const O1 = await call('jobs:overview', { jobId: J.id });
     const r153b = O1.rows.find(r => r.no === 'X11475-BGN-ZZ-XX-DR-E-7153'), r147 = O1.rows.find(r => r.no === 'X11475-BGN-ZZ-XX-DR-E-7147');
     assert.ok(r153b.src && /7153 P03\.dxf$/.test(r153b.src.dxf) && r153b.canRev, 'row knows its DXF: ' + JSON.stringify(r153b.src));
     assert.ok(r147.src && !r147.src.dxf && /42_BG_0055_P02/.test(r147.src.dwg), 'the SLD knows it is DWG only: ' + JSON.stringify(r147.src));
-    const W = await call('jobs:revUp', { jobId: J.id, no: 'X11475-BGN-ZZ-XX-DR-E-7153', status: 'ISSUED FOR COMMENT' });
+    const W = await call('jobs:revUp', { jobId: J.id, no: 'X11475-BGN-ZZ-XX-DR-E-7153', status: 'ISSUED FOR COMMENT', people: { drawn: 'TM', checked: 'JA', approved: 'DM' } });
     assert.strictEqual(W.rev, 'P04', JSON.stringify(W)); assert.ok(/X11475-BGN-ZZ-XX-DR-E-7153_P04\.dxf$/.test(W.files[0]) && fs.existsSync(W.files[0]), 'saved under the row number: ' + W.files[0]);
-    const txt = fs.readFileSync(W.files[0], 'utf8'); assert.ok(/\nP04\r?\n/.test(txt) && !/\nP03\r?\n/.test(txt) && /ISSUED FOR COMMENT/.test(txt) && !/ISSUED FOR TENDER/.test(txt), 'rev and status changed on the sheet');
+    { const dx = require('../src/dxffix.js').parseDxf(fs.readFileSync(W.files[0])); const T = dx.ents.filter(e => e.section === 'ENTITIES').map(e => [e.plain, Math.round(e.x), Math.round(e.y)]);
+      const has = (t, x) => T.some(([p, px]) => p === t && (x === undefined || px === x));
+      assert.ok(has('P01', 61) && has('P02', 221) && has('P03', 381), 'P01-P03 boxes kept: ' + JSON.stringify(T.filter(([p]) => /^P0\d$/.test(p))));
+      assert.ok(has('P04', 541), 'P04 box added one pitch to the right: ' + JSON.stringify(T.filter(([p]) => /^P0\d$/.test(p))));
+      assert.ok(has('ISSUED FOR COMMENT', 565) && has('ISSUED FOR TENDER', 405), 'new box says Issued for Comment, the old ones unchanged');
+      assert.ok(T.some(([p, px]) => /^\d\d\/\d\d\/\d\d$/.test(p) && px === 595 && p !== '23/10/26'), 'new box dated today'); assert.ok(has('P04', 1141) && !has('P03', 1141), 'title block ISSUE field at P04');
+      assert.strictEqual(T.filter(([p]) => p === 'ISSUE').length, 4, 'four ISSUE labels'); }
     const O2 = await call('jobs:overview', { jobId: J.id }); assert.strictEqual(O2.rows.find(r => r.no === 'X11475-BGN-ZZ-XX-DR-E-7153').rev, 'P04', 'register row at P04');
     let err = ''; try { await call('jobs:revUp', { jobId: J.id, no: 'X11475-BGN-ZZ-XX-DR-E-7147' }); } catch (e) { err = e.message; } assert.ok(/no DXF/.test(err) && /42_BG_0055_P02/.test(err) && /save it as DXF/i.test(err), 'DWG-only drawing says what it needs: ' + err);
     return O.rows.map(r => r.no).join(', ');
