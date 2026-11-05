@@ -315,6 +315,9 @@ dead is true only if the sheet itself carries a cancelled / superseded / void / 
     const d = data(); let cur = path.resolve(p), candidate = null;
     while (cur && fenced(cur)) {
       const rec = recordFor(d, cur); if (rec) return { id: rec.id, number: rec.number, folder: rec.folder };
+      // a job the app knows whose number starts the folder name (longest number first: X051126-02 is not X051126)
+      const bn = path.basename(cur).toUpperCase(), byName = d.jobs.filter(j => j.number && bn.startsWith(String(j.number).toUpperCase()) && /^[\s_\-.]|^$/.test(bn.slice(String(j.number).length))).sort((a, b) => String(b.number).length - String(a.number).length)[0];
+      if (byName) return { id: byName.id, number: byName.number, folder: cur, recordedFolder: byName.folder || '' };
       const no = projects.jobNoIn(path.basename(cur)); if (no) { const byNo = d.jobs.find(j => String(j.number).toUpperCase() === no.toUpperCase()); if (byNo) return { id: byNo.id, number: byNo.number, folder: cur, recordedFolder: byNo.folder || '' }; if (!candidate) candidate = { folder: cur, number: no, name: path.basename(cur) }; }
       else if (!candidate && !/template/i.test(path.basename(cur)) && await looksJob(cur)) candidate = { folder: cur, number: '', name: path.basename(cur) };
       const up = path.dirname(cur); if (up === cur) break; cur = up;

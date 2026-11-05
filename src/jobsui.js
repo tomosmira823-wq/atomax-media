@@ -11,7 +11,7 @@ export function initJobsUI({ api, getAgents, openIssue, onWorkOn }) {
   const panel = $('#jobsPanel');
   let jobs = [], sel = '', tab = 'files', O = null, msg = '', busy = {}, poll = null;
   // the Jobs list IS the live Projects folder: nav = the folder being listed, selPath = the job folder open on the right
-  let roots = [], nav = '', listing = null, selPath = '', filesAt = '', selFolder = '', listTimer = null;   // selFolder = the job folder highlighted in the list const openDirs = new Set();   // filesAt = the folder the Files tab is showing (inside the job folder)
+  let roots = [], nav = '', listing = null, selPath = '', filesAt = '', selFolder = '', listTimer = null; const openDirs = new Set();   // filesAt = the folder the Files tab is showing (inside the job folder); selFolder = the job folder highlighted in the list
   // live agent runs (stage, elapsed, estimate) keyed by job|drawing, from the main process; the row shows them and offers Stop
   const RUNS = new Map(); const runKey = (jobId, no) => `${jobId}|${no}`;
   const fmtT = (ms) => { const sec = Math.round(ms / 1000); return sec < 60 ? `${sec}s` : `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`; };

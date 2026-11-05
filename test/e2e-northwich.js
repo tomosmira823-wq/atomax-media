@@ -144,7 +144,7 @@ const step = (name, fn) => { try { const r = fn(); if (r && r.then) return r.the
     assert.ok(rows.find(r => r.title === 'LV single line diagram - new PDB').no.startsWith('X081126-01-70-'), 'numbered from the schedule in the drop: ' + rows.find(r => r.title === 'LV single line diagram - new PDB').no);
     assert.strictEqual(F.scope.conflicts.length, 1); return rows.length + ' rows';
   });
-  const F2 = await call('jobs:fileIn', { jobId: job2.id, paths: [path.join(drop, 'Schedules')] });
-  await step('dropping the same files again files nothing twice', () => { assert.strictEqual(F2.filed.length, 0); assert.strictEqual(F2.skipped.length, 2); });
+  const F2 = await call('jobs:fileIn', { jobId: job2.id, paths: [path.join(drop, 'Schedules'), path.join(drop, 'RE scope.eml')] });
+  await step('dropping the same files again files nothing twice and does not read the email again', () => { assert.strictEqual(F2.filed.length, 0); assert.strictEqual(F2.emails.length, 0, 'email not re-read'); assert.ok(F2.skipped.some(x => /email already read/.test(x)), JSON.stringify(F2.skipped)); });
   console.log(process.exitCode ? 'E2E FAILED' : 'e2e northwich ok'); fs.rmSync(TMP, { recursive: true, force: true }); process.exit(process.exitCode || 0);
 })().catch(e => { console.error('E2E ERROR', e); process.exit(1); });
