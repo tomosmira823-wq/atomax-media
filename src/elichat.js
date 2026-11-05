@@ -16,6 +16,10 @@ What you can change (only when Tom asks, never on your own initiative):
 - raise an RFI: {"do":"addRfi","q":"..."}
 - close a client comment: {"do":"closeComment","no":"C-001","response":"..."}
 - note a fact about the job for everyone (the job rules): {"do":"note","text":"..."}
+- rev up a drawing that has a DXF on file (new issue box with the next P rev, today's date, the status; the title block ISSUE field; content unchanged): {"do":"revUp","no":"<row number>","to":"P04 (optional)","status":"ISSUED FOR COMMENT (optional)"}
+- rev up every drawing that has a DXF (e.g. "rev up all the P03s"): {"do":"revUpAll","rev":"P03 (optional: only rows at this rev)","status":"ISSUED FOR COMMENT (optional)"}
+- have Dex draw a drawing again from the job's inputs (an SLD, BCD or earthing drawing; not an edit of the file on disk): {"do":"redraw","no":"<row number>","note":"what to change (optional)"}
+A drawing with only a DWG cannot be revved or edited from here: say so and name the file to save as DXF. A change to what is drawn (a new switchroom, a moved board) is CAD work for Tom or a redraw by Dex, not a rev up; say which.
 Reply with JSON only, no markdown: {"reply":"what you say to Tom","actions":[...]} ("actions" empty when nothing is to change).`;
 
 const cap = (s, n) => { s = String(s || ''); return s.length > n ? s.slice(0, n) + '…' : s; };
@@ -42,7 +46,7 @@ function context({ job, overview, desk, files, history, nextIssue }) {
 }
 
 // apply what Eli decided; returns one line per change, as done (or why not)
-function apply(actions, { job, desk, deskMod, biz, BIZ, overview }) {
+async function apply(actions, { job, desk, deskMod, biz, BIZ, overview, doers = {} }) {
   const done = []; const rows = () => job.drawings;
   const find = (no) => { const up = String(no || '').trim().toUpperCase(); return rows().find(r => r.no.toUpperCase() === up || (r.alt && r.alt.toUpperCase() === up)) || rows().find(r => up && r.no.toUpperCase().endsWith(up)); };
   let jobChanged = false;
@@ -58,6 +62,9 @@ function apply(actions, { job, desk, deskMod, biz, BIZ, overview }) {
       else if (a.do === 'addRfi') { if (!a.q) continue; deskMod.addInputs(job.id, { inputs: [], missing: [], questions: [String(a.q)], fromEmail: 'Tom (chat)' }); done.push(`raised an RFI: ${a.q}`); }
       else if (a.do === 'closeComment') { const d = deskMod.load(job.id), c = (d.crs || []).find(x => x.no === a.no); if (!c) { done.push(`${a.no}: no such comment`); continue; } deskMod.saveCrs(job.id, { no: c.no, status: 'Closed', response: a.response || 'Closed by Tom' }); done.push(`closed comment ${c.no}`); }
       else if (a.do === 'note') { if (!a.text) continue; const d = deskMod.load(job.id); deskMod.setRules(job.id, `${d.rules ? d.rules + '\n' : ''}${String(a.text).trim()}`); done.push(`noted: ${a.text}`); }
+      else if (a.do === 'revUp') { const r = find(a.no); if (!r) { done.push(`${a.no}: not on the list`); continue; } if (!doers.revUp) { done.push('rev up: not available here'); continue; } const w = await doers.revUp({ ...a, no: r.no }); done.push(`revved up ${r.no} to ${w.rev} (${path.basename(w.files[0])})`); }
+      else if (a.do === 'revUpAll') { if (!doers.revUp || !doers.rows) { done.push('rev up: not available here'); continue; } const want = String(a.rev || '').toUpperCase(); const list = doers.rows().filter(r => r.group === 'drawing' && r.src && r.src.dxf && (!want || String(r.rev || '').toUpperCase() === want)); if (!list.length) { done.push(`rev up all: no drawing with a DXF${want ? ' at ' + want : ''}`); continue; } let ok = 0; const bad = []; for (const r of list) { try { const w = await doers.revUp({ no: r.no, status: a.status || '' }); ok++; done.push(`revved up ${r.no} to ${w.rev}`); } catch (e) { bad.push(`${r.no}: ${String(e.message || e)}`); } } if (bad.length) done.push(...bad); const dwg = doers.rows().filter(r => r.group === 'drawing' && r.src && !r.src.dxf && r.src.dwg); if (dwg.length) done.push(`DWG only, need a DXF first: ${dwg.map(r => r.no + ' (' + r.src.dwg.split('/').pop() + ')').join(', ')}`); }
+      else if (a.do === 'redraw') { const r = find(a.no); if (!r) { done.push(`${a.no}: not on the list`); continue; } if (!doers.make) { done.push('redraw: not available here'); continue; } const w = await doers.make({ no: r.no, note: a.note || '' }); done.push(`Dex ${w && w.status === 'made' ? 'drew' : 'is on'} ${r.no}${w && w.status && w.status !== 'made' ? ' (' + w.status + ')' : ''}`); }
       else done.push(`${a.do}: not something I can do from here`);
     } catch (e) { done.push(`${a.do} ${a.no || a.title || ''}: ${String(e.message || e)}`); }
   }

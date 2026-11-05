@@ -257,6 +257,10 @@ const step = (name, fn) => { try { const r = fn(); if (r && r.then) return r.the
       assert.ok(/7129 is off the list/.test(C.reply) && C.done.length === 4, JSON.stringify(C.done));
       const O3 = await call('jobs:overview', { jobId: J.id }); assert.ok(!O3.rows.some(r => /7129$/.test(r.no)), 'row removed'); assert.ok(O3.rows.some(r => /Cable calculations - new PDB/.test(r.title) && r.group === 'document'), 'row added'); assert.strictEqual(O3.rows.find(r => /7153$/.test(r.no)).title, 'Proposed Switchroom Layout (long option)', 'row renamed by its short number');
       assert.ok((O3.desk.rfis || []).find(r => r.no === 'RFI-001').status === 'Closed', 'RFI closed'); const L = await call('eli:chatLog', { jobId: J.id }); assert.strictEqual(L.chat.length, 2); assert.strictEqual(L.chat[1].done.length, 4);
+      // "rev up all the P03s" from the chat: every drawing with a DXF at P03 gets its P04; the DWG-only ones are named
+      global.__chat = { reply: 'Revving up the P03s now.', actions: [{ do: 'revUpAll', rev: 'P04', status: 'ISSUED FOR COMMENT' }] };   // 7153 is at P04 after the earlier rev up
+      const C3 = await call('eli:chat', { jobId: J.id, text: 'rev up all the P04s for issue 13' }); assert.ok(C3.done.some(x => /revved up X11475-BGN-ZZ-XX-DR-E-7153 to P05/.test(x)), JSON.stringify(C3.done)); assert.ok(C3.done.some(x => /DWG only, need a DXF first: .*7147/.test(x)), 'names the DWG-only drawings: ' + JSON.stringify(C3.done));
+      const O4 = await call('jobs:overview', { jobId: J.id }); assert.strictEqual(O4.rows.find(r => /7153$/.test(r.no)).rev, 'P05'); assert.ok(fs.existsSync(O4.rows.find(r => /7153$/.test(r.no)).work.files[0]), 'P05 file written');
       global.__chat = { reply: 'The register has 7147 at P03 and 7153 at P03; both have DXFs in ISSUE 12.', actions: [] }; const C2 = await call('eli:chat', { jobId: J.id, text: 'what revs are the SLD and the switchroom at?' }); assert.strictEqual(C2.done.length, 0); assert.ok(/CONVERSATION SO FAR:[\s\S]*TOM: drop 7129/.test(global.__chatAsked), 'he remembers the conversation'); global.__chat = null; }
     return O.rows.map(r => r.no).join(', ');
   });
