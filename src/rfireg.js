@@ -26,8 +26,10 @@ function setCell(sheetXml, ref, value) {
     return sheetXml.replace(re, v ? `<c r="${ref}"${attrs} t="inlineStr">${v}</c>` : `<c r="${ref}"${attrs}/>`);
   }
   if (!v) return sheetXml;
-  // no such cell: put it in its row in column order
-  const rowRe = new RegExp(`(<row r="${row}"[^>]*>)([\\s\\S]*?)(</row>)`);
+  // no such cell: put it in its row in column order (a row written as <row .../> is opened up first)
+  const selfRe = new RegExp(`<row r="${row}"([^>]*?)/>`); const sm = sheetXml.match(selfRe);
+  if (sm) sheetXml = sheetXml.replace(selfRe, `<row r="${row}"$1></row>`);
+  const rowRe = new RegExp(`(<row r="${row}"[^>]*[^/]>)([\\s\\S]*?)(</row>)`);
   const rm = sheetXml.match(rowRe); if (!rm) return sheetXml;
   const cells = rm[2].match(/<c r="([A-Z]+)\d+"[^>]*?(?:\/>|>[\s\S]*?<\/c>)/g) || [];
   const colNum = (c) => c.split('').reduce((n, ch) => n * 26 + ch.charCodeAt(0) - 64, 0);

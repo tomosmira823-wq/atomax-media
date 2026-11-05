@@ -69,7 +69,8 @@ function register({ ipcMain, HANDLERS, BIZ, claudeFull }) {
     const job = jobOf(jobId), V = desk.view(jobId), dl = delivOf(jobId);
     const files = jobFiles(jobId), anyIssued = job.drawings.some(x => x.rev);   // a job with issued drawings: a numbered row with no rev and no file is a reserved number, not work to do
     const rows = job.drawings.filter(d => !/cancel|superseded/i.test(d.status)).map(d => { const src = sourceFor(d, files), k = kindOf(d); const reserved = !d.rev && !src.dxf && !src.dwg && !src.pdf && !dl[d.no] && !/^TBC-/i.test(d.no) && anyIssued; return { ...d, ...k, group: reserved ? 'reserved' : (d.group || groupOf(d)), num: realNo(d) || d.no, ctitle: cleanTitle(d) || d.title, work: dl[d.no] || null, src, canRev: !reserved && !!(k.agent === 'Dex' || src.dxf) }; });   // reserved: a number in the register never issued and with no file: listed, not counted
-    return { job: { id: job.id, number: job.number, name: job.name, client: job.client, folder: job.folder, status: job.status }, desk: V, rows, needsMaster: rows.some(r => r.kind === 'bcd' || r.kind === 'schedule') };
+    const DR = require('./docreq'), ng = DR.ngJob(rows), needNg = ng ? DR.needsRequest(rows).map(r => r.no) : [];
+    return { job: { id: job.id, number: job.number, name: job.name, client: job.client, folder: job.folder, status: job.status }, desk: V, rows, needsMaster: rows.some(r => r.kind === 'bcd' || r.kind === 'schedule'), ngJob: ng, needNg };
   }
 
   // make one deliverable with the agent for its kind
@@ -192,12 +193,12 @@ function register({ ipcMain, HANDLERS, BIZ, claudeFull }) {
     const d0 = desk.load(jobId); d0.chat = [...(d0.chat || []), { role: 'tom', text: t, at: new Date().toISOString() }].slice(-200); desk.saveRaw(jobId, d0);
     const ov = overview(jobId), files = jobFiles(jobId).map(f => f.rel);
     let nextIssue = null; try { if (job.folder) nextIssue = BIZ.projects.nextIssueDir(job.folder); } catch {}
-    const ctx = E.context({ job, overview: ov, desk: desk.load(jobId), files, history: d0.chat.slice(0, -1), nextIssue });
+    const ctx = E.context({ job, overview: ov, desk: desk.load(jobId), files, history: d0.chat.slice(0, -1), nextIssue, needNg: ov.needNg });
     const R = runs.start({ kind: 'chat', who: 'Eli', jobId, no: 'CHAT' }); let r;   // Eli shows as working while he thinks
     try { r = await claudeFull({ system: E.SYSTEM, who: 'email', skills, maxTokens: 4000, messages: [{ role: 'user', content: [{ type: 'text', text: `${ctx}\n\nTOM SAYS NOW: ${t}` }] }], run: R.id }); runs.finish(R.id); } catch (e) { runs.finish(R.id, { ok: false, error: String(e && e.message || e) }); throw e; }
     let out; try { out = require('./dxfmaker').parseReply(r.text); } catch { out = { reply: String(r.text || '').trim(), actions: [] }; }
     const reply = String(out.reply || '').trim() || '(Eli said nothing)';
-    const doers = { revUp: (a) => revUp({ jobId, no: a.no, to: a.to || '', status: a.status || '', people: a.people || null }), make: (a) => make({ jobId, no: a.no, people: a.people || {}, note: a.note || '' }), rows: () => overview(jobId).rows };
+    const doers = { revUp: (a) => revUp({ jobId, no: a.no, to: a.to || '', status: a.status || '', people: a.people || null }), make: (a) => make({ jobId, no: a.no, people: a.people || {}, note: a.note || '' }), rows: () => overview(jobId).rows, docRequest: (a) => docRequest({ jobId, submittedBy: a.submittedBy || '', nos: a.nos || null }) };
     const done = await E.apply(Array.isArray(out.actions) ? out.actions : [], { job, desk: desk.load(jobId), deskMod: desk, biz, BIZ, overview: ov, doers });
     try { desk.tidyRows(jobId); } catch {}
     try { if (done.some(x => /RFI|closed/i.test(x))) await desk.writeRfiRegister(jobId, { templateDir: BIZ.projects.templateDir() }); } catch {}
@@ -247,6 +248,22 @@ function register({ ipcMain, HANDLERS, BIZ, claudeFull }) {
     return w;
   }
   ipcMain.handle('jobs:revUp', wrap((a) => revUp(a)));
+  async function docRequest({ jobId, submittedBy = '', nos = null }) {
+    const job = jobOf(jobId), ov = overview(jobId), DR = require('./docreq');
+    if (!job.folder || !fs.existsSync(job.folder)) throw new Error('This job has no folder to put the request in.');
+    let rows = DR.needsRequest(ov.rows); if (Array.isArray(nos) && nos.length) rows = rows.filter(r => nos.some(n => r.no.toUpperCase() === String(n).toUpperCase() || (r.alt && r.alt.toUpperCase() === String(n).toUpperCase())));
+    if (!rows.length) throw new Error('Every deliverable on this job already has its NG number; nothing to request.');
+    const dir = BIZ.outputDirFor(jobId, 'transmittals') || path.join(job.folder, '013 Transmittals & Drawing Register'); fs.mkdirSync(dir, { recursive: true });
+    const site = (job.name || '').replace(/\b(lvac|dcaar|&|and|diesel|replacement|generator|design|stage \d+)\b/gi, '').replace(/[^A-Za-z ]+/g, ' ').trim().split(/\s+/)[0] || job.number;
+    const file = DR.nextFormPath(dir, site);
+    const projNo = (job.number.match(/^X\d{5,6}/i) || [])[0] || ov.rows.map(r => (String(r.no).match(/^X\d{5,6}(?=-)/i) || [])[0]).find(Boolean) || job.number;   // the client's project number: ours when it is one, else the one the NG numbers carry (X11475)
+    const buf = await DR.fill(DR.templatePath(BIZ.projects.templateDir()), { projectTitle: job.name || '', projectNumber: projNo, submittedBy }, rows.map(r => ({ ...r, rev: r.rev || 'P01' })));
+    fs.writeFileSync(file, buf);
+    const d = desk.load(jobId); d.docRequests = [...(d.docRequests || []), { file, at: new Date().toISOString(), rows: rows.map(r => r.no) }]; desk.saveRaw(jobId, d);
+    BIZ.log({ who: 'Eli', action: `Wrote a Document Request for ${rows.length} NG number${rows.length === 1 ? '' : 's'}`, jobId, detail: path.basename(file) + ' · ' + rows.map(r => r.no + ' ' + r.title).join(', ') });
+    return { file, rows: rows.map(r => ({ no: r.no, title: r.title, category: DR.category(r) })) };
+  }
+  ipcMain.handle('jobs:docRequest', wrap((a) => docRequest(a)));
   ipcMain.handle('jobs:setStatus', wrap(({ jobId, no, status }) => setDeliv(jobId, no, { status })));
   ipcMain.handle('jobs:waiting', wrap(() => waiting()));
   return { overview, make, check, waiting, kindOf };

@@ -19,13 +19,15 @@ What you can change (only when Tom asks, never on your own initiative):
 - rev up a drawing that has a DXF on file (new issue box with the next P rev, today's date, the status; the title block ISSUE field; content unchanged): {"do":"revUp","no":"<row number>","to":"P04 (optional)","status":"ISSUED FOR COMMENT (optional)"}
 - rev up every drawing that has a DXF (e.g. "rev up all the P03s"): {"do":"revUpAll","rev":"P03 (optional: only rows at this rev)","status":"ISSUED FOR COMMENT (optional)"}
 - have Dex draw a drawing again from the job's inputs (an SLD, BCD or earthing drawing; not an edit of the file on disk): {"do":"redraw","no":"<row number>","note":"what to change (optional)"}
+- write a Document Request to BGEN document control for NG numbers (every deliverable without one, or the ones named): {"do":"docRequest","nos":["<row numbers, optional>"]}
+On a National Grid job nothing is issued under our own number: a deliverable without an NG number (X11475-BGN-ZZ-XX-DR-E-7153 style) goes on a Document Request before the issue; the NG number is the primary number and the file name, ours (42_BG_0055) sits beside it.
 A drawing with only a DWG cannot be revved or edited from here: say so and name the file to save as DXF. A change to what is drawn (a new switchroom, a moved board) is CAD work for Tom or a redraw by Dex, not a rev up; say which.
 Reply with JSON only, no markdown: {"reply":"what you say to Tom","actions":[...]} ("actions" empty when nothing is to change).`;
 
 const cap = (s, n) => { s = String(s || ''); return s.length > n ? s.slice(0, n) + '…' : s; };
 
 // everything Eli can see about the job, as text
-function context({ job, overview, desk, files, history, nextIssue }) {
+function context({ job, overview, desk, files, history, nextIssue, needNg }) {
   const rows = (overview.rows || []).map(r => `${r.no}${r.alt ? ' (' + r.alt + ')' : ''} | ${r.rev || '-'} | ${r.group} | ${r.title}${r.src ? (r.src.dxf ? ' | DXF: ' + r.src.dxf.split('/').pop() : r.src.dwg ? ' | DWG only: ' + r.src.dwg.split('/').pop() : ' | no file') : ''}${r.work && r.work.status ? ' | ' + r.work.status + (r.work.rev ? ' ' + r.work.rev : '') : ''}`);
   const rfis = (desk.rfis || []).map(r => `${r.no} | ${r.status} | ${r.q}${r.answer ? ' | answer: ' + r.answer : ''}`);
   const crs = (desk.crs || []).filter(c => !/responded|closed/i.test(c.status || '')).map(c => `${c.no} | on ${c.doc === '*' ? 'every drawing' : c.doc || 'the job'} | ${c.by || ''}: ${c.comment}`);
@@ -36,6 +38,7 @@ function context({ job, overview, desk, files, history, nextIssue }) {
   return [
     `JOB: ${job.number} ${job.name || ''} | client ${job.client || '-'} | folder ${job.folder || '-'}${nextIssue ? ` | next issue: ISSUE ${nextIssue.n}${nextIssue.previous ? ' (ISSUE ' + nextIssue.previous.n + ' is the last on file)' : ''} — issued DXF+PDF copies and the transmittal go there when Tom presses Issue; working files stay with the working set` : ''} | rules: ${cap(desk.rules || '', 1500)}`,
     `REGISTER (${rows.length} rows; number | rev | group | title | file):\n${rows.join('\n') || '(empty)'}`,
+    needNg && needNg.length ? `NO NG NUMBER YET (need a Document Request before the issue): ${needNg.join(', ')}` : (overview.ngJob ? 'Every deliverable has its NG number.' : ''),
     `RFIs:\n${rfis.join('\n') || '(none)'}`,
     `OPEN CLIENT COMMENTS:\n${crs.join('\n') || '(none)'}`,
     `INPUTS RECEIVED:\n${inputs.join('\n') || '(none)'}`,
@@ -64,6 +67,7 @@ async function apply(actions, { job, desk, deskMod, biz, BIZ, overview, doers = 
       else if (a.do === 'note') { if (!a.text) continue; const d = deskMod.load(job.id); deskMod.setRules(job.id, `${d.rules ? d.rules + '\n' : ''}${String(a.text).trim()}`); done.push(`noted: ${a.text}`); }
       else if (a.do === 'revUp') { const r = find(a.no); if (!r) { done.push(`${a.no}: not on the list`); continue; } if (!doers.revUp) { done.push('rev up: not available here'); continue; } const w = await doers.revUp({ ...a, no: r.no }); done.push(`revved up ${r.no} to ${w.rev} (${path.basename(w.files[0])})`); }
       else if (a.do === 'revUpAll') { if (!doers.revUp || !doers.rows) { done.push('rev up: not available here'); continue; } const want = String(a.rev || '').toUpperCase(); const list = doers.rows().filter(r => r.group === 'drawing' && r.src && r.src.dxf && (!want || String(r.rev || '').toUpperCase() === want)); if (!list.length) { done.push(`rev up all: no drawing with a DXF${want ? ' at ' + want : ''}`); continue; } let ok = 0; const bad = []; for (const r of list) { try { const w = await doers.revUp({ no: r.no, status: a.status || '' }); ok++; done.push(`revved up ${r.no} to ${w.rev}`); } catch (e) { bad.push(`${r.no}: ${String(e.message || e)}`); } } if (bad.length) done.push(...bad); const dwg = doers.rows().filter(r => r.group === 'drawing' && r.src && !r.src.dxf && r.src.dwg); if (dwg.length) done.push(`DWG only, need a DXF first: ${dwg.map(r => r.no + ' (' + r.src.dwg.split('/').pop() + ')').join(', ')}`); }
+      else if (a.do === 'docRequest') { if (!doers.docRequest) { done.push('document request: not available here'); continue; } const r = await doers.docRequest(a); done.push(`Document Request written: ${path.basename(r.file)} for ${r.rows.map(x => x.no + ' (' + (x.category || '?') + ')').join(', ')}`); }
       else if (a.do === 'redraw') { const r = find(a.no); if (!r) { done.push(`${a.no}: not on the list`); continue; } if (!doers.make) { done.push('redraw: not available here'); continue; } const w = await doers.make({ no: r.no, note: a.note || '' }); done.push(`Dex ${w && w.status === 'made' ? 'drew' : 'is on'} ${r.no}${w && w.status && w.status !== 'made' ? ' (' + w.status + ')' : ''}`); }
       else done.push(`${a.do}: not something I can do from here`);
     } catch (e) { done.push(`${a.do} ${a.no || a.title || ''}: ${String(e.message || e)}`); }
