@@ -79,6 +79,12 @@ Reply with JSON only, no markdown:
 "deliverables":[{"type":"SLD|BCD|earthing|loop|layout|cable schedule|schedule|calculation|document|other","title":"...","qty":1,"discipline":"E&I|piping|mechanical|structural|process|general","source":"document and section it comes from"}],
 "byOthers":[{"title":"...","who":"..."}],"conflicts":["..."],"inputs":[{"name":"...","rev":"...","what":"..."}],"missingInputs":["..."]}`;
 
+const MATCH_SYSTEM = `You are Eli at Atomax-UK. An email has been read and filed against a job. You are given what the email asks for (the deliverables, which may be whole packages such as "LVAC SLDs stage by stage"), what it says is still needed from the client, and the list of files already in the job's folder (path inside the job folder).
+1. For each deliverable, list the documents Atomax has ALREADY made for it that are in the job folder (Atomax's own drawings, schedules, calculations and reports: usually in folders such as "006 Atomax-UK Drawings", "008 Schedules & Calculations", "020 Issued", "7. Electrical"; never the client's files in incoming correspondence). A package can hold several documents (an SLD for each stage, a block diagram for each phase). For each document give its number exactly as written in the file name (e.g. "42_BG_0055", "X11475-BGN-ZZ-XX-DR-E-7014"), its title as written, and the latest revision found (P02, C01, A...; the highest one where several revision files exist). Ignore Archive / Superseded copies. Only list documents that really belong to that deliverable; a deliverable with nothing made yet gets an empty list.
+2. For each "still needed" item, say whether the job folder already holds it (the client may have sent it before), and which files. Only say found where the file name plainly is that thing (a load study for "load schedule" is found; a site photo is not a cable route).
+Reply with JSON only, no markdown:
+{"deliverables":[{"i":0,"existing":[{"number":"","title":"","rev":"","file":"path"}]}],"found":[{"need":"the still-needed item exactly as given","files":["path"]}]}`;
+
 // ---------- reading email files ----------
 const decodeWords = (s) => String(s || '').replace(/=\?([^?]+)\?([BbQq])\?([^?]*)\?=/g, (_m, cs, enc, txt) => {
   try { const buf = /b/i.test(enc) ? Buffer.from(txt, 'base64') : Buffer.from(txt.replace(/_/g, ' ').replace(/=([0-9A-F]{2})/gi, (_x, h) => String.fromCharCode(parseInt(h, 16))), 'latin1'); return buf.toString(/utf-?8/i.test(cs) ? 'utf8' : 'latin1'); } catch { return txt; }
@@ -185,6 +191,25 @@ function register({ ipcMain, dialog, shell, getWin, userDir, claudeFull, checker
     return best ? best.id : '';
   }
 
+  // once the job is known, Eli is shown the job folder: a package the email asks for becomes the documents Atomax already has for it (their
+  // numbers and revisions), and a "still needed" item the folder already holds is moved to inputs received. The email's own list is kept
+  // (e.asked) so filing on another job matches again from the original
+  async function matchFolder(job, e, run = '') {
+    if (!job || !job.folder || !fs.existsSync(job.folder)) return false;
+    e.asked = e.asked || { deliverables: e.deliverables || [], missingInputs: e.missingInputs || [] };
+    const want = e.asked.deliverables, need = e.asked.missingInputs; if (!want.length && !need.length) return false;
+    const files = BIZ.projects.filesUnder([job.folder], 3000).map(f => f.rel.replace(/\\/g, '/')).filter(r => !/(^|\/)(archive|superseded|markups?|old)(\/|$)/i.test(r) && !/\.(bak|dwl2?|tmp|lnk|ini)$/i.test(r));
+    if (!files.length) return false;
+    const text = `JOB: ${job.number} ${job.name || ''}\n\nDELIVERABLES THE EMAIL ASKS FOR:\n${want.map((d, i) => `${i}. ${d.title || d.type}${d.qty > 1 ? ' (x' + d.qty + ')' : ''}`).join('\n') || '(none)'}\n\nSTILL NEEDED FROM THE CLIENT:\n${need.map(x => '- ' + x).join('\n') || '(none)'}\n\nFILES IN THE JOB FOLDER (${files.length}):\n${files.slice(0, 900).join('\n')}`;
+    let m = null; try { const r = await claudeFull({ system: MATCH_SYSTEM, who: 'email', maxTokens: 8000, messages: [{ role: 'user', content: [{ type: 'text', text }] }], run }); m = dxfmaker.parseReply(r.text); } catch { return false; }
+    if (!m || typeof m !== 'object') return false;
+    const got = new Map(); for (const x of m.deliverables || []) if (x && Number.isInteger(+x.i) && Array.isArray(x.existing)) got.set(+x.i, x.existing.filter(d => d && d.number));
+    const out = []; want.forEach((d, i) => { const ex = got.get(i) || []; if (!ex.length) { out.push(d); return; } const seen = new Set(); for (const x of ex) { const k = String(x.number).toUpperCase(); if (seen.has(k)) continue; seen.add(k); out.push({ type: d.type, title: String(x.title || x.number).trim(), no: String(x.number).trim(), rev: String(x.rev || '').trim(), file: x.file || '', from: d.title || d.type, qty: 1 }); } });
+    const found = (m.found || []).filter(f => f && f.need && (f.files || []).length && need.some(n => n.toLowerCase() === String(f.need).toLowerCase()));
+    e.deliverables = out; e.missingInputs = need.filter(n => !found.some(f => String(f.need).toLowerCase() === n.toLowerCase()));
+    e.foundInputs = found.map(f => ({ need: String(f.need), files: f.files.slice(0, 4).map(String) })); e.matchedJob = job.id;
+    return true;
+  }
   const readEmail = async ({ files = [], text = '', reuseId = '', paths = [], skills, run = '' }) => {
     files = [...files, ...paths.filter(p => fs.existsSync(p)).map(p => ({ name: path.basename(p), mime: extMime(p), base64: fs.readFileSync(p).toString('base64') }))];
     const id = reuseId || uid(), dir = path.join(DIR(), id); fs.mkdirSync(dir, { recursive: true });
@@ -228,6 +253,7 @@ function register({ ipcMain, dialog, shell, getWin, userDir, claudeFull, checker
     // an existing job: no second "set up the job" task; a job folder on disk that is not yet a job in the office is offered for linking
     if (email.jobId) email.asks = email.asks.filter(a => a.agent !== 'eli' || !/set ?up|new job|job number|project folder/i.test(a.title + ' ' + a.detail)).map((a, i) => ({ ...a, i }));
     else if (email.jobNumber) { try { const f = BIZ.projects.suggest({ number: email.jobNumber }, { limitMs: 2500 }).find(x => x.why && /number/i.test(x.why)); if (f) email.folderFound = f.path; } catch {} }
+    if (email.jobId && !email.commentReturn) { try { await matchFolder(BIZ.data().jobs.find(j => j.id === email.jobId), email, run); } catch {} }
     const list = load(), at = reuseId ? list.findIndex(x => x.id === reuseId) : -1;
     if (at >= 0) list[at] = email; else list.unshift(email); save(list);
     BIZ.log({ who: 'Eli', action: 'Read an email', jobId: email.jobId, detail: `${email.subject || email.summary} · ${email.asks.length} task${email.asks.length === 1 ? '' : 's'} proposed` });
@@ -325,7 +351,7 @@ function register({ ipcMain, dialog, shell, getWin, userDir, claudeFull, checker
     BIZ.log({ who: 'Tom', action: `Filed ${result.filed.length} file${result.filed.length === 1 ? '' : 's'}${mails.length ? ` and ${mails.length} email${mails.length === 1 ? '' : 's'}` : ''} into the job folder`, jobId });
     return result;
   }));
-  const applyEmail = ({ emailId, jobId = '', newJob = null, client = '' }) => {
+  const applyEmail = async ({ emailId, jobId = '', newJob = null, client = '' }) => {
     const list = load(), e = list.find(x => x.id === emailId); if (!e) throw new Error('That email is gone');
     const d = BIZ.data(), desk = require('./jobdesk');
     let job = jobId && d.jobs.find(j => j.id === jobId);
@@ -353,6 +379,8 @@ function register({ ipcMain, dialog, shell, getWin, userDir, claudeFull, checker
     const r = { job: { id: job.id, number: job.number }, deliverables: 0, comments: 0, docs: [] };
     const mine = (x) => !x || !x.job || !(e.jobIds || []).length || (e.jobIds || []).length < 2 || String(job.number).toUpperCase().includes(String(x.job).trim().toUpperCase()) || String(x.job).toUpperCase().includes(String(job.number).toUpperCase());
     try { desk.checkRegister(job.id, checker); } catch {}   // the register's numbers first, so the email's deliverables land on the rows that exist
+    if (e.matchedJob !== job.id && !e.commentReturn) { try { await matchFolder(job, e); } catch {} }   // filed on a job other than the one it was read against: match that job's folder
+    for (const f of e.foundInputs || []) { e.inputs = [...(e.inputs || []), { name: f.need, rev: '', what: 'already in the job folder: ' + f.files.join(', ') }]; }
     try { r.deliverables = (desk.addDeliverables(job.id, (e.deliverables || []).filter(mine), { commentReturn: !!e.commentReturn }) || []).length; } catch {}
     try { desk.tidyRows(job.id); } catch {}
     try { desk.addInputs(job.id, { inputs: e.inputs || [], missing: e.missingInputs || [], questions: e.clientQuestions || [], fromEmail: e.subject || e.from }); } catch {}

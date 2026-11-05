@@ -31,6 +31,8 @@ async function claudeFull(a) {
   const sys = String(a.system || ''), user = JSON.stringify(a.messages || []);
   if (/DELIVERABLES REGISTER/.test(sys) && global.__scopeBad) return { text: '{"summary":"x","facts":[],"deliverables":[{"type":"SLD","title":"LV single line diagram - new PDB","qty":1},{"type":"other","title":"Pipework isometric - 8" gas main","qty":1},{"type":"cable schedule","title":"Cable schedule (power, control, instrument)","qty":1}],"byOthers":[],"conflicts":[],"inputs":[],"missingInputs":[]}', stop: 'end_turn' };
   if (/DELIVERABLES REGISTER/.test(sys)) return { text: JSON.stringify({ summary: 'Gas mixing pipework design for UU via EMFS', facts: [{ name: 'Enquiry', value: 'ENQ10560' }], deliverables: [{ type: 'loop', title: 'IS loop drawings (16 off)', qty: 1, discipline: 'E&I', source: 'scope' }, { type: 'SLD', title: 'LV single line diagram - new PDB', qty: 1, discipline: 'E&I' }, { type: 'BCD', title: 'Block cable diagram', qty: 1, discipline: 'E&I' }, { type: 'document', title: 'Rotork actuator schematic', qty: 8, discipline: 'E&I' }, { type: 'cable schedule', title: 'Cable schedule (power, control, instrument)', qty: 1, discipline: 'E&I' }], byOthers: [{ title: 'P&IDs', who: 'Insight Technical' }], conflicts: ['Draft A scope lists protection studies; the P05 fee proposal excludes them'], inputs: [{ name: 'Requirements Statement', rev: 'Rev 2', what: 'UU/Costain order requirements' }], missingInputs: ['existing P&IDs'] }), stop: 'end_turn' };
+  if (/ALREADY made for it/.test(sys)) { global.__matchAsked = user; return { text: JSON.stringify(global.__match || {}), stop: 'end_turn' }; }
+  if (global.__eliEmail && /email checker at the Atomax-UK reception/.test(sys)) return { text: JSON.stringify(global.__eliEmail), stop: 'end_turn' };
   if (a.who === 'dex' || /You are Dex/i.test(sys)) { const req = (user.match(/REQUEST: ([^"]{0,200})/) || [])[1] || ''; return { text: /block cable/i.test(req) ? dexBcd : dexSld, stop: 'end_turn' }; }
   return { text: '{}', stop: 'end_turn' };
 }
@@ -169,6 +171,27 @@ const step = (name, fn) => { try { const r = fn(); if (r && r.then) return r.the
     assert.ok(V.master && V.master.tender, 'tender-stage flag: ' + JSON.stringify(V.master && { status: V.master.status, tender: V.master.tender, read: V.master.read }));
     assert.ok(V.master.read.some(f => /Scope of Works/.test(f)), 'read the scope: ' + V.master.read.join(', '));
     const sys = claudeCalls.filter(c => /MASTER DEVICE LIST/.test(c.system)); assert.ok(sys.length >= 1, 'Lex was asked');
+  });
+  // Bustleholm DCAAR (Tom 12:43): the email asks for packages ("LVAC SLDs stage by stage") and lists inputs as still needed; the job folder
+  // already holds the drawings and the DID. Eli is shown the folder: the package becomes the drawings on file, the DID moves to received
+  await step('an email filed on a job is matched against the job folder (existing drawings, inputs already there)', async () => {
+    const F = path.join(TMP, 'NG', '005 -Bustleholm - DCAAR'); for (const d of ['001 Incoming Correspondence', '006 Atomax-UK Drawings/Archive', '013 Transmittals & Drawing Register', '020 Issued']) fs.mkdirSync(path.join(F, d), { recursive: true });
+    for (const f of ['006 Atomax-UK Drawings/42_BG_0055_P01 Single Line Diagram Phase 0.dwg', '006 Atomax-UK Drawings/42_BG_0055_P02 Single Line Diagram Phase 0.dwg', '006 Atomax-UK Drawings/42_BG_0056_P02 Single Line Diagram Phase 1.dwg', '006 Atomax-UK Drawings/Archive/42_BG_0099_P01 Old Thing.dwg', '001 Incoming Correspondence/DID Native files as issued 07-05-26.zip']) fs.writeFileSync(path.join(F, f), 'x');
+    settings.projectRoots = [...(settings.projectRoots || []), path.join(TMP, 'NG')];
+    const J = biz.saveJob(BIZ.data(), { number: '005 -BUSTLEHOLM - DCAAR', name: 'Bustleholm DCAAR', client: 'BGEN Ltd', folder: F }, 'Tom'); BIZ.store.save();
+    global.__eliEmail = { summary: 'PO for Bustleholm DCAAR', subject: 'FW: Bustleholm', deliverables: [{ type: 'SLD', title: 'P&C-DP01 LVAC SLDs stage by stage', qty: 1 }, { type: 'document', title: 'P&C-DP04 Cable schedules', qty: 1 }], missingInputs: ['The accepted DID', "Andy Stabler's list of deliverables"], inputs: [], asks: [], comments: [] };
+    global.__match = { deliverables: [{ i: 0, existing: [{ number: '42_BG_0055', title: 'Single Line Diagram Phase 0', rev: 'P02', file: '006 Atomax-UK Drawings/42_BG_0055_P02 Single Line Diagram Phase 0.dwg' }, { number: '42_BG_0056', title: 'Single Line Diagram Phase 1', rev: 'P02' }] }, { i: 1, existing: [] }], found: [{ need: 'The accepted DID', files: ['001 Incoming Correspondence/DID Native files as issued 07-05-26.zip'] }] };
+    const R = await call('jobs:addEmail', { text: 'Please find attached PO for the Bustleholm DCAAR support.', jobId: J.id });
+    const asked = global.__matchAsked || ''; assert.ok(/42_BG_0055_P02 Single Line Diagram Phase 0\.dwg/.test(asked), 'Eli was shown the job folder'); assert.ok(!/Old Thing/.test(asked), 'archive left out');
+    const e = R.email; assert.deepStrictEqual(e.missingInputs, ["Andy Stabler's list of deliverables"], 'the DID is not asked for again: ' + JSON.stringify(e.missingInputs)); assert.strictEqual((e.foundInputs || []).length, 1);
+    assert.deepStrictEqual(e.deliverables.map(d => d.no || d.title), ['42_BG_0055', '42_BG_0056', 'P&C-DP04 Cable schedules']);
+    await call('jobs:applyEmail', { emailId: e.id, jobId: J.id });
+    const O = await call('jobs:overview', { jobId: J.id }); const sld = O.rows.filter(r => /^42_BG_005[56]$/.test(r.no));
+    assert.strictEqual(sld.length, 2, O.rows.map(r => r.no + ' ' + r.title).join(' | ')); assert.ok(sld.every(r => r.rev === 'P02' && r.group === 'drawing'), JSON.stringify(sld.map(r => [r.no, r.rev, r.group])));
+    assert.ok(!O.rows.some(r => /stage by stage/i.test(r.title)), 'no TBC package row for the SLDs'); assert.ok(O.rows.some(r => /Cable schedules/.test(r.title)), 'the package with nothing on file stays a row');
+    assert.ok((O.desk.inputs || []).some(i => /accepted DID/.test(i.name) && /already in the job folder/.test(i.what)), 'DID recorded as received');
+    assert.ok(!(O.desk.rfis || []).some(r => /accepted DID/.test(r.q)), 'no RFI for the DID');
+    global.__eliEmail = null; return O.rows.map(r => r.no).join(', ');
   });
   // Eli's scope reply with a quote inside a title (8" gas main) is read all the same, and a register row comes from it
   global.__scopeBad = true;

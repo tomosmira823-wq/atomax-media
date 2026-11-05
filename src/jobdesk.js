@@ -219,6 +219,10 @@ function addDeliverables(id, list, opts = {}) {
   const job = jobOf(id); if (!job || !Array.isArray(list) || !list.length) return [];
   const added = [], taken = []; let renamed = false;
   for (const dl0 of list) {
+    if (dl0.no) {   // a document Atomax already has in the job folder (matched by Eli): its own number, title and latest revision
+      const no = String(dl0.no).trim(); if (!no || job.drawings.some(d => d.no.toUpperCase() === no.toUpperCase()) || added.some(a => a.no.toUpperCase() === no.toUpperCase())) continue;
+      const kt = kindTag(dl0.type, dl0.title); added.push({ no, title: String(dl0.title || no), rev: String(dl0.rev || ''), status: 'To do', type: String(dl0.type || ''), group: kt.group }); continue;
+    }
     const sc = setCount(dl0.title || dl0.type, dl0.qty), dl = { ...dl0, title: cap(sc.title) };
     const qty = Math.max(1, Math.min(60, sc.qty));
     // a set the list already holds as one row ("IS loop drawings (16 off)" from an earlier read, no work on it): that row becomes sheet 1
