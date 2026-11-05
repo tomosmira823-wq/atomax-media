@@ -27,12 +27,16 @@ function sourceFor(d, files) {
   const keys = [d.no, d.alt].filter(Boolean).map(k => String(k).toUpperCase().replace(/[^A-Z0-9]+/g, ''));
   const norm = (n) => String(n).toUpperCase().replace(/\.[A-Z0-9]+$/, '').replace(/[^A-Z0-9]+/g, '');
   let mine = files.filter(f => { const n = norm(f.name); return keys.some(k => k.length >= 6 && n.includes(k)); });
+  // an NG number whose type code differs on the file (the register says RP-E-7005, the file was saved as SP-E-7005): the file is still the
+  // document's; the rev up renames it to the register's number
+  let fileNo = '';
+  if (!mine.length) { const m = String(d.no).match(/^(X\d{5,6}(?:-[A-Z0-9]{1,4}){3})-([A-Z]{2})-([A-Z])-(\d{4})$/i); if (m) { const re = new RegExp(`${m[1]}-([A-Z]{2})-${m[3]}-${m[4]}`, 'i'); mine = files.filter(f => re.test(f.name)); const hit = mine[0] && mine[0].name.match(re); if (hit) fileNo = hit[0].toUpperCase(); } }
   // by title only when the file carries no drawing number of its own (a file numbered for another drawing is that drawing's)
   const numbered = (n) => /X\d{5,6}(?:-[A-Z0-9]{1,4}){1,6}-\d{3,4}|\b\d{2}_[A-Z]{2}_\d{4}\b/i.test(n);
   if (!mine.length && d.title) { const words = String(d.title).toUpperCase().split(/[^A-Z0-9]+/).filter(w => w.length > 2 && !/^(THE|AND|FOR|NEW|DIAGRAM|DRAWING|LAYOUT|PROPOSED)$/.test(w)); if (words.length >= 2) mine = files.filter(f => /\.(dxf|dwg|pdf)$/i.test(f.name) && !numbered(f.name) && words.every(w => f.name.toUpperCase().includes(w))); }
   const pick = (ext) => mine.filter(f => new RegExp('\\.' + ext + '$', 'i').test(f.name)).sort((a, b) => (revInName(b.name) > revInName(a.name) ? 1 : revInName(b.name) < revInName(a.name) ? -1 : 0) || b.mtime - a.mtime)[0];
-  const dxf = pick('dxf'), dwg = pick('dwg'), pdf = pick('pdf');
-  return { dxf: dxf ? dxf.rel : '', dwg: dwg ? dwg.rel : '', pdf: pdf ? pdf.rel : '', fileRev: revInName((dxf || dwg || pdf || {}).name || '') };
+  const dxf = pick('dxf'), dwg = pick('dwg'), pdf = pick('pdf'), docx = pick('docx'), xlsx = pick('xlsx');
+  return { dxf: dxf ? dxf.rel : '', dwg: dwg ? dwg.rel : '', pdf: pdf ? pdf.rel : '', docx: docx ? docx.rel : '', xlsx: xlsx ? xlsx.rel : '', fileNo, fileRev: revInName((dxf || dwg || docx || xlsx || pdf || {}).name || '') };
 }
 // the group a row sits in on the Deliverables tab: a numbered drawing (QS 006 disciplines 70-79 are drawings, 23 a schedule) or by its words
 const groupOf = (d) => { const t = (String(d.no).match(/-(\d{2})-\d{4}(?:\b|_)/) || [])[1] || ''; if (/^7\d$/.test(t)) return 'drawing'; if (t === '23') return 'schedule'; return require('./jobdesk').kindTag(d.type || '', d.title).group; };
@@ -68,7 +72,9 @@ function register({ ipcMain, HANDLERS, BIZ, claudeFull }) {
     try { desk.tidyRows(jobId); } catch {}   // one row per drawing (a TBC row and the register's numbered row of the same kind are the same drawing)
     const job = jobOf(jobId), V = desk.view(jobId), dl = delivOf(jobId);
     const files = jobFiles(jobId), anyIssued = job.drawings.some(x => x.rev);   // a job with issued drawings: a numbered row with no rev and no file is a reserved number, not work to do
-    const rows = job.drawings.filter(d => !/cancel|superseded/i.test(d.status)).map(d => { const src = sourceFor(d, files), k = kindOf(d); const reserved = !d.rev && !src.dxf && !src.dwg && !src.pdf && !dl[d.no] && !/^TBC-/i.test(d.no) && anyIssued; return { ...d, ...k, group: reserved ? 'reserved' : (d.group || groupOf(d)), num: realNo(d) || d.no, ctitle: cleanTitle(d) || d.title, work: dl[d.no] || null, src, canRev: !reserved && !!(k.agent === 'Dex' || src.dxf) }; });   // reserved: a number in the register never issued and with no file: listed, not counted
+    // a made file renamed by hand in its folder (7142_P04 -> 7142 P04) is still the row's file: the record follows it
+    for (const w of Object.values(dl)) if (w && Array.isArray(w.files)) w.files = w.files.map(f => { if (!f || fs.existsSync(f)) return f; const dir = path.dirname(f), base = path.basename(f); const alt = base.replace(/_([PCAX]\d{2})(\.[a-z0-9]+)$/i, ' $1$2'); const alt2 = base.replace(/ ([PCAX]\d{2})(\.[a-z0-9]+)$/i, '_$1$2'); for (const a of [alt, alt2]) if (a !== base && fs.existsSync(path.join(dir, a))) return path.join(dir, a); return f; });
+    const rows = job.drawings.filter(d => !/cancel|superseded/i.test(d.status)).map(d => { const src = sourceFor(d, files), k = kindOf(d); const reserved = !d.rev && !src.dxf && !src.dwg && !src.pdf && !dl[d.no] && !/^TBC-/i.test(d.no) && anyIssued; return { ...d, ...k, group: reserved ? 'reserved' : (d.group || groupOf(d)), num: realNo(d) || d.no, ctitle: cleanTitle(d) || d.title, work: dl[d.no] || null, src, canRev: !reserved && !!(k.agent === 'Dex' || src.dxf || src.docx || src.xlsx) }; });   // reserved: a number in the register never issued and with no file: listed, not counted
     const DR = require('./docreq'), ng = DR.ngJob(rows), needNg = ng ? DR.needsRequest(rows).map(r => r.no) : [];
     return { job: { id: job.id, number: job.number, name: job.name, client: job.client, folder: job.folder, status: job.status }, desk: V, rows, needsMaster: rows.some(r => r.kind === 'bcd' || r.kind === 'schedule'), ngJob: ng, needNg };
   }
@@ -238,9 +244,29 @@ function register({ ipcMain, HANDLERS, BIZ, claudeFull }) {
     BIZ.log({ who: 'Dex', action: `Opened ISSUE ${nx.n} for the next issue`, jobId, detail: nx.path });
     return nx.path;
   }
+  const issueName = (no, rev) => /^X\d{5,6}-/i.test(no) ? `${no} ${rev}` : `${no}_${rev}`;
+  // a Word or Excel document: new revision rows, header and cover moved on by docrev; the native goes in ISSUE n/ISSUE n NATIVES (the PDF
+  // for the issue itself is made from it by Word or Excel when the issue is plotted)
+  async function revUpDocument({ jobId, job, d, src, to = '', status = '' }) {
+    const DR = require('./docrev'), rel = src.docx || src.xlsx, full = path.join(job.folder, rel), name = path.basename(full), no = d.no;
+    const from = DR.revOfName(name) || d.rev || ''; const want = askedRev(to, '') || '';
+    const renumber = src.fileNo && src.fileNo !== no.toUpperCase() ? { from: src.fileNo, to: no } : null;
+    let r; try { r = src.docx ? await DR.revUpDocx(fs.readFileSync(full), { from, to: want, status, renumber }) : await DR.revUpXlsx(fs.readFileSync(full), { from, to: want, status }); }
+    catch (e) { throw new Error(`${no}: ${name} could not be revved up (${String(e.message || e)}). Rev it by hand this time.`); }
+    const outDir = openIssueDir(jobId), natives = path.join(outDir, `${path.basename(outDir)} NATIVES`); fs.mkdirSync(natives, { recursive: true });
+    const outPath = path.join(natives, DR.revName(name, r.from, r.to, renumber)); fs.writeFileSync(outPath, r.buf);
+    d.rev = r.to; require('./business').saveJob(BIZ.data(), job, 'Wren'); BIZ.store.save();
+    const who = src.docx ? 'Wren' : 'Lex', ch = r.changes;
+    const w = setDeliv(jobId, no, { status: 'made', rev: r.to, files: [outPath], pdfs: [], archived: 0, by: who, summary: `Rev up ${r.from} -> ${r.to}: ${src.docx ? `${ch.rows} revision row${ch.rows === 1 ? '' : 's'} added, header${ch.cover ? ' and cover' : ''} to ${r.to}, dated today` : `revision row ${r.to} on the cover sheet, dated today`}${renumber ? `; renumbered ${renumber.from} -> ${renumber.to}` : ''}; content unchanged`, source: rel });
+    BIZ.log({ who, action: `Revved up ${no} ${r.from} -> ${r.to} (revision tables, header${renumber ? ', renumbered' : ''})`, jobId, detail: path.basename(outPath) });
+    try { BIZ.projects.gather(job.id, job.folder, { checker: require('./checker') }); } catch {}
+    return w;
+  }
   async function revUp({ jobId, no, to = '', status = '', people = null }) {
     const job = jobOf(jobId), d = job.drawings.find(x => x.no === no); if (!d) throw new Error('No such row');
-    const src = sourceFor(d, jobFiles(jobId)); if (!src.dxf) throw new Error(`${no} has no DXF in the job folder${src.dwg ? ` (only ${src.dwg.split('/').pop()}): save it as DXF from AutoCAD next to the DWG` : ''}.`);
+    const src = sourceFor(d, jobFiles(jobId));
+    if (!src.dxf && (src.docx || src.xlsx)) return revUpDocument({ jobId, job, d, src, to, status });
+    if (!src.dxf) throw new Error(`${no} has no DXF in the job folder${src.dwg ? ` (only ${src.dwg.split('/').pop()}): save it as DXF from AutoCAD next to the DWG` : ''}.`);
     const dxffix = require('./dxffix'), full = path.join(job.folder, src.dxf), buf = fs.readFileSync(full), cur = d.rev || src.fileRev || '';
 
     const want = askedRev(to, '') || '';
@@ -254,7 +280,7 @@ function register({ ipcMain, HANDLERS, BIZ, claudeFull }) {
     // ISSUE 13), opened by the first rev up and used by every one after it until Tom presses Issue. The working set and the earlier issue
     // folders are never written to or moved: a rev up is a new file in the new issue folder, nothing else
     const outDir = openIssueDir(jobId); fs.mkdirSync(outDir, { recursive: true });
-    const base = `${no}_${next}`; let archived = 0;
+    const base = issueName(no, next); let archived = 0;   // X11475-BGN-ZZ-XX-DR-E-7142 P04 the way the earlier issue folders name them, 70_BG_0014_P06 for our own numbers
     for (const n of fs.readdirSync(outDir)) if (new RegExp('^' + no.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '[ _-]P\\d\\d\\.dxf$', 'i').test(n) && n !== base + '.dxf') { try { const a = path.join(outDir, 'Superseded'); fs.mkdirSync(a, { recursive: true }); fs.renameSync(path.join(outDir, n), path.join(a, n)); archived++; } catch {} }   // only an earlier rev-up of the same drawing in this same issue folder moves aside
     const outPath = path.join(outDir, base + '.dxf'); fs.writeFileSync(outPath, r.buf);
     const pdfs = [];   // no PDF: the app cannot plot a DXF it did not draw; the PDF comes from AutoCAD when the sheet is issued
@@ -284,19 +310,27 @@ function register({ ipcMain, HANDLERS, BIZ, claudeFull }) {
     return { file, rows: rows.map(r => ({ no: r.no, title: r.title, category: DR.category(r) })) };
   }
   ipcMain.handle('jobs:docRequest', wrap((a) => docRequest(a)));
-  // PDFs for the issue being built: AutoCAD's core console plots every DXF in the open issue folder that has no PDF yet (or the ones named)
+  // PDFs for the issue being built: AutoCAD's core console plots every DXF in the open issue folder that has no PDF yet (or the ones named);
+  // Word and Excel make the PDFs of the documents in ISSUE n NATIVES, named <number> <rev>.pdf in the issue folder like the earlier issues
   async function plotIssue({ jobId, files = null, run = '' }) {
-    const job = jobOf(jobId), PL = require('./plot'), core = PL.coreConsole();
-    if (!core) throw new Error('AutoCAD is not installed on this PC (no accoreconsole.exe under Program Files\\Autodesk), so the PDFs have to be plotted by hand.');
-    const dir = openIssueDir(jobId);
-    let list = (Array.isArray(files) && files.length ? files : fs.readdirSync(dir).filter(n => /\.dxf$/i.test(n)).map(n => path.join(dir, n))).filter(f => fs.existsSync(f));
-    list = list.filter(f => !fs.existsSync(f.replace(/\.dxf$/i, '.pdf')) || (Array.isArray(files) && files.length));
-    if (!list.length) return { dir, done: [], failed: [], note: 'every DXF in the issue folder already has its PDF' };
+    const job = jobOf(jobId), PL = require('./plot'), OP = require('./officepdf'), core = PL.coreConsole();
+    const dir = openIssueDir(jobId), natives = path.join(dir, `${path.basename(dir)} NATIVES`);
+    const named = Array.isArray(files) && files.length;
+    const docPdf = (f) => { const n = path.basename(f).replace(/\.(docx?|xlsx?|xlsm)$/i, ''); const no = (n.match(/X\d{5,6}(?:-[A-Z0-9]{1,4}){1,6}-\d{3,4}/i) || [])[0], rev = revInName(n); return path.join(dir, no && rev ? `${no} ${rev}.pdf` : n + '.pdf'); };
+    let list = (named ? files : [...fs.readdirSync(dir).filter(n => /\.dxf$/i.test(n)).map(n => path.join(dir, n)), ...(fs.existsSync(natives) ? fs.readdirSync(natives).filter(n => /\.(docx|xlsx|xlsm)$/i.test(n) && !n.startsWith('~$')).map(n => path.join(natives, n)) : [])]).filter(f => fs.existsSync(f));
+    const pdfOf = (f) => /\.dxf$/i.test(f) ? f.replace(/\.dxf$/i, '.pdf') : docPdf(f);
+    list = list.filter(f => named || !fs.existsSync(pdfOf(f)));
+    if (!list.length) return { dir, done: [], failed: [], note: 'every file in the issue folder already has its PDF' };
+    if (!core && list.some(f => /\.dxf$/i.test(f))) throw new Error('AutoCAD is not installed on this PC (no accoreconsole.exe under Program Files\\Autodesk), so the drawing PDFs have to be plotted by hand.');
     const done = [], failed = []; let i = 0;
-    for (const f of list) { i++; if (run) runs.stage(run, `AutoCAD ${core.year} is plotting ${path.basename(f)} (${i} of ${list.length})`, Math.round(5 + 90 * (i - 1) / list.length)); try { const r = await PL.plotOne(f, { console: core }); done.push({ dxf: f, pdf: r.pdf, layout: r.layout }); } catch (e) { failed.push({ dxf: f, error: String(e.message || e) }); } }
-    BIZ.log({ who: 'Dex', action: `Plotted ${done.length} PDF${done.length === 1 ? '' : 's'} with AutoCAD ${core.year}${failed.length ? `, ${failed.length} failed` : ''}`, jobId, detail: [...done.map(d => path.basename(d.pdf)), ...failed.map(f => path.basename(f.dxf) + ': ' + f.error)].join(' · ') });
+    for (const f of list) {
+      i++; const isDxf = /\.dxf$/i.test(f), app = isDxf ? `AutoCAD ${core.year}` : /\.docx?$/i.test(f) ? 'Word' : 'Excel';
+      if (run) runs.stage(run, `${app} is making the PDF of ${path.basename(f)} (${i} of ${list.length})`, Math.round(5 + 90 * (i - 1) / list.length));
+      try { const r = isDxf ? await PL.plotOne(f, { console: core }) : await OP.toPdf(f, pdfOf(f)); done.push({ src: f, dxf: isDxf ? f : '', pdf: r.pdf, layout: r.layout || '', app }); } catch (e) { failed.push({ src: f, dxf: f, error: String(e.message || e) }); }
+    }
+    BIZ.log({ who: 'Dex', action: `Made ${done.length} PDF${done.length === 1 ? '' : 's'} for ${path.basename(dir)}${failed.length ? `, ${failed.length} failed` : ''}`, jobId, detail: [...done.map(d => path.basename(d.pdf)), ...failed.map(f => path.basename(f.src) + ': ' + f.error)].join(' · ') });
     try { BIZ.projects.gather(job.id, job.folder, { checker: require('./checker') }); } catch {}
-    return { dir, done, failed, core: core.year };
+    return { dir, done, failed, core: core ? core.year : 0 };
   }
   ipcMain.handle('jobs:plot', wrap(async ({ jobId, files = null }) => {
     if (runs.live().some(r => r.jobId === jobId && r.no === 'PLOT')) throw new Error('Plotting is already running on this job.');

@@ -16,10 +16,10 @@ What you can change (only when Tom asks, never on your own initiative):
 - raise an RFI: {"do":"addRfi","q":"..."}
 - close a client comment: {"do":"closeComment","no":"C-001","response":"..."}
 - note a fact about the job for everyone (the job rules): {"do":"note","text":"..."}
-- rev up a drawing that has a DXF on file (new issue box with the next P rev, today's date, the status; the title block ISSUE field; content unchanged): {"do":"revUp","no":"<row number>","to":"P04 (optional)","status":"ISSUED FOR COMMENT (optional)"}
-- rev up every drawing that has a DXF (e.g. "rev up all the P03s"): {"do":"revUpAll","rev":"P03 (optional: only rows at this rev)","status":"ISSUED FOR COMMENT (optional)"}
+- rev up a drawing that has a DXF on file (new issue box with the next P rev, today's date, the status; the title block ISSUE field; content unchanged) or a document that has a Word/Excel file on file (new revision rows, header and cover to the next rev, dated today; content unchanged): {"do":"revUp","no":"<row number>","to":"P04 (optional)","status":"ISSUED FOR COMMENT (optional)"}
+- rev up every drawing that has a DXF (e.g. "rev up all the P03s"): {"do":"revUpAll","rev":"P03 (optional: only rows at this rev)","status":"ISSUED FOR COMMENT (optional)"}; for documents name each one with "revUp"
 - have Dex draw a drawing again from the job's inputs (an SLD, BCD or earthing drawing; not an edit of the file on disk): {"do":"redraw","no":"<row number>","note":"what to change (optional)"}
-- plot the PDFs for the issue being built with AutoCAD (every DXF in the issue folder without a PDF): {"do":"plot"}
+- make the PDFs for the issue being built (AutoCAD plots every DXF in the issue folder without a PDF; Word and Excel make the PDFs of the documents in its NATIVES folder): {"do":"plot"}
 - write a Document Request to BGEN document control for NG numbers (every deliverable without one, or the ones named): {"do":"docRequest","nos":["<row numbers, optional>"]}
 On a National Grid job nothing is issued under our own number: a deliverable without an NG number (X11475-BGN-ZZ-XX-DR-E-7153 style) goes on a Document Request before the issue; the NG number is the primary number and the file name, ours (42_BG_0055) sits beside it.
 A drawing with only a DWG cannot be revved or edited from here: say so and name the file to save as DXF. A change to what is drawn (a new switchroom, a moved board) is CAD work for Tom or a redraw by Dex, not a rev up; say which.
@@ -30,7 +30,7 @@ const cap = (s, n) => { s = String(s || ''); return s.length > n ? s.slice(0, n)
 
 // everything Eli can see about the job, as text
 function context({ job, overview, desk, files, history, nextIssue, needNg }) {
-  const rows = (overview.rows || []).map(r => `${r.no}${r.alt ? ' (' + r.alt + ')' : ''} | ${r.rev || '-'} | ${r.group} | ${r.title}${r.src ? (r.src.dxf ? ' | DXF: ' + r.src.dxf.split('/').pop() : r.src.dwg ? ' | DWG only: ' + r.src.dwg.split('/').pop() : ' | no file') : ''}${r.work && r.work.status ? ' | ' + r.work.status + (r.work.rev ? ' ' + r.work.rev : '') : ''}`);
+  const rows = (overview.rows || []).map(r => `${r.no}${r.alt ? ' (' + r.alt + ')' : ''} | ${r.rev || '-'} | ${r.group} | ${r.title}${r.src ? (r.src.dxf ? ' | DXF: ' + r.src.dxf.split('/').pop() : r.src.dwg ? ' | DWG only: ' + r.src.dwg.split('/').pop() : r.src.docx ? ' | Word: ' + r.src.docx.split('/').pop() : r.src.xlsx ? ' | Excel: ' + r.src.xlsx.split('/').pop() : ' | no file') : ''}${r.work && r.work.status ? ' | ' + r.work.status + (r.work.rev ? ' ' + r.work.rev : '') : ''}`);
   const rfis = (desk.rfis || []).map(r => `${r.no} | ${r.status} | ${r.q}${r.answer ? ' | answer: ' + r.answer : ''}`);
   const crs = (desk.crs || []).filter(c => !/responded|closed/i.test(c.status || '')).map(c => `${c.no} | on ${c.doc === '*' ? 'every drawing' : c.doc || 'the job'} | ${c.by || ''}: ${c.comment}`);
   const inputs = (desk.inputs || []).map(i => `${i.name}${i.rev ? ' ' + i.rev : ''}${i.what ? ' — ' + i.what : ''}`);
