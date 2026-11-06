@@ -69,4 +69,14 @@ function profile(table, name, { sampleRows = 12 } = {}) {
 const objects = (table) => table.rows.map(r => { const o = {}; table.columns.forEach((c, i) => { o[c] = r[i]; }); return o; });
 const tableName = (fileName) => String(fileName).replace(/\.[^.]+$/, '').trim();
 
-module.exports = { parseDelimited, fromSheet, profile, objects, tableName, asNum, toDate, ukDate };
+// the whole text of a Word document (body, with tables as rows of cells), for an attached study or spec: nothing cut at 4,000 characters
+async function docxText(buf) {
+  const JSZip = require('jszip'); const zip = await JSZip.loadAsync(buf); const f = zip.file('word/document.xml'); if (!f) return '';
+  let x = await f.async('string');
+  x = x.replace(/<w:tab\/>/g, '\t').replace(/<w:br\b[^>]*\/>/g, '\n');
+  x = x.replace(/<w:tc\b[\s\S]*?<\/w:tc>/g, (tc) => tc.replace(/<\/w:p>/g, ' ').replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim() + ' | ');   // a table cell on one line
+  x = x.replace(/<\/w:tr>/g, '\n').replace(/<\/w:p>/g, '\n').replace(/<[^>]+>/g, '');
+  x = x.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&#(\d+);/g, (m, n) => String.fromCharCode(+n));
+  return x.replace(/[ \t]+\|/g, ' |').replace(/\n{3,}/g, '\n\n').trim();
+}
+module.exports = { parseDelimited, fromSheet, profile, objects, tableName, asNum, toDate, ukDate, docxText };

@@ -81,7 +81,7 @@ function register({ ipcMain, claudeFull, BIZ, checker, userDir, projects }) {
   // as text, PDFs and pictures as themselves. Nothing is cut without saying so: a text file over the limit is reported, not trimmed quietly
   const DT = require('./datatable');
   const TEXT_CAP = 40000;
-  function filesToContent(files, tables = {}, warnings = []) {
+  async function filesToContent(files, tables = {}, warnings = []) {
     const content = [];
     if ((files || []).length > 8) warnings.push(`Only the first 8 files are read; ${files.length - 8} left out: ${files.slice(8).map(f => f.name).join(', ')}`);
     for (const f of (files || []).slice(0, 8)) {
@@ -95,7 +95,7 @@ function register({ ipcMain, claudeFull, BIZ, checker, userDir, projects }) {
         else if (ext === '.csv' || ext === '.tsv') { const t = DT.parseDelimited(buf.toString('utf8')); tables[name] = t; content.push({ type: 'text', text: `ATTACHED DATA ${f.name} (given as a table profile, not row by row; the full table of ${t.rows.length} rows is available to analysis code as tables["${name}"]):\n${DT.profile(t, name)}` }); }
         else if (ext === '.pdf') { content.push({ type: 'text', text: 'Attached: ' + f.name }); content.push(checker.contentBlock('pdf', f.name, buf)); }
         else if (IMG.test(f.name)) { content.push({ type: 'text', text: 'Attached: ' + f.name }); content.push(checker.contentBlock('image', f.name, buf)); }
-        else if (ext === '.docx') { const tmp = path.join(userDir(), 'tmp-' + Date.now() + '.docx'); fs.writeFileSync(tmp, buf); const t = projects.extract(tmp); fs.unlinkSync(tmp); content.push({ type: 'text', text: `ATTACHED DOCUMENT ${f.name}:\n${t}` }); }
+        else if (ext === '.docx') { const t = await DT.docxText(buf); if (t.length > TEXT_CAP * 3) { warnings.push(`${f.name} is ${t.length.toLocaleString()} characters of text; only the first ${(TEXT_CAP * 3).toLocaleString()} were read`); content.push({ type: 'text', text: `ATTACHED DOCUMENT ${f.name} (CUT: ${t.length} characters, the first ${TEXT_CAP * 3} follow; say so if the rest matters):\n${t.slice(0, TEXT_CAP * 3)}` }); } else content.push({ type: 'text', text: `ATTACHED DOCUMENT ${f.name}:\n${t}` }); }
         else {
           const t = buf.toString('utf8');
           if (t.length > TEXT_CAP) {
@@ -148,7 +148,7 @@ ${AN.GUIDE}`;
     const warnings = [], tables = {};
     // tables attached earlier in this conversation stay available
     try { for (const n of thread.tables || []) { const f = path.join(tablesDir(key), n + '.json'); if (fs.existsSync(f)) tables[n] = JSON.parse(fs.readFileSync(f, 'utf8')); } } catch {}
-    const fileContent = filesToContent(files, tables, warnings);
+    const fileContent = await filesToContent(files, tables, warnings);
     for (const [n, t] of Object.entries(tables)) { if (!(thread.tables || []).includes(n)) { fs.mkdirSync(tablesDir(key), { recursive: true }); fs.writeFileSync(path.join(tablesDir(key), n + '.json'), JSON.stringify(t)); thread.tables = [...(thread.tables || []), n]; } }
     thread.messages.push({ who: 'tom', text: String(text).trim(), files: (files || []).map(f => f.name), at: new Date().toISOString() });
     thread.pending = { since: new Date().toISOString(), stage: `${who} is reading` }; saveThreads(T);   // leaving the room and coming back shows the turn still running
