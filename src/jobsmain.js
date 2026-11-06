@@ -193,16 +193,18 @@ function register({ ipcMain, HANDLERS, BIZ, claudeFull }) {
   ipcMain.handle('jobs:readMarkup', wrap((a) => readMarkup(a)));
   ipcMain.handle('jobs:overview', wrap(({ jobId }) => overview(jobId)));
   // talk to Eli about the job: he sees the register, RFIs, comments, scope and folder; he changes things only when told to
-  ipcMain.handle('eli:chat', wrap(async ({ jobId, text = '', skills }) => {
-    const job = jobOf(jobId), t = String(text || '').trim(); if (!t) throw new Error('Say something to Eli');
+  ipcMain.handle('eli:chat', wrap(async ({ jobId, text = '', skills, files: attached = [] }) => {
+    const job = jobOf(jobId), t = String(text || '').trim(); if (!t && !(files || []).length) throw new Error('Say something to Eli');
+    // a screenshot or picture pasted into the chat goes to Eli as a picture
+    const pics = []; for (const f of (attached || []).slice(0, 6)) { try { if (/\.(png|jpe?g|gif|webp)$/i.test(f.name)) { pics.push({ type: 'text', text: `PICTURE FROM TOM: ${f.name}` }); pics.push(require('./checker').contentBlock('image', f.name, Buffer.from(f.base64, 'base64'))); } } catch {} }
     const E = require('./elichat'), biz = require('./business');
-    const d0 = desk.load(jobId); d0.chat = [...(d0.chat || []), { role: 'tom', text: t, at: new Date().toISOString() }].slice(-200); desk.saveRaw(jobId, d0);
+    const d0 = desk.load(jobId); d0.chat = [...(d0.chat || []), { role: 'tom', text: t + ((attached || []).length ? ` [${attached.map(f => f.name).join(', ')}]` : ''), at: new Date().toISOString() }].slice(-200); desk.saveRaw(jobId, d0);
     try { if (job.folder && fs.existsSync(job.folder)) BIZ.projects.gather(job.id, job.folder, { checker: require('./checker') }); } catch {}   // the folder as it is now, not as it was: Eli never answers from a stale file list
     const ov = overview(jobId), files = jobFiles(jobId).map(f => f.rel);
     let nextIssue = null; try { if (job.folder) { const oi = desk.load(jobId).openIssue; nextIssue = oi && oi.path && fs.existsSync(oi.path) ? { n: oi.n, previous: { n: oi.n - 1 }, open: true } : BIZ.projects.nextIssueDir(job.folder); } } catch {}
     const ctx = E.context({ job, overview: ov, desk: desk.load(jobId), files, history: d0.chat.slice(0, -1), nextIssue, needNg: ov.needNg });
     const R = runs.start({ kind: 'chat', who: 'Eli', jobId, no: 'CHAT' }); let r;   // Eli shows as working while he thinks
-    try { r = await claudeFull({ system: E.SYSTEM, who: 'email', skills, maxTokens: 4000, messages: [{ role: 'user', content: [{ type: 'text', text: `${ctx}\n\nTOM SAYS NOW: ${t}` }] }], run: R.id }); runs.finish(R.id); } catch (e) { runs.finish(R.id, { ok: false, error: String(e && e.message || e) }); throw e; }
+    try { r = await claudeFull({ system: E.SYSTEM, who: 'email', skills, maxTokens: 4000, messages: [{ role: 'user', content: [{ type: 'text', text: `${ctx}\n\nTOM SAYS NOW: ${t || '(see the picture)'}` }, ...pics] }], run: R.id }); runs.finish(R.id); } catch (e) { runs.finish(R.id, { ok: false, error: String(e && e.message || e) }); throw e; }
     let out; try { out = require('./dxfmaker').parseReply(r.text); } catch { out = { reply: String(r.text || '').trim(), actions: [] }; }
     const reply = String(out.reply || '').trim() || '(Eli said nothing)';
     const doers = { revUp: (a) => revUp({ jobId, no: a.no, to: a.to || '', status: a.status || '', people: a.people || null }), make: (a) => make({ jobId, no: a.no, people: a.people || {}, note: a.note || '' }), rows: () => overview(jobId).rows, docRequest: (a) => docRequest({ jobId, submittedBy: a.submittedBy || '', nos: a.nos || null }), plot: (a) => plotIssue({ jobId, files: a.files || null }) };

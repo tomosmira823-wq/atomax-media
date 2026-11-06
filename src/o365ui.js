@@ -12,12 +12,16 @@ export function initO365UI({ api, office, bizUI, getAgents, goBack }) {
   let role = 'excel', files = [], picker = null, busy = false, lastFile = '';
   const agentOf = () => (getAgents() || []).find(a => a.role === role && a.enabled);
   const readFile = (f) => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res({ name: f.name, base64: String(r.result).split(',')[1] || '' }); r.onerror = rej; r.readAsDataURL(f); });
-  const renderFiles = () => { $('#o3Files').innerHTML = files.map((f, i) => `<span class="o3f">${esc(f.name)} <button data-rm="${i}">×</button></span>`).join(''); $('#o3Files').querySelectorAll('[data-rm]').forEach(b => b.onclick = (e) => { e.stopPropagation(); files.splice(+b.dataset.rm, 1); renderFiles(); }); };
+  const renderFiles = () => { $('#o3Files').innerHTML = files.map((f, i) => `<span class="o3f">${/\.(png|jpe?g|gif|webp)$/i.test(f.name) ? `<img src="data:image/${f.name.split('.').pop().replace('jpg', 'jpeg')};base64,${f.base64}" alt="" style="height:28px;border-radius:3px;margin-right:4px">` : ''}${esc(f.name)} <button data-rm="${i}">×</button></span>`).join(''); $('#o3Files').querySelectorAll('[data-rm]').forEach(b => b.onclick = (e) => { e.stopPropagation(); files.splice(+b.dataset.rm, 1); renderFiles(); }); };
   const addFiles = async (list) => { for (const f of [...(list || [])]) files.push(await readFile(f)); renderFiles(); };
   $('#o3Drop').addEventListener('click', () => $('#o3File').click());
   $('#o3File').addEventListener('change', (e) => addFiles(e.target.files));
   $('#o3Drop').addEventListener('dragover', (e) => e.preventDefault());
   $('#o3Drop').addEventListener('drop', (e) => { e.preventDefault(); e.stopPropagation(); addFiles(e.dataTransfer.files); });
+  // a screenshot pasted into the message (Ctrl+V) goes with it, like a dropped picture
+  let pasted = 0;
+  const pasteFiles = (e) => { const items = [...((e.clipboardData || {}).items || [])].filter(i => i.kind === 'file'); if (!items.length) return; e.preventDefault(); const list = items.map(i => { const f = i.getAsFile(); if (!f) return null; const ext = (f.type.split('/')[1] || 'png').replace('jpeg', 'jpg'); return /^image\//.test(f.type) ? new File([f], `screenshot-${++pasted}.${ext}`, { type: f.type }) : f; }).filter(Boolean); addFiles(list); };
+  $('#o3Req').addEventListener('paste', pasteFiles); panel.addEventListener('paste', (e) => { if (e.target !== $('#o3Req')) pasteFiles(e); });
 
   async function showFolder() {
     const box = $('#o3Folder'), jobId = $('#o3Job').value;
