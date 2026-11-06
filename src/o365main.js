@@ -89,13 +89,13 @@ function register({ ipcMain, claudeFull, BIZ, checker, userDir, projects }) {
       try {
         if (ext === '.xlsx' || ext === '.xlsm') {
           const sheets = checker.readXlsx(buf); const big = sheets.filter(sh => (sh.rows || []).length > 60);
-          if (big.length) { for (const sh of sheets) { const t = DT.fromSheet(sh); if (!t.rows.length) continue; const sn = sh.sheet || sh.name || ''; const key = sheets.length > 1 ? `${name} / ${sn}` : name; tables[key] = t; content.push({ type: 'text', text: `ATTACHED WORKBOOK ${f.name}, sheet "${sn}" (given as a table profile; the full table is available to analysis code as tables["${key}"]):\n${DT.profile(t, key)}` }); } }
+          if (big.length) { let n = 0; const left = []; for (const sh of sheets) { const t = DT.fromSheet(sh); if (!t.rows.length) continue; const sn = sh.sheet || sh.name || ''; const key = sheets.length > 1 ? `${name} / ${sn}` : name; tables[key] = t; if (++n > 12) { left.push(sn); continue; } content.push({ type: 'text', text: `ATTACHED WORKBOOK ${f.name}, sheet "${sn}" (given as a table profile; the full table is available to analysis code as tables["${key}"]):\n${DT.profile(t, key).slice(0, 5000)}` }); } if (left.length) content.push({ type: 'text', text: `${f.name}: ${left.length} more sheet(s) not profiled but available to analysis code: ${left.join(', ')}` }); }
           else content.push({ type: 'text', text: `ATTACHED WORKBOOK ${f.name}:\n` + checker.sheetsAsText(sheets, TEXT_CAP) });
         }
         else if (ext === '.csv' || ext === '.tsv') { const t = DT.parseDelimited(buf.toString('utf8')); tables[name] = t; content.push({ type: 'text', text: `ATTACHED DATA ${f.name} (given as a table profile, not row by row; the full table of ${t.rows.length} rows is available to analysis code as tables["${name}"]):\n${DT.profile(t, name)}` }); }
         else if (ext === '.pdf') { content.push({ type: 'text', text: 'Attached: ' + f.name }); content.push(checker.contentBlock('pdf', f.name, buf)); }
         else if (IMG.test(f.name)) { content.push({ type: 'text', text: 'Attached: ' + f.name }); content.push(checker.contentBlock('image', f.name, buf)); }
-        else if (ext === '.docx') { const t = await DT.docxText(buf); if (t.length > TEXT_CAP * 3) { warnings.push(`${f.name} is ${t.length.toLocaleString()} characters of text; only the first ${(TEXT_CAP * 3).toLocaleString()} were read`); content.push({ type: 'text', text: `ATTACHED DOCUMENT ${f.name} (CUT: ${t.length} characters, the first ${TEXT_CAP * 3} follow; say so if the rest matters):\n${t.slice(0, TEXT_CAP * 3)}` }); } else content.push({ type: 'text', text: `ATTACHED DOCUMENT ${f.name}:\n${t}` }); }
+        else if (ext === '.docx') { const t = await DT.docxText(buf); if (t.length > TEXT_CAP * 1.5) { warnings.push(`${f.name} is ${t.length.toLocaleString()} characters of text; only the first ${(TEXT_CAP * 1.5).toLocaleString()} were read`); content.push({ type: 'text', text: `ATTACHED DOCUMENT ${f.name} (CUT: ${t.length} characters, the first ${TEXT_CAP * 1.5} follow; say so if the rest matters):\n${t.slice(0, TEXT_CAP * 1.5)}` }); } else content.push({ type: 'text', text: `ATTACHED DOCUMENT ${f.name}:\n${t}` }); }
         else {
           const t = buf.toString('utf8');
           if (t.length > TEXT_CAP) {
@@ -172,12 +172,12 @@ ${AN.GUIDE}`;
     content.push(...fileContent, { type: 'text', text: `TOM: ${String(text).trim() || '(files attached)'}` });
     const tell = (msg) => { try { runs.stage(run, msg); } catch {} try { const T3 = loadThreads(); if (T3[key] && T3[key].pending) { T3[key].pending.stage = msg; saveThreads(T3); } } catch {} };
 
-    const askModel = async (extra) => { const r = await claudeFull({ system, who: role, skills, maxTokens: 16000, messages: [{ role: 'user', content: [...content, ...extra] }], run }); return { reply: parse(r.text), raw: r.text, cut: r.stop === 'max_tokens' }; };
+    const askModel = async (extra) => { const r = await claudeFull({ system, who: role, skills, maxTokens: 16000, messages: [{ role: 'user', content: [...content, ...extra] }], run }); return { reply: parse(r.text), raw: r.text, cut: r.stop === 'max_tokens', stop: r.stop, tokens: `${r.tokensIn || 0} in / ${r.tokensOut || 0} out${r.blocks ? ', blocks ' + Object.entries(r.blocks).map(([k, v]) => k + '×' + v).join(' ') : ''}` }; };
     tell(`${who} is reading`);
-    let { reply, raw, cut } = await askModel([]);
+    let { reply, raw, cut, stop, tokens } = await askModel([]);
     const norm = (r) => { if (!r || typeof r !== 'object') return null; if (Array.isArray(r.sections)) return { say: r.say || '', document: r }; if (Array.isArray(r.sheets)) return { say: r.say || r.summary || '', workbook: r }; if (r.code && !r.analysis) return { say: r.say || '', analysis: { code: r.code } }; return r; };   // a bare document, workbook or code is taken as that
     reply = norm(reply);
-    if (!reply) reply = { say: String(raw || '').slice(0, 1500) || `${who} did not answer.` };
+    if (!reply) reply = { say: String(raw || '').slice(0, 1500) || `${who} did not answer: the model returned no text (stop reason ${stop || 'none'}, ${tokens}). Try again with fewer or smaller attachments.` };
     let results = null;
     // analysis: run the code, feed back an error once, then ask for the document from the results
     for (let attempt = 0; reply.analysis && reply.analysis.code && attempt < 2; attempt++) {

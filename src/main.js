@@ -653,28 +653,33 @@ async function claudeFull({ system, messages, maxTokens = 4000, model, tools, wh
     if (!test) usage.guard('claude', s);
     // the agent's skills (or the ones ticked for this run; false when the caller already put them in), its rulebook and ticked files
     const sys = who ? `${system || ''}${skills === false ? '' : library.skillsBlock(who, skills)}\n${library.promptBlock(who)}` : system;
-    let msgs = messages, text = '', stop = '', searches = 0;
-    for (let turn = 0; turn < 4; turn++) {   // server-side tools (web search) can pause a long turn: carry on where it stopped
+    let msgs = messages, text = '', stop = '', searches = 0, blocks = {}, budget = maxTokens, noThink = false;
+    for (let turn = 0; turn < 5; turn++) {   // server-side tools (web search) can pause a long turn: carry on where it stopped
       if (run && runs.aborted(run)) throw new Error('Stopped by Tom (aborted)');
+      const body = { model: useModel, max_tokens: budget, system: sys, messages: msgs, ...(tools ? { tools } : {}), ...(noThink ? { thinking: { type: 'disabled' } } : {}) };
       const res = await fetch(ANTHROPIC + '/v1/messages', {
         method: 'POST',
         headers: { 'content-type': 'application/json', 'x-api-key': s.anthropicKey, 'anthropic-version': '2023-06-01' },
-        body: JSON.stringify({ model: useModel, max_tokens: maxTokens, system: sys, messages: msgs, ...(tools ? { tools } : {}) }),
+        body: JSON.stringify(body),
         signal: run ? runs.signal(run) : undefined   // the Stop button aborts the call
       });
       const data = await res.json();
+      if (!res.ok && noThink && /thinking/i.test(data?.error?.message || '')) { noThink = false; budget = Math.min(budget * 2, 64000); continue; }   // this model does not take the switch: more room instead
       if (!res.ok) throw new Error(`Claude ${res.status}: ${data?.error?.message || JSON.stringify(data)}`);
       tIn += data.usage?.input_tokens || 0; tOut += data.usage?.output_tokens || 0;
       const parts = data.content || [];
+      for (const c of parts) blocks[c.type] = (blocks[c.type] || 0) + 1;
       searches += parts.filter(c => c.type === 'server_tool_use').length;
       text += (text ? '\n' : '') + parts.filter(c => c.type === 'text').map(c => c.text).join('\n');
       stop = data.stop_reason;
+      // the whole output budget went on the model's own thinking and no answer came out: once more without it and with more room
+      if (stop === 'max_tokens' && !text.trim() && !noThink && parts.some(c => /thinking/.test(c.type))) { noThink = true; budget = Math.min(budget * 2, 64000); continue; }
       if (stop !== 'pause_turn') break;
       msgs = [...msgs, { role: 'assistant', content: parts }];
     }
     usage.record({ provider: 'claude', who, model: useModel, tokensIn: tIn, tokensOut: tOut });
     if (who && !test) AGENT_MS[who] = (AGENT_MS[who] || 0) + (Date.now() - t0);
-    return { text, stop, searches };
+    return { text, stop, searches, tokensIn: tIn, tokensOut: tOut, blocks };
   } catch (e) {
     usage.record({ provider: 'claude', who, model: useModel, tokensIn: tIn, tokensOut: tOut, error: e.message || String(e) });
     throw e;
