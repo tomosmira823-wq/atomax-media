@@ -34,6 +34,7 @@ async function claudeFull(a) {
   if (/document controller at Atomax-UK/.test(sys)) { global.__chatAsked = user; return { text: JSON.stringify(global.__chat || { reply: 'Right you are.', actions: [] }), stop: 'end_turn' }; }
   if (/ALREADY made for it/.test(sys)) { global.__matchAsked = user; return { text: JSON.stringify(global.__match || {}), stop: 'end_turn' }; }
   if (global.__eliEmail && /email checker at the Atomax-UK reception/.test(sys)) return { text: JSON.stringify(global.__eliEmail), stop: 'end_turn' };
+  if (/365 room of the Atomax Media Office app/.test(sys)) { global.__o365Asked = (a.messages || []).flatMap(m => Array.isArray(m.content) ? m.content.map(c => c.text || '') : [String(m.content)]).join('\n'); const q = global.__o365 || []; const next = q.shift(); return { text: typeof next === 'function' ? next(global.__o365Asked) : JSON.stringify(next || { say: 'Nothing to add.' }), stop: 'end_turn' }; }
   if (a.who === 'dex' || /You are Dex/i.test(sys)) { const req = (user.match(/REQUEST: ([^"]{0,200})/) || [])[1] || ''; return { text: /block cable/i.test(req) ? dexBcd : dexSld, stop: 'end_turn' }; }
   return { text: '{}', stop: 'end_turn' };
 }
@@ -296,6 +297,48 @@ const step = (name, fn) => { try { const r = fn(); if (r && r.then) return r.the
     const O = await call('jobs:overview', { jobId: job2.id }); const t = O.rows.filter(r => /fee proposal|quotation/i.test(r.title) && /UU Mixing/.test(r.title)); assert.strictEqual(t.length, 1, O.rows.map(r => r.no + ' ' + r.title).join(' | '));
     const same = (O.desk.crs || []).filter(c => /tower loading/.test(c.comment)); assert.strictEqual(same.length, 1, JSON.stringify(same)); assert.strictEqual(same[0].doc, t[0].no, 'comment follows the kept row');
     assert.strictEqual(O.rows.filter(r => /^Local containment drawings \(sheet \d\)$/.test(r.title)).length, 2, 'two TBC sheets of one set are two drawings, not a duplicate');
+  });
+
+  // ---- the 365 room: Wren talks, stops when something is missing, computes from data by code, puts charts in the document, changes it on request
+  await step('365 room: a big CSV reaches Wren as a profile (not cut), and he asks instead of writing round a gap', async () => {
+    // a logger file like the CT one: 11 channels x 19 days x 10-minute records (~30k rows, ~1.7 MB)
+    const chans = ['11 Keg Plant', 'No.1 Packaging plant', 'No.1 Incomer', 'CHP'], lines = ['Channel,Value,Unit,Average,Peak,Readings,Time,Date'];
+    const t0 = Date.UTC(2026, 9, 19, 11, 40); for (let i = 0; i < 19 * 144; i++) { const ms = t0 + i * 600000, d = new Date(ms); const dd = `${String(d.getUTCDate()).padStart(2, '0')}/${String(d.getUTCMonth() + 1).padStart(2, '0')}/${d.getUTCFullYear()}`, tt = d.toISOString().slice(11, 19); for (const c of chans) { if (c === 'CHP' && i > 1000 && i < 1100) continue; const a = (1 + Math.sin(i / 50) * 0.5) * (chans.indexOf(c) + 1); lines.push(`${c},${a.toFixed(3)},A,${a.toFixed(3)},${(a * 1.2).toFixed(3)},116,${tt},${dd}`); } }
+    for (let i = 0; i < 12; i++) lines.push(...lines.slice(1, 2000));   // pad it past anything a 40k cut could hold
+    const csv = lines.join('\n'); assert.ok(csv.length > 1000000, 'big file ' + csv.length);
+    global.__o365 = [{ say: 'I have the logger data (4 channels, 19/10 to 06/11). The circuit schedule with the CT ratios is not attached, so I cannot convert to kVA yet. Send it, or tell me the ratios.' }];
+    const r = await call('o365:chat', { jobId: job2.id, role: 'word', text: 'Make a CT load monitoring report from the attached logger CSV and circuit schedule. Check the channel matching with me first.', files: [{ name: 'Raw data loggers combined.csv', base64: Buffer.from(csv).toString('base64') }], fresh: true });
+    assert.ok(!r.path, 'no document written round the gap'); assert.ok(/schedule/.test(r.say), r.say);
+    const asked = global.__o365Asked; assert.ok(/TABLE "Raw data loggers combined": \d+ rows/.test(asked), 'Wren was given a profile'); assert.ok(!/CUT:/.test(asked), 'nothing reported cut'); assert.ok(/Channel \[text\]: 4 distinct/.test(asked), 'channels listed: ' + (asked.match(/Channel \[[^\n]{0,80}/) || [''])[0]);
+    assert.ok(asked.length < 60000, 'the CSV was not pasted in: ' + asked.length);
+    return r.say;
+  });
+  let ctDoc = null;
+  await step('365 room: given the ratios, Wren computes by code, the app draws the charts and the document carries them', async () => {
+    const code = `function analyse(tables, h) { const rows = tables["Raw data loggers combined"]; const ratio = { "11 Keg Plant": 200, "No.1 Packaging plant": 200, "No.1 Incomer": 400, "CHP": 100 }; const recs = rows.map(r => ({ ch: r.Channel, ms: h.date(r.Date, r.Time), kva: 1.732 * 11 * h.num(r.Average) * (ratio[r.Channel] || 1) / 1000 })).filter(r => !isNaN(r.ms) && !isNaN(r.kva)); const chans = [...new Set(recs.map(r => r.ch))]; const days = [...new Set(recs.map(r => h.dayOf(r.ms)))]; const g = h.groupBy(recs, r => r.ch + "|" + h.dayOf(r.ms)); const daily = { id: "daily", title: "Daily average (kVA)", headers: ["Date", ...chans], rows: days.map(d => [d, ...chans.map(c => h.round(h.mean((g.get(c + "|" + d) || []).map(r => r.kva))))]) }; const byHour = h.groupBy(recs, r => r.ch + "|" + h.hourOf(r.ms)); return { facts: { "Channels": chans.length, "Days": days.length }, tables: [daily], charts: [{ id: "all", title: "All circuits", type: "line", x: days, yLabel: "kVA", series: chans.map(c => ({ name: c, values: days.map(d => h.mean((g.get(c + "|" + d) || []).map(r => r.kva))) })) }, { id: "hour", title: "By hour", type: "line", x: Array.from({ length: 24 }, (_, i) => i + ":00"), yLabel: "kVA", series: chans.map(c => ({ name: c, values: Array.from({ length: 24 }, (_, hh) => h.mean((byHour.get(c + "|" + hh) || []).map(r => r.kva))) })) }] }; }`;
+    global.__o365 = [
+      { say: 'Running the numbers with those ratios.', analysis: { code } },
+      (user) => { assert.ok(/THE APP RAN YOUR ANALYSIS\. RESULTS:/.test(user) && /TABLE id=daily/.test(user) && /FIGURE id=all/.test(user), 'Wren was given the results: ' + (user.match(/THE APP RAN YOUR ANALYSIS AND IT FAILED:[^]{0,600}/) || [user.slice(-300)])[0]); return JSON.stringify({ say: 'Done: the report has the daily table and two figures.', document: { documentTitle: 'CT Load Monitoring Report', projectDetails: [{ label: 'Supply voltage', value: '11 kV' }], sections: [{ content: [{ type: 'heading1', text: 'Key findings' }, { type: 'paragraph', text: 'Four circuits were logged over 19 days.' }, { type: 'heading1', text: 'Daily averages' }, { type: 'table', id: 'daily' }, { type: 'heading1', text: 'Charts' }, { type: 'paragraph', text: 'All circuits over the logging period.' }, { type: 'figure', id: 'all', caption: 'All circuits over time (kVA)' }, { type: 'figure', id: 'hour', caption: 'Average load by hour of day' }] }] } }); }
+    ];
+    const r = await call('o365:chat', { jobId: job2.id, role: 'word', text: 'Ratios: Keg 200/5, Packaging 200/5, Incomer 400/5, CHP 100/5. Everything outgoing except the incomer and CHP.' });
+    assert.ok(r.path && fs.existsSync(r.path), 'document saved: ' + JSON.stringify(r)); assert.strictEqual(r.figures, 2); assert.ok(/Done/.test(r.say));
+    const JSZip = require('jszip'); const z = await JSZip.loadAsync(fs.readFileSync(r.path)); const media = Object.keys(z.files).filter(n => /^word\/media\//.test(n) && !z.files[n].dir); assert.ok(media.length >= 3, 'logo + 2 figures in the docx: ' + media.join(', '));
+    const xml = await z.file('word/document.xml').async('string'); assert.ok(/Figure 1: All circuits over time \(kVA\)/.test(xml) && /Figure 2: Average load by hour of day/.test(xml), 'captions numbered'); assert.ok(/Daily average|19\/10\/2026/.test(xml.replace(/<[^>]+>/g, '')), 'the computed table is in the document');
+    const T = await call('o365:thread', { jobId: job2.id, role: 'word' }); assert.strictEqual(T.messages.length, 4, 'two turns kept: ' + T.messages.length); assert.strictEqual(T.file, r.path);
+    ctDoc = r.path; return path.basename(r.path);
+  });
+  await step('365 room: "change the title" edits the same document, and the one-shot Make surfaces a question as the error', async () => {
+    global.__o365 = [(user) => { assert.ok(/THE DOCUMENT YOU MADE LAST/.test(user) && /CT Load Monitoring Report/.test(user), 'Wren sees the last document'); assert.ok(/ANALYSIS RESULTS FROM EARLIER/.test(user), 'and the earlier results'); return JSON.stringify({ say: 'Retitled it.', document: { documentTitle: 'CT Load Survey Report', projectDetails: [], sections: [{ content: [{ type: 'heading1', text: 'Key findings' }, { type: 'paragraph', text: 'Retitled.' }, { type: 'figure', id: 'all', caption: 'All circuits' }] }] } }); }];
+    const r = await call('o365:chat', { jobId: job2.id, role: 'word', text: 'Change the title to CT Load Survey Report' });
+    assert.strictEqual(r.path, ctDoc, 'the same file is changed, not a new one'); assert.strictEqual(r.title, 'CT Load Survey Report');
+    global.__o365 = [{ say: 'Which drawings should the register list? None are attached.' }];
+    let err = ''; try { await call('o365:word', { jobId: job2.id, request: 'Write the drawing register' }); } catch (e) { err = e.message; } assert.ok(/None are attached/.test(err), 'the one-shot call reports the question: ' + err);
+    const T = await call('o365:thread', { jobId: job2.id, role: 'word' }); assert.strictEqual(T.messages.length, 6, 'the one-shot call did not touch the room conversation');
+  });
+  await step('365 room: a text file over the limit is reported as cut, to Wren and to Tom', async () => {
+    global.__o365 = [{ say: 'The notes file was cut by the app; send it in two parts.' }];
+    const r = await call('o365:chat', { jobId: job2.id, role: 'word', text: 'Write up these notes', files: [{ name: 'notes.txt', base64: Buffer.from('x'.repeat(50000)).toString('base64') }], fresh: true });
+    assert.ok(r.warnings.some(w => /notes\.txt is 50,000 characters/.test(w)), JSON.stringify(r.warnings)); assert.ok(/CUT: 50000 characters/.test(global.__o365Asked), 'Wren told');
   });
   console.log(process.exitCode ? 'E2E FAILED' : 'e2e northwich ok'); fs.rmSync(TMP, { recursive: true, force: true }); process.exit(process.exitCode || 0);
 })().catch(e => { console.error('E2E ERROR', e); process.exit(1); });

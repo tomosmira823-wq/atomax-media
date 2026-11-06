@@ -77,18 +77,33 @@ const WORD_SYSTEM = (base) => `You are Wren, the Word agent in the Atomax-UK 365
 function register({ ipcMain, claudeFull, BIZ, checker, userDir, projects }) {
   const wrap = (fn) => async (_e, a) => { try { return await fn(a || {}); } catch (e) { throw new Error(require('./runs').plain(e)); } };
   const IMG = /\.(png|jpe?g|gif|webp)$/i;
-  // attached files -> Claude content: spreadsheets and documents as text, PDFs and pictures as themselves
-  function filesToContent(files) {
+  // attached files -> Claude content: data (CSV, big workbooks) as a profile with the full table kept for the analysis code, documents
+  // as text, PDFs and pictures as themselves. Nothing is cut without saying so: a text file over the limit is reported, not trimmed quietly
+  const DT = require('./datatable');
+  const TEXT_CAP = 40000;
+  function filesToContent(files, tables = {}, warnings = []) {
     const content = [];
+    if ((files || []).length > 8) warnings.push(`Only the first 8 files are read; ${files.length - 8} left out: ${files.slice(8).map(f => f.name).join(', ')}`);
     for (const f of (files || []).slice(0, 8)) {
-      const buf = Buffer.from(f.base64, 'base64'), ext = path.extname(f.name).toLowerCase();
+      const buf = Buffer.from(f.base64, 'base64'), ext = path.extname(f.name).toLowerCase(), name = DT.tableName(f.name);
       try {
-        if (ext === '.xlsx' || ext === '.xlsm') content.push({ type: 'text', text: `ATTACHED WORKBOOK ${f.name}:\n` + checker.sheetsAsText(checker.readXlsx(buf), 40000) });
+        if (ext === '.xlsx' || ext === '.xlsm') {
+          const sheets = checker.readXlsx(buf); const big = sheets.filter(sh => (sh.rows || []).length > 60);
+          if (big.length) { for (const sh of sheets) { const t = DT.fromSheet(sh); if (!t.rows.length) continue; const key = sheets.length > 1 ? `${name} / ${sh.name}` : name; tables[key] = t; content.push({ type: 'text', text: `ATTACHED WORKBOOK ${f.name}, sheet "${sh.name}" (given as a table profile; the full table is available to analysis code as tables["${key}"]):\n${DT.profile(t, key)}` }); } }
+          else content.push({ type: 'text', text: `ATTACHED WORKBOOK ${f.name}:\n` + checker.sheetsAsText(sheets, TEXT_CAP) });
+        }
+        else if (ext === '.csv' || ext === '.tsv') { const t = DT.parseDelimited(buf.toString('utf8')); tables[name] = t; content.push({ type: 'text', text: `ATTACHED DATA ${f.name} (given as a table profile, not row by row; the full table of ${t.rows.length} rows is available to analysis code as tables["${name}"]):\n${DT.profile(t, name)}` }); }
         else if (ext === '.pdf') { content.push({ type: 'text', text: 'Attached: ' + f.name }); content.push(checker.contentBlock('pdf', f.name, buf)); }
         else if (IMG.test(f.name)) { content.push({ type: 'text', text: 'Attached: ' + f.name }); content.push(checker.contentBlock('image', f.name, buf)); }
         else if (ext === '.docx') { const tmp = path.join(userDir(), 'tmp-' + Date.now() + '.docx'); fs.writeFileSync(tmp, buf); const t = projects.extract(tmp); fs.unlinkSync(tmp); content.push({ type: 'text', text: `ATTACHED DOCUMENT ${f.name}:\n${t}` }); }
-        else content.push({ type: 'text', text: `ATTACHED ${f.name}:\n` + buf.toString('utf8').slice(0, 40000) });
-      } catch (e) { content.push({ type: 'text', text: `(${f.name} could not be read: ${e.message})` }); }
+        else {
+          const t = buf.toString('utf8');
+          if (t.length > TEXT_CAP) {
+            warnings.push(f.name + ' is ' + t.length.toLocaleString() + ' characters; only the first ' + TEXT_CAP.toLocaleString() + ' were read');
+            content.push({ type: 'text', text: 'ATTACHED ' + f.name + ' (CUT: ' + t.length + ' characters, the first ' + TEXT_CAP + ' follow; say so if the rest matters):\n' + t.slice(0, TEXT_CAP) });
+          } else content.push({ type: 'text', text: 'ATTACHED ' + f.name + ':\n' + t });
+        }
+      } catch (e) { warnings.push(`${f.name} could not be read: ${e.message}`); content.push({ type: 'text', text: `(${f.name} could not be read: ${e.message})` }); }
     }
     return content;
   }
@@ -99,46 +114,129 @@ function register({ ipcMain, claudeFull, BIZ, checker, userDir, projects }) {
     let p = path.join(dir, safe + ext), i = 2; while (fs.existsSync(p)) p = path.join(dir, `${safe} (${i++})${ext}`);
     return p;
   };
-  // ask Claude, with room and one retry when the reply is cut off
-  async function ask(system, who, skills, content, max = 16000, run = '') {
-    let r = await claudeFull({ system, who, skills, maxTokens: max, messages: [{ role: 'user', content }], run });
-    if (r.stop === 'max_tokens') r = await claudeFull({ run, system: system + '\nBe concise.', who, skills, maxTokens: max * 2, messages: [{ role: 'user', content }] });
-    return { spec: dxfmaker.parseReply(r.text), cut: r.stop === 'max_tokens' };
-  }
 
+
+  // ---------- the 365 room chat: Wren and Lex talk to Tom, say what is wrong or missing, and change what they made ----------
+  const AN = require('./analysis'), CH = require('./charts');
+  const threadsFile = () => path.join(userDir(), 'o365-threads.json');
+  const loadThreads = () => { try { return JSON.parse(fs.readFileSync(threadsFile(), 'utf8')); } catch { return {}; } };
+  const saveThreads = (t) => { try { fs.writeFileSync(threadsFile(), JSON.stringify(t)); } catch {} };
+  const tablesDir = (key) => path.join(userDir(), 'o365-tables', key.replace(/[^A-Za-z0-9_-]+/g, '_'));
+  const CHAT_RULES = (who, what) => `You are talking to Tom in the 365 room of the Atomax Media Office app; this is a chat, and the ${what} you make lands in the job folder. Short, plain British English, like a colleague across the desk.
+RULES:
+- If anything you need is missing, cut, unclear or contradictory (a schedule not attached, a file the app says it CUT, a matching to confirm, a ratio you were not given), STOP and say so in "say": ask the question, name the file or value you need. Never write a ${what} around a gap and never fill it with TBC when Tom could simply tell you.
+- Data files come as a table profile, not rows. You never compute figures by hand from a profile: when the ${what} needs numbers, totals, averages, peaks, gaps or charts from attached data, reply with "analysis" code (see ANALYSIS CODE); the app runs it over the whole table and comes back with the results, then you write the ${what} from those results.
+- When Tom asks for a change to the ${what} you made, return the whole ${what} again with the change made, and say in "say" what you changed.
+- "say" is always present: one to four short sentences. Never JSON inside "say".
+Reply with JSON only, no markdown, ONE of:
+  {"say":"question or problem"}
+  {"say":"what you are computing","analysis":{"code":"function analyse(tables, h) { ... return {facts, tables, charts}; }"}}
+  ${who === 'word' ? '{"say":"what you did","document":{"documentTitle":"","projectDetails":[{"label":"","value":""}],"sections":[{"content":[ nodes ]}]}}' : '{"say":"what you did","workbook":{"filename":"","summary":"","sheets":[{"name":"","columns":[{"header":""}],"rows":[[]]}]}}'}
+${who === 'word' ? 'Document nodes may also be {"type":"table","id":"<analysis table id>"} (the whole computed table goes in) and {"type":"figure","id":"<analysis chart id>","caption":"what the figure shows"} (the chart drawn by the app, page width, captioned "Figure n: ..." in order). Put a heading or a sentence before each table and figure. Do not retype computed numbers into dataTable nodes: use table nodes.' : 'A sheet may be {"name":"","fromTable":"<analysis table id>"} to take a computed table whole.'}
+${AN.GUIDE}`;
+
+  const recentText = (thread) => (thread.messages || []).slice(-14).map(m => `${m.who === 'tom' ? 'TOM' : m.who.toUpperCase()}: ${m.text}${m.files && m.files.length ? ` [attached: ${m.files.join(', ')}]` : ''}${m.doc ? ` [made: ${m.doc}]` : ''}`).join('\n');
+  const parse = (text) => { try { return dxfmaker.parseReply(text); } catch { return null; } };
+
+  // one turn of the chat. role: 'word' | 'excel'
+  async function chatTurn({ jobId = '', role = 'word', text = '', files = [], skills, prepared = '', run = '', fresh = false, keyOverride = '' }) {
+    const who = role === 'word' ? 'Wren' : 'Lex', what = role === 'word' ? 'document' : 'workbook';
+    if (!String(text).trim() && !(files || []).length) throw new Error(`Say what ${who} should do`);
+    const d = BIZ.data(), job = jobId && d.jobs.find(j => j.id === jobId);
+    const key = keyOverride || `${role}:${jobId || 'nojob'}`, T = loadThreads(); if (fresh || !T[key]) T[key] = { messages: [], tables: [] };
+    const thread = T[key];
+    const warnings = [], tables = {};
+    // tables attached earlier in this conversation stay available
+    try { for (const n of thread.tables || []) { const f = path.join(tablesDir(key), n + '.json'); if (fs.existsSync(f)) tables[n] = JSON.parse(fs.readFileSync(f, 'utf8')); } } catch {}
+    const fileContent = filesToContent(files, tables, warnings);
+    for (const [n, t] of Object.entries(tables)) { if (!(thread.tables || []).includes(n)) { fs.mkdirSync(tablesDir(key), { recursive: true }); fs.writeFileSync(path.join(tablesDir(key), n + '.json'), JSON.stringify(t)); thread.tables = [...(thread.tables || []), n]; } }
+    thread.messages.push({ who: 'tom', text: String(text).trim(), files: (files || []).map(f => f.name), at: new Date().toISOString() });
+    const base = role === 'word' ? WORD_SYSTEM(biz.DOC_SYSTEM('report')) : EXCEL_SYSTEM;
+    const system = `${base}\n\n${CHAT_RULES(role, what)}` + (job ? '\n\n' + BIZ.contextFor(job.id, who) : '');
+    const history = recentText({ messages: thread.messages.slice(0, -1) });
+    const content = [];
+    if (history) content.push({ type: 'text', text: `THE CONVERSATION SO FAR:\n${history}` });
+    if (thread.lastSpec) content.push({ type: 'text', text: `THE ${what.toUpperCase()} YOU MADE LAST (change it when asked, return it whole):\n${JSON.stringify(thread.lastSpec).slice(0, 60000)}` });
+    if (thread.lastResults) content.push({ type: 'text', text: `ANALYSIS RESULTS FROM EARLIER (tables and figures you may use by id):\n${AN.describe(thread.lastResults).slice(0, 30000)}` });
+    if (warnings.length) content.push({ type: 'text', text: `THE APP SAYS: ${warnings.join('; ')}` });
+    // cable schedules get the cable datasheets from the File Room
+    if (role === 'excel' && /cable schedule|schedule of cables|\bcables?\b/i.test(text)) { try { const lib = require('./library'); for (const i of lib.list('datasheets').filter(x => x.on && /\.pdf$/i.test(x.file)).slice(0, 5)) { content.push({ type: 'text', text: 'CABLE DATASHEET: ' + i.name }); content.push(checker.contentBlock('pdf', i.file, fs.readFileSync(lib.pathOf('datasheets', i.file)))); } } catch {} }
+    content.push(...fileContent, { type: 'text', text: `TOM: ${String(text).trim() || '(files attached)'}` });
+    const tell = (msg) => { if (run) try { require('./runs').stage(run, msg); } catch {} };
+
+    const askModel = async (extra) => { const r = await claudeFull({ system, who: role, skills, maxTokens: 16000, messages: [{ role: 'user', content: [...content, ...extra] }], run }); return { reply: parse(r.text), raw: r.text, cut: r.stop === 'max_tokens' }; };
+    tell(`${who} is reading`);
+    let { reply, raw, cut } = await askModel([]);
+    const norm = (r) => { if (!r || typeof r !== 'object') return null; if (Array.isArray(r.sections)) return { say: r.say || '', document: r }; if (Array.isArray(r.sheets)) return { say: r.say || r.summary || '', workbook: r }; if (r.code && !r.analysis) return { say: r.say || '', analysis: { code: r.code } }; return r; };   // a bare document, workbook or code is taken as that
+    reply = norm(reply);
+    if (!reply) reply = { say: String(raw || '').slice(0, 1500) || `${who} did not answer.` };
+    let results = null;
+    // analysis: run the code, feed back an error once, then ask for the document from the results
+    for (let attempt = 0; reply.analysis && reply.analysis.code && attempt < 2; attempt++) {
+      tell(`${who} is running the numbers`);
+      try { results = AN.run(reply.analysis.code, Object.fromEntries(Object.entries(tables).map(([k, t]) => [k, DT.objects(t)]))); } catch (e) {
+        if (attempt === 1) { reply = { say: `${reply.say || ''} The analysis failed twice: ${e.message}`.trim() }; break; }
+        ({ reply, raw, cut } = await askModel([{ type: 'text', text: `THE APP RAN YOUR ANALYSIS AND IT FAILED:\n${e.message}\nFix the code and send the analysis again (JSON only).` }])); reply = norm(reply) || { say: raw.slice(0, 1500) }; continue;
+      }
+      thread.lastResults = results;
+      tell(`${who} is writing from the results`);
+      ({ reply, raw, cut } = await askModel([{ type: 'text', text: `THE APP RAN YOUR ANALYSIS. RESULTS:\n${AN.describe(results)}\n\nNow write the ${what} from these results (JSON only). Refer to tables and figures by id; mention the headline numbers in the text.` }]));
+      reply = norm(reply) || { say: raw.slice(0, 1500) };
+    }
+    const out = { say: String(reply.say || '').trim(), warnings, incomplete: cut };
+    const spec = role === 'word' ? reply.document : reply.workbook;
+    if (spec && (role === 'word' ? Array.isArray(spec.sections) : Array.isArray(spec.sheets))) {
+      const R = thread.lastResults || { facts: {}, tables: [], charts: [] };
+      if (role === 'word') {
+        // computed tables and figures into the document
+        const figDir = path.join(userDir(), 'o365-figures', key.replace(/[^A-Za-z0-9_-]+/g, '_')); fs.mkdirSync(figDir, { recursive: true });
+        const pal = CH.palette(R.charts); let fig = 0; const nodes = [];
+        for (const n of (spec.sections[0] && spec.sections[0].content) || []) {
+          if (n.type === 'table') { const t = R.tables.find(x => x.id === String(n.id)); if (t) nodes.push({ type: 'dataTable', headers: t.headers, rows: t.rows }); else nodes.push({ type: 'paragraph', text: `(table ${n.id} was not in the analysis results)` }); }
+          else if (n.type === 'figure') { const c = R.charts.find(x => x.id === String(n.id)); if (!c) { nodes.push({ type: 'paragraph', text: `(figure ${n.id} was not in the analysis results)` }); continue; } fig++; const png = path.join(figDir, `${c.id.replace(/[^A-Za-z0-9_-]+/g, '_')}.png`); tell(`drawing figure ${fig}`); await CH.toPng(CH.svg(c, pal), png); nodes.push({ type: 'image', path: png, imgType: 'png', width: 620, height: 300, caption: `Figure ${fig}: ${n.caption || c.title}` }); }
+          else nodes.push(n);
+        }
+        spec.sections = [{ content: nodes }];
+        const j = job || { number: 'TBC', name: '', client: '', drawings: [] };
+        const num = thread.docNumber || (job ? biz.nextDocNumber(d, job) : 'TBC'); thread.docNumber = num;
+        const cfg = biz.docConfig({ kind: 'report', job: j, docNumber: num, revision: 'P01', drafted: spec, prepared, description: 'Draft for review' }); cfg.logoPath = LOGO;
+        let file = thread.lastFile && fs.existsSync(thread.lastFile) ? thread.lastFile : outFile(job && job.id, `${num !== 'TBC' ? num + ' ' : ''}${spec.documentTitle || 'Document'} P01 DRAFT`, '.docx');
+        const buf = await Packer.toBuffer(buildAtomaxDoc(cfg));
+        try { fs.writeFileSync(file, buf); } catch { file = outFile(job && job.id, path.basename(file, '.docx'), '.docx'); fs.writeFileSync(file, buf); }   // open in Word: a new copy beside it
+        out.path = file; out.title = spec.documentTitle || ''; out.docNumber = num; out.figures = fig;
+        out.outline = nodes.filter(n => /^heading/.test(n.type)).map(n => (n.type === 'heading2' ? '   ' : '') + n.text).slice(0, 40);
+        if (process.platform === 'win32' && /\bpdf\b/i.test(thread.messages.map(m => m.text).join(' '))) { try { tell('Word is making the PDF'); const pdf = file.replace(/\.docx$/i, '.pdf'); await require('./officepdf').toPdf(file, pdf); out.pdf = pdf; } catch (e) { out.say += ` (The PDF did not come out of Word: ${e.message})`; } }
+        thread.lastSpec = { documentTitle: spec.documentTitle, projectDetails: spec.projectDetails, sections: [{ content: ((reply.document.sections[0] || {}).content || []) }] }; thread.lastFile = file;
+        BIZ.log({ who, action: thread.messages.some(m => m.doc) ? 'Changed a document' : 'Wrote a document', jobId: job ? job.id : '', detail: path.basename(file) + (fig ? ` · ${fig} figure${fig === 1 ? '' : 's'}` : '') });
+      } else {
+        const sheets = spec.sheets.map(sh => { if (sh.fromTable) { const t = R.tables.find(x => x.id === String(sh.fromTable)); if (t) return { name: sh.name || t.title || t.id, columns: t.headers.map(h => ({ header: h })), rows: t.rows }; } return sh; }).filter(sh => Array.isArray(sh.rows));
+        let file = thread.lastFile && fs.existsSync(thread.lastFile) ? thread.lastFile : outFile(job && job.id, spec.filename || (job ? job.number + ' workbook' : 'Workbook'), '.xlsx', /schedule|register|list|index/i.test(text + ' ' + (spec.filename || '')) ? 'schedules' : /calc/i.test(text) ? 'calcs' : 'documents');
+        const buf = writeXlsx(sheets); try { fs.writeFileSync(file, buf); } catch { file = outFile(job && job.id, path.basename(file, '.xlsx'), '.xlsx'); fs.writeFileSync(file, buf); }
+        out.path = file; out.summary = spec.summary || ''; out.sheets = sheets.map(sh => ({ name: sh.name, rows: (sh.rows || []).length })); const s0 = sheets[0] || { columns: [], rows: [] }; out.preview = { columns: (s0.columns || []).map(c => c.header), rows: (s0.rows || []).slice(0, 25) };
+        thread.lastSpec = spec; thread.lastFile = file;
+        BIZ.log({ who, action: thread.messages.some(m => m.doc) ? 'Changed a workbook' : 'Made a workbook', jobId: job ? job.id : '', detail: path.basename(file) + ' · ' + (spec.summary || '') });
+      }
+    }
+    if (!out.say) out.say = out.path ? `Saved ${path.basename(out.path)}.` : `${who} did not say anything.`;
+    thread.messages.push({ who: role === 'word' ? 'wren' : 'lex', text: out.say, doc: out.path ? path.basename(out.path) : '', at: new Date().toISOString() });
+    if (keyOverride) delete T[key]; saveThreads(T);
+    return { ...out, messages: thread.messages.slice(-40) };
+  }
+  ipcMain.handle('o365:chat', wrap((a) => chatTurn(a)));
+  ipcMain.handle('o365:thread', wrap(({ jobId = '', role = 'word' }) => { const T = loadThreads(), t = T[`${role}:${jobId || 'nojob'}`]; return { messages: t ? t.messages.slice(-40) : [], file: t && t.lastFile && fs.existsSync(t.lastFile) ? t.lastFile : '' }; }));
+  ipcMain.handle('o365:newThread', wrap(({ jobId = '', role = 'word' }) => { const T = loadThreads(); delete T[`${role}:${jobId || 'nojob'}`]; saveThreads(T); return { ok: true }; }));
+
+  // the one-shot calls (the Deliverables tab's Make for a Wren or Lex row) go through the same engine: a question or a problem comes
+  // back as the run's error, in the agent's own words, instead of a document written around it
   ipcMain.handle('o365:excel', wrap(async ({ jobId = '', request = '', files = [], skills, run = '' }) => {
     if (!request.trim()) throw new Error('Say what Lex should make');
-    const job = jobId && BIZ.data().jobs.find(j => j.id === jobId);
-    const system = EXCEL_SYSTEM + (job ? '\n\n' + BIZ.contextFor(job.id, 'Lex') : '');
-    // cable schedules get the cable datasheets from the File Room
-    const extra = [];
-    if (/cable schedule|schedule of cables|\bcables?\b/i.test(request)) {
-      try { const lib = require('./library'); for (const i of lib.list('datasheets').filter(x => x.on && /\.pdf$/i.test(x.file)).slice(0, 5)) { extra.push({ type: 'text', text: 'CABLE DATASHEET: ' + i.name }); extra.push(checker.contentBlock('pdf', i.file, fs.readFileSync(lib.pathOf('datasheets', i.file)))); } } catch {}
-    }
-    const { spec, cut } = await ask(system, 'excel', skills, [...extra, ...filesToContent(files), { type: 'text', text: 'REQUEST: ' + request }], 16000, run);
-    if (!Array.isArray(spec.sheets) || !spec.sheets.length) throw new Error('Lex did not return a workbook');
-    const file = outFile(job && job.id, spec.filename || (job ? job.number + ' workbook' : 'Workbook'), '.xlsx', /schedule|register|list|index/i.test(request + ' ' + (spec.filename || '')) ? 'schedules' : /calc/i.test(request) ? 'calcs' : 'documents');
-    fs.writeFileSync(file, writeXlsx(spec.sheets));
-    BIZ.log({ who: 'Lex', action: 'Made a workbook', jobId: job ? job.id : '', detail: path.basename(file) + ' · ' + (spec.summary || '') });
-    const s0 = spec.sheets[0];
-    return { path: file, summary: spec.summary || '', incomplete: cut, sheets: spec.sheets.map(s => ({ name: s.name, rows: (s.rows || []).length })), preview: { columns: (s0.columns || []).map(c => c.header), rows: (s0.rows || []).slice(0, 25) } };
+    const r = await chatTurn({ jobId, role: 'excel', text: request, files, skills, run, fresh: true, keyOverride: `once:excel:${jobId}:${Date.now()}` });
+    if (!r.path) throw new Error(r.say); return r;
   }));
-
   ipcMain.handle('o365:word', wrap(async ({ jobId = '', request = '', files = [], skills, prepared = '', run = '' }) => {
     if (!request.trim()) throw new Error('Say what Wren should write');
-    const d = BIZ.data(), job = jobId && d.jobs.find(j => j.id === jobId);
-    const system = WORD_SYSTEM(biz.DOC_SYSTEM('report')) + (job ? '\n\n' + BIZ.contextFor(job.id, 'Wren') : '');
-    const { spec, cut } = await ask(system, 'word', skills, [...filesToContent(files), { type: 'text', text: 'REQUEST: ' + request }], 16000, run);
-    if (!Array.isArray(spec.sections)) throw new Error('Wren did not return a document');
-    const j = job || { number: 'TBC', name: '', client: '', drawings: [] };
-    const num = job ? biz.nextDocNumber(d, job) : 'TBC';
-    const cfg = biz.docConfig({ kind: 'report', job: j, docNumber: num, revision: 'P01', drafted: spec, prepared, description: 'Draft for review' });
-    cfg.logoPath = LOGO;
-    const file = outFile(job && job.id, `${num !== 'TBC' ? num + ' ' : ''}${spec.documentTitle || 'Document'} P01 DRAFT`, '.docx');
-    fs.writeFileSync(file, await Packer.toBuffer(buildAtomaxDoc(cfg)));
-    BIZ.log({ who: 'Wren', action: 'Wrote a document', jobId: job ? job.id : '', detail: path.basename(file) });
-    const nodes = (spec.sections[0] && spec.sections[0].content) || [];
-    return { path: file, incomplete: cut, title: spec.documentTitle || '', outline: nodes.filter(n => /^heading/.test(n.type)).map(n => (n.type === 'heading2' ? '   ' : '') + n.text).slice(0, 40), docNumber: num };
+    const r = await chatTurn({ jobId, role: 'word', text: request, files, skills, prepared, run, fresh: true, keyOverride: `once:word:${jobId}:${Date.now()}` });
+    if (!r.path) throw new Error(r.say); return r;
   }));
 }
 

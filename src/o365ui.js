@@ -1,13 +1,15 @@
-// The 365 room panel: Lex (Excel) and Wren (Word). Pick the job (its folder is where they read and save), say what to make, drop files, tick skills, go.
+// The 365 room: a chat with Lex (Excel) or Wren (Word), one conversation per agent and job. Tom says what he wants and drops files; the
+// agent answers in the chat: a question when something is missing, what it computed, what it made (with the file to open), and it
+// changes the last file when asked. Pick the job (its folder is where they read and save), say what to make, drop files, send.
 import { renderSkillPicker } from './skillpicker.js';
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const clean = (e) => String(e && e.message || e).replace(/^Error invoking remote method '[^']+': (Error: )?/, '');
-const WHO = { excel: { name: 'Lex', what: 'workbook', ph: 'e.g. A cable schedule from the attached drawings list: cable no, from, to, type, size, length, with a total length row' }, word: { name: 'Wren', what: 'document', ph: "e.g. Turn Ada's technical note into an Atomax report for the client, with a summary and the results table" } };
+const WHO = { excel: { name: 'Lex', what: 'workbook', ph: 'e.g. A cable schedule from the attached drawings list: cable no, from, to, type, size, length, with a total length row' }, word: { name: 'Wren', what: 'document', ph: "e.g. An Atomax CT load monitoring report from the attached logger CSV and circuit schedule: kVA tables, charts, gaps in logging. Check the channel matching with me first." } };
 
 export function initO365UI({ api, office, bizUI, getAgents, goBack }) {
   const panel = $('#o365Panel');
-  let role = 'excel', files = [], picker = null, busy = false;
+  let role = 'excel', files = [], picker = null, busy = false, lastFile = '';
   const agentOf = () => (getAgents() || []).find(a => a.role === role && a.enabled);
   const readFile = (f) => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res({ name: f.name, base64: String(r.result).split(',')[1] || '' }); r.onerror = rej; r.readAsDataURL(f); });
   const renderFiles = () => { $('#o3Files').innerHTML = files.map((f, i) => `<span class="o3f">${esc(f.name)} <button data-rm="${i}">×</button></span>`).join(''); $('#o3Files').querySelectorAll('[data-rm]').forEach(b => b.onclick = (e) => { e.stopPropagation(); files.splice(+b.dataset.rm, 1); renderFiles(); }); };
@@ -22,44 +24,56 @@ export function initO365UI({ api, office, bizUI, getAgents, goBack }) {
     if (!jobId) { box.innerHTML = 'No job: saved in the app\'s own 365 folder. Pick a job to read and save in its project folder.'; return; }
     try { const info = await api.proj.info({ jobId }); box.innerHTML = info.folder ? `Reads and saves in <span class="bp">${esc(info.folder)}</span>` : 'This job has no project folder yet: link one on the whiteboard (job page).'; } catch (e) { box.textContent = clean(e); }
   }
-  $('#o3Job').addEventListener('change', showFolder);
+  $('#o3Job').addEventListener('change', () => { showFolder(); loadThread(); });
+
+  const bubble = (m) => `<div class="elim ${m.who}"><b>${m.who === 'tom' ? 'You' : WHO[role].name}</b><div>${esc(m.text).replace(/\n/g, '<br>')}${m.files && m.files.length ? `<div class="bsub" style="margin-top:4px">${esc(m.files.join(', '))}</div>` : ''}${m.doc ? `<div class="elidone"><span>${esc(m.doc)}</span></div>` : ''}</div></div>`;
+  function renderLog(messages, thinking = '') {
+    const log = $('#o3Log'); log.innerHTML = (messages || []).map(bubble).join('') + (thinking ? `<div class="elim ${role === 'word' ? 'wren' : 'lex'} thinking"><b>${WHO[role].name}</b><div>${esc(thinking)}</div></div>` : '');
+    log.scrollTop = log.scrollHeight;
+    $('#o3Out').innerHTML = lastFile ? `<button id="o3Show" class="btn small">Show ${esc(lastFile.split(/[\\/]/).pop())} in folder</button>` : '';
+    if ($('#o3Show')) $('#o3Show').onclick = () => api.showItem(lastFile);
+  }
+  async function loadThread() {
+    try { const t = await api.o365.thread({ jobId: $('#o3Job').value, role }); lastFile = t.file || ''; renderLog(t.messages); } catch (e) { $('#o3Err').textContent = clean(e); }
+  }
 
   async function setRole(r) {
     role = r;
     document.querySelectorAll('#o3Mode button').forEach(b => b.classList.toggle('on', b.dataset.role === r));
     $('#o3Who').textContent = WHO[r].name; $('#o3Req').placeholder = WHO[r].ph; $('#o3Title').textContent = `${WHO[r].name} · ${r === 'excel' ? 'Excel' : 'Word'}`;
-    $('#o3Go').textContent = `Make the ${WHO[r].what}`; $('#o3Out').innerHTML = ''; $('#o3Err').textContent = '';
+    $('#o3Err').textContent = ''; lastFile = '';
     picker = await renderSkillPicker(api, $('#o3Skills'), r);
+    await loadThread();
   }
   document.querySelectorAll('#o3Mode button').forEach(b => b.addEventListener('click', () => setRole(b.dataset.role)));
 
-  async function go() {
+  async function send() {
     if (busy) return;
-    const request = $('#o3Req').value.trim(); if (!request) { $('#o3Err').textContent = `Say what ${WHO[role].name} should make.`; return; }
-    busy = true; $('#o3Err').textContent = ''; $('#o3Out').innerHTML = ''; $('#o3Run').hidden = false; $('#o3Go').disabled = true;
-    $('#o3Msg').textContent = `${WHO[role].name} is working on it`;
-    const ag = agentOf(); if (ag) office.setState(ag.id, 'working', 'making a ' + WHO[role].what);
+    const text = $('#o3Req').value.trim(); if (!text && !files.length) { $('#o3Err').textContent = `Say what ${WHO[role].name} should do.`; return; }
+    busy = true; $('#o3Err').textContent = ''; $('#o3Run').hidden = false; $('#o3Go').disabled = true; $('#o3Msg').textContent = `${WHO[role].name} is on it`;
+    const ag = agentOf(); if (ag) office.setState(ag.id, 'working', 'in the 365 room');
+    const sent = { text, files: files.map(f => f.name) };
+    const log = $('#o3Log'); log.insertAdjacentHTML('beforeend', bubble({ who: 'tom', text: sent.text || '(files)', files: sent.files }) + `<div class="elim ${role === 'word' ? 'wren' : 'lex'} thinking"><b>${WHO[role].name}</b><div>reading…</div></div>`); log.scrollTop = log.scrollHeight;
     try {
-      const args = { jobId: $('#o3Job').value, request, files, skills: picker ? picker.selected() : undefined };
-      const r = role === 'excel' ? await api.o365.excel(args) : await api.o365.word(args);
-      const name = r.path.split(/[\\/]/).pop();
-      $('#o3Out').innerHTML = `<div class="headline good" style="margin-top:12px">Saved ${esc(name)}</div>
-        ${r.incomplete ? '<div class="err">It ran out of room and may be incomplete. Try again with a narrower request.</div>' : ''}
-        ${role === 'excel' ? `<div class="hint">${esc(r.summary)} · ${r.sheets.map(s => esc(s.name) + ' (' + s.rows + ' rows)').join(', ')}</div><div class="o3tbl"><table><tr>${r.preview.columns.map(c => `<th>${esc(c)}</th>`).join('')}</tr>${r.preview.rows.map(row => `<tr>${row.map(v => `<td>${esc(v)}</td>`).join('')}</tr>`).join('')}</table></div>`
-          : `<div class="hint">${esc(r.title)} · ${esc(r.docNumber)} P01</div><div class="o3outline">${r.outline.map(h => `<div>${esc(h)}</div>`).join('')}</div>`}
-        <button id="o3Show" class="btn small">Show in folder</button>`;
-      $('#o3Show').onclick = () => api.showItem(r.path);
-      if (ag) office.setState(ag.id, 'done', 'saved ' + name);
-    } catch (e) { $('#o3Err').textContent = clean(e); if (ag) office.setState(ag.id, 'idle'); }
+      const r = await api.o365.chat({ jobId: $('#o3Job').value, role, text, files, skills: picker ? picker.selected() : undefined });
+      $('#o3Req').value = ''; files = []; renderFiles();
+      if (r.path) lastFile = r.path;
+      renderLog(r.messages);
+      if (r.warnings && r.warnings.length) $('#o3Err').textContent = r.warnings.join(' · ');
+      if (r.incomplete) $('#o3Err').textContent += ' It ran out of room and may be incomplete.';
+      if (ag) office.setState(ag.id, r.path ? 'done' : 'idle', r.path ? 'saved ' + r.path.split(/[\\/]/).pop() : '');
+    } catch (e) { $('#o3Err').textContent = clean(e); log.querySelector('.thinking') && log.querySelector('.thinking').remove(); if (ag) office.setState(ag.id, 'idle'); }
     finally { busy = false; $('#o3Run').hidden = true; $('#o3Go').disabled = false; }
   }
-  $('#o3Go').addEventListener('click', go);
+  $('#o3Go').addEventListener('click', send);
+  $('#o3Req').addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } });
+  $('#o3New').addEventListener('click', async () => { if (busy) return; await api.o365.newThread({ jobId: $('#o3Job').value, role }); lastFile = ''; renderLog([]); });
   $('#o3Back').addEventListener('click', () => goBack());
 
   return {
     async show(r) { panel.classList.add('open'); await bizUI.fillJobSelect($('#o3Job')); await setRole(r || role); showFolder(); },
     hide() { panel.classList.remove('open'); },
-    async preset({ role: r, jobId = '', request = '' }) { await this.show(r); if (jobId) $('#o3Job').value = jobId; if (request) $('#o3Req').value = request; showFolder(); },
+    async preset({ role: r, jobId = '', request = '' }) { await this.show(r); if (jobId) { $('#o3Job').value = jobId; await loadThread(); } if (request) $('#o3Req').value = request; showFolder(); },
     _state: () => ({ role, files: files.length })
   };
 }

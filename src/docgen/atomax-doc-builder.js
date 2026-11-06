@@ -13,7 +13,7 @@
 const {
   Document, Paragraph, TextRun, HeadingLevel, AlignmentType,
   Table, TableRow, TableCell, WidthType, BorderStyle, ShadingType,
-  Header, ImageRun, TableOfContents, PageNumber, LevelFormat,
+  Header, ImageRun, TableOfContents, PageNumber, LevelFormat, TableLayoutType,
   VerticalAlign,
 } = require("docx");
 
@@ -93,22 +93,25 @@ function valueCell(text, widthDXA) {
   });
 }
 
-function headerCell(text, widthDXA, align = AlignmentType.LEFT) {
+function headerCell(text, widthDXA, align = AlignmentType.LEFT, opts = {}) {
   return new TableCell({
     width: { size: widthDXA, type: WidthType.DXA },
     shading: greyShading(),
     verticalAlign: VerticalAlign.CENTER,
-    children: [new Paragraph({ alignment: align, children: [bodyRun(text, { bold: true })] })],
+    margins: opts.tight ? TIGHT_MARGINS : undefined,
+    children: [new Paragraph({ alignment: align, keepNext: opts.keepNext, keepLines: true, children: [bodyRun(text, { bold: true, size: opts.size })] })],
   });
 }
 
-function dataCell(text, widthDXA, align = AlignmentType.LEFT) {
+function dataCell(text, widthDXA, align = AlignmentType.LEFT, opts = {}) {
   return new TableCell({
     width: { size: widthDXA, type: WidthType.DXA },
     verticalAlign: VerticalAlign.CENTER,
-    children: [new Paragraph({ alignment: align, children: [bodyRun(String(text ?? ""))] })],
+    margins: opts.tight ? TIGHT_MARGINS : undefined,
+    children: [new Paragraph({ alignment: align, keepNext: opts.keepNext, keepLines: true, children: [bodyRun(String(text ?? ""), { size: opts.size })] })],
   });
 }
+const TIGHT_MARGINS = { top: 20, bottom: 20, left: 50, right: 50 };
 
 // ---------------------------------------------------------------------------
 // Styles + numbering (fonts, heading sizes/colours, TOC style, heading
@@ -324,14 +327,24 @@ function buildRevisionHistoryTable(rows, totalWidthDXA = 9638, blankRows = 4) {
 
 /** Generic grey-header data table for checklists / test results. */
 function buildDataTable(headers, rows, totalWidthDXA = 9638, colWeights) {
-  const weights = colWeights || headers.map(() => 1 / headers.length);
+  // a wide table (a day-by-circuit matrix) gets a smaller face and tighter cells so the figures stay on one line; the first column
+  // (dates, names) is weighted by its longest value so it does not wrap mid-date
+  const n = headers.length, wide = n > 8, size = n > 12 ? 13 : wide ? 15 : undefined;   // half-points: 6.5pt / 7.5pt
+  let weights = colWeights;
+  if (!weights) {
+    const longest = (i) => Math.max(String(headers[i] || '').length, ...rows.map(r => String(r[i] ?? '').length));
+    const w = headers.map((_, i) => Math.max(wide ? 5 : 4, Math.min(longest(i), wide ? 14 : 40)));
+    if (wide) w[0] = Math.max(w[0], 13);   // a date column keeps its date whole
+    const t = w.reduce((a, b) => a + b, 0); weights = w.map(x => x / t);
+  }
   const widths = weights.map((wt) => Math.round(totalWidthDXA * wt));
   widths[widths.length - 1] = totalWidthDXA - widths.slice(0, -1).reduce((a, b) => a + b, 0);
-  // tableHeader repeats the grey header row on each page a long table spans;
-  // cantSplit stops a single row breaking across a page boundary.
-  const headerRow = new TableRow({ tableHeader: true, cantSplit: true, children: headers.map((h, i) => headerCell(h, widths[i], i === headers.length - 1 ? AlignmentType.LEFT : AlignmentType.LEFT)) });
-  const dataRows = rows.map((r) => new TableRow({ cantSplit: true, children: r.map((c, i) => dataCell(c, widths[i])) }));
-  return new Table({ width: { size: totalWidthDXA, type: WidthType.DXA }, columnWidths: widths, borders: allBorders(), margins: CELL_MARGINS, rows: [headerRow, ...dataRows] });
+  // tableHeader repeats the grey header row on each page a long table spans; cantSplit stops a single row breaking across a page
+  // boundary; a table short enough for one page is kept together (keepNext on every row but the last)
+  const together = rows.length <= 28, opts = (last) => ({ tight: wide, size, keepNext: together && !last });
+  const headerRow = new TableRow({ tableHeader: true, cantSplit: true, children: headers.map((h, i) => headerCell(h, widths[i], AlignmentType.LEFT, opts(false))) });
+  const dataRows = rows.map((r, ri) => new TableRow({ cantSplit: true, children: headers.map((_, i) => dataCell(r[i], widths[i], AlignmentType.LEFT, opts(ri === rows.length - 1))) }));
+  return new Table({ width: { size: totalWidthDXA, type: WidthType.DXA }, columnWidths: widths, layout: TableLayoutType.FIXED, borders: allBorders(), margins: CELL_MARGINS, rows: [headerRow, ...dataRows] });
 }
 
 function buildBulletList(items) {

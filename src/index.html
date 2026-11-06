@@ -496,7 +496,7 @@ body.fp canvas#scene{cursor:grab}
   .jbgroup.jbres { margin-top: 22px; opacity: .7; } .jbgroup.jbres ~ .jbrow:last-child { opacity: .7; }
   .elichat { display: flex; flex-direction: column; gap: 10px; } .elilog { display: flex; flex-direction: column; gap: 8px; max-height: 52vh; overflow: auto; padding: 4px 2px; }
   .elim { max-width: 78%; padding: 8px 12px; border-radius: 12px; background: #111827; font-size: 13.5px; line-height: 1.45; } .elim b { display: block; font-size: 11px; color: var(--muted); margin-bottom: 2px; font-weight: 700; text-transform: uppercase; letter-spacing: .6px; }
-  .elim.tom { align-self: flex-end; background: #1a2540; } .elim.eli { align-self: flex-start; background: #14281d; } .elim.thinking div { color: var(--muted); }
+  .elim.tom { align-self: flex-end; background: #1a2540; } .elim.eli, .elim.wren, .elim.lex { align-self: flex-start; background: #14281d; } .elim.thinking div { color: var(--muted); }
   .elidone { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; } .elidone span { font-size: 11.5px; padding: 2px 8px; border-radius: 999px; background: #1e3a2a; border: 1px solid #2f5a3f; }
   .elibar textarea { flex: 1; font: inherit; padding: 8px 10px; border-radius: 10px; border: 1px solid #2c3850; background: #0f1524; color: var(--text); resize: vertical; }
   .jbwhere { display: block; font-size: 11px; color: var(--muted); margin-bottom: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 150px; }
@@ -758,14 +758,15 @@ body.fp canvas#scene{cursor:grab}
     <div class="seg" id="o3Mode" style="margin-bottom:12px"><button class="on" data-role="excel">Lex · Excel</button><button data-role="word">Wren · Word</button></div>
     <label style="margin-top:0">Job</label><select id="o3Job"><option value="">No job</option></select>
     <div id="o3Folder" class="dmfolder"></div>
-    <label>What should <span id="o3Who">Lex</span> make?</label>
-    <textarea id="o3Req" rows="4"></textarea>
-    <div class="drop" id="o3Drop" style="margin-top:8px"><div class="dz-t">Drop files to work from</div><div class="dz-s">Excel, CSV, Word, PDF, pictures or notes · or click to browse</div><div id="o3Files"></div><input type="file" id="o3File" multiple hidden></div>
-    <div id="o3Skills"></div>
-    <div class="err" id="o3Err" style="margin-top:8px"></div>
-    <button class="btn primary" id="o3Go" style="width:100%;margin-top:10px">Make the workbook</button>
-    <div id="o3Run" hidden style="margin-top:12px"><span class="spinner"></span><div style="margin-top:8px;font-weight:600" id="o3Msg"></div></div>
-    <div id="o3Out"></div>
+    <div class="elichat" style="margin-top:10px">
+      <div class="elilog" id="o3Log"></div>
+      <div id="o3Out"></div>
+      <div class="drop" id="o3Drop" style="margin-top:4px;padding:8px 10px"><div class="dz-s">Drop files for <span id="o3Who">Lex</span> here (Excel, CSV, Word, PDF, pictures) · or click</div><div id="o3Files"></div><input type="file" id="o3File" multiple hidden></div>
+      <div id="o3Skills"></div>
+      <div class="err" id="o3Err"></div>
+      <div class="elibar" style="display:flex;gap:8px;align-items:flex-end"><textarea id="o3Req" rows="3"></textarea><button class="btn primary" id="o3Go">Send</button></div>
+      <div style="display:flex;justify-content:space-between;align-items:center"><div id="o3Run" hidden><span class="spinner"></span> <span id="o3Msg" style="font-weight:600"></span></div><button class="btn small" id="o3New" title="Forget this conversation and start again">New conversation</button></div>
+    </div>
   </div>
 </div>
 
