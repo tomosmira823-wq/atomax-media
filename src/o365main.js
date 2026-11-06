@@ -89,7 +89,7 @@ function register({ ipcMain, claudeFull, BIZ, checker, userDir, projects }) {
       try {
         if (ext === '.xlsx' || ext === '.xlsm') {
           const sheets = checker.readXlsx(buf); const big = sheets.filter(sh => (sh.rows || []).length > 60);
-          if (big.length) { for (const sh of sheets) { const t = DT.fromSheet(sh); if (!t.rows.length) continue; const key = sheets.length > 1 ? `${name} / ${sh.name}` : name; tables[key] = t; content.push({ type: 'text', text: `ATTACHED WORKBOOK ${f.name}, sheet "${sh.name}" (given as a table profile; the full table is available to analysis code as tables["${key}"]):\n${DT.profile(t, key)}` }); } }
+          if (big.length) { for (const sh of sheets) { const t = DT.fromSheet(sh); if (!t.rows.length) continue; const sn = sh.sheet || sh.name || ''; const key = sheets.length > 1 ? `${name} / ${sn}` : name; tables[key] = t; content.push({ type: 'text', text: `ATTACHED WORKBOOK ${f.name}, sheet "${sn}" (given as a table profile; the full table is available to analysis code as tables["${key}"]):\n${DT.profile(t, key)}` }); } }
           else content.push({ type: 'text', text: `ATTACHED WORKBOOK ${f.name}:\n` + checker.sheetsAsText(sheets, TEXT_CAP) });
         }
         else if (ext === '.csv' || ext === '.tsv') { const t = DT.parseDelimited(buf.toString('utf8')); tables[name] = t; content.push({ type: 'text', text: `ATTACHED DATA ${f.name} (given as a table profile, not row by row; the full table of ${t.rows.length} rows is available to analysis code as tables["${name}"]):\n${DT.profile(t, name)}` }); }

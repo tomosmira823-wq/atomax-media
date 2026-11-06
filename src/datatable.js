@@ -25,10 +25,12 @@ function parseDelimited(text) {
   return { columns, rows: rows.slice(1).map(r => columns.map((_, i) => (r[i] === undefined ? '' : String(r[i]).trim()))) };
 }
 
-// a sheet from checker.readXlsx ({ name, rows: [[...]] }) -> the same shape: the first row with 2+ filled cells is the header
+// a sheet from checker.readXlsx ({ sheet, rows: [{ n, c: [...], st }] }, or plain arrays) -> the same shape: the first row with 2+ filled
+// cells is the header
 function fromSheet(sheet) {
-  const rs = (sheet.rows || []).map(r => (r || []).map(v => (v === null || v === undefined ? '' : String(v).trim())));
-  const h = rs.findIndex(r => r.filter(Boolean).length >= 2); if (h < 0) return { columns: [], rows: [] };
+  const rs = (sheet.rows || []).map(r => (Array.isArray(r) ? r : (r && Array.isArray(r.c) ? r.c : [])).map(v => (v === null || v === undefined ? '' : String(v).trim())));
+  // the header: within the first 15 rows, the row with the most filled cells (a title row above a table has one or two)
+  let h = -1, best = 1; rs.slice(0, 15).forEach((r, i) => { const n = r.filter(Boolean).length; if (n > best) { best = n; h = i; } }); if (h < 0) return { columns: [], rows: [] };
   const columns = rs[h].map((c, i) => c || `Column ${i + 1}`);
   return { columns, rows: rs.slice(h + 1).filter(r => r.some(Boolean)).map(r => columns.map((_, i) => r[i] === undefined ? '' : r[i])) };
 }
