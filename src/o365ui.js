@@ -33,8 +33,16 @@ export function initO365UI({ api, office, bizUI, getAgents, goBack }) {
     $('#o3Out').innerHTML = lastFile ? `<button id="o3Show" class="btn small">Show ${esc(lastFile.split(/[\\/]/).pop())} in folder</button>` : '';
     if ($('#o3Show')) $('#o3Show').onclick = () => api.showItem(lastFile);
   }
+  // a turn keeps running when the room is left: coming back shows it still working and picks up the reply when it lands
+  let pollTimer = null;
   async function loadThread() {
-    try { const t = await api.o365.thread({ jobId: $('#o3Job').value, role }); lastFile = t.file || ''; renderLog(t.messages); } catch (e) { $('#o3Err').textContent = clean(e); }
+    clearTimeout(pollTimer);
+    try {
+      const t = await api.o365.thread({ jobId: $('#o3Job').value, role }); lastFile = t.file || '';
+      renderLog(t.messages, t.pending ? (t.pending.stage || 'working') + '…' : '');
+      $('#o3Go').disabled = !!t.pending; $('#o3Run').hidden = !t.pending; if (t.pending) $('#o3Msg').textContent = t.pending.stage || `${WHO[role].name} is on it`;
+      if (t.pending) pollTimer = setTimeout(loadThread, 3000);
+    } catch (e) { $('#o3Err').textContent = clean(e); }
   }
 
   async function setRole(r) {
@@ -48,7 +56,7 @@ export function initO365UI({ api, office, bizUI, getAgents, goBack }) {
   document.querySelectorAll('#o3Mode button').forEach(b => b.addEventListener('click', () => setRole(b.dataset.role)));
 
   async function send() {
-    if (busy) return;
+    if (busy || $('#o3Go').disabled) return;
     const text = $('#o3Req').value.trim(); if (!text && !files.length) { $('#o3Err').textContent = `Say what ${WHO[role].name} should do.`; return; }
     busy = true; $('#o3Err').textContent = ''; $('#o3Run').hidden = false; $('#o3Go').disabled = true; $('#o3Msg').textContent = `${WHO[role].name} is on it`;
     const ag = agentOf(); if (ag) office.setState(ag.id, 'working', 'in the 365 room');
@@ -58,11 +66,11 @@ export function initO365UI({ api, office, bizUI, getAgents, goBack }) {
       const r = await api.o365.chat({ jobId: $('#o3Job').value, role, text, files, skills: picker ? picker.selected() : undefined });
       $('#o3Req').value = ''; files = []; renderFiles();
       if (r.path) lastFile = r.path;
-      renderLog(r.messages);
+      renderLog(r.messages); clearTimeout(pollTimer);
       if (r.warnings && r.warnings.length) $('#o3Err').textContent = r.warnings.join(' · ');
       if (r.incomplete) $('#o3Err').textContent += ' It ran out of room and may be incomplete.';
       if (ag) office.setState(ag.id, r.path ? 'done' : 'idle', r.path ? 'saved ' + r.path.split(/[\\/]/).pop() : '');
-    } catch (e) { $('#o3Err').textContent = clean(e); log.querySelector('.thinking') && log.querySelector('.thinking').remove(); if (ag) office.setState(ag.id, 'idle'); }
+    } catch (e) { $('#o3Err').textContent = clean(e); if (ag) office.setState(ag.id, 'idle'); await loadThread(); }
     finally { busy = false; $('#o3Run').hidden = true; $('#o3Go').disabled = false; }
   }
   $('#o3Go').addEventListener('click', send);

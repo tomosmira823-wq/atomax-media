@@ -340,5 +340,10 @@ const step = (name, fn) => { try { const r = fn(); if (r && r.then) return r.the
     const r = await call('o365:chat', { jobId: job2.id, role: 'word', text: 'Write up these notes', files: [{ name: 'notes.txt', base64: Buffer.from('x'.repeat(50000)).toString('base64') }], fresh: true });
     assert.ok(r.warnings.some(w => /notes\.txt is 50,000 characters/.test(w)), JSON.stringify(r.warnings)); assert.ok(/CUT: 50000 characters/.test(global.__o365Asked), 'Wren told');
   });
+  await step('365 room: a turn that dies lands in the chat as a message, and nothing is left pending', async () => {
+    global.__o365 = [() => { throw new Error('the model fell over'); }];
+    let err = ''; try { await call('o365:chat', { jobId: job2.id, role: 'excel', text: 'a cable list', fresh: true }); } catch (e) { err = e.message; } assert.ok(/fell over/.test(err), err);
+    const T = await call('o365:thread', { jobId: job2.id, role: 'excel' }); assert.strictEqual(T.pending, null); assert.ok(T.messages.length === 2 && /Something went wrong and I stopped: .*fell over/.test(T.messages[1].text), JSON.stringify(T.messages));
+  });
   console.log(process.exitCode ? 'E2E FAILED' : 'e2e northwich ok'); fs.rmSync(TMP, { recursive: true, force: true }); process.exit(process.exitCode || 0);
 })().catch(e => { console.error('E2E ERROR', e); process.exit(1); });

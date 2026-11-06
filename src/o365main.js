@@ -151,6 +151,13 @@ ${AN.GUIDE}`;
     const fileContent = filesToContent(files, tables, warnings);
     for (const [n, t] of Object.entries(tables)) { if (!(thread.tables || []).includes(n)) { fs.mkdirSync(tablesDir(key), { recursive: true }); fs.writeFileSync(path.join(tablesDir(key), n + '.json'), JSON.stringify(t)); thread.tables = [...(thread.tables || []), n]; } }
     thread.messages.push({ who: 'tom', text: String(text).trim(), files: (files || []).map(f => f.name), at: new Date().toISOString() });
+    thread.pending = { since: new Date().toISOString(), stage: `${who} is reading` }; saveThreads(T);   // leaving the room and coming back shows the turn still running
+    const runs = require('./runs'); const R = run ? null : runs.start({ kind: 'chat', who, jobId, no: 'CHAT' }); run = run || R.id;
+    try { return await turnBody(); } catch (e) {
+      const msg = String(e && e.message || e); const T2 = loadThreads(); const th = T2[key] || thread; th.pending = null; th.messages = [...(th.messages || []), { who: role === 'word' ? 'wren' : 'lex', text: `Something went wrong and I stopped: ${msg}`, at: new Date().toISOString() }]; T2[key] = th; if (keyOverride) delete T2[key]; saveThreads(T2);
+      if (R) runs.finish(R.id, { ok: false, error: msg }); throw e;
+    }
+    async function turnBody() {
     const base = role === 'word' ? WORD_SYSTEM(biz.DOC_SYSTEM('report')) : EXCEL_SYSTEM;
     const system = `${base}\n\n${CHAT_RULES(role, what)}` + (job ? '\n\n' + BIZ.contextFor(job.id, who) : '');
     const history = recentText({ messages: thread.messages.slice(0, -1) });
@@ -162,7 +169,7 @@ ${AN.GUIDE}`;
     // cable schedules get the cable datasheets from the File Room
     if (role === 'excel' && /cable schedule|schedule of cables|\bcables?\b/i.test(text)) { try { const lib = require('./library'); for (const i of lib.list('datasheets').filter(x => x.on && /\.pdf$/i.test(x.file)).slice(0, 5)) { content.push({ type: 'text', text: 'CABLE DATASHEET: ' + i.name }); content.push(checker.contentBlock('pdf', i.file, fs.readFileSync(lib.pathOf('datasheets', i.file)))); } } catch {} }
     content.push(...fileContent, { type: 'text', text: `TOM: ${String(text).trim() || '(files attached)'}` });
-    const tell = (msg) => { if (run) try { require('./runs').stage(run, msg); } catch {} };
+    const tell = (msg) => { try { runs.stage(run, msg); } catch {} try { const T3 = loadThreads(); if (T3[key] && T3[key].pending) { T3[key].pending.stage = msg; saveThreads(T3); } } catch {} };
 
     const askModel = async (extra) => { const r = await claudeFull({ system, who: role, skills, maxTokens: 16000, messages: [{ role: 'user', content: [...content, ...extra] }], run }); return { reply: parse(r.text), raw: r.text, cut: r.stop === 'max_tokens' }; };
     tell(`${who} is reading`);
@@ -219,11 +226,14 @@ ${AN.GUIDE}`;
     }
     if (!out.say) out.say = out.path ? `Saved ${path.basename(out.path)}.` : `${who} did not say anything.`;
     thread.messages.push({ who: role === 'word' ? 'wren' : 'lex', text: out.say, doc: out.path ? path.basename(out.path) : '', at: new Date().toISOString() });
-    if (keyOverride) delete T[key]; saveThreads(T);
+    thread.pending = null; if (keyOverride) delete T[key]; saveThreads(T);
+    if (R) runs.finish(R.id, { ok: true });
     return { ...out, messages: thread.messages.slice(-40) };
+    }
   }
-  ipcMain.handle('o365:chat', wrap((a) => chatTurn(a)));
-  ipcMain.handle('o365:thread', wrap(({ jobId = '', role = 'word' }) => { const T = loadThreads(), t = T[`${role}:${jobId || 'nojob'}`]; return { messages: t ? t.messages.slice(-40) : [], file: t && t.lastFile && fs.existsSync(t.lastFile) ? t.lastFile : '' }; }));
+  ipcMain.handle('o365:chat', wrap(async (a) => { const key = `${a.role || 'word'}:${a.jobId || 'nojob'}`; if (LIVE.has(key)) throw new Error('Still working on your last message; wait for the reply.'); LIVE.add(key); try { return await chatTurn(a); } finally { LIVE.delete(key); } }));
+  const LIVE = new Set();   // thread keys with a turn running in this process
+  ipcMain.handle('o365:thread', wrap(({ jobId = '', role = 'word' }) => { const key = `${role}:${jobId || 'nojob'}`, T = loadThreads(), t = T[key]; if (t && t.pending && !LIVE.has(key)) { t.pending = null; t.messages = [...(t.messages || []), { who: role === 'word' ? 'wren' : 'lex', text: 'The app was restarted while I was working on that, so it did not finish. Send it again.', at: new Date().toISOString() }]; saveThreads(T); } return { messages: t ? t.messages.slice(-40) : [], file: t && t.lastFile && fs.existsSync(t.lastFile) ? t.lastFile : '', pending: t && t.pending ? t.pending : null }; }));
   ipcMain.handle('o365:newThread', wrap(({ jobId = '', role = 'word' }) => { const T = loadThreads(); delete T[`${role}:${jobId || 'nojob'}`]; saveThreads(T); return { ok: true }; }));
 
   // the one-shot calls (the Deliverables tab's Make for a Wren or Lex row) go through the same engine: a question or a problem comes
