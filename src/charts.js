@@ -6,9 +6,10 @@ const fs = require('fs'), path = require('path'), os = require('os');
 
 const PALETTE = ['#1f77b4', '#d62728', '#2ca02c', '#ff7f0e', '#9467bd', '#8c564b', '#e377c2', '#17becf', '#bcbd22', '#7f7f7f', '#393b79', '#ad494a', '#637939', '#e6550d', '#3182bd', '#756bb1'];
 // a colour per series name, the same name -> the same colour across every chart of the report
+const baseName = (n) => String(n).replace(/\s*[-–(:]?\s*(average|avg|mean|peak|max(imum)?|min(imum)?|total|daily average|daily peak)\)?\s*(\(kVA\)|\(A\))?\s*$/i, '').trim() || String(n);
 function palette(charts) {
-  const map = new Map(); let i = 0;
-  for (const c of charts) for (const s of c.series || []) if (!map.has(s.name)) map.set(s.name, s.color || PALETTE[i++ % PALETTE.length]);
+  const map = new Map(), byBase = new Map(); let i = 0;
+  for (const c of charts) for (const s of c.series || []) { if (map.has(s.name)) continue; const b = baseName(s.name); if (!byBase.has(b)) byBase.set(b, s.color || PALETTE[i++ % PALETTE.length]); map.set(s.name, s.color || byBase.get(b)); }
   return map;
 }
 const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -46,7 +47,7 @@ function svg(chart, colours, { width = 620, height = 300, scale = 2 } = {}) {
   for (const t of ty.ticks) { const y = Y(t); out.push(`<line x1="${mL}" y1="${y}" x2="${mL + pw}" y2="${y}" stroke="#e6e6e6" stroke-width="${S}"/>`); out.push(`<text x="${mL - 6 * S}" y="${y + 4 * S}" text-anchor="end" fill="#444">${nice(t)}</text>`); }
   // x ticks: at most ~10 labels, evenly thinned; numeric x gets nice ticks
   if (numericX) { const tx = ticks(xMin, xMax, 10); for (const t of tx.ticks) { if (t < xMin - 1e-9 || t > xMax + 1e-9) continue; const px = mL + (t - xMin) / (xMax - xMin) * pw; out.push(`<line x1="${px}" y1="${mT}" x2="${px}" y2="${mT + ph}" stroke="#f0f0f0" stroke-width="${S}"/>`); out.push(`<text x="${px}" y="${mT + ph + 14 * S}" text-anchor="middle" fill="#444">${nice(t)}</text>`); } }
-  else { const every = Math.max(1, Math.ceil(n / 10)); const labels = chart.xTicks || x; for (let i = 0; i < n; i += every) { const px = X(i), lab = labels[i]; if (lab === undefined || lab === '') continue; out.push(`<line x1="${px}" y1="${mT}" x2="${px}" y2="${mT + ph}" stroke="#f0f0f0" stroke-width="${S}"/>`); out.push(`<text x="${px}" y="${mT + ph + 14 * S}" text-anchor="middle" fill="#444">${esc(lab)}</text>`); } }
+  else { const labels = chart.xTicks || x; const longest = Math.max(1, ...labels.slice(0, 400).map(l => String(l ?? '').length)); const fit = Math.max(2, Math.floor(pw / (longest * 6.1 * S * 1.25))); const every = Math.max(1, Math.ceil(n / Math.min(12, fit))); for (let i = 0; i < n; i += every) { const px = X(i), lab = labels[i]; if (lab === undefined || lab === '') continue; const half = String(lab).length * 6.1 * S / 2, anchor = px - half < 2 * S ? 'start' : px + half > W - 2 * S ? 'end' : 'middle'; out.push(`<line x1="${px}" y1="${mT}" x2="${px}" y2="${mT + ph}" stroke="#f0f0f0" stroke-width="${S}"/>`); out.push(`<text x="${px}" y="${mT + ph + 14 * S}" text-anchor="${anchor}" fill="#444">${esc(lab)}</text>`); } }
   out.push(`<line x1="${mL}" y1="${mT}" x2="${mL}" y2="${mT + ph}" stroke="#999" stroke-width="${S}"/>`, `<line x1="${mL}" y1="${mT + ph}" x2="${mL + pw}" y2="${mT + ph}" stroke="#999" stroke-width="${S}"/>`);
   if (chart.yLabel) out.push(`<text transform="translate(${12 * S},${mT + ph / 2}) rotate(-90)" text-anchor="middle" fill="#333">${esc(chart.yLabel)}</text>`);
   if (chart.xLabel) out.push(`<text x="${mL + pw / 2}" y="${H - 8 * S}" text-anchor="middle" fill="#333">${esc(chart.xLabel)}</text>`);

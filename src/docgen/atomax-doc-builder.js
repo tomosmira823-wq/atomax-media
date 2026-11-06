@@ -332,9 +332,11 @@ function buildDataTable(headers, rows, totalWidthDXA = 9638, colWeights) {
   const n = headers.length, wide = n > 8, size = n > 12 ? 13 : wide ? 15 : undefined;   // half-points: 6.5pt / 7.5pt
   let weights = colWeights;
   if (!weights) {
-    const longest = (i) => Math.max(String(headers[i] || '').length, ...rows.map(r => String(r[i] ?? '').length));
+    // a column needs its longest value, or the longest single word of its header (headers wrap, dates and numbers must not)
+    const longestWord = (t) => Math.max(0, ...String(t || '').split(/\s+/).map(w => w.length));
+    const longest = (i) => Math.max(longestWord(headers[i]), ...rows.slice(0, 400).map(r => String(r[i] ?? '').length));
     const w = headers.map((_, i) => Math.max(wide ? 5 : 4, Math.min(longest(i), wide ? 14 : 40)));
-    if (wide) w[0] = Math.max(w[0], 13);   // a date column keeps its date whole
+    if (/date|time/i.test(String(headers[0] || ''))) w[0] = Math.max(w[0], wide ? 13 : 12);   // a date column keeps its date whole
     const t = w.reduce((a, b) => a + b, 0); weights = w.map(x => x / t);
   }
   const widths = weights.map((wt) => Math.round(totalWidthDXA * wt));

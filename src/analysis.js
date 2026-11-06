@@ -61,8 +61,11 @@ const GUIDE = `ANALYSIS CODE: plain JavaScript defining function analyse(tables,
 - tables: an object keyed by file name (without extension); each is an array of row objects keyed by the column headers, every value a STRING as read from the file: convert with h.num(v) (number or NaN), h.date(dateStr, timeStr) (ms, dd/mm/yyyy or ISO), h.ukDate(ms), h.hourOf(ms), h.dayOf(ms).
 - h also has round(v, dp), mean(arr), sum(arr), max(arr), min(arr), groupBy(rows, keyOrFn) -> Map, sortBy(rows, keyOrFn).
 - return facts: { "name": "value" } short headline numbers for the text; tables: [{ id, title, headers: [], rows: [[]] }] (numbers as numbers); charts: [{ id, title, type: "line"|"area"|"bar"|"step", x: [labels in order] (or numbers), xLabel, yLabel, series: [{ name, values: [numbers or null for gaps], dash: true for a dashed line, fill: true for a light fill under the line }] }].
+- Time series from loggers: align readings to the interval grid by SNAPPING each timestamp to the nearest interval (round, not floor); a logger stamped at xx:x5:01 is on the grid, not between slots. A "duplicate" next to a "gap" means the alignment is wrong, not the data. Only report gaps of a missing interval or more after snapping.
+- Exception lists (gaps, duplicates, out-of-range readings) longer than about 30 rows do not go in the document as a table: give the count, the first and last, the longest, and the total time affected, in a short table or sentence.
 - Tables go on a portrait A4 page: at most 10 columns. Split a wider matrix into two tables (e.g. outgoing circuits, then supplies and totals) rather than squeezing it.
-- Use the same series names in every chart (a circuit keeps its colour). For a per-item chart give one chart per item with two series (e.g. "Average" filled, "Peak" dashed). For a load duration curve x is the percentage of time (numbers 0..100).
+- A time axis gets SHORT labels in x: the date as dd/mm for a series over days (one label per point; the app thins them), hh:mm within a day. Never full timestamps.
+- Use the same series names in every chart (a circuit keeps its colour). For a per-item chart give one chart per item with two series named "<item> average" (fill: true) and "<item> peak" (dash: true), so the item keeps its colour there too. For a load duration curve x is the percentage of time (numbers 0..100).
 - No file, network or require access; finish within a few seconds; do not print. Skip rows you cannot parse rather than failing.`;
 
 module.exports = { run, describe, helpers, GUIDE };
