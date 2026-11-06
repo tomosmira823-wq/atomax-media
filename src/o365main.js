@@ -147,9 +147,10 @@ ${AN.GUIDE}`;
     const thread = T[key];
     const warnings = [], tables = {};
     // tables attached earlier in this conversation stay available
-    try { for (const n of thread.tables || []) { const f = path.join(tablesDir(key), n + '.json'); if (fs.existsSync(f)) tables[n] = JSON.parse(fs.readFileSync(f, 'utf8')); } } catch {}
+    const tableFile = (n) => path.join(tablesDir(key), String(n).replace(/[\\/:*?"<>|]+/g, '_') + '.json');   // a sheet key has a slash in it
+    try { for (const n of thread.tables || []) { const f = tableFile(n); if (fs.existsSync(f)) tables[n] = JSON.parse(fs.readFileSync(f, 'utf8')); } } catch {}
     const fileContent = await filesToContent(files, tables, warnings);
-    for (const [n, t] of Object.entries(tables)) { if (!(thread.tables || []).includes(n)) { fs.mkdirSync(tablesDir(key), { recursive: true }); fs.writeFileSync(path.join(tablesDir(key), n + '.json'), JSON.stringify(t)); thread.tables = [...(thread.tables || []), n]; } }
+    for (const [n, t] of Object.entries(tables)) { if (!(thread.tables || []).includes(n)) { fs.mkdirSync(tablesDir(key), { recursive: true }); fs.writeFileSync(tableFile(n), JSON.stringify(t)); thread.tables = [...(thread.tables || []), n]; } }
     thread.messages.push({ who: 'tom', text: String(text).trim(), files: (files || []).map(f => f.name), at: new Date().toISOString() });
     thread.pending = { since: new Date().toISOString(), stage: `${who} is reading` }; saveThreads(T);   // leaving the room and coming back shows the turn still running
     const runs = require('./runs'); const R = run ? null : runs.start({ kind: 'chat', who, jobId, no: 'CHAT' }); run = run || R.id;

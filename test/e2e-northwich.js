@@ -341,10 +341,10 @@ const step = (name, fn) => { try { const r = fn(); if (r && r.then) return r.the
     assert.ok(r.warnings.some(w => /notes\.txt is 50,000 characters/.test(w)), JSON.stringify(r.warnings)); assert.ok(/CUT: 50000 characters/.test(global.__o365Asked), 'Wren told');
   });
   await step('365 room: a big workbook reaches Wren as a table profile per sheet (not an error)', async () => {
-    const xlsx = o365.writeXlsx([{ name: 'Boards', columns: [{ header: 'Board' }, { header: 'Incomer' }, { header: 'Rating A' }], rows: Array.from({ length: 120 }, (_, i) => [`SB${i}`, `A${i}`, 100 + i]) }]);
+    const xlsx = o365.writeXlsx([{ name: 'Boards', columns: [{ header: 'Board' }, { header: 'Incomer' }, { header: 'Rating A' }], rows: Array.from({ length: 120 }, (_, i) => [`SB${i}`, `A${i}`, 100 + i]) }, { name: 'Meters', columns: [{ header: 'Board' }, { header: 'Reading A' }], rows: Array.from({ length: 70 }, (_, i) => [`SB${i}`, 10 + i]) }]);
     global.__o365 = [{ say: 'Got the board list.' }];
     const r = await call('o365:chat', { jobId: job2.id, role: 'word', text: 'Read this', files: [{ name: 'LV_Board_Survey.xlsx', base64: Buffer.from(xlsx).toString('base64') }], fresh: true });
-    assert.deepStrictEqual(r.warnings, [], 'no read errors: ' + JSON.stringify(r.warnings)); assert.ok(/TABLE "LV_Board_Survey": 120 rows, 3 columns/.test(global.__o365Asked), 'profile given: ' + (global.__o365Asked.match(/ATTACHED WORKBOOK[^\n]*\n[^\n]*/) || [''])[0]);
+    assert.deepStrictEqual(r.warnings, [], 'no read errors: ' + JSON.stringify(r.warnings)); assert.ok(/TABLE "LV_Board_Survey \/ Boards": 120 rows, 3 columns/.test(global.__o365Asked) && /TABLE "LV_Board_Survey \/ Meters": 70 rows/.test(global.__o365Asked), 'profile per sheet given: ' + (global.__o365Asked.match(/ATTACHED WORKBOOK[^\n]*\n[^\n]*/) || [''])[0]);
   });
   await step('365 room: a turn that dies lands in the chat as a message, and nothing is left pending', async () => {
     global.__o365 = [() => { throw new Error('the model fell over'); }];
