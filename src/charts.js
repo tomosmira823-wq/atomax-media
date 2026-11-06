@@ -18,7 +18,8 @@ const nice = (v) => { if (v === 0) return '0'; const a = Math.abs(v); return a >
 function ticks(min, max, n = 6) {
   if (!(max > min)) { max = min + 1; }
   const raw = (max - min) / n, p = Math.pow(10, Math.floor(Math.log10(raw))); const step = [1, 2, 2.5, 5, 10].map(m => m * p).find(s => (max - min) / s <= n) || 10 * p;
-  const t0 = Math.floor(min / step) * step, out = []; for (let v = t0; v <= max + step * 0.001; v += step) out.push(+v.toFixed(10));
+  // the ticks run from the step below the minimum to the step at or ABOVE the maximum, so every point sits inside the plot
+  const t0 = Math.floor(min / step) * step, out = []; for (let v = t0; ; v += step) { out.push(+v.toFixed(10)); if (v >= max - step * 1e-9) break; if (out.length > 50) break; }
   return { step, ticks: out, lo: out[0], hi: out[out.length - 1] };
 }
 
@@ -76,9 +77,9 @@ async function toPng(svgText, outPath, { width, height } = {}) {
   let electron = null; try { electron = require('electron'); } catch {}
   if (electron && electron.app && electron.BrowserWindow && process.type === 'browser') {
     await electron.app.whenReady();
-    const win = new electron.BrowserWindow({ show: false, width: W, height: H, frame: false, webPreferences: { offscreen: true, sandbox: true } });
+    const win = new electron.BrowserWindow({ show: false, width: W, height: H, useContentSize: true, frame: false, webPreferences: { offscreen: true, sandbox: true } });
     try {
-      await win.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(`<!doctype html><html><body style="margin:0;background:#fff">${svgText}</body></html>`));
+      await win.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(`<!doctype html><html><head><style>html,body{margin:0;padding:0;overflow:hidden;background:#fff;width:${W}px;height:${H}px}svg{display:block}</style></head><body>${svgText}</body></html>`));
       await new Promise(r => setTimeout(r, 150));
       const img = await win.webContents.capturePage({ x: 0, y: 0, width: W, height: H });
       fs.writeFileSync(outPath, img.toPNG());
@@ -88,7 +89,7 @@ async function toPng(svgText, outPath, { width, height } = {}) {
   // outside Electron (tests): the same page in a headless Chromium when Playwright is about, else ImageMagick
   let pw = null; try { pw = require('playwright'); } catch {}
   if (pw && pw.chromium) {
-    const browser = await pw.chromium.launch(); try { const page = await browser.newPage({ viewport: { width: W, height: H } }); await page.setContent(`<!doctype html><html><body style="margin:0;background:#fff">${svgText}</body></html>`); await page.screenshot({ path: outPath, clip: { x: 0, y: 0, width: W, height: H } }); } finally { await browser.close(); }
+    const browser = await pw.chromium.launch(); try { const page = await browser.newPage({ viewport: { width: W, height: H } }); await page.setContent(`<!doctype html><html><head><style>html,body{margin:0;padding:0;overflow:hidden;background:#fff;width:${W}px;height:${H}px}svg{display:block}</style></head><body>${svgText}</body></html>`); await page.screenshot({ path: outPath, clip: { x: 0, y: 0, width: W, height: H } }); } finally { await browser.close(); }
     return outPath;
   }
   const { execFileSync } = require('child_process'); const tmp = path.join(os.tmpdir(), `amo-chart-${Date.now()}-${Math.random().toString(36).slice(2, 7)}.svg`);
