@@ -402,7 +402,7 @@ function register({ ipcMain, HANDLERS, BIZ, claudeFull }) {
     if (src.dxf || src.dwg) { try {
       const RU = require('./revup'), dx = require('./dxffix').parseDxf(fs.readFileSync(path.join(job.folder, src.dxf || ''))), ib = src.dxf ? RU.issueBoxes(dx.pairs, RU.entities(dx.pairs)) : null, next = ib ? RU.nextOf(ib.rev) : '';
       const mine = (desk.load(a.jobId).crs || []).filter(c => (c.doc === a.no || c.doc === '*') && !/closed/i.test(c.status || '') && (!/responded/i.test(c.status || '') || (next && new RegExp('Revised (in|again at) ' + next + '\\b').test(c.response || ''))));
-      if (mine.some(c => c.doc === a.no)) return revise(   // a change on THIS drawing; an every-drawing ask (an issue status) alone stays a plain rev up{ jobId: a.jobId, no: a.no, people: a.people, status: a.status });
+      if (mine.some(c => c.doc === a.no)) return revise({ jobId: a.jobId, no: a.no, people: a.people, status: a.status });   // a change on THIS drawing; an every-drawing ask (an issue status) alone stays a plain rev up
     } catch (e) { if (!/No such row|Not on the drawing list/.test(String(e.message || e))) { /* fall through to a plain rev up only when the look-up itself failed */ } } }
     return revUp(a);
   }
