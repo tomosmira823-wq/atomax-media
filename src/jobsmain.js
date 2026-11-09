@@ -269,7 +269,9 @@ function register({ ipcMain, HANDLERS, BIZ, claudeFull }) {
     let parsed; try { parsed = dxffix.parseDxf(buf); } catch (e) { throw new Error(`${no}: Dex could not read ${fname} (${String(e.message || e)}).`); }
     let next = ''; try { const ib = RU.issueBoxes(parsed.pairs, RU.entities(parsed.pairs)); next = ib ? RU.nextOf(ib.rev) : ''; } catch {}
     const open = mine.filter(c => !/responded/i.test(c.status || '') || (next && new RegExp('Revised (in|again at) ' + next + '\\b').test(c.response || '')));
-    const asked = [String(comments || '').trim(), ...open.map(c => `${c.no ? c.no + ': ' : ''}${c.comment}`)].filter(Boolean).join('\n');
+    // the engineer's own lines (typed in Tell Dex, or logged by Tom) come first and are marked as the decision; the client's after
+    const line = (c) => `${/^tom$/i.test(c.by || '') ? 'ENGINEER' : 'CLIENT'} ${c.no ? c.no + ': ' : ''}${c.comment}`;
+    const asked = [String(comments || '').trim() ? 'ENGINEER (now): ' + String(comments).trim() : '', ...open.filter(c => /^tom$/i.test(c.by || '')).map(line), ...open.filter(c => !/^tom$/i.test(c.by || '')).map(line)].filter(Boolean).join('\n');
     if (!asked) throw new Error(`${no}: nothing is logged against it to change. Log the comments on the Comments tab (or forward the email to Eli), then press Revise.`);
     const prev = delivOf(jobId)[no] || {}; people = people || prev.people || null;
     const R = runs.start({ kind: 'revise', who: 'Dex', jobId, no });
