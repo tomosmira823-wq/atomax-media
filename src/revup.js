@@ -83,9 +83,18 @@ function revUp(buf, opts = {}) {
   if (ib.rowEnd != null && ib.rowEnd < edge - 0.5) throw new Error(`no room for another issue box: the row ends at ${ib.rowEnd.toFixed(1)}, the new box would run to ${edge.toFixed(1)}`);
   const snapTo = ib.rowEnd != null && ib.rowEnd - edge > 0.01 && ib.rowEnd - edge <= ib.pitch * 0.15 ? ib.rowEnd : null;
   changes.stretched = snapTo != null ? +(snapTo - edge).toFixed(3) : 0;
+  // the Remarks cell: the label stays, the last box's own remark lines are not carried into the new box (the block diagram's P02 remark
+  // would have been repeated on P03), and the new box gets opts.remarks under its label the way the sheet writes them (Tom 9 Nov)
+  const isText = (e) => e.type === 'TEXT' || e.type === 'MTEXT';
+  const label = ib.box.find(e => isText(e) && /^remarks?:?$/i.test(e.text.trim()));
+  const dateY = Math.max(-Infinity, ...ib.box.filter(e => isText(e) && (DATE.test(e.text) || /^date$/i.test(e.text.trim()))).map(e => e.ys[0]));
+  const oldRemarks = label ? ib.box.filter(e => isText(e) && e !== label && e.xs[0] >= label.xs[0] - 0.5 && e.xs[0] <= label.xs[0] + 3 && e.ys[0] < label.ys[0] - 0.5 && e.ys[0] > dateY + 0.5 && !REV.test(e.text) && !DATE.test(e.text) && !/^[A-Z]{2,3}$/.test(e.text.trim())) : [];   /* lines written under the label, not the box's own fields */
+  changes.remarksDropped = oldRemarks.length;
+  let labelCopy = null;
   // the new box: every entity of the last box shifted one pitch right, with the new values
   const clone = [];
   for (const e of ib.box) {
+    if (oldRemarks.includes(e)) continue;
     let stop = e.end; while (stop < P.length && P[stop].code !== 0) stop++;   // the whole entity, embedded object included
     const np = P.slice(e.at, stop).map(p => ({ ...p })); let seenText = false, embedded = false;
     for (const p of np) {
@@ -103,6 +112,27 @@ function revUp(buf, opts = {}) {
       }
     }
     clone.push(...np); changes.cloned++;
+    if (e === label) labelCopy = { np, type: e.type };
+  }
+  if (opts.remarks && String(opts.remarks).trim()) {
+    if (!labelCopy) throw new Error('the issue box has no Remarks label to write the remark under');
+    const hAt = labelCopy.np.find(p => p.code === 40), h = hAt ? +hAt.val || 2 : 2;
+    const cellRight = snapTo != null ? snapTo : edge, room = Math.max(10, Math.floor((cellRight - (label.xs[0] + ib.pitch) - h) / (h * 0.95)));
+    const words = String(opts.remarks).trim().split(/\s+/), lines = [];
+    for (const w of words) { const l = lines.length ? lines[lines.length - 1] : null; if (l !== null && (l + ' ' + w).length <= room) lines[lines.length - 1] = l + ' ' + w; else lines.push(w); }
+    lines.forEach((text, i) => {
+      const dy = h * 2 + i * h * 1.75; let emb = false, seen = false;   // first line 4 below the label, then 3.5 apart at height 2 (the block diagram's P02)
+      const np = labelCopy.np.map(p => ({ ...p }));
+      for (const p of np) {
+        if (p.code === 101) emb = true;
+        if (p.code === 5) p.val = (nextHandle++).toString(16).toUpperCase();
+        else if (labelCopy.type === 'MTEXT' ? (emb ? p.code === 21 : p.code === 20) : (p.code === 20 || p.code === 21)) p.val = String(+p.val - dy);
+        else if (p.code === 1 && !seen) { p.val = text; seen = true; }
+        else if (p.code === 1 || (p.code === 3 && labelCopy.type === 'MTEXT')) p.val = '';
+      }
+      clone.push(...np);
+    });
+    changes.remarks = lines.length;
   }
   // the title block's own ISSUE field (an ATTRIB or text outside the issue boxes reading the current rev) goes to the new rev
   for (const e of ents) { if (!REV.test(e.text) || e.text.toUpperCase() !== cur || ib.row.includes(e)) continue; for (let j = e.at + 1; j < e.end; j++) if (P[j].code === 1 || (P[j].code === 3 && e.type === 'MTEXT')) { P[j].val = P[j].code === 1 ? next : ''; changes.titleRev++; } }

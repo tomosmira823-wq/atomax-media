@@ -35,6 +35,15 @@ function jobFiles(jobId, { exceptDir = '' } = {}) {
 const revInName = (n) => { const m = String(n).match(/[\s_-]([PCAX]\d{2})(?=[\s_.)-]|$)/i); return m ? m[1].toUpperCase() : ''; };
 // the drawing number as the sheet's own title block writes it, when it is this number with different zero padding in the last part
 // (X130726-0000-06-72-0012 on the sheet for the register's -00012); '' when the sheet agrees or does not say
+// the new issue box's remark for a revision made to comments, the way the office writes it ("Updated to incorporate SPEN comments", the
+// block diagram's P02): whose comments, from the sender's email when it is a known client, else "client"
+function remarkFor(comments) {
+  const KNOWN = [[/spenergynetworks|scottishpower/i, 'SPEN'], [/nationalgrid/i, 'National Grid'], [/ukpowernetworks/i, 'UKPN'], [/enwl|electricitynorthwest/i, 'ENWL'], [/nationalgrid\.co\.uk|westernpower|nged/i, 'NGED'], [/ssen|sse\.com/i, 'SSEN'], [/northernpowergrid/i, 'Northern Powergrid']];
+  const whose = new Set();
+  for (const c of comments || []) { if (/^tom$/i.test(c.by || '')) continue; const k = KNOWN.find(([re]) => re.test(String(c.from || ''))); whose.add(k ? k[1] : 'client'); }
+  if (!whose.size) return 'Updated to incorporate comments';
+  return `Updated to incorporate ${[...whose].join(' / ')} comments`;
+}
 function sheetNumber(buf, no) {
   const canon = (t) => String(t || '').trim().toUpperCase().replace(/(\d+)$/, (m) => String(+m));
   try {
@@ -330,7 +339,7 @@ function register({ ipcMain, HANDLERS, BIZ, claudeFull }) {
       out.results.forEach((x, i) => { const who = fixes[i] && fixes[i].for; if (!who) return; if (x.status === 'applied') okFor.add(who); else failedFor.set(who, [...(failedFor.get(who) || []), `${sayEdit(x)}: ${x.reason}`]); });
       if (!applied.length) { const why = missed.map(x => `${sayEdit(x)}: ${x.reason}`).join(' · '); runs.finish(R.id, { ok: false, error: why }); setDeliv(jobId, no, { status: 'needs you', summary: `Dex: none of the edits went in — ${why}` }); throw new Error(`${no}: ${why}`); }
       const note = `${applied.length} edit${applied.length === 1 ? '' : 's'}: ${applied.map(x => sayEdit(x) + (x.places > 1 ? ` (×${x.places})` : '')).join(', ')}`;
-      runs.stage(R.id, 'Dex is revving it up and checking it', 80); const w = await revUp({ jobId, no, status, people, edited: { buf: out.buf, note, fixes, results: out.results, asked, wantBlack: fixes.some(f => /set_colou?r/.test(f.action) && /black|^7$/i.test(f.colour || 'black')) }, exceptDir: issueDir, run: R.id });
+      runs.stage(R.id, 'Dex is revving it up and checking it', 80); const w = await revUp({ jobId, no, status, people, remarks: remarkFor(open), edited: { buf: out.buf, note, fixes, results: out.results, asked, wantBlack: fixes.some(f => /set_colou?r/.test(f.action) && /black|^7$/i.test(f.colour || 'black')) }, exceptDir: issueDir, run: R.id });
       // each comment answered: a comment closes only when an edit that came from it went in. One Dex could not do stays Open with his
       // reason; one no edit came from stays Open too (never closed on the strength of another comment's edit). Only when Dex named no
       // comment at all on any edit does the whole set close on the revision.
@@ -411,7 +420,7 @@ function register({ ipcMain, HANDLERS, BIZ, claudeFull }) {
     try { const pr = await plotIssue({ jobId, files: [file], run }); if (pr.failed.length) return { pdfs: [], pdfNote: `Dex: the PDF was not made — ${pr.failed[0].error}` }; return { pdfs: pr.done.map(x => x.pdf), pdfNote: '' }; }
     catch (e) { return { pdfs: [], pdfNote: `Dex: the PDF was not made — ${String(e.message || e)}` }; }
   }
-  async function revUp({ jobId, no, to = '', status = '', people = null, edited = null, exceptDir = '', run = '' }) {   // edited: { buf, note } when Revise changed the text first
+  async function revUp({ jobId, no, to = '', status = '', people = null, edited = null, exceptDir = '', run = '', remarks = '' }) {   // edited: { buf, note } when Revise changed the text first
     const job = jobOf(jobId), d = job.drawings.find(x => x.no === no); if (!d) throw new Error('No such row');
     exceptDir = exceptDir || peekIssueDir(jobId);   // the issue being built is never the source: a rev up starts from the working file every time
     let src = sourceFor(d, jobFiles(jobId, { exceptDir }));
@@ -423,7 +432,7 @@ function register({ ipcMain, HANDLERS, BIZ, claudeFull }) {
     const want = askedRev(to, '') || '';
     const dl0 = delivOf(jobId), pp = people || (dl0[no] || {}).people || Object.values(dl0).map(x => x && x.people).filter(Boolean).pop() || {}; let r;
     // a new issue box beside the last one (P04 next to P01 P02 P03: date, initials, status), the title block ISSUE field to the new rev
-    try { r = require('./revup').revUp(buf, { to: want, status, drawn: pp.drawn || '', checked: pp.checked || '', approved: pp.approved || '' }); }
+    try { r = require('./revup').revUp(buf, { to: want, status, drawn: pp.drawn || '', checked: pp.checked || '', approved: pp.approved || '', remarks }); }
     catch (e) { throw new Error(`${no}: ${src.dxf.split('/').pop()} could not be revved up (${String(e.message || e)}). Rev it by hand this time.`); }
     if (r.from !== cur && cur && !/^P0?1$/i.test(cur)) BIZ.log({ who: 'Dex', action: `Note: the register says ${no} is at ${cur} but the sheet reads ${r.from}; revved from the sheet`, jobId });
     const next = r.to;
@@ -515,4 +524,4 @@ function register({ ipcMain, HANDLERS, BIZ, claudeFull }) {
   ipcMain.handle('jobs:waiting', wrap(() => waiting()));
   return { overview, make, check, waiting, kindOf };
 }
-module.exports = { sheetNumber, sourceFor, register, kindOf };
+module.exports = { remarkFor, sheetNumber, sourceFor, register, kindOf };

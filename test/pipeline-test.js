@@ -58,6 +58,16 @@ t('a note in another font is made to match the label beside it (Five Fords K31T 
   const e = D.parseDxf(r.buf).ents.find(x => x.plain === 'K31T'), l = D.parseDxf(r.buf).ents.find(x => x.plain === 'IT SEND');
   assert.strictEqual(e.y, l.y); assert.strictEqual(e.h, l.h); assert.strictEqual(e.x, 115);
 });
+t('the new issue box gets its own remark and does not repeat the last box\'s (block diagram P02 remark, 9 Nov)', () => {
+  const src = box([['P01', '30/09/2026'], ['P02', '21/10/2026']], [{ t: 'text', x: 200, y: 50, text: 'Remarks', h: 2, layer: 'TB' }, { t: 'text', x: 40, y: 50, text: 'Remarks', h: 2, layer: 'TB' }, { t: 'text', x: 200, y: 46, text: 'Updated to incorporate SPEN', h: 2, layer: 'TB' }, { t: 'text', x: 200, y: 42.5, text: 'comments', h: 2, layer: 'TB' }]);
+  const r = R.revUp(src, { remarks: 'Updated to incorporate client comments' });
+  const texts = D.parseDxf(r.buf).ents.filter(e => /^(TEXT|MTEXT)$/.test(e.type)).map(e => [e.plain, Math.round(e.x), +e.y.toFixed(1)]);
+  assert.strictEqual(r.changes.remarksDropped, 2);
+  assert.ok(!texts.some(([t, x]) => x === 360 && /SPEN/.test(t)), 'the P02 remark was carried into the new box');
+  const mine = texts.filter(([, x]) => x === 360).map(([t]) => t).join(' ');
+  assert.ok(/Updated to incorporate/.test(mine) && /client comments|comments/.test(mine), 'the new remark is missing: ' + mine);
+  assert.ok(texts.some(([t, x, y]) => x === 360 && /^Updated/.test(t) && y === 46), 'the remark is not 4 below its label');
+});
 t('a sheet at P01 (one issue box) can be revved', () => {
   const r = R.revUp(box([['P01', '25/04/2026']]), {}); assert.strictEqual(r.to, 'P02'); assert.strictEqual(Math.round(r.pitch), 160);
   const T = D.parseDxf(r.buf).ents.filter(e => e.section === 'ENTITIES').map(e => [e.plain, Math.round(e.x)]); assert.ok(T.some(([p, x]) => p === 'P02' && x === 221) && T.some(([p, x]) => p === 'P02' && x === 1141), JSON.stringify(T));
