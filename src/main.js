@@ -457,9 +457,9 @@ ipcMain.handle('dxf:propose', async (_e, { source, dxfs, markups, note }) => {
       const j = checker.parseJson(r.text).value;
       for (const it of (j.items || [])) {
         const fl = files.find(x => x.name === it.file) || (files.length === 1 ? files[0] : null);
-        const action = ['replace_text', 'delete_text', 'add_text', 'set_colour', 'set_color'].includes(it.action) ? it.action : 'none';
+        const action = ['replace_text', 'delete_text', 'add_text', 'set_colour', 'set_color', 'match_style'].includes(it.action) ? it.action : 'none';
         const ref = Number.isInteger(it.ref) ? it.ref : (/^\d+$/.test(String(it.ref ?? '')) ? +it.ref : (String(it.ref || '').toLowerCase() === 'all' ? 'all' : undefined));
-        const base = { id: 'N' + (items.length + 1), drawing: fl ? fl.name : (it.file || ''), note: it.why || '', why: it.why || '', action, ref, before: it.before || '', after: it.after || '', text: it.text || '', x: it.x, y: it.y, layer: it.layer || '', height: it.height, colour: it.colour || it.color || '' };
+        const base = { id: 'N' + (items.length + 1), drawing: fl ? fl.name : (it.file || ''), note: it.why || '', why: it.why || '', action, ref, before: it.before || '', after: it.after || '', text: it.text || '', x: it.x, y: it.y, layer: it.layer || '', height: it.height, colour: it.colour || it.color || '', like: Number.isInteger(it.like) ? it.like : (/^\d+$/.test(String(it.like ?? '')) ? +it.like : undefined) };
         if (action === 'none') { items.push({ ...base, note: it.why || 'Dex could not turn that into a text change.' }); continue; }
         if (!fl) { items.push({ ...base, action, warn: 'Dex could not tell which DXF this is for.' }); continue; }
         if (action === 'delete_text' && ref !== undefined && fl.parsed.ents[ref]) base.before = fl.parsed.ents[ref].plain;

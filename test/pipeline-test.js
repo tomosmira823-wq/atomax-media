@@ -44,6 +44,20 @@ t('the new issue box meets the title block and leaves the sheet centre mark alon
   const tight = box([['P01', '30/09/2026'], ['P02', '21/10/2026']], [{ t: 'line', x1: 11, y1: 61, x2: 480, y2: 61, layer: 'TB' }]);
   assert.throws(() => R.revUp(tight, {}), /no room/);
 });
+t('an issued file takes the drawing number written on the sheet (-0012 on the title block, -00012 in the register)', () => {
+  const { sheetNumber } = require('../src/jobsmain');
+  const src = box([['P01', '30/09/2026']], [{ t: 'text', x: 900, y: 30, text: 'X130726-0000-06-72-0012', h: 2.5, layer: 'TB' }]);
+  assert.strictEqual(sheetNumber(src, 'X130726-0000-06-72-00012'), 'X130726-0000-06-72-0012');
+  assert.strictEqual(sheetNumber(src, 'X130726-0000-06-72-0012'), '');
+  assert.strictEqual(sheetNumber(src, 'X130726-0000-06-72-0013'), '');
+});
+t('a note in another font is made to match the label beside it (Five Fords K31T / K1T, 9 Nov)', () => {
+  const src = dxm.writeDxf([{ t: 'mtext', x: 100, y: 50, text: 'IT SEND', h: 2.2, layer: 'TB' }, { t: 'mtext', x: 115, y: 53, text: 'K31T', h: 2.5, layer: 'NOTE' }], { x0: 0, y0: 0, x1: 400, y1: 300 });
+  const d = D.parseDxf(src), like = d.ents.findIndex(e => e.plain === 'IT SEND'), ref = d.ents.findIndex(e => e.plain === 'K31T');
+  const r = D.applyFixes(src, [{ id: 1, action: 'match_style', ref, like }]); assert.strictEqual(r.results[0].status, 'applied');
+  const e = D.parseDxf(r.buf).ents.find(x => x.plain === 'K31T'), l = D.parseDxf(r.buf).ents.find(x => x.plain === 'IT SEND');
+  assert.strictEqual(e.y, l.y); assert.strictEqual(e.h, l.h); assert.strictEqual(e.x, 115);
+});
 t('a sheet at P01 (one issue box) can be revved', () => {
   const r = R.revUp(box([['P01', '25/04/2026']]), {}); assert.strictEqual(r.to, 'P02'); assert.strictEqual(Math.round(r.pitch), 160);
   const T = D.parseDxf(r.buf).ents.filter(e => e.section === 'ENTITIES').map(e => [e.plain, Math.round(e.x)]); assert.ok(T.some(([p, x]) => p === 'P02' && x === 221) && T.some(([p, x]) => p === 'P02' && x === 1141), JSON.stringify(T));

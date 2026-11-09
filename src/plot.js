@@ -78,7 +78,7 @@ function plotOne(dxfPath, { console: core, timeoutMs = 90000, layoutName = '' } 
     const lines = ['FILEDIA 0', 'CMDDIA 0', 'BACKGROUNDPLOT 0', `(command "_.-PLOT" ${answers.map(q).join(' ')})`, '_.DELAY 2000', '_.QUIT', '_Y'];
     fs.writeFileSync(scr, lines.join('\r\n') + '\r\n', 'latin1');
     let src = dxfPath, copy = null; try { copy = plotCopy(dxfPath); src = copy.path; } catch (e) { logLine(`${base} plot copy`, String(e && e.message || e)); }
-    const child = spawn(core.exe, ['/i', src, '/s', scr, '/l', 'en-US'], { cwd: dir, windowsHide: true });
+    const child = spawn(core.exe, ['/i', src, '/s', scr, '/l', 'en-US'], { cwd: workDir(), windowsHide: true });   /* the console writes plot.log into its working folder: never the issue folder (it went out with ISSUE 8, 9 Nov) */
     let out = ''; child.stdout.on('data', (b) => { out += b.toString('latin1'); }); child.stderr.on('data', (b) => { out += b.toString('latin1'); });
     const t = setTimeout(() => { try { child.kill(); } catch {} }, timeoutMs);
     child.on('error', (e) => { clearTimeout(t); try { fs.unlinkSync(scr); } catch {} reject(new Error(`${base}: could not start AutoCAD core console (${e.message})`)); });
@@ -105,7 +105,7 @@ function dwgToDxf(dwgPath, { console: core, timeoutMs = 180000, out = '' } = {})
     // one quoted AutoLISP line: a path with spaces in it (OneDrive - Atomax-UK Ltd) arrives whole. SAVEAS: DXF (the current release, AC1032 like the sheets on file), 16 decimals, file
     fs.writeFileSync(scr, ['FILEDIA 0', 'CMDDIA 0', `(command "_.SAVEAS" "DXF" "16" ${q(dxf)})`, '_.DELAY 1000', '_.QUIT', '_Y'].join('\r\n') + '\r\n', 'latin1');
     const t0 = Date.now();
-    const child = spawn(core.exe, ['/i', dwgPath, '/s', scr, '/l', 'en-US'], { cwd: dir, windowsHide: true });
+    const child = spawn(core.exe, ['/i', dwgPath, '/s', scr, '/l', 'en-US'], { cwd: workDir(), windowsHide: true });
     let o = ''; child.stdout.on('data', (b) => { o += b.toString('latin1'); }); child.stderr.on('data', (b) => { o += b.toString('latin1'); });
     const t = setTimeout(() => { try { child.kill(); } catch {} }, timeoutMs);
     child.on('error', (e) => { clearTimeout(t); try { fs.unlinkSync(scr); } catch {} reject(new Error(`${base}: could not start AutoCAD core console (${e.message})`)); });

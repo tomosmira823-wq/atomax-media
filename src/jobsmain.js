@@ -33,6 +33,16 @@ function jobFiles(jobId, { exceptDir = '' } = {}) {
   } catch (e) { console.error('jobFiles', e); return []; }
 }
 const revInName = (n) => { const m = String(n).match(/[\s_-]([PCAX]\d{2})(?=[\s_.)-]|$)/i); return m ? m[1].toUpperCase() : ''; };
+// the drawing number as the sheet's own title block writes it, when it is this number with different zero padding in the last part
+// (X130726-0000-06-72-0012 on the sheet for the register's -00012); '' when the sheet agrees or does not say
+function sheetNumber(buf, no) {
+  const canon = (t) => String(t || '').trim().toUpperCase().replace(/(\d+)$/, (m) => String(+m));
+  try {
+    const want = canon(no); if (!want) return '';
+    for (const e of require('./dxffix').parseDxf(buf).ents) { const t = String(e.plain || '').trim(); if (t && t.toUpperCase() !== String(no).toUpperCase() && canon(t) === want && /^[A-Z0-9][A-Z0-9-]+\d$/i.test(t)) return t; }
+  } catch {}
+  return '';
+}
 function sourceFor(d, files) {
   const keys = [d.no, d.alt].filter(Boolean).map(k => String(k).toUpperCase().replace(/[^A-Z0-9]+/g, ''));
   const norm = (n) => String(n).toUpperCase().replace(/\.[A-Z0-9]+$/, '').replace(/[^A-Z0-9]+/g, '');
@@ -266,7 +276,7 @@ function register({ ipcMain, HANDLERS, BIZ, claudeFull }) {
     try { BIZ.projects.gather(job.id, job.folder, { checker: require('./checker') }); } catch {}
     return r.dxf;
   }
-  const ACTIONS = ['replace_text', 'delete_text', 'add_text', 'set_colour', 'set_color'];
+  const ACTIONS = ['replace_text', 'delete_text', 'add_text', 'set_colour', 'set_color', 'match_style'];
   const refOf = (v) => Number.isInteger(v) ? v : /^\d+$/.test(String(v ?? '')) ? +v : String(v || '').toLowerCase() === 'all' ? 'all' : undefined;
   const sayEdit = (f) => f.action === 'replace_text' ? `${f.before} -> ${f.after}` : f.action === 'delete_text' ? `removed "${f.before || f.text}"` : f.action === 'add_text' ? `added "${f.text}"` : `text to ${f.colour || 'black'}`;
   async function revise({ jobId, no, comments = '', people = null, status = '' }) {
@@ -307,7 +317,7 @@ function register({ ipcMain, HANDLERS, BIZ, claudeFull }) {
         const action = ACTIONS.includes(it.action) ? it.action : 'none', who = forOf(it);
         const miss = (why) => { cannot.push(why); if (who) failedFor.set(who, [...(failedFor.get(who) || []), why]); };
         if (action === 'none') { miss(it.why || 'not a text change'); return; }
-        const f = { id: i + 1, for: who, file: fname, action, ref: refOf(it.ref), before: it.before || '', after: it.after || '', text: it.text || '', x: it.x, y: it.y, layer: it.layer || '', height: it.height, colour: it.colour || it.color || '' };
+        const f = { id: i + 1, for: who, file: fname, action, ref: refOf(it.ref), before: it.before || '', after: it.after || '', text: it.text || '', x: it.x, y: it.y, layer: it.layer || '', height: it.height, colour: it.colour || it.color || '', like: Number.isInteger(it.like) ? it.like : (/^\d+$/.test(String(it.like ?? '')) ? +it.like : undefined) };
         if (action === 'delete_text' && Number.isInteger(f.ref) && parsed.ents[f.ref]) f.before = parsed.ents[f.ref].plain;
         let c = dxffix.checkItem(parsed, f);
         if (!c.can && f.action === 'replace_text' && f.ref !== undefined) { const f2 = { ...f, ref: undefined }; const c2 = dxffix.checkItem(parsed, f2); if (c2.can) { Object.assign(f, f2); c = c2; } }   // wrong item number from the model: the text itself decides, everywhere it is on the drawing
@@ -421,8 +431,12 @@ function register({ ipcMain, HANDLERS, BIZ, claudeFull }) {
     // ISSUE 13), opened by the first rev up and used by every one after it until Tom presses Issue. The working set and the earlier issue
     // folders are never written to or moved: a rev up is a new file in the new issue folder, nothing else
     const outDir = openIssueDir(jobId); fs.mkdirSync(outDir, { recursive: true });
-    const base = issueName(no, next); let archived = 0;   // X11475-BGN-ZZ-XX-DR-E-7142 P04 the way the earlier issue folders name them, 70_BG_0014_P06 for our own numbers
-    for (const n of fs.readdirSync(outDir)) if (new RegExp('^' + no.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '[ _-][PCAX]\\d\\d\\.dxf$', 'i').test(n) && n !== base + '.dxf') { try { const a = path.join(path.dirname(outDir), 'Superseded', path.basename(outDir)); fs.mkdirSync(a, { recursive: true }); for (const ext of ['.dxf', '.pdf']) { const f = n.replace(/\.dxf$/i, ext); if (fs.existsSync(path.join(outDir, f))) fs.renameSync(path.join(outDir, f), path.join(a, f)); } archived++; } catch {} }   // only an earlier rev-up of the same drawing in this same issue moves aside, with its PDF, to Superseded\ISSUE n beside the issue folders: nothing but the issue goes inside the folder that is sent
+    // the file is named with the drawing number printed in the sheet's title block when that is the same number written another way
+    // (the register said -00012, the sheet says -0012: Tom 9 Nov, "the title block is fine, rename the file")
+    const onSheet = sheetNumber(r.buf, no), nameNo = onSheet || no;
+    if (onSheet) BIZ.log({ who: 'Dex', action: `Named ${no} as ${onSheet}, the number in its title block`, jobId });
+    const base = issueName(nameNo, next); let archived = 0;   // X11475-BGN-ZZ-XX-DR-E-7142 P04 the way the earlier issue folders name them, 70_BG_0014_P06 for our own numbers
+    for (const n of fs.readdirSync(outDir)) if (new RegExp('^' + nameNo.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '[ _-][PCAX]\\d\\d\\.dxf$', 'i').test(n) && n !== base + '.dxf') { try { const a = path.join(path.dirname(outDir), 'Superseded', path.basename(outDir)); fs.mkdirSync(a, { recursive: true }); for (const ext of ['.dxf', '.pdf']) { const f = n.replace(/\.dxf$/i, ext); if (fs.existsSync(path.join(outDir, f))) fs.renameSync(path.join(outDir, f), path.join(a, f)); } archived++; } catch {} }   // only an earlier rev-up of the same drawing in this same issue moves aside, with its PDF, to Superseded\ISSUE n beside the issue folders: nothing but the issue goes inside the folder that is sent
     const outPath = path.join(outDir, base + '.dxf'); fs.writeFileSync(outPath, r.buf);
     d.rev = next; require('./business').saveJob(BIZ.data(), job, 'Dex'); BIZ.store.save();
     // the PDF straight away, by AutoCAD's core console (the same route as the Issue button): a revision without its PDF is not finished (Tom 9 Nov)
@@ -501,4 +515,4 @@ function register({ ipcMain, HANDLERS, BIZ, claudeFull }) {
   ipcMain.handle('jobs:waiting', wrap(() => waiting()));
   return { overview, make, check, waiting, kindOf };
 }
-module.exports = { sourceFor, register, kindOf };
+module.exports = { sheetNumber, sourceFor, register, kindOf };

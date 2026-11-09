@@ -112,6 +112,11 @@ function checkItem(dxf, it) {
     const all = it.ref === undefined || it.ref === null || it.ref === 'all';
     const targets = all ? dxf.ents.filter(e => e.plain && e.section !== 'BLOCKS') : [dxf.ents[ref]].filter(Boolean);
     out.can = targets.length > 0; out.places = targets.length; if (!out.can) out.warn = 'No text items to colour.';
+  } else if (it.action === 'match_style') {
+    const e = dxf.ents[ref], like = dxf.ents[Number.isInteger(it.like) ? it.like : -1];
+    if (!e || !like) { out.warn = 'Say which text to restyle and which text to copy the look from.'; return out; }
+    if (!/^(TEXT|MTEXT)$/.test(e.type) || !/^(TEXT|MTEXT)$/.test(like.type)) { out.warn = 'Only plain text can be restyled.'; return out; }
+    out.can = true; out.places = 1;
   } else out.warn = out.warn || 'Nothing for Dex to change.';
   return out;
 }
@@ -217,6 +222,28 @@ function applyFixes(buf, fixes) {
       }
       if (!res.places) { res.status = 'not found'; res.reason = 'No text item needed its colour changed.'; }
       results.push(res);
+    } else if (action === 'match_style') {
+      // one text made to look like the text beside it: the same font (style), height and justification, put on that text's line, with
+      // no blank lines in front. Notes added in another font sat higher and bigger than the labels they belong to (Five Fords 9 Nov)
+      const e = dxf.ents[+f.ref], like = dxf.ents[Number.isInteger(f.like) ? f.like : -1];
+      if (!e || !like || !/^(TEXT|MTEXT)$/.test(e.type) || !/^(TEXT|MTEXT)$/.test(like.type)) { skip('Say which text to restyle and which text to copy the look from.'); continue; }
+      if (e.type !== like.type) { skip('The two texts are different kinds (single-line and multi-line); Dex will not restyle across them.'); continue; }
+      const own = (at, end) => { const m = new Map(); for (let i = at + 1; i < end; i++) { if (pairs[i].code === 101) break; if (!m.has(pairs[i].code)) m.set(pairs[i].code, i); } return m; };
+      const E = own(e.at, e.end), Lk = own(like.at, like.end);
+      const copy = e.type === 'MTEXT' ? [7, 40, 71] : [7, 40, 72, 73];
+      let ok = true;
+      for (const c of copy) { if (!Lk.has(c)) continue; if (!E.has(c)) { ok = false; break; } pairs[E.get(c)].val = pairs[Lk.get(c)].val; }
+      if (!ok) { skip('That text is missing a setting Dex needs to change; left alone.'); continue; }
+      if (e.type === 'MTEXT' && E.has(41)) pairs[E.get(41)].val = '0.0';   // no wrap width: one line, as the label beside it
+      // the line: the label's height above the base (y); x stays where the note was unless one is given
+      if (E.has(20) && Lk.has(20)) pairs[E.get(20)].val = pairs[Lk.get(20)].val;
+      if (Number.isFinite(+f.x) && f.x !== null && f.x !== '' && E.has(10)) pairs[E.get(10)].val = String(+f.x);
+      if (e.type === 'TEXT' && E.has(11) && Lk.has(21)) { const k = own(e.at, e.end); if (k.has(21)) pairs[k.get(21)].val = pairs[Lk.get(21)].val; }
+      // blank lines in front of the words (" \PK1T") only pushed it down a line: gone
+      if (e.refs.length) { const r = e.refs[0]; pairs[r].val = pairs[r].val.replace(/^(\s|\\P)+/, ''); }
+      // an MTEXT's embedded copy of its position (AutoCAD 2018+) would still say the old place: it goes, AutoCAD rebuilds it
+      for (let i = e.at + 1; i < e.end; i++) if (pairs[i].code === 101) { for (let j = i; j < e.end; j++) removed.add(j); break; }
+      res.places = 1; res.before = e.plain; results.push(res);
     } else skip('Dex does not know that kind of change.');
   }
   if (added.length && seedAt >= 0) pairs[seedAt + 1].val = nextHandle.toString(16).toUpperCase();
@@ -263,11 +290,12 @@ Actions:
 - "delete_text": remove one text item. Give file and ref.
 - "add_text": add a new line of text. Give file, text, x, y (put it beside or under related items using their x,y, same height as neighbours), optionally layer and height.
 - "set_colour": make text items one colour (e.g. "all text in black"). Give file, colour ("black", "bylayer" or an ACI number) and ref (an item number, or "all" for every text item on the drawing).
+- "match_style": make one text item look like the text beside it (the same font, height and justification, on that text's line), e.g. a note added in a different font. Give file, ref (the item to change), like (the item number to copy the look from) and optionally x.
 - "none": the instruction cannot be done by changing text, or is too vague to do safely. Give a short why.
 If the instruction covers several items (for example "change every C-1O4 to C-104"), give one item per item number, including items inside symbols (the person decides later whether to change symbols). New text must be plain printable ASCII. Never invent text the engineer did not give or clearly imply. Do not touch anything they did not ask for.
 When the instruction is a list of numbered comments (lines like "C-003: ..."), put that comment's number in "for" on every item that comes from it, so each comment can be answered.
 THE ENGINEER DECIDES. Lines marked ENGINEER (the engineer's own note on this drawing) are the decision: do exactly what they say. A CLIENT comment that is vague, asks for confirmation, or names text that is not on this sheet (it says FEEDER 2 and the sheet reads FEEDER 1) is resolved by the engineer's note when there is one: make the edit the engineer named and put the client comment's number in "for" as well, so it is answered too. Never return "none" with "needs confirmation" when an ENGINEER line covers the point: the note IS the confirmation. Only when there is no engineer line and the comment cannot be done safely do you return "none" and say what you need.
-Return ONLY JSON: {"items":[{"file":"file name","for":"C-003","ref":0,"action":"replace_text|delete_text|add_text|set_colour|none","before":"","after":"","text":"","x":0,"y":0,"layer":"","height":0,"colour":"","why":"short plain reason"}]}`;
+Return ONLY JSON: {"items":[{"file":"file name","for":"C-003","ref":0,"action":"replace_text|delete_text|add_text|set_colour|match_style|none","before":"","after":"","text":"","x":0,"y":0,"layer":"","height":0,"colour":"","like":0,"why":"short plain reason"}]}`;
 
 function matchFile(drawing, files) {
   const k = normKey(drawing || ''); if (!k) return null;
