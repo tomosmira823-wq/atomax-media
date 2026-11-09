@@ -86,8 +86,9 @@ function revUp(buf, opts = {}) {
   P.splice(insertAt, 0, ...clone);
   if (seedAt >= 0) P[seedAt + 1].val = nextHandle.toString(16).toUpperCase();
   const out = P.map(p => `${p.raw}${dxf.eol}${p.val}`).join(dxf.eol) + dxf.eol;
-  dxffix.parseDxf(Buffer.from(out, 'utf8'));   // it still opens as a DXF
-  return { buf: Buffer.from(out, 'utf8'), from: cur, to: next, changes, pitch: ib.pitch };
+  // latin1 back out, byte for byte, the way the file was read: writing utf8 turned every ² in "2.5mm²" into Ã‚Â² (Tom 9 Nov)
+  dxffix.parseDxf(Buffer.from(out, 'latin1'));   // it still opens as a DXF
+  return { buf: Buffer.from(out, 'latin1'), from: cur, to: next, changes, pitch: ib.pitch };
 }
 
 module.exports = { revUp, issueBoxes, entities };

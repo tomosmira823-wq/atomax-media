@@ -263,7 +263,10 @@ function register({ ipcMain, HANDLERS, BIZ, claudeFull }) {
     if (!src.dxf && src.dwg) { await dwgToDxf({ jobId, job, no, rel: src.dwg }); src = sourceFor(d, jobFiles(jobId)); fname = (src.dxf || src.dwg || '').split('/').pop(); if (!src.dxf) throw new Error(`${no}: Dex saved ${fname} as DXF but the folder does not show it yet. Press ↻ above the list and Revise again.`); }
     if (!src.dxf) { if (!kindOf(d).agent) throw new Error(`${no}: there is no drawing file for it in the job folder and no agent draws this kind. Put the DXF in the folder, press ↻, then Revise.`); return make({ jobId, no, people, revision: { on: true, stage: '', note: asked.slice(0, 2000) }, note: asked ? `Client comments to address: ${asked}` : '' }); }
     if (!asked) throw new Error(`${no}: nothing is logged against it to change. Log the comments on the Comments tab (or forward the email to Eli), then press Revise.`);
-    const dxffix = require('./dxffix'), full = path.join(job.folder, src.dxf), buf = fs.readFileSync(full);
+    // a second Revise before the issue goes out: the same file in the open issue folder is edited again at the same revision (P03 stays
+    // P03); a new revision is only cut when the issue has gone out (Tom 9 Nov: a second press made a P04 of the P03)
+    const prev0 = delivOf(jobId)[no] || {}, issueDir = openIssueDir(jobId), again = prev0.files && prev0.files[0] && /\.dxf$/i.test(prev0.files[0]) && path.dirname(prev0.files[0]).toLowerCase() === issueDir.toLowerCase() && fs.existsSync(prev0.files[0]) ? prev0.files[0] : '';
+    const dxffix = require('./dxffix'), full = again || path.join(job.folder, src.dxf), buf = fs.readFileSync(full); if (again) fname = path.basename(again);
     let parsed; try { parsed = dxffix.parseDxf(buf); } catch (e) { throw new Error(`${no}: Dex could not read ${fname} (${String(e.message || e)}).`); }
     const prev = delivOf(jobId)[no] || {}; people = people || prev.people || null;
     const R = runs.start({ kind: 'revise', who: 'Dex', jobId, no });
@@ -291,8 +294,13 @@ function register({ ipcMain, HANDLERS, BIZ, claudeFull }) {
       out.results.forEach((x, i) => { const who = fixes[i] && fixes[i].for; if (!who) return; if (x.status === 'applied') okFor.add(who); else failedFor.set(who, [...(failedFor.get(who) || []), `${sayEdit(x)}: ${x.reason}`]); });
       if (!applied.length) { const why = missed.map(x => `${sayEdit(x)}: ${x.reason}`).join(' · '); runs.finish(R.id, { ok: false, error: why }); setDeliv(jobId, no, { status: 'needs you', summary: `Dex: none of the edits went in — ${why}` }); throw new Error(`${no}: ${why}`); }
       const note = `${applied.length} edit${applied.length === 1 ? '' : 's'}: ${applied.map(x => sayEdit(x) + (x.places > 1 ? ` (×${x.places})` : '')).join(', ')}`;
-      runs.stage(R.id, 'Dex is revving it up', 80);
-      const w = await revUp({ jobId, no, status, people, edited: { buf: out.buf, note } });
+      let w;
+      if (again) {   // same revision, same file: the edits go in and that is all
+        runs.stage(R.id, 'Dex is saving it', 80); fs.writeFileSync(again, out.buf);
+        const rev = prev0.rev || revInName(fname) || '';
+        w = setDeliv(jobId, no, { status: 'made', rev, files: [again], by: 'Dex', summary: `Revised again at ${rev} (this issue has not gone out, so no new revision): ${note}` });
+        BIZ.log({ who: 'Dex', action: `Revised ${no} again at ${rev} (${note})`, jobId, detail: path.basename(again) });
+      } else { runs.stage(R.id, 'Dex is revving it up', 80); w = await revUp({ jobId, no, status, people, edited: { buf: out.buf, note } }); }
       // each comment answered: a comment closes only when an edit that came from it went in. One Dex could not do stays Open with his
       // reason; one no edit came from stays Open too (never closed on the strength of another comment's edit). Only when Dex named no
       // comment at all on any edit does the whole set close on the revision.
