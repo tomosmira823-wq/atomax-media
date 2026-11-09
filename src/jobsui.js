@@ -71,7 +71,7 @@ export function initJobsUI({ api, getAgents, openIssue, onWorkOn }) {
   async function refreshWhenFree() { while (busyPanel() && panel.classList.contains('open')) await new Promise(r => setTimeout(r, 800)); return refresh(); }
   // a redraw reads slowly (OneDrive folders, the overview); if what is selected changed while it was reading, its result is stale and dropped,
   // so clicking a job and then a folder leaves the folder on screen, not the job that finished loading later
-  let refreshGen = 0;
+  let refreshGen = 0, focusPath = '';   // the folder just opened in the tree: scrolled into view on the next redraw
   async function refresh() {
     const g = ++refreshGen, want = () => `${sel}|${selPath}|${tab}`, at = want();
     try { if (api.runs && api.runs.live) { const live = await api.runs.live(); RUNS.clear(); for (const p of live) RUNS.set(runKey(p.jobId, p.no), p); } } catch {}   // runs still going in the main process (after a re-open or a redraw)
@@ -120,18 +120,26 @@ export function initJobsUI({ api, getAgents, openIssue, onWorkOn }) {
     const recentHtml = !query && rec.length ? `<div class="jblabel">Recent</div>` + rec.map(r => `<button class="jbj recent ${(selFolder || selPath).toLowerCase() === r.path.toLowerCase() ? 'on' : ''}" data-dir="${esc(r.path)}" data-job="1" title="${esc(r.path)}"><b>${esc(r.name)}</b></button>`).join('') : '';
     if (query) body = `<div class="jblabel">${found === null ? 'Searching…' : found.length ? `${found.length} match${found.length === 1 ? '' : 'es'}` : 'Nothing matches'}</div>` + (found || []).map(f => `<button class="jbj ${selPath === f.path ? 'on' : ''}" data-dir="${esc(f.path)}" data-job="1" data-kind="${esc(f.kind || 'job')}" data-recid="${esc(f.job && f.job.id || '')}" title="${esc(f.path)}"><b>${f.kind && f.kind !== 'job' ? `<em class="jbkind">${esc(f.kind)}</em>` : ''}${esc(f.number)}${f.name ? ' · ' + esc(f.name) : ''}</b>${f.client ? `<span class="jbclient">${esc(f.client)}</span>` : ''}</button>`).join('');
     else if (!roots.length) body = `<div class="jblabel">Projects</div><div class="bsub" style="padding:6px 8px">Set your Projects folder (the live OneDrive one) to see your jobs here.</div><button class="jbnew" id="jbRoot">Set projects folder…</button>`;
-    else body = recentHtml + `<div class="jblabel">Projects <a href="#" id="jbRoot" class="jbrootlink">add folder</a></div>` + roots.map(r => treeRow(r.path, r.name, 0, !!isJobAt.get(r.path.toLowerCase())) + treeHtml(r.path, 1)).join('');
+    else { const norm = (p) => p.replace(/[\\/]+$/, '').toLowerCase(), topRoots = roots.filter(r => !roots.some(o => o !== r && norm(r.path).startsWith(norm(o.path) + (o.path.includes('\\') ? '\\' : '/'))));   // a root inside another root is already in the tree
+      body = recentHtml + `<div class="jblabel">Projects <a href="#" id="jbRoot" class="jbrootlink">add folder</a></div>` + topRoots.map(r => treeRow(r.path, r.name, 0, !!isJobAt.get(r.path.toLowerCase())) + treeHtml(r.path, 1)).join(''); }
+    const L0 = $('#jbList'), keepTop = L0 ? L0.scrollTop : 0;
     $('#jbList').innerHTML = head + body;
-    const L = $('#jbList');
+    const L = $('#jbList'); L.scrollTop = keepTop;
+    // a folder just opened or picked: it goes to the top of the pane so what is inside it is in view
+    if (focusPath) { const row = L.querySelector(`[data-dir="${CSS.escape(focusPath)}"]`); if (row) { const top = row.offsetTop - L.offsetTop - 6; if (top < L.scrollTop || row.offsetTop + row.offsetHeight > L.scrollTop + L.clientHeight - 40) L.scrollTop = Math.max(0, top); } focusPath = ''; }
     L.querySelector('[data-j=""]').onclick = () => { sel = ''; selPath = ''; tab = 'deliv'; msg = ''; refresh(); };
     // the navigation pane: a job is a leaf (click = select it, the other jobs stay in view); any other folder expands in place and
     // shows its contents on the right. Files are never listed here; inside a job they are browsed in the Files tab.
-    const toggle = async (p) => { if (treeOpen.has(p)) treeOpen.delete(p); else treeOpen.add(p); rememberTree(); await relist(); renderList(); };
+    const toggle = async (p) => { const opening = !treeOpen.has(p); if (opening) treeOpen.add(p); else treeOpen.delete(p); rememberTree(); if (opening) focusPath = p; await relist(); renderList(); };
     L.querySelectorAll('[data-tog]').forEach(i => i.onclick = (e) => { e.stopPropagation(); toggle(i.dataset.tog); });
     L.querySelectorAll('[data-dir]').forEach(b => b.onclick = async () => {
-      const p = b.dataset.dir; let J = null; try { J = await api.proj.jobFor({ path: p }); } catch {}
+      const p = b.dataset.dir;
+      // straight away: the row lights up and the right side says so, because a OneDrive folder can take seconds to answer
+      L.querySelectorAll('.jbj.on').forEach(x => x.classList.remove('on')); b.classList.add('on');
+      if (b.dataset.job) { const main = $('#jbMain'); if (main) main.innerHTML = `<div class="jbopening"><span class="spinner"></span> Opening ${esc(base(p))}…</div>`; }
+      let J = null; try { J = await api.proj.jobFor({ path: p }); } catch {}
       // not a job (a year, a client, an enquiry folder): it opens in the tree and its contents show on the right, like Explorer
-      if (!J) { sel = ''; selPath = p; selFolder = ''; filesAt = ''; tab = 'files'; msg = ''; renderFolder(); if (!treeOpen.has(p)) { treeOpen.add(p); rememberTree(); } await relist(); renderList(); return; }
+      if (!J) { sel = ''; selPath = p; selFolder = ''; filesAt = ''; tab = 'files'; msg = ''; renderFolder(); if (!treeOpen.has(p)) { treeOpen.add(p); rememberTree(); focusPath = p; } await relist(); renderList(); return; }
       selFolder = J.folder || p; filesAt = (J.folder && p.toLowerCase() !== J.folder.toLowerCase()) ? p : '';
       if (J.id) { if (sel !== J.id) { tab = b.dataset.kind === 'drawing' ? 'deliv' : 'files'; msg = ''; openDirs.clear(); } sel = J.id; selPath = ''; noteRecent(J.folder || p, `${J.number || ''} ${J.name || ''}`.trim() || base(J.folder || p)); }
       else { sel = ''; selPath = J.folder; tab = 'files'; msg = ''; }
