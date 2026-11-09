@@ -35,6 +35,12 @@ async function claudeFull(a) {
   if (/ALREADY made for it/.test(sys)) { global.__matchAsked = user; return { text: JSON.stringify(global.__match || {}), stop: 'end_turn' }; }
   if (/email checker at the Atomax-UK reception/.test(sys)) { global.__eliSeen = (a.messages || []).flatMap(m => Array.isArray(m.content) ? m.content.map(c => c.type === 'text' ? c.text : `[${c.type}:${(c.source && c.source.media_type) || ''}]`) : [String(m.content)]).join('\n'); if (global.__eliEmail) return { text: JSON.stringify(global.__eliEmail), stop: 'end_turn' }; }
   if (/365 room of the Atomax Media Office app/.test(sys)) { global.__o365Asked = (a.messages || []).flatMap(m => Array.isArray(m.content) ? m.content.map(c => c.text || '') : [String(m.content)]).join('\n'); const q = global.__o365 || []; const next = q.shift(); return { text: typeof next === 'function' ? next(global.__o365Asked) : JSON.stringify(next || { say: 'Nothing to add.' }), stop: 'end_turn' }; }
+  if (/You edit the text in engineering DXF drawings/.test(sys)) {   // Revise: Dex turns the comments into text edits from the inventory he was given
+    const text = (a.messages || []).map(m => typeof m.content === 'string' ? m.content : (m.content || []).map(c => c.text || '').join('\n')).join('\n'); global.__dexNoteAsked = text;
+    const item = (t) => { const m = text.match(new RegExp('^(\\d+) \\| [^\\n]*\\| ' + t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$', 'm')); return m ? +m[1] : -1; };
+    const cno = (re) => (text.match(new RegExp('(C-\\d+): [^\\n]*' + re.source, 'i')) || [])[1] || '';
+    const items = []; if (/LT1/.test(text)) items.push({ file: 'x', for: cno(/LT1/), ref: item('LT1'), action: 'replace_text', before: 'LT1', after: 'CT1' }); if (/C-I04/.test(text)) items.push({ file: 'x', for: cno(/C-I04/), ref: item('C-I04'), action: 'replace_text', before: 'C-I04', after: 'C-104' }); if (/black/i.test(text)) items.push({ file: 'x', for: cno(/black/), ref: 'all', action: 'set_colour', colour: 'black' }); if (/cloud/i.test(text)) items.push({ for: cno(/cloud/), action: 'none', why: 'a revision cloud is linework, not text' });
+    return { text: JSON.stringify({ items }), stop: 'end_turn' }; }
   if (a.who === 'dex' || /You are Dex/i.test(sys)) { const req = (user.match(/REQUEST: ([^"]{0,200})/) || [])[1] || ''; return { text: /block cable/i.test(req) ? dexBcd : dexSld, stop: 'end_turn' }; }
   return { text: '{}', stop: 'end_turn' };
 }
@@ -246,7 +252,7 @@ const step = (name, fn) => { try { const r = fn(); if (r && r.then) return r.the
       { t: 'text', x: x + 14, y: 31, text: 'CHECKED', h: 3, layer: 'TB' }, { t: 'mtext', x: x + 61, y: 32, text: 'JA', h: 2.5, layer: 'TB' },
       { t: 'text', x: x + 14, y: 19, text: 'APPROVED', h: 3, layer: 'TB' }, { t: 'mtext', x: x + 61, y: 21, text: 'DM', h: 2.5, layer: 'TB' }, { t: 'text', x: x + 84, y: 19, text: 'DATE', h: 3, layer: 'TB' }, { t: 'mtext', x: x + 115, y: 21, text: date, h: 2.5, layer: 'TB' },
       { t: 'line', x1: x + 11, y1: 15, x2: x + 171, y2: 15, layer: 'TB' }, { t: 'line', x1: x + 11, y1: 61, x2: x + 171, y2: 61, layer: 'TB' }, { t: 'line', x1: x + 11, y1: 15, x2: x + 11, y2: 61, layer: 'TB' }, { t: 'line', x1: x + 171, y1: 15, x2: x + 171, y2: 61, layer: 'TB' }); });
-    prims.push({ t: 'text', x: 1141, y: 19, text: 'P03', h: 5, layer: 'TB' }, { t: 'line', x1: 0, y1: 200, x2: 500, y2: 200, layer: 'SLD' });
+    prims.push({ t: 'text', x: 1141, y: 19, text: 'P03', h: 5, layer: 'TB' }, { t: 'line', x1: 0, y1: 200, x2: 500, y2: 200, layer: 'SLD' }, { t: 'text', x: 100, y: 210, text: 'LT1', h: 2.5, layer: 'SLD' }, { t: 'text', x: 300, y: 210, text: 'C-I04', h: 2.5, layer: 'SLD' });
     const dxfBuf = dxm.writeDxf(prims, { x0: 0, y0: 0, x1: 1200, y1: 400 });
     fs.writeFileSync(path.join(F, '013 Transmittals & Drawing Register', 'ISSUE 12', 'X11475-BGN-ZZ-XX-DR-E-7153 P03.dxf'), dxfBuf);
     await call('proj:gather', { jobId: J.id }).catch(() => {}); const O1 = await call('jobs:overview', { jobId: J.id });
@@ -268,7 +274,7 @@ const step = (name, fn) => { try { const r = fn(); if (r && r.then) return r.the
       assert.ok(T.some(([p, px]) => /^\d\d\/\d\d\/\d\d$/.test(p) && px === 595 && p !== '23/10/26'), 'new box dated today'); assert.ok(has('P04', 1141) && !has('P03', 1141), 'title block ISSUE field at P04');
       assert.strictEqual(T.filter(([p]) => p === 'ISSUE').length, 4, 'four ISSUE labels'); }
     const O2 = await call('jobs:overview', { jobId: J.id }); assert.strictEqual(O2.rows.find(r => r.no === 'X11475-BGN-ZZ-XX-DR-E-7153').rev, 'P04', 'register row at P04');
-    let err = ''; try { await call('jobs:revUp', { jobId: J.id, no: 'X11475-BGN-ZZ-XX-DR-E-7147' }); } catch (e) { err = e.message; } assert.ok(/no DXF/.test(err) && /42_BG_0055_P02/.test(err) && /save it as DXF/i.test(err), 'DWG-only drawing says what it needs: ' + err);
+    let err = ''; try { await call('jobs:revUp', { jobId: J.id, no: 'X11475-BGN-ZZ-XX-DR-E-7147' }); } catch (e) { err = e.message; } assert.ok(/AutoCAD was not found/.test(err) && /42_BG_0055_P02/.test(err) && /save it as DXF/i.test(err), 'DWG-only drawing says what it needs: ' + err);
     // talking to Eli on the job (Tom 13:56: "i wish eli was a chat like you"): he sees the job and changes only what he is told to
     { global.__chat = { reply: 'Done: 7129 is off the list (it was never issued), the cable calc is on it, and RFI-001 is closed.', actions: [{ do: 'remove', no: 'X11475-BGN-ZZ-XX-DR-E-7129' }, { do: 'add', type: 'calculation', title: 'Cable calculations - new PDB', qty: 1 }, { do: 'closeRfi', no: 'RFI-001', answer: 'Lee answered: S3 until DCAAR' }, { do: 'rename', no: '7153', title: 'Proposed Switchroom Layout (long option)' }] };
       const C = await call('eli:chat', { jobId: J.id, text: 'drop 7129, add the cable calc for the new PDB, close RFI-001 (Lee answered) and call 7153 the long option' });
@@ -278,10 +284,34 @@ const step = (name, fn) => { try { const r = fn(); if (r && r.then) return r.the
       assert.ok((O3.desk.rfis || []).find(r => r.no === 'RFI-001').status === 'Closed', 'RFI closed'); const L = await call('eli:chatLog', { jobId: J.id }); assert.ok(L.chat.length >= 2 && L.chat[L.chat.length - 1].role === 'eli'); assert.strictEqual(L.chat[L.chat.length - 1].done.length, 4);
       // "rev up all the P03s" from the chat: every drawing with a DXF at P03 gets its P04; the DWG-only ones are named
       global.__chat = { reply: 'Revving up the P03s now.', actions: [{ do: 'revUpAll', rev: 'P04', status: 'ISSUED FOR COMMENT' }] };   // 7153 is at P04 after the earlier rev up
-      const C3 = await call('eli:chat', { jobId: J.id, text: 'rev up all the P04s for issue 13' }); assert.ok(C3.done.some(x => /revved up X11475-BGN-ZZ-XX-DR-E-7153 to P05 → /.test(x)), JSON.stringify(C3.done)); assert.ok(C3.done.some(x => /DWG only, need a DXF first: .*7147/.test(x)), 'names the DWG-only drawings: ' + JSON.stringify(C3.done));
+      const C3 = await call('eli:chat', { jobId: J.id, text: 'rev up all the P04s for issue 13' }); assert.ok(C3.done.some(x => /revved up X11475-BGN-ZZ-XX-DR-E-7153 to P05 → /.test(x)), JSON.stringify(C3.done)); assert.ok(!C3.done.some(x => /7147/.test(x)), 'the SLD at P03 is not a P04, so it is left alone: ' + JSON.stringify(C3.done));
       const O4 = await call('jobs:overview', { jobId: J.id }); assert.strictEqual(O4.rows.find(r => /7153$/.test(r.no)).rev, 'P05'); const p05 = O4.rows.find(r => /7153$/.test(r.no)).work.files[0]; assert.ok(fs.existsSync(p05) && /ISSUE 13[\\/]X11475-BGN-ZZ-XX-DR-E-7153 P05\.dxf$/.test(p05), 'the second rev up stays in the same open issue folder: ' + p05);
       assert.ok(fs.existsSync(path.join(F, '013 Transmittals & Drawing Register', 'ISSUE 13', 'Superseded', 'X11475-BGN-ZZ-XX-DR-E-7153 P04.dxf')), 'the P04 from the same issue moved to Superseded inside ISSUE 13, nowhere else'); assert.ok(!fs.existsSync(path.join(F, '013 Transmittals & Drawing Register', 'ISSUE 14')), 'no ISSUE 14 opened');
       global.__chat = { reply: 'The register has 7147 at P03 and 7153 at P03; both have DXFs in ISSUE 12.', actions: [] }; const C2 = await call('eli:chat', { jobId: J.id, text: 'what revs are the SLD and the switchroom at?' }); assert.strictEqual(C2.done.length, 0); assert.ok(/CONVERSATION SO FAR:[\s\S]*TOM: drop 7129/.test(global.__chatAsked), 'he remembers the conversation'); global.__chat = null; }
+    // Revise (Tom 9 Nov: "dex shouldve told me then... why isnt he telling me when theres a problem"): comments logged against a drawing ->
+    // Dex says on the job what he can do; Revise makes the text edits on the DXF on file and revs it up; DWG-only says what it needs
+    { for (const c of ['LT1 should read CT1', 'C-I04 should be C-104 (letter I for digit 1)', 'All text to be black', 'Cloud the changes']) await call('desk:addComment', { jobId: J.id, doc: 'X11475-BGN-ZZ-XX-DR-E-7153', comment: c, by: 'NG' });
+      await call('desk:addComment', { jobId: J.id, doc: 'X11475-BGN-ZZ-XX-DR-E-7147', comment: 'Rename MCC-1 to MCC-01', by: 'NG' });
+      const O5 = await call('jobs:overview', { jobId: J.id }); const d153 = (O5.dex || []).find(x => /7153$/.test(x.no)), d147 = (O5.dex || []).find(x => /7147$/.test(x.no));
+      assert.ok(d153 && d153.can === 'edit' && /\d changes logged/.test(d153.say) && /7153 P05\.dxf/.test(d153.say) && /Press Revise/.test(d153.say), 'Dex says he can do 7153: ' + JSON.stringify(d153));
+      assert.ok(d147 && d147.can === 'edit' && /Only 42_BG_0055_P02[^\n]*\.dwg is on file/.test(d147.say) && /save it as DXF with AutoCAD/.test(d147.say), 'Dex says he will convert 7147: ' + JSON.stringify(d147));
+      const r147 = O5.rows.find(r => /7147$/.test(r.no)); assert.ok(r147.src.dwg && !r147.src.dxf, 'still DWG only');
+      let err = ''; try { await call('jobs:revise', { jobId: J.id, no: 'X11475-BGN-ZZ-XX-DR-E-7147' }); } catch (e) { err = e.message; } assert.ok(/AutoCAD was not found/.test(err) && /42_BG_0055_P02[^\n]*\.dwg/.test(err) && /save it as DXF/.test(err), 'Revise on DWG-only with no AutoCAD says so, plainly: ' + err);
+      const W6 = await call('jobs:revise', { jobId: J.id, no: 'X11475-BGN-ZZ-XX-DR-E-7153', status: 'ISSUED FOR COMMENT', people: { drawn: 'TM', checked: 'JA', approved: 'DM' } });
+      assert.ok(/LT1/.test(global.__dexNoteAsked) && /C-I04/.test(global.__dexNoteAsked) && /All text to be black/.test(global.__dexNoteAsked), 'Dex was given the comments and the drawing text');
+      assert.strictEqual(W6.rev, 'P06', JSON.stringify(W6)); assert.ok(/ISSUE 13[\\/]X11475-BGN-ZZ-XX-DR-E-7153 P06\.dxf$/.test(W6.files[0]) && fs.existsSync(W6.files[0]), 'revised copy is the next rev in the open issue folder: ' + W6.files[0]);
+      assert.ok(/Revised P05 -> P06/.test(W6.summary) && /LT1 -> CT1/.test(W6.summary) && /C-I04 -> C-104/.test(W6.summary) && /text to black/.test(W6.summary), 'summary says what changed: ' + W6.summary);
+      assert.ok(/NOT DONE/.test(W6.summary) && /cloud/i.test(W6.summary) && /cloud/i.test(W6.warning || ''), 'what he could not do is said, not hidden: ' + W6.summary);
+      const dx6 = require('../src/dxffix.js').parseDxf(fs.readFileSync(W6.files[0])), T6 = dx6.ents.filter(e => e.section === 'ENTITIES').map(e => e.plain);
+      assert.ok(T6.includes('CT1') && !T6.includes('LT1') && T6.includes('C-104') && !T6.includes('C-I04'), 'text edited: ' + T6.filter(t => /CT1|LT1|104/.test(t)).join(','));
+      assert.ok(T6.includes('P06') && T6.includes('P05'), 'revved up too: ' + T6.filter(t => /^P0\d$/.test(t)).join(','));
+      const raw6 = fs.readFileSync(W6.files[0], 'latin1'); const blk = (raw6.match(/\r?\n *62\r?\n7\r?\n/g) || []).length; assert.ok(blk >= 10, 'text items carry colour 7 (black): ' + blk);
+      const O6 = await call('jobs:overview', { jobId: J.id }); const cs = (O6.desk.crs || []).filter(c => c.doc === 'X11475-BGN-ZZ-XX-DR-E-7153');
+      const done6 = cs.filter(c => /LT1|C-I04|black/.test(c.comment)), cloud6 = cs.find(c => /Cloud/.test(c.comment));
+      assert.ok(done6.length === 3 && done6.every(c => c.status === 'Responded' && /Revised in P06/.test(c.response) && /LT1 -> CT1/.test(c.response)), 'the comments done are answered with what was done: ' + JSON.stringify(cs.map(c => [c.comment, c.status, c.response])));
+      assert.ok(cloud6 && cloud6.status === 'Open' && /Dex couldn't do this/.test(cloud6.response) && /linework/.test(cloud6.response), 'the one he could not do stays open with his reason: ' + JSON.stringify([cloud6.status, cloud6.response]));
+      assert.ok((O6.desk.crs || []).find(c => c.doc === 'X11475-BGN-ZZ-XX-DR-E-7147').status === 'Open', 'the DWG-only comment stays open'); { const d6 = (O6.dex || []).find(x => /7153$/.test(x.no)); assert.ok(d6 && /\d change/.test(d6.say) && (d6.can === 'edit' || (d6.can === 'needsyou' && /can't do by editing text/.test(d6.say) && /Cloud the changes/.test(d6.say))), 'Dex still flags what is left on 7153: ' + JSON.stringify(d6)); }
+      assert.ok(fs.existsSync(path.join(F, '013 Transmittals & Drawing Register', 'ISSUE 13', 'Superseded', 'X11475-BGN-ZZ-XX-DR-E-7153 P05.dxf')), 'the P05 moved to Superseded in the same issue folder'); }
     return O.rows.map(r => r.no).join(', ');
   });
   // Eli's scope reply with a quote inside a title (8" gas main) is read all the same, and a register row comes from it

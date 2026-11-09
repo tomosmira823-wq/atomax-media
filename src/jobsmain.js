@@ -76,7 +76,27 @@ function register({ ipcMain, HANDLERS, BIZ, claudeFull }) {
     for (const w of Object.values(dl)) if (w && Array.isArray(w.files)) w.files = w.files.map(f => { if (!f || fs.existsSync(f)) return f; const dir = path.dirname(f), base = path.basename(f); const alt = base.replace(/_([PCAX]\d{2})(\.[a-z0-9]+)$/i, ' $1$2'); const alt2 = base.replace(/ ([PCAX]\d{2})(\.[a-z0-9]+)$/i, '_$1$2'); for (const a of [alt, alt2]) if (a !== base && fs.existsSync(path.join(dir, a))) return path.join(dir, a); return f; });
     const rows = job.drawings.filter(d => !/cancel|superseded/i.test(d.status)).map(d => { const src = sourceFor(d, files), k = kindOf(d); const reserved = !d.rev && !src.dxf && !src.dwg && !src.pdf && !dl[d.no] && !/^TBC-/i.test(d.no) && anyIssued; return { ...d, ...k, group: reserved ? 'reserved' : (d.group || groupOf(d)), num: realNo(d) || d.no, ctitle: cleanTitle(d) || d.title, work: dl[d.no] || null, src, canRev: !reserved && !!(k.agent === 'Dex' || src.dxf || src.docx || src.xlsx) }; });   // reserved: a number in the register never issued and with no file: listed, not counted
     const DR = require('./docreq'), ng = DR.ngJob(rows), needNg = ng ? DR.needsRequest(rows).map(r => r.no) : [];
-    return { job: { id: job.id, number: job.number, name: job.name, client: job.client, folder: job.folder, status: job.status }, desk: V, rows, needsMaster: rows.some(r => r.kind === 'bcd' || r.kind === 'schedule'), ngJob: ng, needNg };
+    return { job: { id: job.id, number: job.number, name: job.name, client: job.client, folder: job.folder, status: job.status }, desk: V, rows, needsMaster: rows.some(r => r.kind === 'bcd' || r.kind === 'schedule'), ngJob: ng, needNg, dex: dexSays(rows, V) };
+  }
+  // Dex speaks up on the job: for every drawing with changes logged against it, what he can do about them and what he needs. Plain and
+  // deterministic (what is on file decides), so it is there the moment the comments are filed, before anything is pressed.
+  function dexSays(rows, V) {
+    const openFor = (r) => (V.crs || []).filter(c => (c.doc === r.no || (c.doc === '*' && r.group !== 'reserved')) && !/responded|closed/i.test(c.status || ''));
+    const out = [];
+    for (const r of rows) {
+      if (!(r.group === 'drawing' || r.agent === 'Dex') || r.group === 'reserved') continue;
+      const open = openFor(r); if (!open.length) continue;
+      const n = open.length, what = `${n} change${n === 1 ? '' : 's'}`, num = r.num || r.no, busy = r.work && r.work.status === 'working';
+      const stuck = open.filter(c => /^Dex couldn't/.test(c.response || ''));   // asked already, and said he can't by editing text
+      if (busy) out.push({ no: r.no, can: 'working', say: `${num}: I'm on it now.` });
+      else if (stuck.length === n) out.push({ no: r.no, can: 'needsyou', say: `${num}: ${n === 1 ? 'the change left' : `the ${n} changes left`} I can't do by editing text — ${stuck.map(c => `"${c.comment}"`).join(', ')}. Do ${n === 1 ? 'it' : 'them'} in AutoCAD and I'll rev it up, or tell me exactly what text to change.` });
+      else if (r.work && r.work.status === 'needs you' && r.work.summary) out.push({ no: r.no, can: 'needsyou', say: `${num}: ${r.work.summary.replace(/^Dex: /, '')}` });
+      else if (r.src && r.src.dxf) out.push({ no: r.no, can: 'edit', say: `${num}: ${what} logged. I've got ${r.src.dxf.split('/').pop()} — I'll make the text edits (tags, names, text colour) on it and rev it up into the issue folder. Press Revise.` });
+      else if (r.src && r.src.dwg) out.push({ no: r.no, can: 'edit', say: `${num}: ${what} logged. Only ${r.src.dwg.split('/').pop()} is on file, so I'll save it as DXF with AutoCAD first, then make the text edits and rev it up. Press Revise.` });
+      else if (r.agent === 'Dex') out.push({ no: r.no, can: 'redraw', say: `${num}: ${what} logged and there's no drawing file for it in the job folder. I'd have to draw it again from the job's inputs. Put the DXF in the folder and press ↻ if you want me to edit it instead.` });
+      else out.push({ no: r.no, can: 'nothing', say: `${num}: ${what} logged, but there's no file for it in the job folder and it's not a kind I draw. Put the DXF in the folder and press ↻.` });
+    }
+    return out;
   }
 
   // make one deliverable with the agent for its kind
@@ -220,7 +240,67 @@ function register({ ipcMain, HANDLERS, BIZ, claudeFull }) {
   ipcMain.handle('jobs:make', wrap((a) => make(a)));
   ipcMain.handle('jobs:makeAll', wrap(async ({ jobId }) => { const o = overview(jobId), done = [], masterOk = o.desk.master && o.desk.master.status === 'approved'; for (const r of o.rows.filter(r => r.agent && (!r.work || ['failed'].includes(r.work.status)) && (masterOk || !['bcd', 'schedule'].includes(r.kind)))) { try { await make({ jobId, no: r.no }); done.push(r.no); } catch {} } return { done, overview: overview(jobId) }; }));
   ipcMain.handle('jobs:check', wrap((a) => check(a)));
-  ipcMain.handle('jobs:revise', wrap(({ jobId, no, comments }) => make({ jobId, no, revision: { on: true, stage: '', note: String(comments || '').slice(0, 2000) }, note: comments ? `Client comments to address: ${comments}` : '' })));
+  // Revise: the changes logged against a drawing, done by Dex. With a DXF on file he edits its text (I -> 1, LT -> CT, a rename, all text in
+  // black) and revs it up into the issue folder; what he was not asked about is untouched. DWG only: he asks for a DXF. No file at all: the
+  // drawing is drawn again from the inputs with the comments as instructions (the one case where a redraw is right).
+  // a DWG saved as DXF beside it by AutoCAD's core console (the one that plots); the folder is read again so the row sees the DXF
+  async function dwgToDxf({ jobId, job, no, rel }) {
+    const PL = require('./plot'), core = PL.coreConsole(), full = path.join(job.folder, rel), name = path.basename(full);
+    if (!core) throw new Error(`${no}: only ${name} is on file and Dex cannot read a DWG. AutoCAD was not found on this PC to save it as DXF: save it as DXF from AutoCAD next to the DWG, press ↻, then try again.`);
+    let r; try { r = await PL.dwgToDxf(full, { console: core }); } catch (e) { throw new Error(`${no}: Dex tried to save ${name} as DXF with AutoCAD and it failed (${String(e.message || e)}). Save it as DXF by hand next to the DWG, press ↻, then try again.`); }
+    BIZ.log({ who: 'Dex', action: `Saved ${name} as DXF so it can be edited and revved`, jobId, detail: r.dxf });
+    try { BIZ.projects.gather(job.id, job.folder, { checker: require('./checker') }); } catch {}
+    return r.dxf;
+  }
+  const ACTIONS = ['replace_text', 'delete_text', 'add_text', 'set_colour', 'set_color'];
+  const refOf = (v) => Number.isInteger(v) ? v : /^\d+$/.test(String(v ?? '')) ? +v : String(v || '').toLowerCase() === 'all' ? 'all' : undefined;
+  const sayEdit = (f) => f.action === 'replace_text' ? `${f.before} -> ${f.after}` : f.action === 'delete_text' ? `removed "${f.before || f.text}"` : f.action === 'add_text' ? `added "${f.text}"` : `text to ${f.colour || 'black'}`;
+  async function revise({ jobId, no, comments = '', people = null, status = '' }) {
+    const job = jobOf(jobId), d = job.drawings.find(x => x.no === no); if (!d) throw new Error('Not on the drawing list: ' + no);
+    const open = (desk.load(jobId).crs || []).filter(c => (c.doc === no || c.doc === '*') && !/responded|closed/i.test(c.status || ''));
+    const asked = String(comments || '').trim() || open.map(c => `${c.no ? c.no + ': ' : ''}${c.comment}`).join('\n');
+    let src = sourceFor(d, jobFiles(jobId)), fname = (src.dxf || src.dwg || '').split('/').pop();
+    if (!src.dxf && src.dwg) { await dwgToDxf({ jobId, job, no, rel: src.dwg }); src = sourceFor(d, jobFiles(jobId)); fname = (src.dxf || src.dwg || '').split('/').pop(); if (!src.dxf) throw new Error(`${no}: Dex saved ${fname} as DXF but the folder does not show it yet. Press ↻ above the list and Revise again.`); }
+    if (!src.dxf) { if (!kindOf(d).agent) throw new Error(`${no}: there is no drawing file for it in the job folder and no agent draws this kind. Put the DXF in the folder, press ↻, then Revise.`); return make({ jobId, no, people, revision: { on: true, stage: '', note: asked.slice(0, 2000) }, note: asked ? `Client comments to address: ${asked}` : '' }); }
+    if (!asked) throw new Error(`${no}: nothing is logged against it to change. Log the comments on the Comments tab (or forward the email to Eli), then press Revise.`);
+    const dxffix = require('./dxffix'), full = path.join(job.folder, src.dxf), buf = fs.readFileSync(full);
+    let parsed; try { parsed = dxffix.parseDxf(buf); } catch (e) { throw new Error(`${no}: Dex could not read ${fname} (${String(e.message || e)}).`); }
+    const prev = delivOf(jobId)[no] || {}; people = people || prev.people || null;
+    const R = runs.start({ kind: 'revise', who: 'Dex', jobId, no });
+    setDeliv(jobId, no, { status: 'working', run: RUN, runId: R.id, agent: 'Dex', summary: 'Dex is reading the comments against the drawing', people });
+    try {
+      runs.stage(R.id, 'Dex is working out the edits', 15);
+      const r = await claudeFull({ system: dxffix.DEX_NOTE_SYSTEM, who: 'dex', skills: false, maxTokens: 8000, messages: [{ role: 'user', content: `The engineer says:\n<instruction>${asked.slice(0, 6000)}</instruction>\n\nText in the drawing(s):\nFILE: ${fname}\n${dxffix.inventory(parsed)}` }], run: R.id });
+      const j = require('./checker').parseJson(r.text || '').value || {}, items = Array.isArray(j.items) ? j.items : [];
+      const fixes = [], cannot = [], failedFor = new Map(), okFor = new Set();   // which comment each miss belongs to, so it stays open with the reason
+      const forOf = (it) => String(it.for || it.comment || '').trim().toUpperCase();
+      items.forEach((it, i) => {
+        const action = ACTIONS.includes(it.action) ? it.action : 'none', who = forOf(it);
+        const miss = (why) => { cannot.push(why); if (who) failedFor.set(who, [...(failedFor.get(who) || []), why]); };
+        if (action === 'none') { miss(it.why || 'not a text change'); return; }
+        const f = { id: i + 1, for: who, file: fname, action, ref: refOf(it.ref), before: it.before || '', after: it.after || '', text: it.text || '', x: it.x, y: it.y, layer: it.layer || '', height: it.height, colour: it.colour || it.color || '' };
+        if (action === 'delete_text' && Number.isInteger(f.ref) && parsed.ents[f.ref]) f.before = parsed.ents[f.ref].plain;
+        const c = dxffix.checkItem(parsed, f); if (!c.can) { miss(`${sayEdit(f)}: ${c.warn}`); return; }
+        fixes.push(f);
+      });
+      if (!fixes.length) { const why = cannot.length ? cannot.join(' · ') : 'the comments do not say what text to change'; runs.finish(R.id, { ok: false, error: why }); setDeliv(jobId, no, { status: 'needs you', summary: `Dex: I can't do these by editing the drawing's text — ${why}. Tell me exactly what to change (or do it in AutoCAD and I'll rev it up).` }); throw new Error(`${no}: Dex can't do these by editing the text — ${why}`); }
+      runs.stage(R.id, `Dex is making ${fixes.length} edit${fixes.length === 1 ? '' : 's'}`, 50);
+      const out = dxffix.applyFixes(buf, fixes), applied = out.results.filter(x => x.status === 'applied'), missed = out.results.filter(x => x.status !== 'applied');
+      out.results.forEach((x, i) => { const who = fixes[i] && fixes[i].for; if (!who) return; if (x.status === 'applied') okFor.add(who); else failedFor.set(who, [...(failedFor.get(who) || []), `${sayEdit(x)}: ${x.reason}`]); });
+      if (!applied.length) { const why = missed.map(x => `${sayEdit(x)}: ${x.reason}`).join(' · '); runs.finish(R.id, { ok: false, error: why }); setDeliv(jobId, no, { status: 'needs you', summary: `Dex: none of the edits went in — ${why}` }); throw new Error(`${no}: ${why}`); }
+      const note = `${applied.length} edit${applied.length === 1 ? '' : 's'}: ${applied.map(x => sayEdit(x) + (x.places > 1 ? ` (×${x.places})` : '')).join(', ')}`;
+      runs.stage(R.id, 'Dex is revving it up', 80);
+      const w = await revUp({ jobId, no, status, people, edited: { buf: out.buf, note } });
+      // each comment answered: done ones Responded with what went in; one Dex could not do stays Open with his reason on it
+      for (const c of open) { if (c.doc === '*') continue; const k = String(c.no).toUpperCase(); try {
+        if (failedFor.has(k) && !okFor.has(k)) desk.saveCrs(jobId, { no: c.no, response: `Dex couldn't do this by editing text (${failedFor.get(k).join('; ')}). Do it in AutoCAD, or tell him more.` });
+        else desk.saveCrs(jobId, { no: c.no, status: 'Responded', response: `Revised in ${w.rev}: ${note}` }); } catch {} }
+      const left = [...cannot, ...missed.map(x => `${sayEdit(x)}: ${x.reason}`)];
+      runs.finish(R.id, { ok: true });
+      return setDeliv(jobId, no, { summary: `${w.summary}${left.length ? `. NOT DONE (needs you or AutoCAD): ${left.join(' · ')}` : ''}`, warning: left.length ? `Dex: ${left.length} of the asks I could not do by editing text: ${left.join(' · ')}` : '', given: { request: asked, at: new Date().toISOString(), read: [src.dxf], skills: [], fromSchedule: [], queries: [], warnings: [] } });
+    } catch (e) { const stopped = runs.aborted(R.id); runs.finish(R.id, { ok: false, error: runs.plain(e) }); const cur = delivOf(jobId)[no] || {}; if (cur.status === 'working') setDeliv(jobId, no, { status: stopped ? 'stopped' : 'failed', summary: stopped ? 'Stopped. Nothing was changed.' : runs.plain(e) }); throw e; }
+  }
+  ipcMain.handle('jobs:revise', wrap((a) => revise(a)));
   // the revision asked for: typed in the box (e.g. C01), or said in the note ("move to C01"), else the next one at the same stage
   const askedRev = (to, note) => { const t = String(to || '').trim().toUpperCase().replace(/^([A-Z])(\d)$/, '$10$2'); if (/^[PACX]\d{2}$/.test(t)) return t; const m = String(note || '').match(/\b(?:moved?\s+(?:up\s+)?to|go(?:ing)?\s+to|up\s+to|rev(?:ision)?|issue[d]?\s+(?:as|at))\s*([PACX])\s?0?(\d{1,2})\b/i); return m ? m[1].toUpperCase() + m[2].padStart(2, '0') : ''; };
   ipcMain.handle('jobs:revision', wrap(async ({ jobId, no, note = '', to = '', people, desc = '' }) => {
@@ -264,12 +344,13 @@ function register({ ipcMain, HANDLERS, BIZ, claudeFull }) {
     try { BIZ.projects.gather(job.id, job.folder, { checker: require('./checker') }); } catch {}
     return w;
   }
-  async function revUp({ jobId, no, to = '', status = '', people = null }) {
+  async function revUp({ jobId, no, to = '', status = '', people = null, edited = null }) {   // edited: { buf, note } when Revise changed the text first
     const job = jobOf(jobId), d = job.drawings.find(x => x.no === no); if (!d) throw new Error('No such row');
-    const src = sourceFor(d, jobFiles(jobId));
+    let src = sourceFor(d, jobFiles(jobId));
     if (!src.dxf && (src.docx || src.xlsx)) return revUpDocument({ jobId, job, d, src, to, status });
+    if (!src.dxf && src.dwg) { await dwgToDxf({ jobId, job, no, rel: src.dwg }); src = sourceFor(d, jobFiles(jobId)); }
     if (!src.dxf) throw new Error(`${no} has no DXF in the job folder${src.dwg ? ` (only ${src.dwg.split('/').pop()}): save it as DXF from AutoCAD next to the DWG` : ''}.`);
-    const dxffix = require('./dxffix'), full = path.join(job.folder, src.dxf), buf = fs.readFileSync(full), cur = d.rev || src.fileRev || '';
+    const dxffix = require('./dxffix'), full = path.join(job.folder, src.dxf), buf = edited && edited.buf ? edited.buf : fs.readFileSync(full), cur = d.rev || src.fileRev || '';
 
     const want = askedRev(to, '') || '';
     const pp = people || {}; let r;
@@ -287,8 +368,8 @@ function register({ ipcMain, HANDLERS, BIZ, claudeFull }) {
     const outPath = path.join(outDir, base + '.dxf'); fs.writeFileSync(outPath, r.buf);
     const pdfs = [];   // no PDF: the app cannot plot a DXF it did not draw; the PDF comes from AutoCAD when the sheet is issued
     d.rev = next; require('./business').saveJob(BIZ.data(), job, 'Dex'); BIZ.store.save();
-    const w = setDeliv(jobId, no, { status: 'made', rev: next, files: [outPath], pdfs, archived, by: 'Dex', summary: `Rev up ${r.from} -> ${next}: new issue box (${[r.changes.date ? 'dated today' : '', r.changes.status ? status.toUpperCase() : '', r.changes.people ? 'initials' : ''].filter(Boolean).join(', ') || 'copied from ' + r.from}); drawing content unchanged`, source: src.dxf });
-    BIZ.log({ who: 'Dex', action: `Revved up ${no} ${r.from} -> ${next} (new issue box, title block)`, jobId, detail: path.basename(outPath) });
+    const w = setDeliv(jobId, no, { status: 'made', rev: next, files: [outPath], pdfs, archived, by: 'Dex', summary: `${edited ? 'Revised' : 'Rev up'} ${r.from} -> ${next}: new issue box (${[r.changes.date ? 'dated today' : '', r.changes.status ? status.toUpperCase() : '', r.changes.people ? 'initials' : ''].filter(Boolean).join(', ') || 'copied from ' + r.from}); ${edited && edited.note ? edited.note : 'drawing content unchanged'}`, source: src.dxf });
+    BIZ.log({ who: 'Dex', action: `${edited ? 'Revised' : 'Revved up'} ${no} ${r.from} -> ${next} (${edited && edited.note ? edited.note + '; ' : ''}new issue box, title block)`, jobId, detail: path.basename(outPath) });
     try { BIZ.projects.gather(job.id, job.folder, { checker: require('./checker') }); } catch {}   // the folder is read again so the new file is the row's source from now on
     return w;
   }

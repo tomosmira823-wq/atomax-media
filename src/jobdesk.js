@@ -220,13 +220,25 @@ function setCount(title, qty) {
 }
 const cap = (t) => t.replace(/^[a-z]/, (c) => c.toUpperCase());
 const setBase = (title) => String(title || '').toLowerCase().replace(/\s*\(sheet \d+\)\s*$/, '').replace(COUNT_IN[0], '').replace(/\s{2,}/g, ' ').trim();
+// a title worth reading: never the number again, never a stray digit from a five-digit sequence; the file name with its number and rev
+// removed, else the folder it lives in ("7.6 Interconnection Diagrams" -> "Interconnection diagram")
+function titleFor(no, title, file) {
+  const t = String(title || '').trim(), numLike = (x) => /^[\d .:-]*$/.test(x) || x.toLowerCase() === String(no).toLowerCase() || x.length < 4;
+  if (t && !numLike(t)) return t;
+  const f = String(file || '').replace(/\\/g, '/'), base = f.split('/').pop().replace(/\.[a-z0-9]+$/i, '');
+  const rest = base.replace(/X\d{5,6}(?:-[A-Z0-9]{1,5}){1,6}/ig, '').replace(/\b\d{2}_[A-Z]{2}_\d{4}(_[PCAX]\d{2})?\b/ig, '').replace(/[-_ ]*\b[PCAX]\d{2}\b/ig, '').replace(/^[\s\-_.]+|[\s\-_.]+$/g, '').replace(/[_]+/g, ' ').trim();
+  if (rest && !numLike(rest)) return rest;
+  const dir = f.split('/').slice(-2, -1)[0] || ''; const folder = dir.replace(/^[\d.]+\s*/, '').replace(/s$/i, '');
+  if (folder && !/^(archive|dxf|claude|to be checked)$/i.test(folder)) return folder.charAt(0).toUpperCase() + folder.slice(1).toLowerCase();
+  return t || 'Drawing';
+}
 function addDeliverables(id, list, opts = {}) {
   const job = jobOf(id); if (!job || !Array.isArray(list) || !list.length) return [];
   const added = [], taken = []; let renamed = false;
   for (const dl0 of list) {
     if (dl0.no) {   // a document Atomax already has in the job folder (matched by Eli): its own number, title and latest revision
       const no = String(dl0.no).trim(), up = no.toUpperCase(); if (!no || job.drawings.some(d => d.no.toUpperCase() === up || (d.alt && d.alt.toUpperCase() === up)) || added.some(a => a.no.toUpperCase() === up)) continue;   // on the list already, under this number or as our number beside the client's
-      const kt = kindTag(dl0.type, dl0.title); added.push({ no, title: String(dl0.title || no), rev: String(dl0.rev || ''), status: 'To do', type: String(dl0.type || ''), group: kt.group }); continue;
+      const kt = kindTag(dl0.type, dl0.title); added.push({ no, title: titleFor(no, dl0.title, dl0.file || dl0.path || ''), rev: String(dl0.rev || ''), status: 'To do', type: String(dl0.type || ''), group: kt.group }); continue;
     }
     const sc = setCount(dl0.title || dl0.type, dl0.qty), dl = { ...dl0, title: cap(sc.title) };
     const qty = Math.max(1, Math.min(60, sc.qty));
@@ -440,4 +452,4 @@ function borderFor(job) {
 }
 
 const saveRaw = (id, d) => save(id, d);
-module.exports = { closeRfisFor, sameAsk, writeRfiRegister, kindTag, GROUPS, setCount, setBase, setScopeNotes, tidyRows, kindKey, renameRow, setBorder, borderFor, saveRaw, setNumbering, init, load, getRules, setRules, addCorrection, clientProfile, titleBlockFor, findRegisters, readRegister, checkRegister, makeRegister, proposeNumber, addDeliverables, addInputs, saveRfi, addComments, saveCrs, buildMaster, exportMaster, importMaster, approveMaster, context, view, exportSheet, masterOf, MASTER_SYSTEM, RULES_FILE };
+module.exports = { titleFor, closeRfisFor, sameAsk, writeRfiRegister, kindTag, GROUPS, setCount, setBase, setScopeNotes, tidyRows, kindKey, renameRow, setBorder, borderFor, saveRaw, setNumbering, init, load, getRules, setRules, addCorrection, clientProfile, titleBlockFor, findRegisters, readRegister, checkRegister, makeRegister, proposeNumber, addDeliverables, addInputs, saveRfi, addComments, saveCrs, buildMaster, exportMaster, importMaster, approveMaster, context, view, exportSheet, masterOf, MASTER_SYSTEM, RULES_FILE };

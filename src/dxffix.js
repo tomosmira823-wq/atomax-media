@@ -61,9 +61,12 @@ function countMatches(dxf, before, ref) {
 }
 
 // one line per text item, for Claude to read when there is no markup
+// the drawing's own text first (ENTITIES), the symbols' text after: a frame block with hundreds of grid letters must never crowd the tags
+// on the drawing out of a list that is cut short
 function inventory(dxf, max = 1500) {
   const rows = []; let chars = 0;
-  for (let i = 0; i < dxf.ents.length; i++) {
+  const order = [...dxf.ents.keys()].filter(i => dxf.ents[i].section !== 'BLOCKS').concat([...dxf.ents.keys()].filter(i => dxf.ents[i].section === 'BLOCKS'));
+  for (const i of order) {
     const e = dxf.ents[i]; if (!e.plain) continue;
     const row = `${i} | ${e.type} | ${e.layer || '0'} | ${e.section === 'BLOCKS' ? 'symbol ' + (e.block || '?') : 'drawing'} | ${e.x === undefined ? '' : Math.round(e.x * 100) / 100},${e.y === undefined ? '' : Math.round(e.y * 100) / 100} | h${e.h === undefined ? '' : e.h} | ${e.plain.slice(0, 160)}`;
     chars += row.length; if (rows.length >= max || chars > 90000) { rows.push('... (list cut short)'); break; }
@@ -79,7 +82,7 @@ const printable = (t) => typeof t === 'string' && t.length > 0 && !/[^\x20-\x7E]
 function checkItem(dxf, it) {
   const out = { can: false, places: 0, inBlocks: 0, blocks: [], warn: '' };
   const ref = Number.isInteger(it.ref) ? it.ref : undefined;
-  if (ref !== undefined && !dxf.ents[ref]) { out.warn = 'Dex could not find that text item in the drawing.'; return out; }
+  if (ref !== undefined && it.ref !== 'all' && !dxf.ents[ref]) { out.warn = 'Dex could not find that text item in the drawing.'; return out; }
   if (it.action === 'replace_text') {
     if (!it.before || !it.after) { out.warn = 'No exact before and after text.'; return out; }
     if (!printable(it.after)) { out.warn = 'The new text has characters Dex will not write into a DXF.'; return out; }
@@ -95,6 +98,10 @@ function checkItem(dxf, it) {
     if (!Number.isFinite(+it.x) || !Number.isFinite(+it.y)) { out.warn = 'No position for the new text.'; return out; }
     if (!templateFor(dxf, it.layer) && dxf.ver > 'AC1009') { out.warn = 'There is no existing text in this DXF to copy the style from.'; return out; }
     out.can = true; out.places = 1;
+  } else if (it.action === 'set_colour' || it.action === 'set_color') {
+    const all = it.ref === undefined || it.ref === null || it.ref === 'all';
+    const targets = all ? dxf.ents.filter(e => e.plain && e.section !== 'BLOCKS') : [dxf.ents[ref]].filter(Boolean);
+    out.can = targets.length > 0; out.places = targets.length; if (!out.can) out.warn = 'No text items to colour.';
   } else out.warn = out.warn || 'Nothing for Dex to change.';
   return out;
 }
@@ -122,7 +129,7 @@ function applyFixes(buf, fixes) {
   const dxf = parseDxf(buf); const results = [];
   const pairs = dxf.pairs.map(p => ({ ...p }));
   const before = dxf.pairs.map(p => p.val);
-  const removed = new Set(); const added = []; let entsAdded = 0, entsRemoved = 0;
+  const removed = new Set(); const added = []; let entsAdded = 0, entsRemoved = 0; const inserts = new Map(); let insertedPairs = 0;   // inserts: pairs slipped in before an index (a colour code a text item never had)
   // handles for new entities (R13+ files)
   const seedAt = pairs.findIndex((p, i) => p.code === 9 && p.val === '$HANDSEED' && pairs[i + 1] && pairs[i + 1].code === 5);
   let nextHandle = Math.max(seedAt >= 0 ? handleNum(pairs[seedAt + 1].val) : 0, 1 + pairs.reduce((m, p) => p.code === 5 ? Math.max(m, handleNum(p.val)) : m, 0));
@@ -177,6 +184,19 @@ function applyFixes(buf, fixes) {
         np = [[0, 'TEXT'], [8, L], [10, String(+f.x)], [20, String(+f.y)], [30, '0.0'], [40, String(h)], [1, f.text]].map(([code, val]) => ({ code, raw: String(code), val }));
       }
       added.push(...np); entsAdded++; res.places = 1; results.push(res);
+    } else if (action === 'set_colour' || action === 'set_color') {
+      // text items to one colour (a client wants all annotation in black): ACI 7 is black/white, 256 is ByLayer
+      const want = String(f.colour || f.color || 'black').toLowerCase(), aci = /^\d+$/.test(want) ? +want : ({ black: 7, white: 7, bylayer: 256, red: 1, yellow: 2, green: 3, cyan: 4, blue: 5, magenta: 6 })[want];
+      if (aci === undefined) { skip(`Dex does not know the colour "${want}".`); continue; }
+      const targets = (f.ref === 'all' || f.ref === undefined || f.ref === null) ? dxf.ents.filter(e => e.plain && e.section !== 'BLOCKS') : [dxf.ents[+f.ref]].filter(Boolean);
+      for (const e of targets) {
+        if (removed.has(e.at)) continue;
+        let at62 = -1, at8 = -1; for (let i = e.at + 1; i < e.end; i++) { if (pairs[i].code === 62 && at62 < 0) at62 = i; if (pairs[i].code === 8 && at8 < 0) at8 = i; }
+        if (at62 >= 0) { if (pairs[at62].val.trim() !== String(aci)) { pairs[at62].val = String(aci); res.places++; } }
+        else if (at8 >= 0) { const list = inserts.get(at8 + 1) || []; list.push({ code: 62, raw: ' 62', val: String(aci) }); inserts.set(at8 + 1, list); insertedPairs++; res.places++; }
+      }
+      if (!res.places) { res.status = 'not found'; res.reason = 'No text item needed its colour changed.'; }
+      results.push(res);
     } else skip('Dex does not know that kind of change.');
   }
   if (added.length && seedAt >= 0) pairs[seedAt + 1].val = nextHandle.toString(16).toUpperCase();
@@ -188,13 +208,14 @@ function applyFixes(buf, fixes) {
   const out = []; let changed = 0;
   pairs.forEach((p, i) => {
     if (i === insertAt) for (const a of added) { out.push(a.raw, a.val); changed++; }
+    if (inserts.has(i) && !removed.has(i)) for (const a of inserts.get(i)) { out.push(a.raw, a.val); changed++; }
     if (removed.has(i)) { changed++; return; }
     out.push(p.raw, p.val); if (p.val !== before[i]) changed++;
   });
   const outText = out.concat(dxf.lines.slice(dxf.pairs.length * 2)).join(dxf.eol);
   // check: same structure apart from what was added or removed on purpose
   const re2 = parseDxf(Buffer.from(outText, 'latin1'));
-  if (re2.pairs.length !== dxf.pairs.length - removed.size + added.length || re2.ents.length !== dxf.ents.length - entsRemoved + entsAdded) throw new Error('Dex stopped: the fixed file did not keep the same structure as the original.');
+  if (re2.pairs.length !== dxf.pairs.length - removed.size + added.length + insertedPairs || re2.ents.length !== dxf.ents.length - entsRemoved + entsAdded) throw new Error('Dex stopped: the fixed file did not keep the same structure as the original.');
   return { buf: Buffer.from(outText, 'latin1'), results, linesChanged: changed };
 }
 
@@ -221,9 +242,11 @@ Actions:
 - "replace_text": change text. Give file, ref (the item number), before (the exact piece of that item's text to change, whole tag/word) and after (the new text).
 - "delete_text": remove one text item. Give file and ref.
 - "add_text": add a new line of text. Give file, text, x, y (put it beside or under related items using their x,y, same height as neighbours), optionally layer and height.
+- "set_colour": make text items one colour (e.g. "all text in black"). Give file, colour ("black", "bylayer" or an ACI number) and ref (an item number, or "all" for every text item on the drawing).
 - "none": the instruction cannot be done by changing text, or is too vague to do safely. Give a short why.
 If the instruction covers several items (for example "change every C-1O4 to C-104"), give one item per item number, including items inside symbols (the person decides later whether to change symbols). New text must be plain printable ASCII. Never invent text the engineer did not give or clearly imply. Do not touch anything they did not ask for.
-Return ONLY JSON: {"items":[{"file":"file name","ref":0,"action":"replace_text|delete_text|add_text|none","before":"","after":"","text":"","x":0,"y":0,"layer":"","height":0,"why":"short plain reason"}]}`;
+When the instruction is a list of numbered comments (lines like "C-003: ..."), put that comment's number in "for" on every item that comes from it, so each comment can be answered.
+Return ONLY JSON: {"items":[{"file":"file name","for":"C-003","ref":0,"action":"replace_text|delete_text|add_text|set_colour|none","before":"","after":"","text":"","x":0,"y":0,"layer":"","height":0,"colour":"","why":"short plain reason"}]}`;
 
 function matchFile(drawing, files) {
   const k = normKey(drawing || ''); if (!k) return null;

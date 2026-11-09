@@ -58,4 +58,25 @@ function plotOne(dxfPath, { console: core, timeoutMs = 180000, layoutName = '' }
   });
 }
 
-module.exports = { coreConsole, layouts, layoutToPlot, plotOne };
+// a DWG saved as DXF beside it (same name), by the same core console: SAVEAS DXF, 2010 format, full precision. Resolves the DXF path or
+// throws with the console's own words. Nothing in the DWG is changed.
+function dwgToDxf(dwgPath, { console: core, timeoutMs = 180000, out = '' } = {}) {
+  return new Promise((resolve, reject) => {
+    const dir = path.dirname(dwgPath), base = path.basename(dwgPath).replace(/\.dwg$/i, ''), dxf = out || path.join(dir, base + '.dxf');
+    const scr = path.join(dir, `.dxf-${base.replace(/[^A-Za-z0-9_-]+/g, '_')}.scr`);
+    try { if (fs.existsSync(dxf)) fs.unlinkSync(dxf); } catch {}
+    fs.writeFileSync(scr, ['FILEDIA 0', 'CMDDIA 0', '_.SAVEAS', 'DXF', '16', '2010', dxf, '_.DELAY 1000', '_.QUIT', '_Y'].join('\r\n') + '\r\n', 'latin1');   // SAVEAS DXF: decimal places 16, R2010, path
+    const child = spawn(core.exe, ['/i', dwgPath, '/s', scr, '/l', 'en-US'], { cwd: dir, windowsHide: true });
+    let o = ''; child.stdout.on('data', (b) => { o += b.toString('latin1'); }); child.stderr.on('data', (b) => { o += b.toString('latin1'); });
+    const t = setTimeout(() => { try { child.kill(); } catch {} }, timeoutMs);
+    child.on('error', (e) => { clearTimeout(t); try { fs.unlinkSync(scr); } catch {} reject(new Error(`${base}: could not start AutoCAD core console (${e.message})`)); });
+    child.on('close', () => {
+      clearTimeout(t); try { fs.unlinkSync(scr); } catch {}
+      const log = o.replace(/\r/g, '').split('\n').filter(l => l.trim()).slice(-40).join('\n');
+      try { fs.appendFileSync(path.join(dir, 'plot-console.log'), `\n===== ${new Date().toISOString()} ${base} -> DXF\n${log}\n`); } catch {}
+      const waitFor = (n) => { if (fs.existsSync(dxf) && fs.statSync(dxf).size > 1024) return resolve({ dxf, log }); if (n <= 0) return reject(new Error(`${base}: AutoCAD did not write the DXF. Last console lines: ${log.split('\n').slice(-6).join(' | ')}`)); setTimeout(() => waitFor(n - 1), 500); };
+      waitFor(20);
+    });
+  });
+}
+module.exports = { coreConsole, layouts, layoutToPlot, plotOne, dwgToDxf };

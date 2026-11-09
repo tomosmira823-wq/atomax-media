@@ -240,8 +240,8 @@ function createWindow() {
   if (process.env.AMO_SCREENSHOT) {
     win.webContents.on('console-message', (_e, level, msg, line, src) => console.error('[page]', level, msg, src + ':' + line));
     win.webContents.once('did-finish-load', () => setTimeout(async () => {
-      if (['run', 'drawing', 'dex', 'model', 'fp', 'biz', 'mo', 'pc', 'theo', 'layout', 'rooms', 'email', 'msg', 'o365', 'dexkind', 'desk', 'newjob', 'jobs', 'tree'].includes(process.env.AMO_SCENARIO)) {
-        const script = fs.readFileSync(path.join(__dirname, '..', 'test', ({ drawing: 'scenario-drawing.js', dex: 'scenario-dex.js', model: 'scenario-model.js', fp: 'scenario-fp.js', biz: 'scenario-biz.js', mo: 'scenario-mo.js', pc: 'scenario-pc.js', theo: 'scenario-theo.js', layout: 'scenario-layout.js', rooms: 'scenario-rooms.js', email: 'scenario-email.js', msg: 'scenario-msg.js', o365: 'scenario-o365.js', dexkind: 'scenario-dexkind.js', desk: 'scenario-desk.js', newjob: 'scenario-newjob.js', jobs: 'scenario-jobs.js', tree: 'scenario-tree.js' }[process.env.AMO_SCENARIO] || 'scenario-run.js')), 'utf8').replace(/__AMO_DIR__/g, (process.env.AMO_PICK_DIR || '').replace(/\\/g, '/'));
+      if (['run', 'drawing', 'dex', 'model', 'fp', 'biz', 'mo', 'pc', 'theo', 'layout', 'rooms', 'email', 'msg', 'o365', 'dexkind', 'desk', 'newjob', 'jobs', 'tree', 'revise'].includes(process.env.AMO_SCENARIO)) {
+        const script = fs.readFileSync(path.join(__dirname, '..', 'test', ({ drawing: 'scenario-drawing.js', dex: 'scenario-dex.js', model: 'scenario-model.js', fp: 'scenario-fp.js', biz: 'scenario-biz.js', mo: 'scenario-mo.js', pc: 'scenario-pc.js', theo: 'scenario-theo.js', layout: 'scenario-layout.js', rooms: 'scenario-rooms.js', email: 'scenario-email.js', msg: 'scenario-msg.js', o365: 'scenario-o365.js', dexkind: 'scenario-dexkind.js', desk: 'scenario-desk.js', newjob: 'scenario-newjob.js', jobs: 'scenario-jobs.js', tree: 'scenario-tree.js', revise: 'scenario-revise.js' }[process.env.AMO_SCENARIO] || 'scenario-run.js')), 'utf8').replace(/__AMO_DIR__/g, (process.env.AMO_PICK_DIR || '').replace(/\\/g, '/'));
         await win.webContents.executeJavaScript(`window.__variant = ${JSON.stringify(process.env.AMO_VARIANT || '')}`);
         const out = await win.webContents.executeJavaScript(script);
         console.error('[scenario]', JSON.stringify(out));
@@ -457,9 +457,9 @@ ipcMain.handle('dxf:propose', async (_e, { source, dxfs, markups, note }) => {
       const j = checker.parseJson(r.text).value;
       for (const it of (j.items || [])) {
         const fl = files.find(x => x.name === it.file) || (files.length === 1 ? files[0] : null);
-        const action = ['replace_text', 'delete_text', 'add_text'].includes(it.action) ? it.action : 'none';
-        const ref = Number.isInteger(it.ref) ? it.ref : (/^\d+$/.test(String(it.ref ?? '')) ? +it.ref : undefined);
-        const base = { id: 'N' + (items.length + 1), drawing: fl ? fl.name : (it.file || ''), note: it.why || '', why: it.why || '', action, ref, before: it.before || '', after: it.after || '', text: it.text || '', x: it.x, y: it.y, layer: it.layer || '', height: it.height };
+        const action = ['replace_text', 'delete_text', 'add_text', 'set_colour', 'set_color'].includes(it.action) ? it.action : 'none';
+        const ref = Number.isInteger(it.ref) ? it.ref : (/^\d+$/.test(String(it.ref ?? '')) ? +it.ref : (String(it.ref || '').toLowerCase() === 'all' ? 'all' : undefined));
+        const base = { id: 'N' + (items.length + 1), drawing: fl ? fl.name : (it.file || ''), note: it.why || '', why: it.why || '', action, ref, before: it.before || '', after: it.after || '', text: it.text || '', x: it.x, y: it.y, layer: it.layer || '', height: it.height, colour: it.colour || it.color || '' };
         if (action === 'none') { items.push({ ...base, note: it.why || 'Dex could not turn that into a text change.' }); continue; }
         if (!fl) { items.push({ ...base, action, warn: 'Dex could not tell which DXF this is for.' }); continue; }
         if (action === 'delete_text' && ref !== undefined && fl.parsed.ents[ref]) base.before = fl.parsed.ents[ref].plain;
