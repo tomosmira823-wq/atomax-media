@@ -293,10 +293,14 @@ function register({ ipcMain, HANDLERS, BIZ, claudeFull }) {
       const note = `${applied.length} edit${applied.length === 1 ? '' : 's'}: ${applied.map(x => sayEdit(x) + (x.places > 1 ? ` (×${x.places})` : '')).join(', ')}`;
       runs.stage(R.id, 'Dex is revving it up', 80);
       const w = await revUp({ jobId, no, status, people, edited: { buf: out.buf, note } });
-      // each comment answered: done ones Responded with what went in; one Dex could not do stays Open with his reason on it
+      // each comment answered: a comment closes only when an edit that came from it went in. One Dex could not do stays Open with his
+      // reason; one no edit came from stays Open too (never closed on the strength of another comment's edit). Only when Dex named no
+      // comment at all on any edit does the whole set close on the revision.
+      const named = items.some(it => forOf(it));
       for (const c of open) { if (c.doc === '*') continue; const k = String(c.no).toUpperCase(); try {
-        if (failedFor.has(k) && !okFor.has(k)) desk.saveCrs(jobId, { no: c.no, response: `Dex couldn't do this by editing text (${failedFor.get(k).join('; ')}). Do it in AutoCAD, or tell him more.` });
-        else desk.saveCrs(jobId, { no: c.no, status: 'Responded', response: `Revised in ${w.rev}: ${note}` }); } catch {} }
+        if (!named || okFor.has(k)) desk.saveCrs(jobId, { no: c.no, status: 'Responded', response: `Revised in ${w.rev}: ${note}` });
+        else if (failedFor.has(k)) desk.saveCrs(jobId, { no: c.no, response: `Dex couldn't do this by editing text (${failedFor.get(k).join('; ')}). Do it in AutoCAD, or tell him more.` });
+        else desk.saveCrs(jobId, { no: c.no, response: `Dex couldn't do this by editing text (no edit came from it). Tell him exactly what text to change.` }); } catch {} }
       const left = [...cannot, ...missed.map(x => `${sayEdit(x)}: ${x.reason}`)];
       runs.finish(R.id, { ok: true });
       return setDeliv(jobId, no, { summary: `${w.summary}${left.length ? `. NOT DONE (needs you or AutoCAD): ${left.join(' · ')}` : ''}`, warning: left.length ? `Dex: ${left.length} of the asks I could not do by editing text: ${left.join(' · ')}` : '', given: { request: asked, at: new Date().toISOString(), read: [src.dxf], skills: [], fromSchedule: [], queries: [], warnings: [] } });
