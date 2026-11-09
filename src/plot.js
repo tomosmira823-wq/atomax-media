@@ -30,7 +30,7 @@ function layoutToPlot(dxfPath) {
 }
 
 // plot one DXF to <same name>.pdf beside it; resolves { pdf, log } or throws with the console's own words
-function plotOne(dxfPath, { console: core, timeoutMs = 180000, layoutName = '' } = {}) {
+function plotOne(dxfPath, { console: core, timeoutMs = 90000, layoutName = '' } = {}) {   // a plot takes seconds; a console stuck on a prompt holds the DXF open, so it is cut off well before Tom presses again
   return new Promise((resolve, reject) => {
     const dir = path.dirname(dxfPath), base = path.basename(dxfPath).replace(/\.dxf$/i, ''), pdf = path.join(dir, base + '.pdf');
     const lay = layoutName || (layoutToPlot(dxfPath) || {}).name; if (!lay) return reject(new Error(`${base}: no paper-space layout found on the sheet`));
@@ -40,7 +40,7 @@ function plotOne(dxfPath, { console: core, timeoutMs = 180000, layoutName = '' }
     // the house PDF setup spelled out: DWG To PDF.pc3, ISO full bleed A1, extents fitted and centred, monochrome.ctb (what Tom's plot logs show)
     const L = (layoutToPlot(dxfPath) || {}); const pdfSetup = /pdf/i.test(L.device || '') && L.name === lay;
     const lines = pdfSetup
-      ? ['FILEDIA 0', 'CMDDIA 0', 'BACKGROUNDPLOT 0', '_.-PLOT', '_N', lay, 'DWG To PDF.pc3', pdf, '_N', '_Y', '_.DELAY 2000', '_.QUIT', '_Y']
+      ? ['FILEDIA 0', 'CMDDIA 0', 'BACKGROUNDPLOT 0', '_.-PLOT', '_N', lay, '', 'DWG To PDF.pc3', pdf, '_N', '_Y', '_.DELAY 2000', '_.QUIT', '_Y']   // -PLOT, not detailed: layout, page setup name (none: Enter), device, file, save setup N, proceed Y. The page-setup prompt was being answered with the device, and the console sat on it until the timeout with the DXF held open (Five Fords, 9 Nov)
       : ['FILEDIA 0', 'CMDDIA 0', 'BACKGROUNDPLOT 0', '_.-PLOT', '_Y', lay, 'DWG To PDF.pc3', 'ISO full bleed A1 (841.00 x 594.00 MM)', '_M', '_L', '_N', '_E', '_F', '_C', '_Y', 'monochrome.ctb', '_Y', '_N', '_N', '_N', pdf, '_N', '_Y', '_.DELAY 2000', '_.QUIT', '_Y'];
     fs.writeFileSync(scr, lines.join('\r\n') + '\r\n', 'latin1');
     const child = spawn(core.exe, ['/i', dxfPath, '/s', scr, '/l', 'en-US'], { cwd: dir, windowsHide: true });
