@@ -48,7 +48,7 @@ function plotOne(dxfPath, { console: core, timeoutMs = 90000, layoutName = '' } 
     const sz = pdfSetup && L.w && L.h ? `${Math.round(Math.min(L.w, L.h))}x${Math.round(Math.max(L.w, L.h))}` : '';
     const paperName = iso[sz] ? `ISO full bleed ${iso[sz]} (${Math.max(L.w, L.h).toFixed(2)} x ${Math.min(L.w, L.h).toFixed(2)} MM)` : '';
     const answers = pdfSetup && paperName
-      ? ['_Y', lay, 'DWG To PDF.pc3', paperName, '_M', (L.rot === 1 || L.rot === 3) ? '_L' : '_P', '_N', '_E', '_F', '_C', '_Y', L.ctb || 'acad.ctb', '_Y', '_N', '_N', '_N', pdf, '_N', '_Y']
+      ? ['_Y', lay, 'DWG To PDF.pc3', paperName, '_M', (L.rot === 1 || L.rot === 3) ? '_L' : '_P', '_N', '_E', '_F', '_C', '_Y', /^(acad|monochrome|grayscale|screening \d+%)\.ctb$/i.test(L.ctb || '') ? L.ctb : 'acad.ctb', '_Y', '_N', '_N', '_N', pdf, '_N', '_Y']   // only a style table the core console is sure to have (acadlt.ctb is not: the plot ended there, Five Fords 9 Nov); acad.ctb is the same colour-for-colour mapping
       : pdfSetup ? ['_N', lay, '', 'DWG To PDF.pc3', pdf, '_N', '_Y']   // not detailed: layout, page setup (none), device, file, save setup N, proceed Y
       : ['_Y', lay, 'DWG To PDF.pc3', 'ISO full bleed A1 (841.00 x 594.00 MM)', '_M', '_L', '_N', '_E', '_F', '_C', '_Y', 'monochrome.ctb', '_Y', '_N', '_N', '_N', pdf, '_N', '_Y'];
     const lines = ['FILEDIA 0', 'CMDDIA 0', 'BACKGROUNDPLOT 0', `(command "_.-PLOT" ${answers.map(q).join(' ')})`, '_.DELAY 2000', '_.QUIT', '_Y'];
