@@ -394,7 +394,19 @@ function register({ ipcMain, HANDLERS, BIZ, claudeFull }) {
     try { BIZ.projects.gather(job.id, job.folder, { checker: require('./checker') }); } catch {}   // the folder is read again so the new file is the row's source from now on
     return w;
   }
-  ipcMain.handle('jobs:revUp', wrap((a) => revUp(a)));
+  // Rev up on a drawing with changes for this issue (open, or already done in this same unissued revision) is a Revise: the changes
+  // are made again from the working file, never lost (Tom 9 Nov: the earlier P03s had been marked done with nothing in them)
+  async function revUpOrRevise(a) {
+    const job = jobOf(a.jobId), d = job.drawings.find(x => x.no === a.no); if (!d) throw new Error('No such row');
+    const issueDir = openIssueDir(a.jobId), src = sourceFor(d, jobFiles(a.jobId, { exceptDir: issueDir }));
+    if (src.dxf || src.dwg) { try {
+      const RU = require('./revup'), dx = require('./dxffix').parseDxf(fs.readFileSync(path.join(job.folder, src.dxf || ''))), ib = src.dxf ? RU.issueBoxes(dx.pairs, RU.entities(dx.pairs)) : null, next = ib ? RU.nextOf(ib.rev) : '';
+      const mine = (desk.load(a.jobId).crs || []).filter(c => (c.doc === a.no || c.doc === '*') && !/closed/i.test(c.status || '') && (!/responded/i.test(c.status || '') || (next && new RegExp('Revised (in|again at) ' + next + '\\b').test(c.response || ''))));
+      if (mine.some(c => c.doc === a.no)) return revise(   // a change on THIS drawing; an every-drawing ask (an issue status) alone stays a plain rev up{ jobId: a.jobId, no: a.no, people: a.people, status: a.status });
+    } catch (e) { if (!/No such row|Not on the drawing list/.test(String(e.message || e))) { /* fall through to a plain rev up only when the look-up itself failed */ } } }
+    return revUp(a);
+  }
+  ipcMain.handle('jobs:revUp', wrap((a) => revUpOrRevise(a)));
   async function docRequest({ jobId, submittedBy = '', nos = null }) {
     const job = jobOf(jobId), ov = overview(jobId), DR = require('./docreq');
     if (!job.folder || !fs.existsSync(job.folder)) throw new Error('This job has no folder to put the request in.');
