@@ -26,7 +26,11 @@ function issueBoxes(P, ents) {
   if (!texts.length) return null;
   // the row: the y that holds the most revision texts (the title block's own ISSUE field sits elsewhere)
   const rows = new Map(); for (const t of texts) { const k = Math.round(t.ys[0]); rows.set(k, [...(rows.get(k) || []), t]); }
-  const row = [...rows.values()].sort((a, b) => b.length - a.length || a[0].ys[0] - b[0].ys[0])[0].sort((a, b) => a.xs[0] - b.xs[0]);
+  // a revision row climbs left to right (P01 P02 P03) with no repeats: a row of the same text over and over (A70 A70 A70 down a cable
+  // list) is not one, nor is a row whose texts are out of order
+  const climbs = (r) => { const v = r.slice().sort((a, b) => a.xs[0] - b.xs[0]).map(t => t.text.toUpperCase()); return new Set(v).size === v.length && v.every((x, i) => !i || (x[0] === v[i - 1][0] ? +x.slice(1) > +v[i - 1].slice(1) : 'PACX'.indexOf(x[0]) > 'PACX'.indexOf(v[i - 1][0]))); };
+  const cands = [...rows.values()].filter(climbs); if (!cands.length) return null;
+  const row = cands.sort((a, b) => b.length - a.length || a[0].ys[0] - b[0].ys[0])[0].sort((a, b) => a.xs[0] - b.xs[0]);
   const last = row[row.length - 1], pitch = row.length >= 2 ? last.xs[0] - row[row.length - 2].xs[0] : 0;
   if (!(pitch > 0)) return null;
   // the band: everything near the revision row's height (the issue box is a few text lines tall)

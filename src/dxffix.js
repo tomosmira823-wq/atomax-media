@@ -50,7 +50,9 @@ function plainText(s) {
 }
 
 const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-const tokenRe = (before) => new RegExp('(^|[^A-Za-z0-9])(' + esc(before) + ')(?![A-Za-z0-9])', 'g');   // whole-tag match, not a piece of a longer tag
+// whole-tag match, not a piece of a longer tag. In MTEXT a tag can sit right after a formatting code ({\LTAG} underline, \OTAG overline,
+// \KTAG strike, \fArial|b0;TAG font, \C1;TAG colour, \H2.5;TAG height, \PTAG new line): those count as the start of a word
+const tokenRe = (before) => new RegExp('(^|[^A-Za-z0-9]|\\\\[LlOoKkP]|\\\\[A-Za-z][^;\\\\{}]*;)(' + esc(before) + ')(?![A-Za-z0-9])', 'g');
 
 // how many places would this fix change in this file (without changing anything). `blocks` names the symbols the text sits in and how often each is used.
 function countMatches(dxf, before, ref) {

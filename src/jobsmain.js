@@ -280,7 +280,9 @@ function register({ ipcMain, HANDLERS, BIZ, claudeFull }) {
         if (action === 'none') { miss(it.why || 'not a text change'); return; }
         const f = { id: i + 1, for: who, file: fname, action, ref: refOf(it.ref), before: it.before || '', after: it.after || '', text: it.text || '', x: it.x, y: it.y, layer: it.layer || '', height: it.height, colour: it.colour || it.color || '' };
         if (action === 'delete_text' && Number.isInteger(f.ref) && parsed.ents[f.ref]) f.before = parsed.ents[f.ref].plain;
-        const c = dxffix.checkItem(parsed, f); if (!c.can) { miss(`${sayEdit(f)}: ${c.warn}`); return; }
+        let c = dxffix.checkItem(parsed, f);
+        if (!c.can && f.action === 'replace_text' && f.ref !== undefined) { const f2 = { ...f, ref: undefined }; const c2 = dxffix.checkItem(parsed, f2); if (c2.can) { Object.assign(f, f2); c = c2; } }   // wrong item number from the model: the text itself decides, everywhere it is on the drawing
+        if (!c.can) { miss(`${sayEdit(f)}: ${c.warn}`); return; }
         fixes.push(f);
       });
       if (!fixes.length) { const why = cannot.length ? cannot.join(' · ') : 'the comments do not say what text to change'; runs.finish(R.id, { ok: false, error: why }); setDeliv(jobId, no, { status: 'needs you', summary: `Dex: I can't do these by editing the drawing's text — ${why}. Tell me exactly what to change (or do it in AutoCAD and I'll rev it up).` }); throw new Error(`${no}: Dex can't do these by editing the text — ${why}`); }
@@ -364,7 +366,7 @@ function register({ ipcMain, HANDLERS, BIZ, claudeFull }) {
     // folders are never written to or moved: a rev up is a new file in the new issue folder, nothing else
     const outDir = openIssueDir(jobId); fs.mkdirSync(outDir, { recursive: true });
     const base = issueName(no, next); let archived = 0;   // X11475-BGN-ZZ-XX-DR-E-7142 P04 the way the earlier issue folders name them, 70_BG_0014_P06 for our own numbers
-    for (const n of fs.readdirSync(outDir)) if (new RegExp('^' + no.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '[ _-]P\\d\\d\\.dxf$', 'i').test(n) && n !== base + '.dxf') { try { const a = path.join(outDir, 'Superseded'); fs.mkdirSync(a, { recursive: true }); fs.renameSync(path.join(outDir, n), path.join(a, n)); archived++; } catch {} }   // only an earlier rev-up of the same drawing in this same issue folder moves aside
+    for (const n of fs.readdirSync(outDir)) if (new RegExp('^' + no.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '[ _-][PCAX]\\d\\d\\.dxf$', 'i').test(n) && n !== base + '.dxf') { try { const a = path.join(outDir, 'Superseded'); fs.mkdirSync(a, { recursive: true }); fs.renameSync(path.join(outDir, n), path.join(a, n)); archived++; } catch {} }   // only an earlier rev-up of the same drawing in this same issue folder moves aside
     const outPath = path.join(outDir, base + '.dxf'); fs.writeFileSync(outPath, r.buf);
     const pdfs = [];   // no PDF: the app cannot plot a DXF it did not draw; the PDF comes from AutoCAD when the sheet is issued
     d.rev = next; require('./business').saveJob(BIZ.data(), job, 'Dex'); BIZ.store.save();
