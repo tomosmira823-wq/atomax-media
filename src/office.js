@@ -1176,8 +1176,12 @@ export class Office {
     requestAnimationFrame(() => this.#animate());
     if (document.hidden) return;
     // frame cap: 30 fps normally, slow when the Jobs screen covers the office or the app is in the background (keeps the PC free)
-    const now = performance.now(), gap = !document.hasFocus() ? 500 : document.body.classList.contains('jobs-open') ? 200 : 33;
-    if (now - (this._lastFrame || 0) < gap) return; this._lastFrame = now;
+    // the Jobs screen covers the office: one frame to settle, then nothing at all is drawn until it closes (every click on the Jobs
+    // screen waited behind a redraw nobody could see: 9 Nov, 13-20 s per click on a slow graphics path)
+    const covered = document.body.classList.contains('jobs-open');
+    if (covered) { if (this._coveredDrawn) return; this._coveredDrawn = true; } else this._coveredDrawn = false;
+    const now = performance.now(), gap = !document.hasFocus() ? 500 : 33;
+    if (!covered && now - (this._lastFrame || 0) < gap) return; this._lastFrame = now;
     const dt = Math.min(this.clock.getDelta(), 0.05);
     // cabinet drawers slide out toward the room
     for (const c of this.newRooms?.file?.cabs || []) { const target = c.open ? 0.75 : 0; c.drawer.position.x += (target - c.drawer.position.x) * Math.min(1, dt * 7); }

@@ -446,7 +446,7 @@ body.fp canvas#scene{cursor:grab}
   .fhead { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 6px; } .fhead h3 { margin: 0 0 2px; font-size: 18px; }
   :where(#filePanel, #boardPanel, #serverPanel, #mailPanel) button:not([class]) { background: #1a2338; color: var(--text); border: 1px solid #2c3850; border-radius: 8px; padding: 7px 12px; font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; }
   /* ---------- Jobs screen ---------- */
-  #jobsPanel { display: none; left: 16px; right: 16px; width: auto; max-width: 1280px; margin-left: auto; z-index: 15; }
+  #jobsPanel { display: none; left: 16px; right: 16px; width: auto; z-index: 15; }   /* fills the window: no strip of office left over on one side */
   /* full screen: the Jobs screen fills the window (top bar hidden), toggled with the ⛶ button or F11 */
   body.jobs-open.jobs-full #jobsPanel { top: 0; bottom: 0; left: 0; right: 0; max-width: none; border-radius: 0; border: 0; z-index: 30; }
   body.jobs-open.jobs-full #top { display: none; }
@@ -462,6 +462,7 @@ body.fp canvas#scene{cursor:grab}
   .jbkind { font-style: normal; font-size: 10px; text-transform: uppercase; letter-spacing: .8px; background: #22304a; border-radius: 7px; padding: 1px 6px; margin-right: 6px; color: #cfd6e3; vertical-align: middle; }
   .jbj .jbcl { color: var(--muted); font-size: 11px; margin-left: 4px; }
   .jbj.recent b { font-weight: 600; } .jbj span.jbclient { color: var(--muted); font-size: 12px; }
+  .jbsetdot { display: inline-block; width: 7px; height: 7px; margin-left: 6px; border-radius: 50%; background: #3fb27f; vertical-align: middle; cursor: help; }
   .jbcloud { display: inline-block; width: 9px; height: 9px; margin-left: 6px; border-radius: 50%; border: 1px solid #5a6a88; vertical-align: middle; } .jbcloud[title] { cursor: help; }
   #jbList { overflow: auto; padding: 12px; display: flex; flex-direction: column; gap: 6px; background: rgba(8,12,22,.5); }
   .jbnew { border: 1px dashed #3a4760; background: transparent; color: var(--green); border-radius: 10px; padding: 9px; font: inherit; font-weight: 600; cursor: pointer; }
@@ -568,6 +569,15 @@ body.fp canvas#scene{cursor:grab}
 .jft-empty{padding:4px 6px}
 .jbopening{padding:40px 24px;color:var(--muted);font-size:15px;display:flex;gap:10px;align-items:center}
 .jbdir b{font-weight:500;display:flex;align-items:center;gap:4px;flex-wrap:wrap}.jbtog{display:inline-block;width:12px;font-style:normal;color:var(--muted);text-align:center;flex:none}.jbtog:not(.leaf):hover{color:var(--text)}.jbfile{opacity:.85;font-size:12px}.jbcrumbs{line-height:1.6}.jbcrumbs a{color:inherit;text-decoration:none;border-bottom:1px dotted currentColor}
+
+/* Jobs screen tidy-up (9 Nov): the folder tree reads like Explorer (one line a row), the job header is one line, the add-folder link is readable */
+#jbList{gap:2px}
+#jbList .jbj.jbdir{padding:4px 8px;border-radius:6px;min-height:0}
+#jbList .jbj.jbdir b{font-size:13px;line-height:1.35}
+#jbList .jbj.jbdir.on{border-color:var(--green)}
+.jbrootlink{color:var(--green)!important;opacity:1}
+.jbhead .bsub{display:flex;align-items:center;flex-wrap:wrap;gap:6px}
+.jbhead select.jbinline{width:auto;max-width:260px;display:inline-block;padding:2px 6px;font-size:12px;margin:0}
 </style>
 <script type="importmap">
 { "imports": {

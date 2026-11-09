@@ -34,6 +34,23 @@ function layoutToPlot(dxfPath) {
   return L.find(l => /pdf/i.test(l.device) && !/nitro|cute|bullzip|microsoft print/i.test(l.device)) || L.find(l => /pdf/i.test(l.device)) || L[0];
 }
 
+// The copy AutoCAD plots from. A DXF opened by the core console rebuilds every associative hatch from its boundary objects
+// ("Hatch boundary associativity removed") and gets the islands wrong: the Atomax logo's white top faces came out solid green on every
+// Five Fords P03 (9 Nov). Tested on Tom's PC: the same DXF with the hatches marked non-associative (group 71 = 0) plots exactly like the
+// DWG did. Only this throwaway copy is changed; the DXF that is issued stays byte for byte as written.
+function plotCopy(dxfPath) {
+  const text = fs.readFileSync(dxfPath).toString('latin1'), eol = /\r\n/.test(text.slice(0, 4000)) ? '\r\n' : '\n', L = text.split(/\r?\n/);
+  let inHatch = false, n = 0;
+  for (let i = 0; i + 1 < L.length; i += 2) {
+    const c = L[i].trim();
+    if (c === '0') inHatch = L[i + 1].trim() === 'HATCH';
+    else if (inHatch && c === '71' && L[i + 1].trim() === '1') { L[i + 1] = L[i + 1].replace('1', '0'); n++; }
+  }
+  const out = path.join(workDir(), `plotcopy-${Date.now()}-${path.basename(dxfPath).replace(/[^A-Za-z0-9_.-]+/g, '_')}`);
+  fs.writeFileSync(out, Buffer.from(L.join(eol), 'latin1'));
+  return { path: out, hatches: n };
+}
+
 // plot one DXF to <same name>.pdf beside it; resolves { pdf, log } or throws with the console's own words
 function plotOne(dxfPath, { console: core, timeoutMs = 90000, layoutName = '' } = {}) {   // a plot takes seconds; a console stuck on a prompt holds the DXF open, so it is cut off well before Tom presses again
   return new Promise((resolve, reject) => {
@@ -60,12 +77,13 @@ function plotOne(dxfPath, { console: core, timeoutMs = 90000, layoutName = '' } 
       : ['_Y', lay, 'DWG To PDF.pc3', 'ISO full bleed A1 (841.00 x 594.00 MM)', '_M', '_L', '_N', '_E', '_F', '_C', '_Y', 'monochrome.ctb', '_Y', '_N', '_N', '_N', pdf, '_N', '_Y'];
     const lines = ['FILEDIA 0', 'CMDDIA 0', 'BACKGROUNDPLOT 0', `(command "_.-PLOT" ${answers.map(q).join(' ')})`, '_.DELAY 2000', '_.QUIT', '_Y'];
     fs.writeFileSync(scr, lines.join('\r\n') + '\r\n', 'latin1');
-    const child = spawn(core.exe, ['/i', dxfPath, '/s', scr, '/l', 'en-US'], { cwd: dir, windowsHide: true });
+    let src = dxfPath, copy = null; try { copy = plotCopy(dxfPath); src = copy.path; } catch (e) { logLine(`${base} plot copy`, String(e && e.message || e)); }
+    const child = spawn(core.exe, ['/i', src, '/s', scr, '/l', 'en-US'], { cwd: dir, windowsHide: true });
     let out = ''; child.stdout.on('data', (b) => { out += b.toString('latin1'); }); child.stderr.on('data', (b) => { out += b.toString('latin1'); });
     const t = setTimeout(() => { try { child.kill(); } catch {} }, timeoutMs);
     child.on('error', (e) => { clearTimeout(t); try { fs.unlinkSync(scr); } catch {} reject(new Error(`${base}: could not start AutoCAD core console (${e.message})`)); });
     child.on('close', () => {
-      clearTimeout(t); try { fs.unlinkSync(scr); } catch {}
+      clearTimeout(t); try { fs.unlinkSync(scr); } catch {} if (copy) { try { fs.unlinkSync(copy.path); } catch {} }
       const log = out.replace(/\r/g, '').split('\n').filter(l => l.trim()).slice(-60).join('\n');
       logLine(`${base} (layout ${lay})`, log);
       // the PDF can land a moment after the console exits; only one written by THIS plot counts
@@ -100,4 +118,4 @@ function dwgToDxf(dwgPath, { console: core, timeoutMs = 180000, out = '' } = {})
     });
   });
 }
-module.exports = { coreConsole, layouts, layoutToPlot, plotOne, dwgToDxf, workDir };
+module.exports = { plotCopy, coreConsole, layouts, layoutToPlot, plotOne, dwgToDxf, workDir };

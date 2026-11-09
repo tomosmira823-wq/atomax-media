@@ -110,14 +110,14 @@ export function initJobsUI({ api, getAgents, openIssue, onWorkOn }) {
     const list = kids.get(p) || [];
     if (!list.length) return `<div class="bsub" style="padding:4px 8px 4px ${25 + depth * 14}px">No folders inside</div>`;
     const cloudDot = (e) => e.cloud ? '<i class="jbcloud" title="Online-only in OneDrive (not downloaded to this PC yet)"></i>' : '';
-    return list.map(e => treeRow(e.path, e.name, depth, !!(e.isJob || e.job), cloudDot(e) + (e.job ? '<span class="bsub">set up for drawings</span>' : '')) + treeHtml(e.path, depth + 1)).join('');
+    return list.map(e => treeRow(e.path, e.name, depth, !!(e.isJob || e.job), cloudDot(e) + (e.job ? '<i class="jbsetdot" title="Set up for drawings"></i>' : '')) + treeHtml(e.path, depth + 1)).join('');
   }
   function renderList() {
     const head = `<div class="jbsearch"><input id="jbQ" type="search" placeholder="Find a job (number, name, client)" value="${esc(query)}" autocomplete="off">${query ? '<button class="x" id="jbQx" title="Clear">×</button>' : ''}</div><button class="jbnew" id="jbNew">+ New job</button><button class="jbnew mail" id="jbMail">✉ Email in</button><button class="jbj home ${!sel && !selPath ? 'on' : ''}" data-j="">Waiting on you</button>`;
     let body;
     const cloudDot = (e) => e.cloud ? '<i class="jbcloud" title="Online-only in OneDrive (not downloaded to this PC yet)"></i>' : '';
     const rec = recents().filter(r => roots.some(x => r.path === x.path || r.path.startsWith(x.path)) && (/[A-Za-z]\d{5,6}\b/.test(base(r.path)) || jobs.some(j => j.folder && j.folder.toLowerCase() === r.path.toLowerCase())));   // jobs only: a discipline folder clicked inside a job is not a recent job
-    const recentHtml = !query && rec.length ? `<div class="jblabel">Recent</div>` + rec.map(r => `<button class="jbj recent ${(selFolder || selPath).toLowerCase() === r.path.toLowerCase() ? 'on' : ''}" data-dir="${esc(r.path)}" data-job="1" title="${esc(r.path)}"><b>${esc(r.name)}</b></button>`).join('') : '';
+    const recentHtml = !query && rec.length ? `<div class="jblabel">Recent</div>` + rec.map(r => `<button class="jbj recent ${(selFolder || selPath).toLowerCase() === r.path.toLowerCase() ? 'on' : ''}" data-dir="${esc(r.path)}" data-job="1" title="${esc(r.path)}"><b>${esc(String(r.name || '').replace(/^[A-Za-z]\d{5,6}\s*/, '').trim() ? r.name : base(r.path))}</b></button>`).join('') : '';
     if (query) body = `<div class="jblabel">${found === null ? 'Searching…' : found.length ? `${found.length} match${found.length === 1 ? '' : 'es'}` : 'Nothing matches'}</div>` + (found || []).map(f => `<button class="jbj ${selPath === f.path ? 'on' : ''}" data-dir="${esc(f.path)}" data-job="1" data-kind="${esc(f.kind || 'job')}" data-recid="${esc(f.job && f.job.id || '')}" title="${esc(f.path)}"><b>${f.kind && f.kind !== 'job' ? `<em class="jbkind">${esc(f.kind)}</em>` : ''}${esc(f.number)}${f.name ? ' · ' + esc(f.name) : ''}</b>${f.client ? `<span class="jbclient">${esc(f.client)}</span>` : ''}</button>`).join('');
     else if (!roots.length) body = `<div class="jblabel">Projects</div><div class="bsub" style="padding:6px 8px">Set your Projects folder (the live OneDrive one) to see your jobs here.</div><button class="jbnew" id="jbRoot">Set projects folder…</button>`;
     else { const norm = (p) => p.replace(/[\\/]+$/, '').toLowerCase(), topRoots = roots.filter(r => !roots.some(o => o !== r && norm(r.path).startsWith(norm(o.path) + (o.path.includes('\\') ? '\\' : '/'))));   // a root inside another root is already in the tree
@@ -221,6 +221,7 @@ export function initJobsUI({ api, getAgents, openIssue, onWorkOn }) {
       if (ctx.byPath) { const r = await api.proj.listAt({ path: joinP(ctx.folder, rel) }); ents = r.entries.map(e => ({ ...e, rel: e.path.slice(ctx.folder.replace(/[\\/]+$/, '').length + 1) })); }
       else { const r = await api.proj.tree({ jobId: ctx.jobId, rel }); ents = r.entries.map(e => ({ ...e, path: joinP(ctx.folder, e.rel) })); }
     } catch (e) { box.innerHTML = `<div class="bsub">${esc(clean(e))}</div>`; return; }
+    ents = ents.filter(e => e.dir || !/(\.(bak|dwl2?|sv\$|ac\$|tmp|err)$)|^~\$|^plot\.log$|^thumbs\.db$|^desktop\.ini$/i.test(e.name));   /* AutoCAD backups, lock files and Office temp files: never what Tom is looking for */
     if (!ents.length) { box.innerHTML = '<div class="bsub jft-empty">Empty</div>'; return; }
     box.innerHTML = ents.map(e => e.dir
       ? `<details class="jft-dir" data-rel="${esc(e.rel)}" data-path="${esc(e.path)}"><summary><span class="ic">📁</span><span class="nm">${esc(e.name)}</span><i></i></summary><div class="jft-kids"></div></details>`

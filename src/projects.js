@@ -107,6 +107,19 @@ function gather(jobId, folder, libs = {}) {
   fs.writeFileSync(path.join(DIR, jobId + '.json'), JSON.stringify(out));
   return { files: files.length, read: extracts.length, folder, counts: out.counts, at: out.at };
 }
+// the file list only, kept fresh: the Deliverables tab and Dex read it, and a file Tom has just saved must be seen without pressing ↻
+// (9 Nov: rows said "no file" until the folder was read again). Cheap: names and dates, no text extracts; at most once a minute per job.
+function refreshFiles(jobId, folder, { maxAgeMs = 60000 } = {}) {
+  const cur = load(jobId); if (!folder || !fs.existsSync(folder)) return cur;
+  if (cur && cur.folder === folder && Date.now() - Date.parse(cur.listedAt || cur.at || 0) < maxAgeMs) return cur;
+  const files = [], t0 = Date.now();
+  const walk = (dir, depth) => { if (depth > 6 || files.length > 6000 || Date.now() - t0 > 8000) return; let ents; try { ents = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+    for (const e of ents) { const full = path.join(dir, e.name); if (e.isDirectory()) { if (!SKIP.test(e.name)) walk(full, depth + 1); continue; } if (/^~\$|\.(tmp|bak|lnk|dwl2?)$/i.test(e.name)) continue; let st; try { st = fs.statSync(full); } catch { continue; } files.push({ rel: path.relative(folder, full), ext: path.extname(e.name).toLowerCase(), size: st.size, mtime: st.mtimeMs }); } };
+  walk(folder, 0); files.sort((a, b) => b.mtime - a.mtime);
+  const out = { ...(cur || {}), jobId, folder, at: (cur && cur.at) || new Date().toISOString(), listedAt: new Date().toISOString(), files: files.slice(0, 6000), counts: countByExt(files), extracts: (cur && cur.extracts) || [] };
+  try { fs.writeFileSync(path.join(DIR, jobId + '.json'), JSON.stringify(out)); } catch {}
+  return out;
+}
 function countByExt(files) { const c = {}; for (const f of files) c[f.ext || '(none)'] = (c[f.ext || '(none)'] || 0) + 1; return c; }
 function load(jobId) { try { return JSON.parse(fs.readFileSync(path.join(DIR, jobId + '.json'), 'utf8')); } catch { return null; } }
 
@@ -378,4 +391,4 @@ function fileIn(folder, paths) {
   }
   return { filed, skipped };
 }
-module.exports = { issueDirs, nextIssueDir, folderOfJobs, fileKind, filesUnder, fileIn, isOldAtomax, jobNoIn, jobNameOf, looksLikeJob, projectsRoots, allJobFolders, jobsFolder, jobFolders, listDir, templateDir, isAtomax, jobParent, nextJobNumber, jobPattern, createJobFolder, init, suggest, gather, load, contextBlock, relevantFiles, outputDir, searchRoots, extract };
+module.exports = { refreshFiles, issueDirs, nextIssueDir, folderOfJobs, fileKind, filesUnder, fileIn, isOldAtomax, jobNoIn, jobNameOf, looksLikeJob, projectsRoots, allJobFolders, jobsFolder, jobFolders, listDir, templateDir, isAtomax, jobParent, nextJobNumber, jobPattern, createJobFolder, init, suggest, gather, load, contextBlock, relevantFiles, outputDir, searchRoots, extract };

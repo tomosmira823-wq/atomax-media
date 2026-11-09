@@ -25,6 +25,13 @@ t('the encoding repair undoes only the doubled sequence (° and ± survive)', ()
   assert.strictEqual(r.buf.toString('latin1'), '1\r\n2.5mm\xC2\xB2 90\xB0 \xB1\r\n');
 });
 const box = (revs, extra = []) => { const prims = []; revs.forEach(([rev, date], i) => { const x = i * 160; prims.push({ t: 'text', x: x + 14, y: 54, text: 'ISSUE', h: 3, layer: 'TB' }, { t: 'mtext', x: x + 61, y: 56, text: rev, h: 5, layer: 'TB' }, { t: 'text', x: x + 14, y: 43, text: 'DRAWN', h: 3, layer: 'TB' }, { t: 'mtext', x: x + 61, y: 44, text: 'TM', h: 2.5, layer: 'TB' }, { t: 'mtext', x: x + 115, y: 21, text: date, h: 2.5, layer: 'TB' }, { t: 'line', x1: x + 11, y1: 15, x2: x + 171, y2: 15, layer: 'TB' }, { t: 'line', x1: x + 11, y1: 61, x2: x + 171, y2: 61, layer: 'TB' }, { t: 'line', x1: x + 11, y1: 15, x2: x + 11, y2: 61, layer: 'TB' }, { t: 'line', x1: x + 171, y1: 15, x2: x + 171, y2: 61, layer: 'TB' }); }); prims.push({ t: 'text', x: 1141, y: 19, text: revs[revs.length - 1][0], h: 5, layer: 'TB' }, { t: 'line', x1: 0, y1: 200, x2: 900, y2: 200, layer: 'SLD' }, ...extra); return dxm.writeDxf(prims, { x0: 0, y0: 0, x1: 1200, y1: 400 }); };
+t('the plot copy marks hatches non-associative and changes nothing else (logo faces filled green, 9 Nov)', () => {
+  const fs = require('fs'), os = require('os'), path = require('path'); const P = require('../src/plot.js');
+  const src = ['0', 'SECTION', '2', 'ENTITIES', '0', 'HATCH', '5', '29D6', '8', '0', '2', 'SOLID', '70', '1', '71', '1', '0', 'LINE', '5', 'AB', '71', '1', '0', 'ENDSEC', '0', 'EOF', ''].join('\r\n');
+  const f = path.join(os.tmpdir(), 'amo-hatch-test.dxf'); fs.writeFileSync(f, src, 'latin1');
+  const r = P.plotCopy(f), out = fs.readFileSync(r.path, 'latin1'); fs.unlinkSync(r.path); fs.unlinkSync(f);
+  assert.strictEqual(r.hatches, 1); assert.strictEqual(out, src.replace('71\r\n1\r\n0\r\nLINE', '71\r\n0\r\n0\r\nLINE'));
+});
 t('a sheet at P01 (one issue box) can be revved', () => {
   const r = R.revUp(box([['P01', '25/04/2026']]), {}); assert.strictEqual(r.to, 'P02'); assert.strictEqual(Math.round(r.pitch), 160);
   const T = D.parseDxf(r.buf).ents.filter(e => e.section === 'ENTITIES').map(e => [e.plain, Math.round(e.x)]); assert.ok(T.some(([p, x]) => p === 'P02' && x === 221) && T.some(([p, x]) => p === 'P02' && x === 1141), JSON.stringify(T));

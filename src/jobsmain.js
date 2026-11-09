@@ -21,7 +21,17 @@ const QS = /X\d{4,6}(?:-[A-Z0-9]{2,4}){2,5}-\d{4}/i;   // the drawing number how
 // the files in the job folder that ARE a drawing on the list: by the client's number (X11475-BGN-ZZ-XX-DR-E-7153), our number (32_BG_0006)
 // or, failing those, the title; never Archive / Superseded copies. The latest revision in the file name wins. Tells the tab what can be
 // revved now (a DXF) and what needs exporting from AutoCAD first (DWG only)
-function jobFiles(jobId, { exceptDir = '' } = {}) { try { const p = require('./projects').load(jobId), ex = exceptDir ? exceptDir.replace(/\\/g, '/').toLowerCase().replace(/\/+$/, '') + '/' : ''; return (p && p.files || []).map(f => ({ rel: f.rel.replace(/\\/g, '/'), name: f.rel.split(/[\\/]/).pop(), mtime: f.mtime || 0, abs: path.join(p.folder || '', f.rel) })).filter(f => !/(^|\/)(archive|superseded|markups?|old|fixed)(\/|$)/i.test(f.rel) && !(ex && f.abs.replace(/\\/g, '/').toLowerCase().startsWith(ex))); } catch { return []; } }   // exceptDir: the issue folder being built is never a source (Tom 9 Nov: a Revise must start from the working file, not its own last output)
+function jobFiles(jobId, { exceptDir = '' } = {}) {
+  try {
+    const PR = require('./projects'); let p = PR.load(jobId); if (p && p.folder) p = PR.refreshFiles(jobId, p.folder) || p;
+    const ex = exceptDir ? exceptDir.replace(/\\/g, '/').toLowerCase().replace(/\/+$/, '') + '/' : '';
+    // in the issue being built, only what the app wrote there is left out (its own output is never a source); a DXF Tom put in a
+    // hand-made issue folder before the app opened it is his and stays a source
+    let since = 0; try { const oi = require('./jobdesk').load(jobId).openIssue; if (oi && oi.found && oi.openedAt) since = Date.parse(oi.openedAt) - 5000; } catch {}
+    return (p && p.files || []).map(f => ({ rel: f.rel.replace(/\\/g, '/'), name: f.rel.split(/[\\/]/).pop(), mtime: f.mtime || 0, abs: path.join(p.folder || '', f.rel) }))
+      .filter(f => !/(^|\/)(archive|superseded|markups?|old|fixed)(\/|$)/i.test(f.rel) && !(ex && f.abs.replace(/\\/g, '/').toLowerCase().startsWith(ex) && (!since || f.mtime >= since)));
+  } catch (e) { console.error('jobFiles', e); return []; }
+}
 const revInName = (n) => { const m = String(n).match(/[\s_-]([PCAX]\d{2})(?=[\s_.)-]|$)/i); return m ? m[1].toUpperCase() : ''; };
 function sourceFor(d, files) {
   const keys = [d.no, d.alt].filter(Boolean).map(k => String(k).toUpperCase().replace(/[^A-Z0-9]+/g, ''));
@@ -41,7 +51,7 @@ function sourceFor(d, files) {
   return { dxf: dxf ? dxf.rel : '', dwg: dwg ? dwg.rel : '', pdf: pdf ? pdf.rel : '', docx: docx ? docx.rel : '', xlsx: xlsx ? xlsx.rel : '', fileNo, fileRev: revInName((dxf || dwg || docx || xlsx || pdf || {}).name || '') };
 }
 // the group a row sits in on the Deliverables tab: a numbered drawing (QS 006 disciplines 70-79 are drawings, 23 a schedule) or by its words
-const groupOf = (d) => { const t = (String(d.no).match(/-(\d{2})-\d{4}(?:\b|_)/) || [])[1] || ''; if (/^7\d$/.test(t)) return 'drawing'; if (t === '23') return 'schedule'; return require('./jobdesk').kindTag(d.type || '', d.title).group; };
+const groupOf = (d) => { const t = (String(d.no).match(/-(\d{2})-\d{4,5}(?:\b|_)/) || [])[1] || ''; if (/^7\d$/.test(t)) return 'drawing'; if (t === '23') return 'schedule'; return require('./jobdesk').kindTag(d.type || '', d.title).group; };
 const realNo = (d) => /^TBC-/i.test(d.no) ? ((String(d.title).match(QS) || [])[0] || '') : d.no;
 const cleanTitle = (d) => String(d.title).replace(QS, '').replace(/\(\s*\)/g, '').replace(/\s+P\d{1,2}\s*$/i, '').replace(/\s{2,}/g, ' ').trim();
 const AGENT_ID = { Dex: 'dex', Lex: 'excel', Wren: 'word' };
@@ -73,6 +83,7 @@ function register({ ipcMain, HANDLERS, BIZ, claudeFull }) {
     try { const dd = desk.load(jobId), j0 = jobOf(jobId); if (j0.folder && fs.existsSync(j0.folder)) { const chk = Date.parse(dd.registerChecked || '') || 0; let stale = !chk || chk < Date.parse('2026-11-05T13:20:00Z'); if (!stale && dd.registerFile) { try { stale = fs.statSync(dd.registerFile).mtimeMs > chk; } catch { stale = true; } } if (!stale && !dd.registerFile && Date.now() - chk > 10 * 60e3) stale = true; if (stale) desk.checkRegister(jobId, require('./checker')); } } catch {}
     try { desk.tidyRows(jobId); } catch {}   // one row per drawing (a TBC row and the register's numbered row of the same kind are the same drawing)
     const job = jobOf(jobId), V = desk.view(jobId), dl = delivOf(jobId);
+    try { if (job.folder) require('./projects').refreshFiles(jobId, job.folder); } catch {}   // a job never read, or read over a minute ago: its file list is brought up to date first
     const openDir = (V.openIssue && V.openIssue.path) || (desk.load(jobId).openIssue || {}).path || '';   // the issue being built: its files are Dex's outputs, never a row's source
     const files = jobFiles(jobId, { exceptDir: openDir }), anyIssued = job.drawings.some(x => x.rev);   // a job with issued drawings: a numbered row with no rev and no file is a reserved number, not work to do
     // a made file renamed by hand in its folder (7142_P04 -> 7142 P04) is still the row's file: the record follows it
