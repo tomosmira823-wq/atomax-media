@@ -39,9 +39,13 @@ function plotOne(dxfPath, { console: core, timeoutMs = 90000, layoutName = '' } 
     // a layout already set up for a PDF device plots with its own page setup; one set up for a plotter (A0 BORDER -> HP Designjet) gets
     // the house PDF setup spelled out: DWG To PDF.pc3, ISO full bleed A1, extents fitted and centred, monochrome.ctb (what Tom's plot logs show)
     const L = (layoutToPlot(dxfPath) || {}); const pdfSetup = /pdf/i.test(L.device || '') && L.name === lay;
-    const lines = pdfSetup
-      ? ['FILEDIA 0', 'CMDDIA 0', 'BACKGROUNDPLOT 0', '_.-PLOT', '_N', lay, '', 'DWG To PDF.pc3', pdf, '_N', '_Y', '_.DELAY 2000', '_.QUIT', '_Y']   // -PLOT, not detailed: layout, page setup name (none: Enter), device, file, save setup N, proceed Y. The page-setup prompt was being answered with the device, and the console sat on it until the timeout with the DXF held open (Five Fords, 9 Nov)
-      : ['FILEDIA 0', 'CMDDIA 0', 'BACKGROUNDPLOT 0', '_.-PLOT', '_Y', lay, 'DWG To PDF.pc3', 'ISO full bleed A1 (841.00 x 594.00 MM)', '_M', '_L', '_N', '_E', '_F', '_C', '_Y', 'monochrome.ctb', '_Y', '_N', '_N', '_N', pdf, '_N', '_Y', '_.DELAY 2000', '_.QUIT', '_Y'];
+    // the plot as one AutoLISP (command ...) line: every answer is a quoted string, so a path with spaces in it (OneDrive - Atomax-UK Ltd)
+    // arrives whole. In a plain script a space is an Enter and the file name was cut at the first one (Five Fords, 9 Nov).
+    const q = (v) => '"' + String(v).replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"';
+    const answers = pdfSetup
+      ? ['_N', lay, '', 'DWG To PDF.pc3', pdf, '_N', '_Y']   // not detailed: layout, page setup (none), device, file, save setup N, proceed Y
+      : ['_Y', lay, 'DWG To PDF.pc3', 'ISO full bleed A1 (841.00 x 594.00 MM)', '_M', '_L', '_N', '_E', '_F', '_C', '_Y', 'monochrome.ctb', '_Y', '_N', '_N', '_N', pdf, '_N', '_Y'];
+    const lines = ['FILEDIA 0', 'CMDDIA 0', 'BACKGROUNDPLOT 0', `(command "_.-PLOT" ${answers.map(q).join(' ')})`, '_.DELAY 2000', '_.QUIT', '_Y'];
     fs.writeFileSync(scr, lines.join('\r\n') + '\r\n', 'latin1');
     const child = spawn(core.exe, ['/i', dxfPath, '/s', scr, '/l', 'en-US'], { cwd: dir, windowsHide: true });
     let out = ''; child.stdout.on('data', (b) => { out += b.toString('latin1'); }); child.stderr.on('data', (b) => { out += b.toString('latin1'); });

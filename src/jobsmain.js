@@ -310,7 +310,7 @@ function register({ ipcMain, HANDLERS, BIZ, claudeFull }) {
         else desk.saveCrs(jobId, { no: c.no, response: `Dex couldn't do this by editing text (no edit came from it). Tell him exactly what text to change.` }); } catch {} }
       const left = [...cannot, ...missed.map(x => `${sayEdit(x)}: ${x.reason}`)];
       runs.finish(R.id, { ok: true });
-      return setDeliv(jobId, no, { summary: `${w.summary}${left.length ? `. NOT DONE (needs you or AutoCAD): ${left.join(' · ')}` : ''}`, warning: left.length ? `Dex: ${left.length} of the asks I could not do by editing text: ${left.join(' · ')}` : '', given: { request: asked, at: new Date().toISOString(), read: [src.dxf], skills: [], fromSchedule: [], queries: [], warnings: [] } });
+      return setDeliv(jobId, no, { summary: `${w.summary}${left.length ? `. NOT DONE (needs you or AutoCAD): ${left.join(' · ')}` : ''}`, warning: [left.length ? `Dex: ${left.length} of the asks I could not do by editing text: ${left.join(' · ')}` : '', w.warning || ''].filter(Boolean).join(' · '), given: { request: asked, at: new Date().toISOString(), read: [src.dxf], skills: [], fromSchedule: [], queries: [], warnings: [] } });
     } catch (e) { const stopped = runs.aborted(R.id); runs.finish(R.id, { ok: false, error: runs.plain(e) }); const cur = delivOf(jobId)[no] || {}; if (cur.status === 'working') setDeliv(jobId, no, { status: stopped ? 'stopped' : 'failed', summary: stopped ? 'Stopped. Nothing was changed.' : runs.plain(e) }); throw e; }
   }
   ipcMain.handle('jobs:revise', wrap((a) => revise(a)));
