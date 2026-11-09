@@ -194,8 +194,12 @@ function applyFixes(buf, fixes) {
       for (const e of targets) {
         if (removed.has(e.at)) continue;
         let at62 = -1, at8 = -1; for (let i = e.at + 1; i < e.end; i++) { if (pairs[i].code === 62 && at62 < 0) at62 = i; if (pairs[i].code === 8 && at8 < 0) at8 = i; }
-        if (at62 >= 0) { if (pairs[at62].val.trim() !== String(aci)) { pairs[at62].val = String(aci); res.places++; } }
-        else if (at8 >= 0) { const list = inserts.get(at8 + 1) || []; list.push({ code: 62, raw: ' 62', val: String(aci) }); inserts.set(at8 + 1, list); insertedPairs++; res.places++; }
+        let touched = false;
+        if (at62 >= 0) { if (pairs[at62].val.trim() !== String(aci)) { pairs[at62].val = String(aci); touched = true; } }
+        else if (at8 >= 0) { const list = inserts.get(at8 + 1) || []; list.push({ code: 62, raw: ' 62', val: String(aci) }); inserts.set(at8 + 1, list); insertedPairs++; touched = true; }
+        // an inline colour inside the MTEXT itself ({\C1;...} red, \c<rgb>; true colour) overrides the entity colour: those go too (Five Fords -0011, 9 Nov)
+        for (const r of e.refs) { const v = pairs[r].val; if (/\\[Cc]\d+;/.test(v)) { pairs[r].val = v.replace(/\\[Cc]\d+;/g, ''); touched = true; } }
+        if (touched) res.places++;
       }
       if (!res.places) { res.status = 'not found'; res.reason = 'No text item needed its colour changed.'; }
       results.push(res);
