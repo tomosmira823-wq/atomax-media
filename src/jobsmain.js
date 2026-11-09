@@ -299,7 +299,7 @@ function register({ ipcMain, HANDLERS, BIZ, claudeFull }) {
       out.results.forEach((x, i) => { const who = fixes[i] && fixes[i].for; if (!who) return; if (x.status === 'applied') okFor.add(who); else failedFor.set(who, [...(failedFor.get(who) || []), `${sayEdit(x)}: ${x.reason}`]); });
       if (!applied.length) { const why = missed.map(x => `${sayEdit(x)}: ${x.reason}`).join(' · '); runs.finish(R.id, { ok: false, error: why }); setDeliv(jobId, no, { status: 'needs you', summary: `Dex: none of the edits went in — ${why}` }); throw new Error(`${no}: ${why}`); }
       const note = `${applied.length} edit${applied.length === 1 ? '' : 's'}: ${applied.map(x => sayEdit(x) + (x.places > 1 ? ` (×${x.places})` : '')).join(', ')}`;
-      runs.stage(R.id, 'Dex is revving it up', 80); const w = await revUp({ jobId, no, status, people, edited: { buf: out.buf, note }, exceptDir: issueDir });
+      runs.stage(R.id, 'Dex is revving it up', 80); const w = await revUp({ jobId, no, status, people, edited: { buf: out.buf, note }, exceptDir: issueDir, run: R.id });
       // each comment answered: a comment closes only when an edit that came from it went in. One Dex could not do stays Open with his
       // reason; one no edit came from stays Open too (never closed on the strength of another comment's edit). Only when Dex named no
       // comment at all on any edit does the whole set close on the revision.
@@ -352,12 +352,18 @@ function register({ ipcMain, HANDLERS, BIZ, claudeFull }) {
     const outPath = path.join(natives, DR.revName(name, r.from, r.to, renumber)); fs.writeFileSync(outPath, r.buf);
     d.rev = r.to; require('./business').saveJob(BIZ.data(), job, 'Wren'); BIZ.store.save();
     const who = src.docx ? 'Wren' : 'Lex', ch = r.changes;
-    const w = setDeliv(jobId, no, { status: 'made', rev: r.to, files: [outPath], pdfs: [], archived: 0, by: who, summary: `Rev up ${r.from} -> ${r.to}: ${src.docx ? `${ch.rows} revision row${ch.rows === 1 ? '' : 's'} added, header${ch.cover ? ' and cover' : ''} to ${r.to}, dated today` : `revision row ${r.to} on the cover sheet, dated today`}${renumber ? `; renumbered ${renumber.from} -> ${renumber.to}` : ''}; content unchanged`, source: rel });
+    const { pdfs, pdfNote } = await pdfFor({ jobId, file: outPath });   // Word / Excel make the PDF now, into the issue folder
+    const w = setDeliv(jobId, no, { status: 'made', rev: r.to, files: [outPath], pdfs, warning: pdfNote, archived: 0, by: who, summary: `Rev up ${r.from} -> ${r.to}: ${src.docx ? `${ch.rows} revision row${ch.rows === 1 ? '' : 's'} added, header${ch.cover ? ' and cover' : ''} to ${r.to}, dated today` : `revision row ${r.to} on the cover sheet, dated today`}${renumber ? `; renumbered ${renumber.from} -> ${renumber.to}` : ''}; content unchanged`, source: rel });
     BIZ.log({ who, action: `Revved up ${no} ${r.from} -> ${r.to} (revision tables, header${renumber ? ', renumbered' : ''})`, jobId, detail: path.basename(outPath) });
     try { BIZ.projects.gather(job.id, job.folder, { checker: require('./checker') }); } catch {}
     return w;
   }
-  async function revUp({ jobId, no, to = '', status = '', people = null, edited = null, exceptDir = '' }) {   // edited: { buf, note } when Revise changed the text first
+  // the PDF of one freshly written file, named like the issue folder names them; a failure is said on the row, never swallowed
+  async function pdfFor({ jobId, file, run = '' }) {
+    try { const pr = await plotIssue({ jobId, files: [file], run }); if (pr.failed.length) return { pdfs: [], pdfNote: `Dex: the PDF was not made — ${pr.failed[0].error}` }; return { pdfs: pr.done.map(x => x.pdf), pdfNote: '' }; }
+    catch (e) { return { pdfs: [], pdfNote: `Dex: the PDF was not made — ${String(e.message || e)}` }; }
+  }
+  async function revUp({ jobId, no, to = '', status = '', people = null, edited = null, exceptDir = '', run = '' }) {   // edited: { buf, note } when Revise changed the text first
     const job = jobOf(jobId), d = job.drawings.find(x => x.no === no); if (!d) throw new Error('No such row');
     exceptDir = exceptDir || openIssueDir(jobId);   // the issue being built is never the source: a rev up starts from the working file every time
     let src = sourceFor(d, jobFiles(jobId, { exceptDir }));
@@ -380,9 +386,10 @@ function register({ ipcMain, HANDLERS, BIZ, claudeFull }) {
     const base = issueName(no, next); let archived = 0;   // X11475-BGN-ZZ-XX-DR-E-7142 P04 the way the earlier issue folders name them, 70_BG_0014_P06 for our own numbers
     for (const n of fs.readdirSync(outDir)) if (new RegExp('^' + no.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '[ _-][PCAX]\\d\\d\\.dxf$', 'i').test(n) && n !== base + '.dxf') { try { const a = path.join(outDir, 'Superseded'); fs.mkdirSync(a, { recursive: true }); fs.renameSync(path.join(outDir, n), path.join(a, n)); archived++; } catch {} }   // only an earlier rev-up of the same drawing in this same issue folder moves aside
     const outPath = path.join(outDir, base + '.dxf'); fs.writeFileSync(outPath, r.buf);
-    const pdfs = [];   // no PDF: the app cannot plot a DXF it did not draw; the PDF comes from AutoCAD when the sheet is issued
     d.rev = next; require('./business').saveJob(BIZ.data(), job, 'Dex'); BIZ.store.save();
-    const w = setDeliv(jobId, no, { status: 'made', rev: next, files: [outPath], pdfs, archived, by: 'Dex', summary: `${edited ? 'Revised' : 'Rev up'} ${r.from} -> ${next}: new issue box (${[r.changes.date ? 'dated today' : '', r.changes.status ? status.toUpperCase() : '', r.changes.people ? 'initials' : ''].filter(Boolean).join(', ') || 'copied from ' + r.from}); ${edited && edited.note ? edited.note : 'drawing content unchanged'}`, source: src.dxf });
+    // the PDF straight away, by AutoCAD's core console (the same route as the Issue button): a revision without its PDF is not finished (Tom 9 Nov)
+    const { pdfs, pdfNote } = await pdfFor({ jobId, file: outPath, run });
+    const w = setDeliv(jobId, no, { status: 'made', rev: next, files: [outPath], pdfs, archived, by: 'Dex', warning: pdfNote, summary: `${edited ? 'Revised' : 'Rev up'} ${r.from} -> ${next}: new issue box (${[r.changes.date ? 'dated today' : '', r.changes.status ? status.toUpperCase() : '', r.changes.people ? 'initials' : ''].filter(Boolean).join(', ') || 'copied from ' + r.from}); ${edited && edited.note ? edited.note : 'drawing content unchanged'}${pdfs.length ? '; PDF made' : ''}`, source: src.dxf });
     BIZ.log({ who: 'Dex', action: `${edited ? 'Revised' : 'Revved up'} ${no} ${r.from} -> ${next} (${edited && edited.note ? edited.note + '; ' : ''}new issue box, title block)`, jobId, detail: path.basename(outPath) });
     try { BIZ.projects.gather(job.id, job.folder, { checker: require('./checker') }); } catch {}   // the folder is read again so the new file is the row's source from now on
     return w;
