@@ -18,9 +18,9 @@ function layouts(dxfPath) {
   const lines = fs.readFileSync(dxfPath, 'latin1').split(/\r?\n/); const out = [];   // code / value pairs: a value that happens to be "0" cannot be mistaken for a code
   for (let i = 0; i + 1 < lines.length; i += 2) {
     if (lines[i].trim() !== '0' || lines[i + 1].trim() !== 'LAYOUT') continue;
-    let name = '', device = '', paper = '', order = 99, seen1 = 0;
-    for (let j = i + 2; j + 1 < lines.length; j += 2) { const c = lines[j].trim(), v = lines[j + 1].trim(); if (c === '0') { i = j - 2; break; } if (c === '1') { seen1++; if (seen1 === 2) name = v; } else if (c === '2' && !device) device = v; else if (c === '4' && !paper) paper = v; else if (c === '71') order = parseInt(v, 10) || 0; }
-    if (name && name !== 'Model') out.push({ name, device, paper, order });
+    let name = '', device = '', paper = '', order = 99, seen1 = 0, ctb = '', w = 0, h = 0, rot = 0;
+    for (let j = i + 2; j + 1 < lines.length; j += 2) { const c = lines[j].trim(), v = lines[j + 1].trim(); if (c === '0') { i = j - 2; break; } if (c === '1') { seen1++; if (seen1 === 2) name = v; } else if (c === '2' && !device) device = v; else if (c === '4' && !paper) paper = v; else if (c === '7' && !ctb) ctb = v; else if (c === '44' && !w) w = parseFloat(v) || 0; else if (c === '45' && !h) h = parseFloat(v) || 0; else if (c === '73') rot = parseInt(v, 10) || 0; else if (c === '71') order = parseInt(v, 10) || 0; }
+    if (name && name !== 'Model') out.push({ name, device, paper, order, ctb, w, h, rot });
   }
   return out.sort((a, b) => a.order - b.order);
 }
@@ -42,8 +42,14 @@ function plotOne(dxfPath, { console: core, timeoutMs = 90000, layoutName = '' } 
     // the plot as one AutoLISP (command ...) line: every answer is a quoted string, so a path with spaces in it (OneDrive - Atomax-UK Ltd)
     // arrives whole. In a plain script a space is an Enter and the file name was cut at the first one (Five Fords, 9 Nov).
     const q = (v) => '"' + String(v).replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"';
-    const answers = pdfSetup
-      ? ['_N', lay, '', 'DWG To PDF.pc3', pdf, '_N', '_Y']   // not detailed: layout, page setup (none), device, file, save setup N, proceed Y
+    // a sheet set up for PDF already: the same sheet size, full bleed (the core console's own PDF config lacks the "expand" sizes and
+    // silently dropped to A3 with margins, 3.5% smaller: Five Fords 9 Nov), extents at 1:1 centred, the layout's own style table
+    const iso = { '841x1189': 'A0', '594x841': 'A1', '420x594': 'A2', '297x420': 'A3', '210x297': 'A4' };
+    const sz = pdfSetup && L.w && L.h ? `${Math.round(Math.min(L.w, L.h))}x${Math.round(Math.max(L.w, L.h))}` : '';
+    const paperName = iso[sz] ? `ISO full bleed ${iso[sz]} (${Math.max(L.w, L.h).toFixed(2)} x ${Math.min(L.w, L.h).toFixed(2)} MM)` : '';
+    const answers = pdfSetup && paperName
+      ? ['_Y', lay, 'DWG To PDF.pc3', paperName, '_M', (L.rot === 1 || L.rot === 3) ? '_L' : '_P', '_N', '_E', '1:1', '_C', '_Y', L.ctb || 'acad.ctb', '_Y', '_N', '_N', '_N', pdf, '_N', '_Y']
+      : pdfSetup ? ['_N', lay, '', 'DWG To PDF.pc3', pdf, '_N', '_Y']   // not detailed: layout, page setup (none), device, file, save setup N, proceed Y
       : ['_Y', lay, 'DWG To PDF.pc3', 'ISO full bleed A1 (841.00 x 594.00 MM)', '_M', '_L', '_N', '_E', '_F', '_C', '_Y', 'monochrome.ctb', '_Y', '_N', '_N', '_N', pdf, '_N', '_Y'];
     const lines = ['FILEDIA 0', 'CMDDIA 0', 'BACKGROUNDPLOT 0', `(command "_.-PLOT" ${answers.map(q).join(' ')})`, '_.DELAY 2000', '_.QUIT', '_Y'];
     fs.writeFileSync(scr, lines.join('\r\n') + '\r\n', 'latin1');
