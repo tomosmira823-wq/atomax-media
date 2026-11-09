@@ -296,7 +296,7 @@ function register({ ipcMain, HANDLERS, BIZ, claudeFull }) {
       const note = `${applied.length} edit${applied.length === 1 ? '' : 's'}: ${applied.map(x => sayEdit(x) + (x.places > 1 ? ` (×${x.places})` : '')).join(', ')}`;
       let w;
       if (again) {   // same revision, same file: the edits go in and that is all
-        runs.stage(R.id, 'Dex is saving it', 80); fs.writeFileSync(again, out.buf);
+        runs.stage(R.id, 'Dex is saving it', 80); fs.writeFileSync(again, require('./revup').repairBoxes(out.buf).buf);
         const rev = prev0.rev || revInName(fname) || '';
         w = setDeliv(jobId, no, { status: 'made', rev, files: [again], by: 'Dex', summary: `Revised again at ${rev} (this issue has not gone out, so no new revision): ${note}` });
         BIZ.log({ who: 'Dex', action: `Revised ${no} again at ${rev} (${note})`, jobId, detail: path.basename(again) });

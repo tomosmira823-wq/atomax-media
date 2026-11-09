@@ -46,6 +46,7 @@ function issueBoxes(P, ents) {
 
 // opts: { to, status, drawn, checked, approved, date }
 function revUp(buf, opts = {}) {
+  buf = repairBoxes(buf).buf;   // a sheet revved up by an earlier version: its skewed box texts put right first
   const dxf = dxffix.parseDxf(buf), P = dxf.pairs.map(p => ({ ...p })), ents = entities(P);
   const ib = issueBoxes(P, ents); if (!ib) throw new Error('no issue boxes found on the sheet (no row of revision texts such as P01 P02 P03)');
   const cur = ib.rev, next = (opts.to && REV.test(opts.to) ? opts.to.toUpperCase() : nextOf(cur));
@@ -61,10 +62,11 @@ function revUp(buf, opts = {}) {
   const clone = [];
   for (const e of ib.box) {
     let stop = e.end; while (stop < P.length && P[stop].code !== 0) stop++;   // the whole entity, embedded object included
-    const np = P.slice(e.at, stop).map(p => ({ ...p })); let seenText = false;
+    const np = P.slice(e.at, stop).map(p => ({ ...p })); let seenText = false, embedded = false;
     for (const p of np) {
+      if (p.code === 101) embedded = true;   // an MTEXT's embedded object (AutoCAD 2018+): there 10 is the DIRECTION and 11 the insertion point, the other way round from the entity itself
       if (p.code === 5) p.val = (nextHandle++).toString(16).toUpperCase();
-      else if (p.code === 10 || (p.code === 11 && e.type !== 'MTEXT')) p.val = String(+p.val + ib.pitch);   // the embedded object's insertion point moves too
+      else if (e.type === 'MTEXT' ? (embedded ? p.code === 11 : p.code === 10) : (p.code === 10 || p.code === 11)) p.val = String(+p.val + ib.pitch);   // every insertion point one pitch right; direction vectors untouched (Tom 9 Nov: the new box's texts came out skewed off the sheet)
       else if (p.code === 1 || (p.code === 3 && e.type === 'MTEXT')) {
         if (seenText && p.code === 1 && e.type === 'MTEXT') { p.val = ''; continue; }   // long MTEXT split over 3/1 codes: the value goes in once
         seenText = true; const t = e.text;
@@ -91,4 +93,23 @@ function revUp(buf, opts = {}) {
   return { buf: Buffer.from(out, 'latin1'), from: cur, to: next, changes, pitch: ib.pitch };
 }
 
-module.exports = { revUp, issueBoxes, entities };
+// repair for sheets revved up before 9 Nov 2026: the cloned MTEXTs had their embedded object's direction vector shifted (10 = 131,0 instead
+// of 1,0) and the embedded insertion point left behind, so the new box's texts drew skewed off the sheet. Puts the direction back to (1,0)
+// and the embedded insertion point on the entity's own. Idempotent; returns { buf, fixed }.
+function repairBoxes(buf) {
+  const text = buf.toString('latin1'), eol = /\r\n/.test(text.slice(0, 2000)) ? '\r\n' : '\n', L = text.split(/\r?\n/); let fixed = 0;
+  const pairs = []; for (let i = 0; i + 1 < L.length; i += 2) pairs.push({ code: parseInt(L[i], 10), raw: L[i], val: L[i + 1] });
+  for (let i = 0; i < pairs.length; i++) {
+    if (!(pairs[i].code === 0 && pairs[i].val === 'MTEXT')) continue;
+    let j = i + 1, ix = null, iy = null, emb = -1; while (j < pairs.length && pairs[j].code !== 0) { const p = pairs[j]; if (emb < 0 && p.code === 10) ix = p.val; if (emb < 0 && p.code === 20) iy = p.val; if (p.code === 101) emb = j; j++; }
+    if (emb < 0 || ix === null) continue;
+    let d10 = -1, d20 = -1, e11 = -1, e21 = -1; for (let k = emb + 1; k < j; k++) { const c = pairs[k].code; if (c === 10 && d10 < 0) d10 = k; else if (c === 20 && d20 < 0) d20 = k; else if (c === 11 && e11 < 0) e11 = k; else if (c === 21 && e21 < 0) e21 = k; }
+    if (d10 < 0 || e11 < 0) continue;
+    const dx = +pairs[d10].val, dy = d20 >= 0 ? +pairs[d20].val : 0, skew = Math.abs(Math.hypot(dx, dy) - 1) > 0.01, adrift = Math.abs(+pairs[e11].val - +ix) > 0.01 || (e21 >= 0 && iy !== null && Math.abs(+pairs[e21].val - +iy) > 0.01);
+    if (!skew && !adrift) continue;
+    if (skew) { const n = Math.hypot(dx, dy) || 1; pairs[d10].val = String(dx / n); if (d20 >= 0) pairs[d20].val = String(dy / n); }
+    pairs[e11].val = ix; if (e21 >= 0 && iy !== null) pairs[e21].val = iy; fixed++;
+  }
+  return { buf: fixed ? Buffer.from(pairs.map(p => p.raw + eol + p.val).join(eol) + eol, 'latin1') : buf, fixed };
+}
+module.exports = { repairBoxes, revUp, issueBoxes, entities };
