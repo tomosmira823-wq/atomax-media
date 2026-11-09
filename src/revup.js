@@ -71,7 +71,7 @@ function revUp(buf, opts = {}) {
         if (seenText && p.code === 1 && e.type === 'MTEXT') { p.val = ''; continue; }   // long MTEXT split over 3/1 codes: the value goes in once
         seenText = true; const t = e.text;
         if (REV.test(t)) { p.val = next; changes.rev++; }
-        else if (DATE.test(t)) { p.val = opts.date || today(); changes.date++; }
+        else if (DATE.test(t)) { p.val = opts.date || require('./docrev').todayLike(t); changes.date++; }   // today, written the way the sheet's earlier boxes write dates (30/09/2026 -> 09/11/2026, not 09/11/26)
         else if (STATUS.test(t) && status) { p.val = status; changes.status++; }
         else if (who.has(e)) { p.val = who.get(e); changes.people++; }
         else p.val = t;   // the same label, as plain text
