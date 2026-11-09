@@ -37,14 +37,15 @@ function toPdf(src, pdf, { timeoutMs = 180000 } = {}) {
     if (process.platform !== 'win32') return reject(new Error('Word and Excel PDFs need Windows'));
     const scr = path.join(os.tmpdir(), `amo-pdf-${Date.now()}-${Math.random().toString(36).slice(2, 7)}.ps1`);
     fs.writeFileSync(scr, '﻿' + script(src, pdf), 'utf8');
-    try { if (fs.existsSync(pdf)) fs.unlinkSync(pdf); } catch {}
+    try { if (fs.existsSync(pdf)) fs.unlinkSync(pdf); } catch { try { fs.unlinkSync(scr); } catch {} return reject(new Error(`${path.basename(pdf)} is open in another program (a PDF viewer?). Close it and try again.`)); }
+    const t0 = Date.now();
     const child = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', scr], { windowsHide: true });
     let out = ''; child.stdout.on('data', (b) => { out += b.toString(); }); child.stderr.on('data', (b) => { out += b.toString(); });
     const t = setTimeout(() => { try { child.kill(); } catch {} }, timeoutMs);
     child.on('error', (e) => { clearTimeout(t); try { fs.unlinkSync(scr); } catch {} reject(new Error(`could not start PowerShell (${e.message})`)); });
     child.on('close', () => {
       clearTimeout(t); try { fs.unlinkSync(scr); } catch {}
-      if (fs.existsSync(pdf) && fs.statSync(pdf).size > 1024) return resolve({ pdf });
+      if (fs.existsSync(pdf) && fs.statSync(pdf).size > 1024 && fs.statSync(pdf).mtimeMs >= t0 - 2000) return resolve({ pdf });   // only a PDF this run wrote
       const why = out.replace(/\s+/g, ' ').trim().slice(-300);
       reject(new Error(`${path.basename(src)}: ${/\.docx?$/i.test(src) ? 'Word' : 'Excel'} did not write the PDF${why ? ` (${why})` : ''}`));
     });

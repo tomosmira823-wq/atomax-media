@@ -414,7 +414,7 @@ function register({ ipcMain, dialog, shell, getWin, userDir, claudeFull, checker
     const WORDS = { SLD: 'single line', BCD: 'block cable', 'CABLE SCHEDULE': 'cable schedule', EARTHING: 'earthing' };
     const docOf = (doc) => { const t = String(doc || '').trim(); if (!t) return ''; const up = t.toUpperCase(); const ds = job.drawings || [];
       if (t === '*' || /^(all|every)\b.*(drawing|document)|^general$/i.test(t)) return '*';   // every drawing on the job
-      const exact = ds.find(x => String(x.no).toUpperCase() === up) || ds.find(x => up.includes(String(x.no).toUpperCase()) && x.no.length > 6); if (exact) return exact.no;
+      const exact = ds.find(x => String(x.no).toUpperCase() === up) || ds.filter(x => x.no.length > 6 && new RegExp('(^|[^0-9])' + String(x.no).toUpperCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?![0-9])').test(up)).sort((a, b) => b.no.length - a.no.length)[0];   // the whole number, not the start of a longer one: a comment on -72-00012 P02 is not -72-0001's if (exact) return exact.no;
       const tail = (up.match(/(\d{3,4})\)?$/) || [])[1]; if (tail) { const ends = ds.filter(x => new RegExp('[-_]?' + tail + '$').test(String(x.no).toUpperCase().replace(/\s*[PCA]\d\d$/, ''))); if (ends.length === 1) return ends[0].no; }   // "drawing 153" / "7153"
 
       const CODE = { SLD: '70', 'SINGLE LINE': '70', 'SINGLE LINE DIAGRAM': '70', BCD: '71', 'BLOCK CABLE DIAGRAM': '71', EARTHING: '74' }, code = CODE[up];   // QS 006 type code in the number

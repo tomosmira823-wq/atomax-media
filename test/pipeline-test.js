@@ -47,6 +47,13 @@ t('the PDF check reads the page size and page count', () => {
   assert.ok(!V.pdf(f, { w: 841, h: 594 }).ok, 'an A3 page for an A1 sheet fails');
 });
 
+{ const E = require('../src/elichat'); const job = { id: 'j', folder: '', drawings: [{ no: 'X130726-0000-06-72-0011', title: 'a' }, { no: 'X130726-0000-06-71-0011', title: 'b' }, { no: 'X130726-0000-06-72-0008', title: 'c' }] };
+  const deskMod = { load: () => ({ crs: [] }), saveRaw() {} }, biz = { saveJob() {} }, BIZ = { data: () => ({}), store: { save() {} } };
+  E.apply([{ do: 'rename', no: '0011', title: 'X' }, { do: 'rename', no: '0008', title: 'Y' }], { job, deskMod, biz, BIZ }).then(done => {
+    assert.ok(/fits 2 drawings/.test(done[0]) && job.drawings[0].title === 'a' && job.drawings[1].title === 'b', done[0]);
+    assert.ok(/renamed X130726-0000-06-72-0008/.test(done[1]) && job.drawings[2].title === 'Y', done[1]); console.log('ok  Eli: an ambiguous short number is refused, an unambiguous one works'); }).catch(e => { console.log('FAIL Eli', e.message); process.exitCode = 1; }); }
+// a comment on -72-00012 P02 from an email lands on -72-00012, not -72-0001
+t('an emailed comment on -00012 P02 is not filed on -0001', () => { const src = fs.readFileSync(path.join(__dirname, '..', 'src', 'intake.js'), 'utf8'); assert.ok(/the whole number, not the start of a longer one/.test(src)); const no = 'X130726-0000-06-72-0001', up = 'X130726-0000-06-72-00012 P02'; assert.ok(!new RegExp('(^|[^0-9])' + no + '(?![0-9])').test(up)); });
 // the real job, when it is there: the edits from Wyn's email on the P02s, checked, and compared with what was sent on 9 Nov
 const FF = process.env.FIVE_FORDS;
 if (FF && fs.existsSync(FF)) {

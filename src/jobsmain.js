@@ -230,7 +230,7 @@ function register({ ipcMain, HANDLERS, BIZ, claudeFull }) {
     try { r = await claudeFull({ system: E.SYSTEM, who: 'email', skills, maxTokens: 4000, messages: [{ role: 'user', content: [{ type: 'text', text: `${ctx}\n\nTOM SAYS NOW: ${t || '(see the picture)'}` }, ...pics] }], run: R.id }); runs.finish(R.id); } catch (e) { runs.finish(R.id, { ok: false, error: String(e && e.message || e) }); throw e; }
     let out; try { out = require('./dxfmaker').parseReply(r.text); } catch { out = { reply: String(r.text || '').trim(), actions: [] }; }
     const reply = String(out.reply || '').trim() || '(Eli said nothing)';
-    const doers = { issueSent: () => { const d = desk.load(jobId); if (!d.openIssue) throw new Error('No issue is being built on this job.'); const n = d.openIssue.n; d.openIssue.sent = true; closeIssue(jobId, d, 'Tom told Eli it was sent'); return { n }; }, revUp: (a) => revUp({ jobId, no: a.no, to: a.to || '', status: a.status || '', people: a.people || null }), make: (a) => make({ jobId, no: a.no, people: a.people || {}, note: a.note || '' }), rows: () => overview(jobId).rows, docRequest: (a) => docRequest({ jobId, submittedBy: a.submittedBy || '', nos: a.nos || null }), plot: (a) => plotIssue({ jobId, files: a.files || null }) };
+    const doers = { issueSent: () => { const d = desk.load(jobId); if (!d.openIssue) throw new Error('No issue is being built on this job.'); const n = d.openIssue.n; d.openIssue.sent = true; closeIssue(jobId, d, 'Tom told Eli it was sent'); return { n }; }, revUp: (a) => revUpOrRevise({ jobId, no: a.no, to: a.to || '', status: a.status || '', people: a.people || null }), revise: (a) => revise({ jobId, no: a.no, comments: a.note || '', status: a.status || '' }), comment: (a) => desk.addComments(jobId, [{ doc: a.no, comment: a.text, by: 'Tom' }]), make: (a) => make({ jobId, no: a.no, people: a.people || {}, note: a.note || '' }), rows: () => overview(jobId).rows, docRequest: (a) => docRequest({ jobId, submittedBy: a.submittedBy || '', nos: a.nos || null }), plot: (a) => plotIssue({ jobId, files: a.files || null }) };
     const done = await E.apply(Array.isArray(out.actions) ? out.actions : [], { job, desk: desk.load(jobId), deskMod: desk, biz, BIZ, overview: ov, doers });
     try { desk.tidyRows(jobId); } catch {}
     try { if (done.some(x => /RFI|closed/i.test(x))) await desk.writeRfiRegister(jobId, { templateDir: BIZ.projects.templateDir() }); } catch {}
@@ -400,7 +400,7 @@ function register({ ipcMain, HANDLERS, BIZ, claudeFull }) {
     const dxffix = require('./dxffix'), full = path.join(job.folder, src.dxf), orig = fs.readFileSync(full), buf = edited && edited.buf ? edited.buf : orig, cur = d.rev || src.fileRev || '';
 
     const want = askedRev(to, '') || '';
-    const pp = people || {}; let r;
+    const dl0 = delivOf(jobId), pp = people || (dl0[no] || {}).people || Object.values(dl0).map(x => x && x.people).filter(Boolean).pop() || {}; let r;
     // a new issue box beside the last one (P04 next to P01 P02 P03: date, initials, status), the title block ISSUE field to the new rev
     try { r = require('./revup').revUp(buf, { to: want, status, drawn: pp.drawn || '', checked: pp.checked || '', approved: pp.approved || '' }); }
     catch (e) { throw new Error(`${no}: ${src.dxf.split('/').pop()} could not be revved up (${String(e.message || e)}). Rev it by hand this time.`); }
