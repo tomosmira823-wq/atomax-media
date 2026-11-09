@@ -32,6 +32,18 @@ t('the plot copy marks hatches non-associative and changes nothing else (logo fa
   const r = P.plotCopy(f), out = fs.readFileSync(r.path, 'latin1'); fs.unlinkSync(r.path); fs.unlinkSync(f);
   assert.strictEqual(r.hatches, 1); assert.strictEqual(out, src.replace('71\r\n1\r\n0\r\nLINE', '71\r\n0\r\n0\r\nLINE'));
 });
+t('the new issue box meets the title block and leaves the sheet centre mark alone (double line + second mark, Five Fords P03 9 Nov)', () => {
+  const src = box([['P01', '30/09/2026'], ['P02', '21/10/2026']], [{ t: 'line', x1: 11, y1: 61, x2: 493, y2: 61, layer: 'TB' }, { t: 'line', x1: 300, y1: 5, x2: 300, y2: 15, layer: 'FRAME' }]);
+  const r = R.revUp(src, {});
+  const P = D.parseDxf(r.buf).pairs, L = []; for (let i = 0; i < P.length; i++) if (P[i].code === 0 && P[i].val === 'LINE') { const g = {}; for (let j = i + 1; j < P.length && P[j].code !== 0; j++) g[P[j].code] = +P[j].val; L.push(g); }
+  assert.strictEqual(L.filter(g => g[10] === g[11] && g[20] === 5 && g[21] === 15).length, 1, 'the centre mark was copied');
+  assert.ok(!L.some(g => g[10] === 460 && g[11] === 460), 'the centre mark was copied one pitch along');
+  assert.ok(L.some(g => g[10] === 493 && g[11] === 493 && g[20] === 15 && g[21] === 61), 'the new box does not reach the title block');
+  assert.ok(!L.some(g => g[10] === 491 && g[11] === 491), 'a right edge was left one pitch along, short of the title block');
+  assert.strictEqual(r.changes.stretched, 2);
+  const tight = box([['P01', '30/09/2026'], ['P02', '21/10/2026']], [{ t: 'line', x1: 11, y1: 61, x2: 480, y2: 61, layer: 'TB' }]);
+  assert.throws(() => R.revUp(tight, {}), /no room/);
+});
 t('a sheet at P01 (one issue box) can be revved', () => {
   const r = R.revUp(box([['P01', '25/04/2026']]), {}); assert.strictEqual(r.to, 'P02'); assert.strictEqual(Math.round(r.pitch), 160);
   const T = D.parseDxf(r.buf).ents.filter(e => e.section === 'ENTITIES').map(e => [e.plain, Math.round(e.x)]); assert.ok(T.some(([p, x]) => p === 'P02' && x === 221) && T.some(([p, x]) => p === 'P02' && x === 1141), JSON.stringify(T));

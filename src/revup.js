@@ -46,8 +46,22 @@ function issueBoxes(P, ents) {
   const x0 = left - 0.5, x1 = left + pitch + 0.5;   // the last box spans one pitch from its left edge
   const inBox = ents.filter(e => e.type !== 'INSERT' && e.xs.length && e.xs.every(v => v >= x0 && v <= x1) && e.ys.every(v => v >= y - 12 * h && v <= y + 4 * h));
   const yMin = Math.min(...inBox.map(e => Math.min(...e.ys))), yMax = Math.max(...inBox.map(e => Math.max(...e.ys)));
-  const box = ents.filter(e => e.type !== 'INSERT' && e.xs.length && e.xs.every(v => v >= x0 && v <= x1) && e.ys.every(v => v >= yMin - 0.5 && v <= yMax + 0.5));
-  return { row, last, pitch, box, rev: last.text.toUpperCase() };
+  let box = ents.filter(e => e.type !== 'INSERT' && e.xs.length && e.xs.every(v => v >= x0 && v <= x1) && e.ys.every(v => v >= yMin - 0.5 && v <= yMax + 0.5));
+  // the box's own height is set by its vertical dividers (the tallest ones): anything reaching below or above them is the sheet's, not the
+  // box's. The frame's centre mark hangs just under the P02 box and was copied across with it (Five Fords P03, 9 Nov)
+  const vert = (e) => (e.type === 'LINE' || e.type === 'LWPOLYLINE') && e.xs.length >= 2 && Math.max(...e.xs) - Math.min(...e.xs) < 0.01;
+  const posts = box.filter(vert), tall = posts.length ? Math.max(...posts.map(e => Math.max(...e.ys) - Math.min(...e.ys))) : 0;
+  const frame = posts.filter(e => Math.max(...e.ys) - Math.min(...e.ys) > tall * 0.9);
+  const yLo = frame.length ? Math.min(...frame.map(e => Math.min(...e.ys))) : yMin, yHi = frame.length ? Math.max(...frame.map(e => Math.max(...e.ys))) : yMax;
+  box = box.filter(e => e.ys.every(v => v >= yLo - 0.5 && v <= yHi + 0.5));
+  // where the row of boxes ends: the horizontal rules along the top or bottom of the boxes run on to the title block. A new box one pitch
+  // along that would stop short of it (P03 ended at 320 with the title block at 322: a thin double line) is stretched to meet it; one
+  // that would run past it has no room, and Tom has to say what he wants
+  const right = Math.max(...box.map(e => Math.max(...e.xs)));
+  const flat = (e) => (e.type === 'LINE' || e.type === 'LWPOLYLINE') && e.ys.length >= 2 && Math.max(...e.ys) - Math.min(...e.ys) < 0.01;
+  const rules = ents.filter(e => flat(e) && [yLo, yHi].some(v => Math.abs(e.ys[0] - v) < 0.5) && Math.min(...e.xs) <= x0 + 0.5 && Math.max(...e.xs) > right + 0.5);
+  const rowEnd = rules.length ? Math.max(...rules.map(e => Math.max(...e.xs))) : null;
+  return { row, last, pitch, box, right, rowEnd, rev: last.text.toUpperCase() };
 }
 
 // opts: { to, status, drawn, checked, approved, date }
@@ -64,6 +78,11 @@ function revUp(buf, opts = {}) {
   // initials: the DRAWN / CHECKED / APPROVED values of the last box are its two-or-three-letter MTEXTs, top to bottom; new ones when given
   const initials = ib.box.filter(e => (e.type === 'MTEXT' || e.type === 'TEXT') && /^[A-Z]{2,3}$/.test(e.text) && !/^(TBC|NG|ISO|CAD)$/.test(e.text)).sort((a, b) => b.ys[0] - a.ys[0]);
   const who = new Map(); [opts.drawn, opts.checked, opts.approved].forEach((v, i) => { if (v && initials[i]) who.set(initials[i], String(v).toUpperCase().slice(0, 3)); });
+  // the new box's right edge: one pitch along, or onto the end of the row when that is a little further (see issueBoxes)
+  const edge = ib.right + ib.pitch;
+  if (ib.rowEnd != null && ib.rowEnd < edge - 0.5) throw new Error(`no room for another issue box: the row ends at ${ib.rowEnd.toFixed(1)}, the new box would run to ${edge.toFixed(1)}`);
+  const snapTo = ib.rowEnd != null && ib.rowEnd - edge > 0.01 && ib.rowEnd - edge <= ib.pitch * 0.15 ? ib.rowEnd : null;
+  changes.stretched = snapTo != null ? +(snapTo - edge).toFixed(3) : 0;
   // the new box: every entity of the last box shifted one pitch right, with the new values
   const clone = [];
   for (const e of ib.box) {
@@ -72,7 +91,7 @@ function revUp(buf, opts = {}) {
     for (const p of np) {
       if (p.code === 101) embedded = true;   // an MTEXT's embedded object (AutoCAD 2018+): there 10 is the DIRECTION and 11 the insertion point, the other way round from the entity itself
       if (p.code === 5) p.val = (nextHandle++).toString(16).toUpperCase();
-      else if (e.type === 'MTEXT' ? (embedded ? p.code === 11 : p.code === 10) : (p.code === 10 || p.code === 11)) p.val = String(+p.val + ib.pitch);   // every insertion point one pitch right; direction vectors untouched (Tom 9 Nov: the new box's texts came out skewed off the sheet)
+      else if (e.type === 'MTEXT' ? (embedded ? p.code === 11 : p.code === 10) : (p.code === 10 || p.code === 11)) p.val = String(snapTo != null && (e.type === 'LINE' || e.type === 'LWPOLYLINE') && Math.abs(+p.val - ib.right) < 0.01 ? snapTo : +p.val + ib.pitch);   /* a line on the box's right edge lands on the end of the row */   // every insertion point one pitch right; direction vectors untouched (Tom 9 Nov: the new box's texts came out skewed off the sheet)
       else if (p.code === 1 || (p.code === 3 && e.type === 'MTEXT')) {
         if (seenText && p.code === 1 && e.type === 'MTEXT') { p.val = ''; continue; }   // long MTEXT split over 3/1 codes: the value goes in once
         seenText = true; const t = e.text;
