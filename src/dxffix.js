@@ -52,7 +52,8 @@ function plainText(s) {
 const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 // whole-tag match, not a piece of a longer tag. In MTEXT a tag can sit right after a formatting code ({\LTAG} underline, \OTAG overline,
 // \KTAG strike, \fArial|b0;TAG font, \C1;TAG colour, \H2.5;TAG height, \PTAG new line): those count as the start of a word
-const tokenRe = (before) => new RegExp('(^|[^A-Za-z0-9]|\\\\[LlOoKkP]|\\\\[A-Za-z][^;\\\\{}]*;)(' + esc(before) + ')(?![A-Za-z0-9])', 'g');
+// A backslash is never the start of a word: "C1" must not match the \C1; colour code, nor "H2" the \H2.5; height code
+const tokenRe = (before) => new RegExp('(^|[^A-Za-z0-9\\\\]|\\\\[LlOoKkP]|\\\\[A-Za-z][^;\\\\{}]*;)(' + esc(before) + ')(?![A-Za-z0-9])', 'g');
 
 // how many places would this fix change in this file (without changing anything). `blocks` names the symbols the text sits in and how often each is used.
 function countMatches(dxf, before, ref) {
@@ -65,16 +66,23 @@ function countMatches(dxf, before, ref) {
 // one line per text item, for Claude to read when there is no markup
 // the drawing's own text first (ENTITIES), the symbols' text after: a frame block with hundreds of grid letters must never crowd the tags
 // on the drawing out of a list that is cut short
-function inventory(dxf, max = 1500) {
-  const rows = []; let chars = 0;
-  const order = [...dxf.ents.keys()].filter(i => dxf.ents[i].section !== 'BLOCKS').concat([...dxf.ents.keys()].filter(i => dxf.ents[i].section === 'BLOCKS'));
+// focus: words from the instruction; the items that carry them go first, so on a big sheet the ones the comments are about are never the
+// ones cut off. The result says how many items were left out (res.cut), so the caller can tell Tom rather than miss them silently.
+function inventory(dxf, max = 2500, focus = []) {
+  const rows = []; let chars = 0, shown = 0;
+  const F = focus.map(w => String(w).toUpperCase()).filter(w => w.length >= 2);
+  const hit = (e) => F.some(w => e.plain.toUpperCase().includes(w));
+  const all = [...dxf.ents.keys()].filter(i => dxf.ents[i].plain);
+  const order = [...all.filter(i => dxf.ents[i].section !== 'BLOCKS' && hit(dxf.ents[i])), ...all.filter(i => dxf.ents[i].section !== 'BLOCKS' && !hit(dxf.ents[i])), ...all.filter(i => dxf.ents[i].section === 'BLOCKS' && hit(dxf.ents[i])), ...all.filter(i => dxf.ents[i].section === 'BLOCKS' && !hit(dxf.ents[i]))];
   for (const i of order) {
-    const e = dxf.ents[i]; if (!e.plain) continue;
+    const e = dxf.ents[i];
     const row = `${i} | ${e.type} | ${e.layer || '0'} | ${e.section === 'BLOCKS' ? 'symbol ' + (e.block || '?') : 'drawing'} | ${e.x === undefined ? '' : Math.round(e.x * 100) / 100},${e.y === undefined ? '' : Math.round(e.y * 100) / 100} | h${e.h === undefined ? '' : e.h} | ${e.plain.slice(0, 160)}`;
-    chars += row.length; if (rows.length >= max || chars > 90000) { rows.push('... (list cut short)'); break; }
-    rows.push(row);
+    chars += row.length; if (rows.length >= max || chars > 150000) break;
+    rows.push(row); shown++;
   }
-  return 'item | type | layer | where | x,y | height | text\n' + rows.join('\n');
+  const cut = all.length - shown;
+  const text = 'item | type | layer | where | x,y | height | text\n' + rows.join('\n') + (cut ? `\n... (${cut} more text items not listed: the ones the instruction names are listed first)` : '');
+  return Object.assign(new String(text), { cut, total: all.length });
 }
 
 const handleNum = (h) => { const n = parseInt(h, 16); return Number.isNaN(n) ? 0 : n; };
@@ -190,13 +198,19 @@ function applyFixes(buf, fixes) {
       // text items to one colour (a client wants all annotation in black): ACI 7 is black/white, 256 is ByLayer
       const want = String(f.colour || f.color || 'black').toLowerCase(), aci = /^\d+$/.test(want) ? +want : ({ black: 7, white: 7, bylayer: 256, red: 1, yellow: 2, green: 3, cyan: 4, blue: 5, magenta: 6 })[want];
       if (aci === undefined) { skip(`Dex does not know the colour "${want}".`); continue; }
-      const targets = (f.ref === 'all' || f.ref === undefined || f.ref === null) ? dxf.ents.filter(e => e.plain && e.section !== 'BLOCKS') : [dxf.ents[+f.ref]].filter(Boolean);
+      const all = f.ref === 'all' || f.ref === undefined || f.ref === null;
+      const targets = all ? dxf.ents.filter(e => e.plain && e.section !== 'BLOCKS') : [dxf.ents[+f.ref]].filter(Boolean);
+      // "all text" also means dimension and leader text on the drawing (their text follows the entity colour)
+      if (all) { let sec = ''; for (let i = 0; i < pairs.length; i++) { const p = pairs[i]; if (p.code !== 0) continue; if (p.val === 'SECTION') sec = (pairs[i + 1] || {}).val; else if (p.val === 'ENDSEC') sec = ''; else if (sec === 'ENTITIES' && /^(DIMENSION|LEADER|MULTILEADER|MLEADER|ARC_DIMENSION)$/.test(p.val)) { let end = i + 1; while (end < pairs.length && pairs[end].code !== 0) end++; targets.push({ at: i, end, refs: [], dim: true }); } } }
+      res.inBlocks = all ? dxf.ents.filter(e => e.plain && e.section === 'BLOCKS').length : 0;   // text inside symbols (the logo, a title-block block) is left as drawn, and said
       for (const e of targets) {
         if (removed.has(e.at)) continue;
-        let at62 = -1, at8 = -1; for (let i = e.at + 1; i < e.end; i++) { if (pairs[i].code === 62 && at62 < 0) at62 = i; if (pairs[i].code === 8 && at8 < 0) at8 = i; }
+        let at62 = -1, at8 = -1; for (let i = e.at + 1; i < e.end; i++) { if (pairs[i].code === 62 && at62 < 0) at62 = i; if (pairs[i].code === 8 && at8 < 0) at8 = i; if (pairs[i].code === 101) break; }
         let touched = false;
         if (at62 >= 0) { if (pairs[at62].val.trim() !== String(aci)) { pairs[at62].val = String(aci); touched = true; } }
         else if (at8 >= 0) { const list = inserts.get(at8 + 1) || []; list.push({ code: 62, raw: ' 62', val: String(aci) }); inserts.set(at8 + 1, list); insertedPairs++; touched = true; }
+        // a true colour (420) or colour book name (430) wins over 62: those go, so the colour asked for is the one that shows
+        for (let i = e.at + 1; i < e.end; i++) { if (pairs[i].code === 101) break; if ((pairs[i].code === 420 || pairs[i].code === 430) && !removed.has(i)) { removed.add(i); touched = true; } }
         // an inline colour inside the MTEXT itself ({\C1;...} red, \c<rgb>; true colour) overrides the entity colour: those go too (Five Fords -0011, 9 Nov)
         for (const r of e.refs) { const v = pairs[r].val; if (/\\[Cc]\d+;/.test(v)) { pairs[r].val = v.replace(/\\[Cc]\d+;/g, ''); touched = true; } }
         if (touched) res.places++;
@@ -307,4 +321,4 @@ function cableEnds(buf) {
   return out;
 }
 
-module.exports = { cableEnds, parseDxf, applyFixes, countMatches, checkItem, inventory, proposalsFromFindings, matchFile, plainText, DEX_SYSTEM, DEX_NOTE_SYSTEM };
+module.exports = { tokenRe, cableEnds, parseDxf, applyFixes, countMatches, checkItem, inventory, proposalsFromFindings, matchFile, plainText, DEX_SYSTEM, DEX_NOTE_SYSTEM };

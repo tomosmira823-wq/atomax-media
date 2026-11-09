@@ -2,10 +2,15 @@
 // sheet's layout ("New": DWG To PDF.pc3, ISO full bleed A1, monochrome). Nothing is guessed about paper or pens: the layout already
 // knows. One PDF beside each DXF, named the same; the console output is kept in plot-console.log next to them.
 'use strict';
-const fs = require('fs'), path = require('path'), { spawn } = require('child_process');
+const fs = require('fs'), path = require('path'), os = require('os'), { spawn } = require('child_process');
+// scripts and console logs live in the app's own folder, never in the issue folder that goes to the client (Tom 9 Nov)
+function workDir() { let d = ''; try { d = path.join(require('electron').app.getPath('userData'), 'plot-logs'); } catch { d = path.join(os.tmpdir(), 'atomax-plot-logs'); } try { fs.mkdirSync(d, { recursive: true }); } catch {} return d; }
+const logLine = (title, log) => { try { fs.appendFileSync(path.join(workDir(), 'plot-console.log'), `\n===== ${new Date().toISOString()} ${title}\n${log}\n`); } catch {} };
+const q = (v) => '"' + String(v).replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"';
 
 // the newest AutoCAD on this PC
 function coreConsole() {
+  if (process.env.AMO_FAKE_PLOT) return { year: 0, exe: '', lt: false, fake: true };   // the test suite's stand-in for AutoCAD (no AutoCAD on the test box)
   const roots = [process.env.ProgramFiles || 'C:\\Program Files', process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)'];
   const found = [];
   for (const r of roots) { const a = path.join(r, 'Autodesk'); let es = []; try { es = fs.readdirSync(a); } catch { continue; } for (const e of es) { const m = e.match(/^AutoCAD (?:LT )?(\d{4})$/i); if (!m) continue; const exe = path.join(a, e, 'accoreconsole.exe'); if (fs.existsSync(exe)) found.push({ year: +m[1], exe, lt: /LT/i.test(e) }); } }
@@ -34,14 +39,16 @@ function plotOne(dxfPath, { console: core, timeoutMs = 90000, layoutName = '' } 
   return new Promise((resolve, reject) => {
     const dir = path.dirname(dxfPath), base = path.basename(dxfPath).replace(/\.dxf$/i, ''), pdf = path.join(dir, base + '.pdf');
     const lay = layoutName || (layoutToPlot(dxfPath) || {}).name; if (!lay) return reject(new Error(`${base}: no paper-space layout found on the sheet`));
-    const scr = path.join(dir, `.plot-${base.replace(/[^A-Za-z0-9_-]+/g, '_')}.scr`);
-    try { if (fs.existsSync(pdf)) fs.unlinkSync(pdf); } catch {}
+    if (core && core.fake) { const L0 = layoutToPlot(dxfPath) || {}, mm = (v) => (v || 0) * 72 / 25.4, W = mm(Math.max(L0.w || 420, L0.h || 297)), H = mm(Math.min(L0.w || 420, L0.h || 297)); fs.writeFileSync(pdf, `%PDF-1.4\n1 0 obj<</Type /Catalog /Pages 2 0 R>>endobj\n2 0 obj<</Type /Pages /Kids [3 0 R] /Count 1>>endobj\n3 0 obj<</Type /Page /Parent 2 0 R /MediaBox [0 0 ${W.toFixed(2)} ${H.toFixed(2)}]>>endobj\n` + ' '.repeat(1100) + '\n%%EOF\n'); return resolve({ pdf, layout: lay, log: 'fake plot' }); }
+    const scr = path.join(workDir(), `plot-${base.replace(/[^A-Za-z0-9_-]+/g, '_')}-${Date.now()}.scr`);
+    // the old PDF must go first: if it cannot (open in a viewer), stop now rather than pass the old one off as new
+    try { if (fs.existsSync(pdf)) fs.unlinkSync(pdf); } catch { return reject(new Error(`${base}.pdf is open in another program (a PDF viewer?). Close it and try again.`)); }
+    const t0 = Date.now();
     // a layout already set up for a PDF device plots with its own page setup; one set up for a plotter (A0 BORDER -> HP Designjet) gets
     // the house PDF setup spelled out: DWG To PDF.pc3, ISO full bleed A1, extents fitted and centred, monochrome.ctb (what Tom's plot logs show)
     const L = (layoutToPlot(dxfPath) || {}); const pdfSetup = /pdf/i.test(L.device || '') && L.name === lay;
     // the plot as one AutoLISP (command ...) line: every answer is a quoted string, so a path with spaces in it (OneDrive - Atomax-UK Ltd)
     // arrives whole. In a plain script a space is an Enter and the file name was cut at the first one (Five Fords, 9 Nov).
-    const q = (v) => '"' + String(v).replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"';
     // a sheet set up for PDF already: the same sheet size, full bleed (the core console's own PDF config lacks the "expand" sizes and
     // silently dropped to A3 with margins, 3.5% smaller: Five Fords 9 Nov), extents at 1:1 centred, the layout's own style table
     const iso = { '841x1189': 'A0', '594x841': 'A1', '420x594': 'A2', '297x420': 'A3', '210x297': 'A4' };
@@ -60,9 +67,9 @@ function plotOne(dxfPath, { console: core, timeoutMs = 90000, layoutName = '' } 
     child.on('close', () => {
       clearTimeout(t); try { fs.unlinkSync(scr); } catch {}
       const log = out.replace(/\r/g, '').split('\n').filter(l => l.trim()).slice(-60).join('\n');
-      try { fs.appendFileSync(path.join(dir, 'plot-console.log'), `\n===== ${new Date().toISOString()} ${base} (layout ${lay})\n${log}\n`); } catch {}
-      // the PDF can land a moment after the console exits
-      const waitFor = (n) => { if (fs.existsSync(pdf) && fs.statSync(pdf).size > 1024) return resolve({ pdf, layout: lay, log }); if (n <= 0) return reject(new Error(`${base}: AutoCAD did not write the PDF (layout "${lay}"). Last console lines: ${log.split('\n').slice(-6).join(' | ')}`)); setTimeout(() => waitFor(n - 1), 500); };
+      logLine(`${base} (layout ${lay})`, log);
+      // the PDF can land a moment after the console exits; only one written by THIS plot counts
+      const waitFor = (n) => { if (fs.existsSync(pdf) && fs.statSync(pdf).size > 1024 && fs.statSync(pdf).mtimeMs >= t0 - 2000) return resolve({ pdf, layout: lay, log }); if (n <= 0) return reject(new Error(`${base}: AutoCAD did not write the PDF (layout "${lay}"). Last console lines: ${log.split('\n').slice(-6).join(' | ')}`)); setTimeout(() => waitFor(n - 1), 500); };
       waitFor(20);
     });
   });
@@ -73,9 +80,13 @@ function plotOne(dxfPath, { console: core, timeoutMs = 90000, layoutName = '' } 
 function dwgToDxf(dwgPath, { console: core, timeoutMs = 180000, out = '' } = {}) {
   return new Promise((resolve, reject) => {
     const dir = path.dirname(dwgPath), base = path.basename(dwgPath).replace(/\.dwg$/i, ''), dxf = out || path.join(dir, base + '.dxf');
-    const scr = path.join(dir, `.dxf-${base.replace(/[^A-Za-z0-9_-]+/g, '_')}.scr`);
-    try { if (fs.existsSync(dxf)) fs.unlinkSync(dxf); } catch {}
-    fs.writeFileSync(scr, ['FILEDIA 0', 'CMDDIA 0', '_.SAVEAS', 'DXF', '16', '2010', dxf, '_.DELAY 1000', '_.QUIT', '_Y'].join('\r\n') + '\r\n', 'latin1');   // SAVEAS DXF: decimal places 16, R2010, path
+    if (core && core.fake) return reject(new Error('AutoCAD was not found (test stand-in): save it as DXF by hand'));
+    const scr = path.join(workDir(), `dxf-${base.replace(/[^A-Za-z0-9_-]+/g, '_')}-${Date.now()}.scr`);
+    // never over an existing DXF: a file of that name is somebody's, not ours to replace
+    if (fs.existsSync(dxf)) return reject(new Error(`${path.basename(dxf)} already exists beside the DWG: Dex will not overwrite it.`));
+    // one quoted AutoLISP line: a path with spaces in it (OneDrive - Atomax-UK Ltd) arrives whole. SAVEAS: DXF (the current release, AC1032 like the sheets on file), 16 decimals, file
+    fs.writeFileSync(scr, ['FILEDIA 0', 'CMDDIA 0', `(command "_.SAVEAS" "DXF" "16" ${q(dxf)})`, '_.DELAY 1000', '_.QUIT', '_Y'].join('\r\n') + '\r\n', 'latin1');
+    const t0 = Date.now();
     const child = spawn(core.exe, ['/i', dwgPath, '/s', scr, '/l', 'en-US'], { cwd: dir, windowsHide: true });
     let o = ''; child.stdout.on('data', (b) => { o += b.toString('latin1'); }); child.stderr.on('data', (b) => { o += b.toString('latin1'); });
     const t = setTimeout(() => { try { child.kill(); } catch {} }, timeoutMs);
@@ -83,10 +94,10 @@ function dwgToDxf(dwgPath, { console: core, timeoutMs = 180000, out = '' } = {})
     child.on('close', () => {
       clearTimeout(t); try { fs.unlinkSync(scr); } catch {}
       const log = o.replace(/\r/g, '').split('\n').filter(l => l.trim()).slice(-40).join('\n');
-      try { fs.appendFileSync(path.join(dir, 'plot-console.log'), `\n===== ${new Date().toISOString()} ${base} -> DXF\n${log}\n`); } catch {}
-      const waitFor = (n) => { if (fs.existsSync(dxf) && fs.statSync(dxf).size > 1024) return resolve({ dxf, log }); if (n <= 0) return reject(new Error(`${base}: AutoCAD did not write the DXF. Last console lines: ${log.split('\n').slice(-6).join(' | ')}`)); setTimeout(() => waitFor(n - 1), 500); };
+      logLine(`${base} -> DXF`, log);
+      const waitFor = (n) => { if (fs.existsSync(dxf) && fs.statSync(dxf).size > 1024 && fs.statSync(dxf).mtimeMs >= t0 - 2000) return resolve({ dxf, log }); if (n <= 0) return reject(new Error(`${base}: AutoCAD did not write the DXF. Last console lines: ${log.split('\n').slice(-6).join(' | ')}`)); setTimeout(() => waitFor(n - 1), 500); };
       waitFor(20);
     });
   });
 }
-module.exports = { coreConsole, layouts, layoutToPlot, plotOne, dwgToDxf };
+module.exports = { coreConsole, layouts, layoutToPlot, plotOne, dwgToDxf, workDir };

@@ -30,13 +30,19 @@ function issueBoxes(P, ents) {
   // list) is not one, nor is a row whose texts are out of order
   const climbs = (r) => { const v = r.slice().sort((a, b) => a.xs[0] - b.xs[0]).map(t => t.text.toUpperCase()); return new Set(v).size === v.length && v.every((x, i) => !i || (x[0] === v[i - 1][0] ? +x.slice(1) > +v[i - 1].slice(1) : 'PACX'.indexOf(x[0]) > 'PACX'.indexOf(v[i - 1][0]))); };
   const cands = [...rows.values()].filter(climbs); if (!cands.length) return null;
-  const row = cands.sort((a, b) => b.length - a.length || a[0].ys[0] - b[0].ys[0])[0].sort((a, b) => a.xs[0] - b.xs[0]);
-  const last = row[row.length - 1], pitch = row.length >= 2 ? last.xs[0] - row[row.length - 2].xs[0] : 0;
+  // with one box only (a P01 sheet) the title block's own ISSUE field is a row of one too: the box row is the one with an ISSUE label just to its left
+  const labelled = (r) => r.some(t => ents.some(e => /^ISSUE$/i.test(e.text) && e.xs.length && Math.abs(e.ys[0] - t.ys[0]) < 3 * (t.h || 5) && e.xs[0] < t.xs[0] && t.xs[0] - e.xs[0] < 80)) ? 1 : 0;
+  const row = cands.sort((a, b) => b.length - a.length || labelled(b) - labelled(a) || a[0].ys[0] - b[0].ys[0])[0].sort((a, b) => a.xs[0] - b.xs[0]);
+  const last = row[row.length - 1]; let pitch = row.length >= 2 ? last.xs[0] - row[row.length - 2].xs[0] : 0;
+  // a sheet at its first issue has one box: the pitch is that box's width, read off the horizontal line that runs under or over it
+  if (!(pitch > 0)) { const hh = last.h || 5, lx = last.xs[0], ly = last.ys[0];
+    const spans = ents.filter(e => (e.type === 'LINE' || e.type === 'LWPOLYLINE') && e.ys.length >= 2 && Math.max(...e.ys) - Math.min(...e.ys) < 0.01 && Math.abs(e.ys[0] - ly) < 12 * hh && Math.min(...e.xs) < lx && Math.max(...e.xs) > lx).map(e => Math.max(...e.xs) - Math.min(...e.xs)).filter(w => w > 4 * hh).sort((a, b) => a - b);
+    pitch = spans[0] || 0; }
   if (!(pitch > 0)) return null;
   // the band: everything near the revision row's height (the issue box is a few text lines tall)
   const y = last.ys[0], h = last.h || 5;
   const near = ents.filter(e => e.xs.length && e.ys.every(v => v >= y - 12 * h && v <= y + 4 * h) && e.xs.every(v => v >= last.xs[0] - pitch && v < last.xs[0] + pitch));
-  const left = Math.min(...near.filter(e => e.xs.every(v => v > last.xs[0] - pitch * 0.5)).map(e => Math.min(...e.xs)));
+  const left = Math.min(...near.filter(e => e.xs.every(v => v > last.xs[0] - pitch * 0.5) || (row.length === 1 && e.xs.every(v => v < last.xs[0] + pitch) && Math.min(...e.xs) > last.xs[0] - pitch)).map(e => Math.min(...e.xs)));
   const x0 = left - 0.5, x1 = left + pitch + 0.5;   // the last box spans one pitch from its left edge
   const inBox = ents.filter(e => e.type !== 'INSERT' && e.xs.length && e.xs.every(v => v >= x0 && v <= x1) && e.ys.every(v => v >= y - 12 * h && v <= y + 4 * h));
   const yMin = Math.min(...inBox.map(e => Math.min(...e.ys))), yMax = Math.max(...inBox.map(e => Math.max(...e.ys)));
@@ -98,7 +104,8 @@ function revUp(buf, opts = {}) {
 // and the embedded insertion point on the entity's own. Idempotent; returns { buf, fixed }.
 function repairBoxes(buf) {
   // text written back as utf8 by a version before 9 Nov (a ² became Ã‚Â²): one level of that undone, only when its fingerprint is there
-  let mojibake = 0; if (/\xC3[\x82\x83]\xC2[\x80-\xBF]/.test(buf.toString('latin1'))) { const once = Buffer.from(buf.toString('utf8'), 'latin1'); if (!buf.equals(once)) { buf = once; mojibake = 1; } }
+  // only the exact doubled sequence is undone (C3 82 C2 B2 -> C2 B2): decoding the whole file as utf8 would have mangled any other ° or ±
+  let mojibake = 0; { const t0 = buf.toString('latin1'); const t1 = t0.replace(/\xC3([\x82\x83])\xC2([\x80-\xBF])/g, (_m, a, b) => { mojibake++; return String.fromCharCode(0xC0 | (a.charCodeAt(0) & 0x3F)) + b; }); if (mojibake) buf = Buffer.from(t1, 'latin1'); }
   const text = buf.toString('latin1'), eol = /\r\n/.test(text.slice(0, 2000)) ? '\r\n' : '\n', L = text.split(/\r?\n/); let fixed = 0;
   const pairs = []; for (let i = 0; i + 1 < L.length; i += 2) pairs.push({ code: parseInt(L[i], 10), raw: L[i], val: L[i + 1] });
   for (let i = 0; i < pairs.length; i++) {
@@ -108,10 +115,10 @@ function repairBoxes(buf) {
     let d10 = -1, d20 = -1, e11 = -1, e21 = -1; for (let k = emb + 1; k < j; k++) { const c = pairs[k].code; if (c === 10 && d10 < 0) d10 = k; else if (c === 20 && d20 < 0) d20 = k; else if (c === 11 && e11 < 0) e11 = k; else if (c === 21 && e21 < 0) e21 = k; }
     if (d10 < 0 || e11 < 0) continue;
     const dx = +pairs[d10].val, dy = d20 >= 0 ? +pairs[d20].val : 0, skew = Math.abs(Math.hypot(dx, dy) - 1) > 0.01, adrift = Math.abs(+pairs[e11].val - +ix) > 0.01 || (e21 >= 0 && iy !== null && Math.abs(+pairs[e21].val - +iy) > 0.01);
-    if (!skew && !adrift) continue;
+    if (!skew) continue;   // the old bug always left a non-unit direction; an MTEXT whose embedded point merely differs is AutoCAD's own and left alone
     if (skew) { const n = Math.hypot(dx, dy) || 1; pairs[d10].val = String(dx / n); if (d20 >= 0) pairs[d20].val = String(dy / n); }
     pairs[e11].val = ix; if (e21 >= 0 && iy !== null) pairs[e21].val = iy; fixed++;
   }
-  return { buf: fixed ? Buffer.from(pairs.map(p => p.raw + eol + p.val).join(eol) + eol, 'latin1') : buf, fixed: fixed + mojibake };
+  return { buf: fixed ? Buffer.from(pairs.map(p => p.raw + eol + p.val).join(eol) + eol, 'latin1') : buf, fixed: fixed + (mojibake ? 1 : 0) };
 }
 module.exports = { repairBoxes, nextOf, revUp, issueBoxes, entities };

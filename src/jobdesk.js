@@ -402,7 +402,7 @@ function view(id) {
   const d = load(id), prof = clientProfile(job), m = d.master;
   const hb = DN.habits(job);
   const bd = borderFor(job);
-  return { sheetSize: d.sheetSize || '', ng: d.ng || { site: '', investment: '' }, border: d.border || 'auto', borderUsed: bd.name, borderWarning: bd.warning || '', area: d.area || hb.area || '', disc: d.disc || hb.disc || '', project: hb.project, rules: getRules(id), rulesFile: rulesPath(job), client: job.client || '', clientProfile: prof ? prof.name : '', titleBlock: titleBlockFor(job) ? path.basename(titleBlockFor(job)) : '',
+  return { openIssue: d.openIssue && d.openIssue.path ? { n: d.openIssue.n, path: d.openIssue.path } : null, sheetSize: d.sheetSize || '', ng: d.ng || { site: '', investment: '' }, border: d.border || 'auto', borderUsed: bd.name, borderWarning: bd.warning || '', area: d.area || hb.area || '', disc: d.disc || hb.disc || '', project: hb.project, rules: getRules(id), rulesFile: rulesPath(job), client: job.client || '', clientProfile: prof ? prof.name : '', titleBlock: titleBlockFor(job) ? path.basename(titleBlockFor(job)) : '',
     rfiRegisterFile: d.rfiRegisterFile || '', scope: d.scope || null, flow: d.flow || null, autoFlow: !!d.autoFlow, registerFile: d.registerFile, registerChecked: d.registerChecked, drawings: job.drawings, inputs: d.inputs, rfis: d.rfis, crs: d.crs,
     master: m ? { status: m.status, tender: !!m.tender, builtAt: m.builtAt, approvedAt: m.approvedAt, devices: m.devices.length, cables: m.cables.length, gaps: m.gaps, read: m.read, file: m.file || '', summary: m.summary, preview: m.cables.slice(0, 40), incomplete: !!m.incomplete } : null };
 }

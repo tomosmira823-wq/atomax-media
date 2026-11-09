@@ -512,8 +512,9 @@ export function initJobsUI({ api, getAgents, openIssue, onWorkOn }) {
     el.innerHTML = `<div class="jbcard"><b>Issue pack</b><div class="bsub">Made deliverables: ${ready.length} of ${O.rows.length}. Before issue: checked both ways, monochrome PDFs beside each DXF, revisions right, nothing struck off, transmittal matches the folder.</div>
       ${ng.length ? `<div class="jbmsg">Not ready: ${ng.length} deliverable${ng.length === 1 ? '' : 's'} without a National Grid number (${ng.map(n => esc(n)).join(', ')}). Write the Document Request from the Deliverables tab and renumber when BGEN reply; nothing goes out under our own number.</div>` : ''}
       ${ready.map(r => `<div class="jbc"><b>${esc(r.no)}</b> ${esc(r.title)} <span class="bsub">${r.work.rev ? 'rev ' + esc(r.work.rev) : ''} ${r.work.check ? (r.work.check.status === 'passed' ? '· checked ✓' : '· check: ' + r.work.check.count + ' to look at') : '· not checked'}</span></div>`).join('')}
-      <div class="jbbar"><button class="jbbtn primary" id="jbIssue" ${ready.length ? '' : 'disabled'}>Prepare the issue (transmittal, register, cover email)</button></div></div>`;
+      <div class="jbbar"><button class="jbbtn primary" id="jbIssue" ${ready.length ? '' : 'disabled'}>Prepare the issue (transmittal, register, cover email)</button>${O.desk.openIssue ? `<button class="jbbtn" id="jbSent" title="You sent ISSUE ${esc(O.desk.openIssue.n)} yourself: the next revision opens ISSUE ${esc(O.desk.openIssue.n + 1)} and never writes into this one">I've sent ISSUE ${esc(O.desk.openIssue.n)}</button>` : ''}</div></div>`;
     $('#jbIssue').onclick = async () => { await api.biz.setCurrent({ id: sel }); if (openIssue) openIssue(sel); };
+    if ($('#jbSent')) $('#jbSent').onclick = () => act(async () => { const r = await api.jobs.issueSent({ jobId: sel }); msg = `ISSUE ${r.n} is marked as sent. The next revision opens ISSUE ${r.n + 1}.`; }, 'Marking it sent…');
   }
 
   // ---------- new job ----------

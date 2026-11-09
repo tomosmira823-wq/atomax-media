@@ -26,7 +26,9 @@ const revInName = (n) => { const m = String(n).match(/[\s_-]([PCAX]\d{2})(?=[\s_
 function sourceFor(d, files) {
   const keys = [d.no, d.alt].filter(Boolean).map(k => String(k).toUpperCase().replace(/[^A-Z0-9]+/g, ''));
   const norm = (n) => String(n).toUpperCase().replace(/\.[A-Z0-9]+$/, '').replace(/[^A-Z0-9]+/g, '');
-  let mine = files.filter(f => { const n = norm(f.name); return keys.some(k => k.length >= 6 && n.includes(k)); });
+  // the number must be the whole drawing number in the name, not the start of a longer one: -72-0001 is not -72-00012 (Five Fords, 9 Nov)
+  const has = (n, k) => { let at = n.indexOf(k); while (at >= 0) { if (!/[0-9]/.test(n.charAt(at + k.length)) && !/[0-9]/.test(n.charAt(at - 1) || '')) return true; at = n.indexOf(k, at + 1); } return false; };
+  let mine = files.filter(f => { const n = norm(f.name); return keys.some(k => k.length >= 6 && has(n, k)); });
   // an NG number whose type code differs on the file (the register says RP-E-7005, the file was saved as SP-E-7005): the file is still the
   // document's; the rev up renames it to the register's number
   let fileNo = '';
@@ -228,7 +230,7 @@ function register({ ipcMain, HANDLERS, BIZ, claudeFull }) {
     try { r = await claudeFull({ system: E.SYSTEM, who: 'email', skills, maxTokens: 4000, messages: [{ role: 'user', content: [{ type: 'text', text: `${ctx}\n\nTOM SAYS NOW: ${t || '(see the picture)'}` }, ...pics] }], run: R.id }); runs.finish(R.id); } catch (e) { runs.finish(R.id, { ok: false, error: String(e && e.message || e) }); throw e; }
     let out; try { out = require('./dxfmaker').parseReply(r.text); } catch { out = { reply: String(r.text || '').trim(), actions: [] }; }
     const reply = String(out.reply || '').trim() || '(Eli said nothing)';
-    const doers = { revUp: (a) => revUp({ jobId, no: a.no, to: a.to || '', status: a.status || '', people: a.people || null }), make: (a) => make({ jobId, no: a.no, people: a.people || {}, note: a.note || '' }), rows: () => overview(jobId).rows, docRequest: (a) => docRequest({ jobId, submittedBy: a.submittedBy || '', nos: a.nos || null }), plot: (a) => plotIssue({ jobId, files: a.files || null }) };
+    const doers = { issueSent: () => { const d = desk.load(jobId); if (!d.openIssue) throw new Error('No issue is being built on this job.'); const n = d.openIssue.n; d.openIssue.sent = true; closeIssue(jobId, d, 'Tom told Eli it was sent'); return { n }; }, revUp: (a) => revUp({ jobId, no: a.no, to: a.to || '', status: a.status || '', people: a.people || null }), make: (a) => make({ jobId, no: a.no, people: a.people || {}, note: a.note || '' }), rows: () => overview(jobId).rows, docRequest: (a) => docRequest({ jobId, submittedBy: a.submittedBy || '', nos: a.nos || null }), plot: (a) => plotIssue({ jobId, files: a.files || null }) };
     const done = await E.apply(Array.isArray(out.actions) ? out.actions : [], { job, desk: desk.load(jobId), deskMod: desk, biz, BIZ, overview: ov, doers });
     try { desk.tidyRows(jobId); } catch {}
     try { if (done.some(x => /RFI|closed/i.test(x))) await desk.writeRfiRegister(jobId, { templateDir: BIZ.projects.templateDir() }); } catch {}
@@ -258,7 +260,7 @@ function register({ ipcMain, HANDLERS, BIZ, claudeFull }) {
   const sayEdit = (f) => f.action === 'replace_text' ? `${f.before} -> ${f.after}` : f.action === 'delete_text' ? `removed "${f.before || f.text}"` : f.action === 'add_text' ? `added "${f.text}"` : `text to ${f.colour || 'black'}`;
   async function revise({ jobId, no, comments = '', people = null, status = '' }) {
     const job = jobOf(jobId), d = job.drawings.find(x => x.no === no); if (!d) throw new Error('Not on the drawing list: ' + no);
-    const issueDir = openIssueDir(jobId), RU = require('./revup');
+    const issueDir = peekIssueDir(jobId), RU = require('./revup');
     let src = sourceFor(d, jobFiles(jobId, { exceptDir: issueDir })), fname = (src.dxf || src.dwg || '').split('/').pop();
     if (!src.dxf && src.dwg) { await dwgToDxf({ jobId, job, no, rel: src.dwg }); src = sourceFor(d, jobFiles(jobId, { exceptDir: issueDir })); fname = (src.dxf || src.dwg || '').split('/').pop(); if (!src.dxf) throw new Error(`${no}: Dex saved ${fname} as DXF but the folder does not show it yet. Press ↻ above the list and Revise again.`); }
     const allCrs = desk.load(jobId).crs || [], mine = allCrs.filter(c => (c.doc === no || c.doc === '*') && !/closed/i.test(c.status || ''));
@@ -278,8 +280,16 @@ function register({ ipcMain, HANDLERS, BIZ, claudeFull }) {
     setDeliv(jobId, no, { status: 'working', run: RUN, runId: R.id, agent: 'Dex', summary: 'Dex is reading the comments against the drawing', people });
     try {
       runs.stage(R.id, 'Dex is working out the edits', 15);
-      const r = await claudeFull({ system: dxffix.DEX_NOTE_SYSTEM, who: 'dex', skills: false, maxTokens: 8000, messages: [{ role: 'user', content: `The engineer says:\n<instruction>${asked.slice(0, 6000)}</instruction>\n\nText in the drawing(s):\nFILE: ${fname}\n${dxffix.inventory(parsed)}` }], run: R.id });
-      const j = require('./checker').parseJson(r.text || '').value || {}, items = Array.isArray(j.items) ? j.items : [];
+      if (asked.length > 20000) throw new Error(`${no}: the comments logged against it are too long to send to Dex in one go (${asked.length} characters). Close the ones already dealt with on the Comments tab and press Revise again.`);
+      const focus = [...new Set((asked.match(/[A-Za-z0-9][A-Za-z0-9\-\/]{1,}/g) || []).filter(w => /\d|^[A-Z]{2,}$/.test(w)))];
+      const inv = dxffix.inventory(parsed, 2500, focus);
+      // the same comments on the same working file give the same edits: a second press reuses the first answer instead of asking again
+      const key = require('crypto').createHash('sha1').update(buf).update('\0' + asked).digest('hex');
+      let items = (prev.editsKey === key && Array.isArray(prev.edits)) ? prev.edits : null;
+      if (!items) {
+        const r = await claudeFull({ system: dxffix.DEX_NOTE_SYSTEM, who: 'dex', skills: false, maxTokens: 8000, messages: [{ role: 'user', content: `The engineer says:\n<instruction>${asked}</instruction>\n\nText in the drawing(s):\nFILE: ${fname}\n${inv}` }], run: R.id });
+        const j = require('./checker').parseJson(r.text || '').value || {}; items = Array.isArray(j.items) ? j.items : [];
+      }
       const fixes = [], cannot = [], failedFor = new Map(), okFor = new Set();   // which comment each miss belongs to, so it stays open with the reason
       const forOf = (it) => String(it.for || it.comment || '').trim().toUpperCase();
       items.forEach((it, i) => {
@@ -299,18 +309,19 @@ function register({ ipcMain, HANDLERS, BIZ, claudeFull }) {
       out.results.forEach((x, i) => { const who = fixes[i] && fixes[i].for; if (!who) return; if (x.status === 'applied') okFor.add(who); else failedFor.set(who, [...(failedFor.get(who) || []), `${sayEdit(x)}: ${x.reason}`]); });
       if (!applied.length) { const why = missed.map(x => `${sayEdit(x)}: ${x.reason}`).join(' · '); runs.finish(R.id, { ok: false, error: why }); setDeliv(jobId, no, { status: 'needs you', summary: `Dex: none of the edits went in — ${why}` }); throw new Error(`${no}: ${why}`); }
       const note = `${applied.length} edit${applied.length === 1 ? '' : 's'}: ${applied.map(x => sayEdit(x) + (x.places > 1 ? ` (×${x.places})` : '')).join(', ')}`;
-      runs.stage(R.id, 'Dex is revving it up', 80); const w = await revUp({ jobId, no, status, people, edited: { buf: out.buf, note }, exceptDir: issueDir, run: R.id });
+      runs.stage(R.id, 'Dex is revving it up and checking it', 80); const w = await revUp({ jobId, no, status, people, edited: { buf: out.buf, note, fixes, results: out.results, asked, wantBlack: fixes.some(f => /set_colou?r/.test(f.action) && /black|^7$/i.test(f.colour || 'black')) }, exceptDir: issueDir, run: R.id });
       // each comment answered: a comment closes only when an edit that came from it went in. One Dex could not do stays Open with his
       // reason; one no edit came from stays Open too (never closed on the strength of another comment's edit). Only when Dex named no
       // comment at all on any edit does the whole set close on the revision.
       const named = items.some(it => forOf(it));
       for (const c of open) { if (c.doc === '*') continue; const k = String(c.no).toUpperCase(); try {
-        if (!named || okFor.has(k)) desk.saveCrs(jobId, { no: c.no, status: 'Responded', response: `Revised in ${w.rev}: ${note}` });
+        if (w.status !== 'made') desk.saveCrs(jobId, { no: c.no, response: `Revised in ${w.rev} but the check failed, so it stays open: ${(w.verify && w.verify.fails || []).join('; ')}` });   // a revision that failed its check answers nothing
+        else if (!named || okFor.has(k)) desk.saveCrs(jobId, { no: c.no, status: 'Responded', response: `Revised in ${w.rev}: ${note}` });
         else if (failedFor.has(k)) desk.saveCrs(jobId, { no: c.no, response: `Dex couldn't do this by editing text (${failedFor.get(k).join('; ')}). Do it in AutoCAD, or tell him more.` });
         else desk.saveCrs(jobId, { no: c.no, response: `Dex couldn't do this by editing text (no edit came from it). Tell him exactly what text to change.` }); } catch {} }
-      const left = [...cannot, ...missed.map(x => `${sayEdit(x)}: ${x.reason}`)];
+      const left = [...cannot, ...missed.map(x => `${sayEdit(x)}: ${x.reason}`)]; if (inv.cut) left.push(`the drawing has ${inv.total} text items and ${inv.cut} were not shown to Dex (the ones the comments name were): check nothing was missed`);
       runs.finish(R.id, { ok: true });
-      return setDeliv(jobId, no, { summary: `${w.summary}${left.length ? `. NOT DONE (needs you or AutoCAD): ${left.join(' · ')}` : ''}`, warning: [left.length ? `Dex: ${left.length} of the asks I could not do by editing text: ${left.join(' · ')}` : '', w.warning || ''].filter(Boolean).join(' · '), given: { request: asked, at: new Date().toISOString(), read: [src.dxf], skills: [], fromSchedule: [], queries: [], warnings: [] } });
+      return setDeliv(jobId, no, { editsKey: key, edits: items, summary: `${w.summary}${left.length ? `. NOT DONE (needs you or AutoCAD): ${left.join(' · ')}` : ''}`, warning: [left.length ? `Dex: ${left.length} of the asks I could not do by editing text: ${left.join(' · ')}` : '', w.warning || ''].filter(Boolean).join(' · '), given: { request: asked, at: new Date().toISOString(), read: [src.dxf], skills: [], fromSchedule: [], queries: [], warnings: [] } });
     } catch (e) { const stopped = runs.aborted(R.id); runs.finish(R.id, { ok: false, error: runs.plain(e) }); const cur = delivOf(jobId)[no] || {}; if (cur.status === 'working') setDeliv(jobId, no, { status: stopped ? 'stopped' : 'failed', summary: stopped ? 'Stopped. Nothing was changed.' : runs.plain(e) }); throw e; }
   }
   ipcMain.handle('jobs:revise', wrap((a) => revise(a)));
@@ -327,18 +338,34 @@ function register({ ipcMain, HANDLERS, BIZ, claudeFull }) {
   // P04), the issue status text if asked (ISSUED FOR COMMENT), the file saved as <row number>_<rev>.dxf in the drawings folder with the old
   // revision archived. The drawing's content is not touched; the comments stay open for Tom or Dex to do by hand.
   // the issue folder being built: remembered on the job desk from the first rev up until the issue goes out
-  function openIssueDir(jobId) {
+  // an issue has gone out when its transmittal is on file ("Document Transmittal ISSUE 12.pdf", "TR-12.pdf", a transmittal inside the issue
+  // folder) or Tom said so: then the next revision opens ISSUE n+1 and never writes into the one that went (Tom 9 Nov: he sends them himself)
+  function issueSent(oi) {
+    if (!oi || !oi.path) return false; if (oi.sent) return true;
+    const re = new RegExp('(issue|tr)[ _-]*0?' + oi.n + '(?!\\d)', 'i');
+    const look = (dir, needNo) => { try { return fs.readdirSync(dir).some(n => /\.(pdf|xlsx|xlsm|docx|msg)$/i.test(n) && /transmittal|\bTR-?\d/i.test(n) && (!needNo || re.test(n))); } catch { return false; } };
+    return look(path.dirname(oi.path), true) || look(oi.path, false);
+  }
+  function closeIssue(jobId, d, why) { const oi = d.openIssue; d.issued = [...(d.issued || []), { ...oi, issuedAt: new Date().toISOString(), how: why }]; d.openIssue = null; desk.saveRaw(jobId, d); BIZ.log({ who: 'Dex', action: `ISSUE ${oi.n} has gone out (${why}); the next revision opens ISSUE ${oi.n + 1}`, jobId }); }
+  // the issue being built, WITHOUT making anything: '' when there is none yet. Looking never creates a folder (a press that fails must not leave an empty ISSUE n behind)
+  function peekIssueDir(jobId) {
     const job = jobOf(jobId), d = desk.load(jobId);
-    if (d.openIssue && d.openIssue.path && fs.existsSync(d.openIssue.path)) return d.openIssue.path;
+    if (d.openIssue && d.openIssue.path && fs.existsSync(d.openIssue.path)) { if (!issueSent(d.openIssue)) return d.openIssue.path; closeIssue(jobId, d, 'transmittal on file'); }
     // an issue folder made by hand that has not gone out yet (DXFs but no PDFs: issued copies always carry their PDFs) is the open one
-    const all = BIZ.projects.issueDirs(job.folder), last = all[all.length - 1];
-    if (last) { let pdfs = 0, any = 0; try { for (const n of fs.readdirSync(last.path)) { any++; if (/\.pdf$/i.test(n)) pdfs++; } } catch {}
-      let transmitted = false; try { transmitted = fs.readdirSync(path.dirname(last.path)).some(n => !fs.statSync(path.join(path.dirname(last.path), n)).isDirectory() && /transmittal|\bTR-?\d/i.test(n) && new RegExp('(issue|tr)[ _-]*0?' + last.n + '\\b', 'i').test(n)); } catch {}   // "Document Transmittal ISSUE 12.pdf", "TR-12.pdf": that issue went out
-      if (any && !pdfs && !transmitted) { d.openIssue = { n: last.n, path: last.path, openedAt: new Date().toISOString(), found: true }; desk.saveRaw(jobId, d); return last.path; } }
-    const nx = BIZ.projects.nextIssueDir(job.folder); d.openIssue = { n: nx.n, path: nx.path, openedAt: new Date().toISOString() }; desk.saveRaw(jobId, d);
+    const all = job.folder ? BIZ.projects.issueDirs(job.folder) : [], last = all[all.length - 1];
+    if (last && !(d.issued || []).some(x => x.n === last.n)) { let pdfs = 0, any = 0; try { for (const n of fs.readdirSync(last.path)) { any++; if (/\.pdf$/i.test(n)) pdfs++; } } catch {}
+      if (any && !pdfs && !issueSent({ n: last.n, path: last.path })) { d.openIssue = { n: last.n, path: last.path, openedAt: new Date().toISOString(), found: true }; desk.saveRaw(jobId, d); return last.path; } }
+    return '';
+  }
+  // the issue being built, made if there is none: called only at the moment a file is written into it
+  function openIssueDir(jobId) {
+    const have = peekIssueDir(jobId); if (have) return have;
+    const job = jobOf(jobId), d = desk.load(jobId);
+    const nx = BIZ.projects.nextIssueDir(job.folder); fs.mkdirSync(nx.path, { recursive: true }); d.openIssue = { n: nx.n, path: nx.path, openedAt: new Date().toISOString() }; desk.saveRaw(jobId, d);
     BIZ.log({ who: 'Dex', action: `Opened ISSUE ${nx.n} for the next issue`, jobId, detail: nx.path });
     return nx.path;
   }
+  ipcMain.handle('jobs:issueSent', wrap(({ jobId }) => { const d = desk.load(jobId); if (!d.openIssue) throw new Error('No issue is being built on this job.'); const n = d.openIssue.n; d.openIssue.sent = true; closeIssue(jobId, d, 'marked sent by Tom'); return { n }; }));
   const issueName = (no, rev) => /^X\d{5,6}-/i.test(no) ? `${no} ${rev}` : `${no}_${rev}`;
   // a Word or Excel document: new revision rows, header and cover moved on by docrev; the native goes in ISSUE n/ISSUE n NATIVES (the PDF
   // for the issue itself is made from it by Word or Excel when the issue is plotted)
@@ -365,12 +392,12 @@ function register({ ipcMain, HANDLERS, BIZ, claudeFull }) {
   }
   async function revUp({ jobId, no, to = '', status = '', people = null, edited = null, exceptDir = '', run = '' }) {   // edited: { buf, note } when Revise changed the text first
     const job = jobOf(jobId), d = job.drawings.find(x => x.no === no); if (!d) throw new Error('No such row');
-    exceptDir = exceptDir || openIssueDir(jobId);   // the issue being built is never the source: a rev up starts from the working file every time
+    exceptDir = exceptDir || peekIssueDir(jobId);   // the issue being built is never the source: a rev up starts from the working file every time
     let src = sourceFor(d, jobFiles(jobId, { exceptDir }));
     if (!src.dxf && (src.docx || src.xlsx)) return revUpDocument({ jobId, job, d, src, to, status });
     if (!src.dxf && src.dwg) { await dwgToDxf({ jobId, job, no, rel: src.dwg }); src = sourceFor(d, jobFiles(jobId, { exceptDir })); }
     if (!src.dxf) throw new Error(`${no} has no DXF in the job folder${src.dwg ? ` (only ${src.dwg.split('/').pop()}): save it as DXF from AutoCAD next to the DWG` : ''}.`);
-    const dxffix = require('./dxffix'), full = path.join(job.folder, src.dxf), buf = edited && edited.buf ? edited.buf : fs.readFileSync(full), cur = d.rev || src.fileRev || '';
+    const dxffix = require('./dxffix'), full = path.join(job.folder, src.dxf), orig = fs.readFileSync(full), buf = edited && edited.buf ? edited.buf : orig, cur = d.rev || src.fileRev || '';
 
     const want = askedRev(to, '') || '';
     const pp = people || {}; let r;
@@ -384,12 +411,17 @@ function register({ ipcMain, HANDLERS, BIZ, claudeFull }) {
     // folders are never written to or moved: a rev up is a new file in the new issue folder, nothing else
     const outDir = openIssueDir(jobId); fs.mkdirSync(outDir, { recursive: true });
     const base = issueName(no, next); let archived = 0;   // X11475-BGN-ZZ-XX-DR-E-7142 P04 the way the earlier issue folders name them, 70_BG_0014_P06 for our own numbers
-    for (const n of fs.readdirSync(outDir)) if (new RegExp('^' + no.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '[ _-][PCAX]\\d\\d\\.dxf$', 'i').test(n) && n !== base + '.dxf') { try { const a = path.join(outDir, 'Superseded'); fs.mkdirSync(a, { recursive: true }); fs.renameSync(path.join(outDir, n), path.join(a, n)); archived++; } catch {} }   // only an earlier rev-up of the same drawing in this same issue folder moves aside
+    for (const n of fs.readdirSync(outDir)) if (new RegExp('^' + no.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '[ _-][PCAX]\\d\\d\\.dxf$', 'i').test(n) && n !== base + '.dxf') { try { const a = path.join(path.dirname(outDir), 'Superseded', path.basename(outDir)); fs.mkdirSync(a, { recursive: true }); for (const ext of ['.dxf', '.pdf']) { const f = n.replace(/\.dxf$/i, ext); if (fs.existsSync(path.join(outDir, f))) fs.renameSync(path.join(outDir, f), path.join(a, f)); } archived++; } catch {} }   // only an earlier rev-up of the same drawing in this same issue moves aside, with its PDF, to Superseded\ISSUE n beside the issue folders: nothing but the issue goes inside the folder that is sent
     const outPath = path.join(outDir, base + '.dxf'); fs.writeFileSync(outPath, r.buf);
     d.rev = next; require('./business').saveJob(BIZ.data(), job, 'Dex'); BIZ.store.save();
     // the PDF straight away, by AutoCAD's core console (the same route as the Issue button): a revision without its PDF is not finished (Tom 9 Nov)
-    const { pdfs, pdfNote } = await pdfFor({ jobId, file: outPath, run });
-    const w = setDeliv(jobId, no, { status: 'made', rev: next, files: [outPath], pdfs, archived, by: 'Dex', warning: pdfNote, summary: `${edited ? 'Revised' : 'Rev up'} ${r.from} -> ${next}: new issue box (${[r.changes.date ? 'dated today' : '', r.changes.status ? status.toUpperCase() : '', r.changes.people ? 'initials' : ''].filter(Boolean).join(', ') || 'copied from ' + r.from}); ${edited && edited.note ? edited.note : 'drawing content unchanged'}${pdfs.length ? '; PDF made' : ''}`, source: src.dxf });
+    const t0 = Date.now(); const { pdfs, pdfNote } = await pdfFor({ jobId, file: outPath, run });
+    // the check: the file and its PDF are compared with the working file before the row may say made (verify.js)
+    const V = require('./verify'), E = edited || {};
+    const vr = V.revision({ src: orig, edited: buf, out: r.buf, fixes: E.fixes || [], results: E.results || [], asked: E.asked || '', next, wantBlack: !!E.wantBlack });
+    const L = require('./plot').layoutToPlot(outPath) || {}; const vp = pdfs.length ? V.pdf(pdfs[0], { since: t0, w: Math.max(L.w || 0, L.h || 0), h: Math.min(L.w || 0, L.h || 0) }) : { ok: false, fail: [pdfNote ? pdfNote.replace(/^Dex: /, '') : 'no PDF was made'] };
+    const fails = [...vr.fail, ...vp.fail.map(x => 'PDF: ' + x)], checked = fails.length ? `CHECK FAILED: ${fails.join(' · ')}` : 'checked: only the asked changes, issue box right, PDF right';
+    const w = setDeliv(jobId, no, { status: fails.length ? 'needs you' : 'made', rev: next, files: [outPath], pdfs, archived, by: 'Dex', warning: [fails.length ? `Dex: don't issue this yet — ${fails.join(' · ')}` : '', ...vr.note].filter(Boolean).join(' · '), verify: { ok: !fails.length, fails, at: new Date().toISOString() }, summary: `${edited ? 'Revised' : 'Rev up'} ${r.from} -> ${next}: new issue box (${[r.changes.date ? 'dated today' : '', r.changes.status ? status.toUpperCase() : '', r.changes.people ? 'initials' : ''].filter(Boolean).join(', ') || 'copied from ' + r.from}); ${edited && edited.note ? edited.note : 'drawing content unchanged'}${pdfs.length ? '; PDF made' : ''}. ${checked}`, source: src.dxf });
     BIZ.log({ who: 'Dex', action: `${edited ? 'Revised' : 'Revved up'} ${no} ${r.from} -> ${next} (${edited && edited.note ? edited.note + '; ' : ''}new issue box, title block)`, jobId, detail: path.basename(outPath) });
     try { BIZ.projects.gather(job.id, job.folder, { checker: require('./checker') }); } catch {}   // the folder is read again so the new file is the row's source from now on
     return w;
@@ -398,11 +430,11 @@ function register({ ipcMain, HANDLERS, BIZ, claudeFull }) {
   // are made again from the working file, never lost (Tom 9 Nov: the earlier P03s had been marked done with nothing in them)
   async function revUpOrRevise(a) {
     const job = jobOf(a.jobId), d = job.drawings.find(x => x.no === a.no); if (!d) throw new Error('No such row');
-    const issueDir = openIssueDir(a.jobId), src = sourceFor(d, jobFiles(a.jobId, { exceptDir: issueDir }));
+    const issueDir = peekIssueDir(a.jobId), src = sourceFor(d, jobFiles(a.jobId, { exceptDir: issueDir }));
     if (src.dxf || src.dwg) { try {
       const RU = require('./revup'), dx = require('./dxffix').parseDxf(fs.readFileSync(path.join(job.folder, src.dxf || ''))), ib = src.dxf ? RU.issueBoxes(dx.pairs, RU.entities(dx.pairs)) : null, next = ib ? RU.nextOf(ib.rev) : '';
       const mine = (desk.load(a.jobId).crs || []).filter(c => (c.doc === a.no || c.doc === '*') && !/closed/i.test(c.status || '') && (!/responded/i.test(c.status || '') || (next && new RegExp('Revised (in|again at) ' + next + '\\b').test(c.response || ''))));
-      if (mine.some(c => c.doc === a.no)) return revise({ jobId: a.jobId, no: a.no, people: a.people, status: a.status });   // a change on THIS drawing; an every-drawing ask (an issue status) alone stays a plain rev up
+      if (mine.some(c => c.doc === a.no && !/^Dex couldn't/.test(c.response || ''))) return revise({ jobId: a.jobId, no: a.no, people: a.people, status: a.status });   /* a change on THIS drawing; one Dex already said he can't do by text (a cloud) stays open and does not block a plain rev up */
     } catch (e) { if (!/No such row|Not on the drawing list/.test(String(e.message || e))) { /* fall through to a plain rev up only when the look-up itself failed */ } } }
     return revUp(a);
   }
@@ -430,8 +462,9 @@ function register({ ipcMain, HANDLERS, BIZ, claudeFull }) {
   // Word and Excel make the PDFs of the documents in ISSUE n NATIVES, named <number> <rev>.pdf in the issue folder like the earlier issues
   async function plotIssue({ jobId, files = null, run = '' }) {
     const job = jobOf(jobId), PL = require('./plot'), OP = require('./officepdf'), core = PL.coreConsole();
-    const dir = openIssueDir(jobId), natives = path.join(dir, `${path.basename(dir)} NATIVES`);
     const named = Array.isArray(files) && files.length;
+    const dir = named ? path.dirname(files[0]) : peekIssueDir(jobId); if (!dir) throw new Error('There is no issue being built on this job: nothing to make PDFs of.');
+    const natives = path.join(dir, `${path.basename(dir)} NATIVES`);
     const docPdf = (f) => { const n = path.basename(f).replace(/\.(docx?|xlsx?|xlsm)$/i, ''); const no = (n.match(/X\d{5,6}(?:-[A-Z0-9]{1,4}){1,6}-\d{3,4}/i) || [])[0], rev = revInName(n); return path.join(dir, no && rev ? `${no} ${rev}.pdf` : n + '.pdf'); };
     let list = (named ? files : [...fs.readdirSync(dir).filter(n => /\.dxf$/i.test(n)).map(n => path.join(dir, n)), ...(fs.existsSync(natives) ? fs.readdirSync(natives).filter(n => /\.(docx|xlsx|xlsm)$/i.test(n) && !n.startsWith('~$')).map(n => path.join(natives, n)) : [])]).filter(f => fs.existsSync(f));
     const pdfOf = (f) => /\.dxf$/i.test(f) ? f.replace(/\.dxf$/i, '.pdf') : docPdf(f);
@@ -457,4 +490,4 @@ function register({ ipcMain, HANDLERS, BIZ, claudeFull }) {
   ipcMain.handle('jobs:waiting', wrap(() => waiting()));
   return { overview, make, check, waiting, kindOf };
 }
-module.exports = { register, kindOf };
+module.exports = { sourceFor, register, kindOf };

@@ -1,3 +1,4 @@
+process.env.AMO_FAKE_PLOT = '1';   // AutoCAD stand-in: the PDF check runs against a real file of the sheet's size
 // End to end, the way the app does it (no renderer, no network): a job folder copied from the real Template Project Directory's tree,
 // the client's inputs filed where Eli files them, the job and its two deliverables on the Jobs screen, then the app's own jobs:make
 // path with Dex's REAL Northwich replies (the specs he returned on 04/11/2026) standing in for Claude. Checks what Tom checks:
@@ -266,7 +267,8 @@ const step = (name, fn) => { try { const r = fn(); if (r && r.then) return r.the
     const W = await call('jobs:revUp', { jobId: J.id, no: 'X11475-BGN-ZZ-XX-DR-E-7153', status: 'ISSUED FOR COMMENT', people: { drawn: 'TM', checked: 'JA', approved: 'DM' } });
     assert.strictEqual(W.rev, 'P04', JSON.stringify(W)); assert.ok(/013 Transmittals & Drawing Register[\\/]ISSUE 13[\\/]X11475-BGN-ZZ-XX-DR-E-7153 P04\.dxf$/.test(W.files[0]) && fs.existsSync(W.files[0]), 'the new rev goes into the next issue folder, ISSUE 13 (Tom 15:02): ' + W.files[0]);
     assert.strictEqual(before(), snap, 'the working set and ISSUE 12 are untouched (nothing moved to an Archive)'); assert.ok(!fs.existsSync(path.join(F, 'CLAUDE DESGIN', 'Archive')), 'no Archive made in the working folder');
-    assert.deepStrictEqual(fs.readdirSync(path.join(F, '013 Transmittals & Drawing Register', 'ISSUE 13')), ['X11475-BGN-ZZ-XX-DR-E-7153 P04.dxf'], 'ISSUE 13 holds only the new rev');
+    assert.deepStrictEqual(fs.readdirSync(path.join(F, '013 Transmittals & Drawing Register', 'ISSUE 13')).sort(), ['X11475-BGN-ZZ-XX-DR-E-7153 P04.dxf', 'X11475-BGN-ZZ-XX-DR-E-7153 P04.pdf'], 'ISSUE 13 holds only the new rev and its PDF: no logs, scripts or Superseded inside the folder that is sent');
+    assert.strictEqual(W.status, 'made', 'the rev up passed its own check: ' + JSON.stringify(W.verify)); assert.ok(/checked: only the asked changes/.test(W.summary), W.summary);
     { const dx = require('../src/dxffix.js').parseDxf(fs.readFileSync(W.files[0])); const T = dx.ents.filter(e => e.section === 'ENTITIES').map(e => [e.plain, Math.round(e.x), Math.round(e.y)]);
       const has = (t, x) => T.some(([p, px]) => p === t && (x === undefined || px === x));
       assert.ok(has('P01', 61) && has('P02', 221) && has('P03', 381), 'P01-P03 boxes kept: ' + JSON.stringify(T.filter(([p]) => /^P0\d$/.test(p))));
@@ -318,6 +320,14 @@ const step = (name, fn) => { try { const r = fn(); if (r && r.then) return r.the
       const W7 = await call('jobs:revise', { jobId: J.id, no: 'X11475-BGN-ZZ-XX-DR-E-7153' });
       assert.strictEqual(W7.rev, 'P04', 'same revision: ' + JSON.stringify(W7)); assert.ok(/Revised P03 -> P04/.test(W7.summary) && /C-I04 -> C-105/.test(W7.summary) && /LT1 -> CT1/.test(W7.summary), W7.summary);
       assert.ok(!fs.existsSync(path.join(F, '013 Transmittals & Drawing Register', 'ISSUE 13', 'X11475-BGN-ZZ-XX-DR-E-7153 P05.dxf')), 'no P05 cut'); const T7 = require('../src/dxffix.js').parseDxf(fs.readFileSync(W6.files[0])).ents.filter(e => e.section === 'ENTITIES').map(e => e.plain); assert.ok(T7.includes('CT1') && !T7.includes('LT1') && T7.includes('P04') && T7.includes('C-105') && !T7.includes('C-I04') && !T7.includes('C-104'), 'P04 made again from the working file with every change for the issue (LT1 -> CT1 kept, C-105 now): ' + T7.filter(t => /LT1|CT1|^P0\d$/.test(t)).join(',')); }
+    // an issue Tom sends himself closes when its transmittal is on file: the next revision opens ISSUE 14, never writes into 13 (9 Nov)
+    { const TR = path.join(F, '013 Transmittals & Drawing Register'); const before14 = fs.existsSync(path.join(TR, 'ISSUE 14'));
+      await call('jobs:overview', { jobId: J.id }); assert.ok(!fs.existsSync(path.join(TR, 'ISSUE 14')) && !before14, 'looking at the job makes no ISSUE folder');
+      fs.writeFileSync(path.join(TR, 'Document Transmittal ISSUE 13.pdf'), '%PDF');
+      const W8 = await call('jobs:revUp', { jobId: J.id, no: 'X11475-BGN-ZZ-XX-DR-E-7153', status: 'ISSUED FOR COMMENT' });
+      assert.ok(/ISSUE 14[\\/]X11475-BGN-ZZ-XX-DR-E-7153 P05\.dxf$/.test(W8.files[0]), 'after ISSUE 13 went out the next rev is P05 in ISSUE 14, from the issued P04: ' + W8.files[0]);
+      assert.ok(fs.existsSync(path.join(TR, 'ISSUE 13', 'X11475-BGN-ZZ-XX-DR-E-7153 P04.dxf')), 'ISSUE 13 is left exactly as it went');
+      const r = await call('jobs:issueSent', { jobId: J.id }); assert.strictEqual(r.n, 14, 'and "I\'ve sent it" closes ISSUE 14'); }
     return O.rows.map(r => r.no).join(', ');
   });
   // Eli's scope reply with a quote inside a title (8" gas main) is read all the same, and a register row comes from it
