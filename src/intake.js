@@ -239,11 +239,25 @@ function register({ ipcMain, dialog, shell, getWin, userDir, claudeFull, checker
       else if (mime === 'application/pdf') { attach.push({ name: f.name, mime }); }
       else parts.push(buf.toString('utf8'));
     }
+    // a zip in the email (a client's folder of drawings) is opened up: its files become attachments, filed and read like the rest
+    for (const z of attach.filter(a => /\.zip$/i.test(a.name))) {
+      try { const zip = await require('jszip').loadAsync(fs.readFileSync(path.join(dir, z.name))); let n = 0;
+        for (const [name, entry] of Object.entries(zip.files)) { if (entry.dir || n >= 120) continue; const base = path.basename(name).replace(/[\\/:*?"<>|]+/g, '_'); if (!base || base.startsWith('.') || /^__MACOSX/.test(name)) continue; const data = await entry.async('nodebuffer'); fs.writeFileSync(path.join(dir, base), data); attach.push({ name: base, mime: extMime(base) || 'application/octet-stream', fromZip: z.name }); n++; }
+      } catch (err) { parts.push(`(${z.name} could not be opened: ${err.message})`); }
+    }
     // the same file dropped and also inside the email (or dropped twice): keep the first copy, matched by contents or name
     { const seen = new Set(), keep = []; for (const x of attach) { let key = x.name; try { key = require('crypto').createHash('sha1').update(fs.readFileSync(path.join(dir, x.name))).digest('hex'); } catch {} if (seen.has(key) || seen.has('n:' + x.name)) continue; seen.add(key); seen.add('n:' + x.name); keep.push(x); } attach.length = 0; attach.push(...keep); }
     if (text.trim()) parts.push(text.trim());
-    // screenshots and PDFs (sent or attached) go to Claude to read: up to 4
-    for (const a of attach.filter(a => IMG.test(a.mime) || a.mime === 'application/pdf').slice(0, 4)) content.push(checker.contentBlock(a.mime === 'application/pdf' ? 'pdf' : 'image', a.name, fs.readFileSync(path.join(dir, a.name))));
+    // screenshots and PDFs go to Claude to read: the real screenshots first (an email signature's logos are tiny), then PDFs that carry one
+    // of our document numbers (the drawings being commented on), then the other PDFs; up to 8
+    const sizeOf = (a) => { try { return fs.statSync(path.join(dir, a.name)).size; } catch { return 0; } };
+    const ours = /X\d{5,6}-\d{4}-\d{2}-\d{2}-\d{3,5}|\b\d{2}_[A-Z]{2}_\d{4}\b/i;
+    const shots = attach.filter(a => IMG.test(a.mime) && sizeOf(a) >= 25000).sort((a, b) => sizeOf(b) - sizeOf(a));
+    const pdfs = attach.filter(a => a.mime === 'application/pdf').sort((a, b) => (ours.test(b.name) ? 1 : 0) - (ours.test(a.name) ? 1 : 0));
+    const toRead = [...shots.slice(0, 4), ...pdfs].slice(0, 8);
+    for (const a of toRead) { try { content.push({ type: 'text', text: (IMG.test(a.mime) ? 'Screenshot in the email: ' : 'Attached PDF: ') + a.name }); content.push(checker.contentBlock(a.mime === 'application/pdf' ? 'pdf' : 'image', a.name, fs.readFileSync(path.join(dir, a.name)))); } catch {} }
+    const unread = attach.filter(a => !toRead.includes(a) && !(IMG.test(a.mime) && sizeOf(a) < 25000));
+    if (unread.length) parts.push(`ATTACHMENTS NOT OPENED FOR YOU (filed on the job, listed by name): ${unread.map(a => a.name).join(', ')}`);
     if (!parts.length && !content.length) throw new Error('Drop an email (.eml, .msg), a screenshot of it, or paste its text');
     content.push({ type: 'text', text: `THE EMAIL:\n${parts.join('\n\n---\n\n').slice(0, 30000)}${attach.length ? '\n\nATTACHMENTS: ' + attach.map(a => a.name).join(', ') : ''}` });
     // the jobs: Tom's live project folders (number and folder name) plus any job the app already knows

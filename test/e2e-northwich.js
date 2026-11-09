@@ -33,7 +33,7 @@ async function claudeFull(a) {
   if (/DELIVERABLES REGISTER/.test(sys)) return { text: JSON.stringify({ summary: 'Gas mixing pipework design for UU via EMFS', facts: [{ name: 'Enquiry', value: 'ENQ10560' }], deliverables: [{ type: 'loop', title: 'IS loop drawings (16 off)', qty: 1, discipline: 'E&I', source: 'scope' }, { type: 'SLD', title: 'LV single line diagram - new PDB', qty: 1, discipline: 'E&I' }, { type: 'BCD', title: 'Block cable diagram', qty: 1, discipline: 'E&I' }, { type: 'document', title: 'Rotork actuator schematic', qty: 8, discipline: 'E&I' }, { type: 'cable schedule', title: 'Cable schedule (power, control, instrument)', qty: 1, discipline: 'E&I' }], byOthers: [{ title: 'P&IDs', who: 'Insight Technical' }], conflicts: ['Draft A scope lists protection studies; the P05 fee proposal excludes them'], inputs: [{ name: 'Requirements Statement', rev: 'Rev 2', what: 'UU/Costain order requirements' }], missingInputs: ['existing P&IDs'] }), stop: 'end_turn' };
   if (/document controller at Atomax-UK/.test(sys)) { global.__chatAsked = user; return { text: JSON.stringify(global.__chat || { reply: 'Right you are.', actions: [] }), stop: 'end_turn' }; }
   if (/ALREADY made for it/.test(sys)) { global.__matchAsked = user; return { text: JSON.stringify(global.__match || {}), stop: 'end_turn' }; }
-  if (global.__eliEmail && /email checker at the Atomax-UK reception/.test(sys)) return { text: JSON.stringify(global.__eliEmail), stop: 'end_turn' };
+  if (/email checker at the Atomax-UK reception/.test(sys)) { global.__eliSeen = (a.messages || []).flatMap(m => Array.isArray(m.content) ? m.content.map(c => c.type === 'text' ? c.text : `[${c.type}:${(c.source && c.source.media_type) || ''}]`) : [String(m.content)]).join('\n'); if (global.__eliEmail) return { text: JSON.stringify(global.__eliEmail), stop: 'end_turn' }; }
   if (/365 room of the Atomax Media Office app/.test(sys)) { global.__o365Asked = (a.messages || []).flatMap(m => Array.isArray(m.content) ? m.content.map(c => c.text || '') : [String(m.content)]).join('\n'); const q = global.__o365 || []; const next = q.shift(); return { text: typeof next === 'function' ? next(global.__o365Asked) : JSON.stringify(next || { say: 'Nothing to add.' }), stop: 'end_turn' }; }
   if (a.who === 'dex' || /You are Dex/i.test(sys)) { const req = (user.match(/REQUEST: ([^"]{0,200})/) || [])[1] || ''; return { text: /block cable/i.test(req) ? dexBcd : dexSld, stop: 'end_turn' }; }
   return { text: '{}', stop: 'end_turn' };
@@ -350,6 +350,23 @@ const step = (name, fn) => { try { const r = fn(); if (r && r.then) return r.the
     global.__o365 = [() => { throw new Error('the model fell over'); }];
     let err = ''; try { await call('o365:chat', { jobId: job2.id, role: 'excel', text: 'a cable list', fresh: true }); } catch (e) { err = e.message; } assert.ok(/fell over/.test(err), err);
     const T = await call('o365:thread', { jobId: job2.id, role: 'excel' }); assert.strictEqual(T.pending, null); assert.ok(T.messages.length === 2 && /Something went wrong and I stopped: .*fell over/.test(T.messages[1].text), JSON.stringify(T.messages));
+  });
+  await step('an email with a zip of drawings and screenshots: the zip is opened, the screenshot read (not the signature logos), our PDFs read first', async () => {
+    const JSZip = require('jszip'); const z = new JSZip();
+    const pdf = (t) => Buffer.from(`%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj 2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj 3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 200 100]>>endobj\ntrailer<</Root 1 0 R>>\n%%EOF ${t}`);
+    z.file('SPEN Wiring Diagrams/Q24026-EL-02_Multicore_Block_Diagram_V3.0.pdf', pdf('spen')); z.file('SPEN Wiring Diagrams/X130726-0000-06-72-0008 P02.pdf', pdf('ours8')); z.file('SPEN Wiring Diagrams/X130726-0000-06-72-0009 P02.pdf', pdf('ours9'));
+    const zipBuf = await z.generateAsync({ type: 'nodebuffer' });
+    const png = (n) => Buffer.concat([Buffer.from('89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c489', 'hex'), Buffer.alloc(n, 1)]);
+    const boundary = 'XYZ'; const part = (name, mime, buf) => `--${boundary}\r\nContent-Type: ${mime}; name="${name}"\r\nContent-Disposition: attachment; filename="${name}"\r\nContent-Transfer-Encoding: base64\r\n\r\n${buf.toString('base64')}\r\n`;
+    const eml = `From: Wyn <w@spen.co.uk>\r\nTo: d@atomax-uk.com\r\nSubject: FW: Cefn Solar - Design Approvals\r\nDate: Fri, 06 Nov 2026 15:34:00 +0000\r\nContent-Type: multipart/mixed; boundary="${boundary}"\r\n\r\n--${boundary}\r\nContent-Type: text/plain\r\n\r\nX130726-0000-06-72-0008 & 0009: letter I used instead of number 1 on the intertrip ferrules. See screenshot.\r\n` + part('image001.png', 'image/png', png(1500)) + part('image002.png', 'image/png', png(1300)) + part('image003.png', 'image/png', png(9000)) + part('image013.png', 'image/png', png(520000)) + part('Drawings.zip', 'application/zip', zipBuf) + `--${boundary}--\r\n`;
+    global.__eliEmail = { summary: 'SPEN comments on Cefn Solar drawings', asks: [], comments: [] };
+    const r = await call('mail:read', { files: [{ name: 'FW Cefn Solar.eml', base64: Buffer.from(eml).toString('base64') }] });
+    const names = (r.attachments || r.email && r.email.attachments || []).map(a => a.name);
+    assert.ok(names.includes('X130726-0000-06-72-0008 P02.pdf') && names.includes('Q24026-EL-02_Multicore_Block_Diagram_V3.0.pdf'), 'zip contents became attachments: ' + names.join(', '));
+    const seen = global.__eliSeen || '';
+    assert.ok(/Screenshot in the email: image013\.png/.test(seen), 'the big screenshot was read'); assert.ok(!/Screenshot in the email: image00[123]\.png/.test(seen), 'signature logos were not');
+    const order = ['X130726-0000-06-72-0008 P02.pdf', 'X130726-0000-06-72-0009 P02.pdf', 'Q24026-EL-02_Multicore_Block_Diagram_V3.0.pdf'].map(n => seen.indexOf('Attached PDF: ' + n)); assert.ok(order[0] > 0 && order[0] < order[2] && order[1] < order[2], 'our drawings read before the client ones: ' + order.join(','));
+    assert.ok(/\[document:application\/pdf\]/.test(seen) && /\[image:image\/png\]/.test(seen), 'PDF and image blocks went to Claude');
   });
   console.log(process.exitCode ? 'E2E FAILED' : 'e2e northwich ok'); fs.rmSync(TMP, { recursive: true, force: true }); process.exit(process.exitCode || 0);
 })().catch(e => { console.error('E2E ERROR', e); process.exit(1); });
