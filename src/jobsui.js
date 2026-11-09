@@ -132,21 +132,32 @@ export function initJobsUI({ api, getAgents, openIssue, onWorkOn }) {
     // shows its contents on the right. Files are never listed here; inside a job they are browsed in the Files tab.
     const toggle = async (p) => { const opening = !treeOpen.has(p); if (opening) treeOpen.add(p); else treeOpen.delete(p); rememberTree(); if (opening) focusPath = p; await relist(); renderList(); };
     L.querySelectorAll('[data-tog]').forEach(i => i.onclick = (e) => { e.stopPropagation(); toggle(i.dataset.tog); });
+    // open a folder from the pane (or one just picked): a job opens on the right; any other folder expands in place and shows its contents
+    const openPath = async (p, { kind = '', isJob = true } = {}) => {
+      let J = null; try { J = await api.proj.jobFor({ path: p }); } catch {}
+      // not a job (a year, a client, an enquiry folder): it opens in the tree and its contents show on the right, like Explorer
+      if (!J) { sel = ''; selPath = p; selFolder = ''; filesAt = ''; tab = 'files'; msg = ''; renderFolder(); if (!treeOpen.has(p)) { treeOpen.add(p); rememberTree(); } focusPath = p; await relist(); renderList(); return; }
+      selFolder = J.folder || p; filesAt = (J.folder && p.toLowerCase() !== J.folder.toLowerCase()) ? p : '';
+      if (J.id) { if (sel !== J.id) { tab = kind === 'drawing' ? 'deliv' : 'files'; msg = ''; openDirs.clear(); } sel = J.id; selPath = ''; noteRecent(J.folder || p, `${J.number || ''} ${J.name || ''}`.trim() || base(J.folder || p)); }
+      else { sel = ''; selPath = J.folder; tab = 'files'; msg = ''; }
+      refresh();
+    };
     L.querySelectorAll('[data-dir]').forEach(b => b.onclick = async () => {
       const p = b.dataset.dir;
       // straight away: the row lights up and the right side says so, because a OneDrive folder can take seconds to answer
       L.querySelectorAll('.jbj.on').forEach(x => x.classList.remove('on')); b.classList.add('on');
       if (b.dataset.job) { const main = $('#jbMain'); if (main) main.innerHTML = `<div class="jbopening"><span class="spinner"></span> Opening ${esc(base(p))}…</div>`; }
-      let J = null; try { J = await api.proj.jobFor({ path: p }); } catch {}
-      // not a job (a year, a client, an enquiry folder): it opens in the tree and its contents show on the right, like Explorer
-      if (!J) { sel = ''; selPath = p; selFolder = ''; filesAt = ''; tab = 'files'; msg = ''; renderFolder(); if (!treeOpen.has(p)) { treeOpen.add(p); rememberTree(); focusPath = p; } await relist(); renderList(); return; }
-      selFolder = J.folder || p; filesAt = (J.folder && p.toLowerCase() !== J.folder.toLowerCase()) ? p : '';
-      if (J.id) { if (sel !== J.id) { tab = b.dataset.kind === 'drawing' ? 'deliv' : 'files'; msg = ''; openDirs.clear(); } sel = J.id; selPath = ''; noteRecent(J.folder || p, `${J.number || ''} ${J.name || ''}`.trim() || base(J.folder || p)); }
-      else { sel = ''; selPath = J.folder; tab = 'files'; msg = ''; }
-      refresh();
+      await openPath(p, { kind: b.dataset.kind || '' });
     });
     L.querySelectorAll('[data-j]').forEach(b => { if (b.dataset.j) b.onclick = () => { sel = b.dataset.j; selPath = ''; filesAt = ''; selFolder = ''; tab = 'files'; msg = ''; openDirs.clear(); refresh(); }; });
-    const pick = async (e) => { if (e) e.preventDefault(); const f = await api.proj.pick(); if (!f) return; try { const st = await api.settings.get(); await api.settings.set({ projectRoots: [...new Set([...(st.projectRoots || []), f])] }); } catch (err) { msg = clean(err); } treeOpen.add(f); rememberTree(); refresh(); };
+    // "add folder" / Choose the folder: a folder inside a root already shown is not a new root, it is opened where it sits in the tree
+    // (every folder between the root and it expanded, scrolled into view, and opened on the right); only a folder outside every root
+    // becomes a new root
+    const pick = async (e) => { if (e) e.preventDefault(); const f = await api.proj.pick(); if (!f) return;
+      const norm = (p) => p.replace(/[\\/]+$/, '').toLowerCase(), sep = f.includes('\\') ? '\\' : '/';
+      const under = roots.find(r => norm(f) === norm(r.path) || norm(f).startsWith(norm(r.path) + sep));
+      if (under) { let cur = norm(under.path), rest = f.replace(/[\\/]+$/, '').slice(cur.length).split(/[\\/]/).filter(Boolean); let acc = under.path.replace(/[\\/]+$/, ''); treeOpen.add(acc); for (const part of rest) { acc = acc + sep + part; treeOpen.add(acc); } rememberTree(); const main = $('#jbMain'); if (main) main.innerHTML = `<div class="jbopening"><span class="spinner"></span> Opening ${esc(base(f))}…</div>`; await openPath(f); return; }
+      try { const st = await api.settings.get(); await api.settings.set({ projectRoots: [...new Set([...(st.projectRoots || []), f])] }); } catch (err) { msg = clean(err); } treeOpen.add(f); rememberTree(); focusPath = f; refresh(); };
     if ($('#jbRoot')) $('#jbRoot').onclick = pick;
     $('#jbNew').onclick = newJob;
     $('#jbMail').onclick = () => { sel = ''; selPath = ''; renderList(); emailPanel(''); };
