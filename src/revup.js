@@ -97,6 +97,8 @@ function revUp(buf, opts = {}) {
 // of 1,0) and the embedded insertion point left behind, so the new box's texts drew skewed off the sheet. Puts the direction back to (1,0)
 // and the embedded insertion point on the entity's own. Idempotent; returns { buf, fixed }.
 function repairBoxes(buf) {
+  // text written back as utf8 by a version before 9 Nov (a ² became Ã‚Â²): one level of that undone, only when its fingerprint is there
+  let mojibake = 0; if (/\xC3[\x82\x83]\xC2[\x80-\xBF]/.test(buf.toString('latin1'))) { const once = Buffer.from(buf.toString('utf8'), 'latin1'); if (!buf.equals(once)) { buf = once; mojibake = 1; } }
   const text = buf.toString('latin1'), eol = /\r\n/.test(text.slice(0, 2000)) ? '\r\n' : '\n', L = text.split(/\r?\n/); let fixed = 0;
   const pairs = []; for (let i = 0; i + 1 < L.length; i += 2) pairs.push({ code: parseInt(L[i], 10), raw: L[i], val: L[i + 1] });
   for (let i = 0; i < pairs.length; i++) {
@@ -110,6 +112,6 @@ function repairBoxes(buf) {
     if (skew) { const n = Math.hypot(dx, dy) || 1; pairs[d10].val = String(dx / n); if (d20 >= 0) pairs[d20].val = String(dy / n); }
     pairs[e11].val = ix; if (e21 >= 0 && iy !== null) pairs[e21].val = iy; fixed++;
   }
-  return { buf: fixed ? Buffer.from(pairs.map(p => p.raw + eol + p.val).join(eol) + eol, 'latin1') : buf, fixed };
+  return { buf: fixed ? Buffer.from(pairs.map(p => p.raw + eol + p.val).join(eol) + eol, 'latin1') : buf, fixed: fixed + mojibake };
 }
-module.exports = { repairBoxes, revUp, issueBoxes, entities };
+module.exports = { repairBoxes, nextOf, revUp, issueBoxes, entities };

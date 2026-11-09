@@ -229,7 +229,7 @@ function titleFor(no, title, file) {
   const rest = base.replace(/X\d{5,6}(?:-[A-Z0-9]{1,5}){1,6}/ig, '').replace(/\b\d{2}_[A-Z]{2}_\d{4}(_[PCAX]\d{2})?\b/ig, '').replace(/[-_ ]*\b[PCAX]\d{2}\b/ig, '').replace(/^[\s\-_.]+|[\s\-_.]+$/g, '').replace(/[_]+/g, ' ').trim();
   if (rest && !numLike(rest)) return rest;
   for (const dir of f.split('/').slice(0, -1).reverse()) { const folder = dir.replace(/^[\d.]+\s*/, '').replace(/s$/i, '');   // the nearest folder that names a kind of drawing (not DXF / Archive / a numbered job folder)
-    if (folder && !numLike(folder) && !/^(archive|dxf|dwg|pdf|claude|to be checked|issue \d+|superseded|old|markup)$/i.test(folder) && !/^X\d{5,6}/i.test(dir)) return folder.charAt(0).toUpperCase() + folder.slice(1).toLowerCase(); }
+    if (folder && !numLike(folder) && !/^(archive|dxf|dwg|pdf|claude|to be checked|issue \d+|superseded|old|markup|electrical|transmittal|document control|drawing|native|cad)$/i.test(folder) && !/^X\d{5,6}/i.test(dir)) return folder.charAt(0).toUpperCase() + folder.slice(1).toLowerCase(); }
   return t || 'Drawing';
 }
 function addDeliverables(id, list, opts = {}) {

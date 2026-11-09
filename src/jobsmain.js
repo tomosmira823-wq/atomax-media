@@ -21,7 +21,7 @@ const QS = /X\d{4,6}(?:-[A-Z0-9]{2,4}){2,5}-\d{4}/i;   // the drawing number how
 // the files in the job folder that ARE a drawing on the list: by the client's number (X11475-BGN-ZZ-XX-DR-E-7153), our number (32_BG_0006)
 // or, failing those, the title; never Archive / Superseded copies. The latest revision in the file name wins. Tells the tab what can be
 // revved now (a DXF) and what needs exporting from AutoCAD first (DWG only)
-function jobFiles(jobId) { try { const p = require('./projects').load(jobId); return (p && p.files || []).map(f => ({ rel: f.rel.replace(/\\/g, '/'), name: f.rel.split(/[\\/]/).pop(), mtime: f.mtime || 0 })).filter(f => !/(^|\/)(archive|superseded|markups?|old|fixed)(\/|$)/i.test(f.rel)); } catch { return []; } }
+function jobFiles(jobId, { exceptDir = '' } = {}) { try { const p = require('./projects').load(jobId), ex = exceptDir ? exceptDir.replace(/\\/g, '/').toLowerCase().replace(/\/+$/, '') + '/' : ''; return (p && p.files || []).map(f => ({ rel: f.rel.replace(/\\/g, '/'), name: f.rel.split(/[\\/]/).pop(), mtime: f.mtime || 0, abs: path.join(p.folder || '', f.rel) })).filter(f => !/(^|\/)(archive|superseded|markups?|old|fixed)(\/|$)/i.test(f.rel) && !(ex && f.abs.replace(/\\/g, '/').toLowerCase().startsWith(ex))); } catch { return []; } }   // exceptDir: the issue folder being built is never a source (Tom 9 Nov: a Revise must start from the working file, not its own last output)
 const revInName = (n) => { const m = String(n).match(/[\s_-]([PCAX]\d{2})(?=[\s_.)-]|$)/i); return m ? m[1].toUpperCase() : ''; };
 function sourceFor(d, files) {
   const keys = [d.no, d.alt].filter(Boolean).map(k => String(k).toUpperCase().replace(/[^A-Z0-9]+/g, ''));
@@ -71,7 +71,8 @@ function register({ ipcMain, HANDLERS, BIZ, claudeFull }) {
     try { const dd = desk.load(jobId), j0 = jobOf(jobId); if (j0.folder && fs.existsSync(j0.folder)) { const chk = Date.parse(dd.registerChecked || '') || 0; let stale = !chk || chk < Date.parse('2026-11-05T13:20:00Z'); if (!stale && dd.registerFile) { try { stale = fs.statSync(dd.registerFile).mtimeMs > chk; } catch { stale = true; } } if (!stale && !dd.registerFile && Date.now() - chk > 10 * 60e3) stale = true; if (stale) desk.checkRegister(jobId, require('./checker')); } } catch {}
     try { desk.tidyRows(jobId); } catch {}   // one row per drawing (a TBC row and the register's numbered row of the same kind are the same drawing)
     const job = jobOf(jobId), V = desk.view(jobId), dl = delivOf(jobId);
-    const files = jobFiles(jobId), anyIssued = job.drawings.some(x => x.rev);   // a job with issued drawings: a numbered row with no rev and no file is a reserved number, not work to do
+    const openDir = (V.openIssue && V.openIssue.path) || (desk.load(jobId).openIssue || {}).path || '';   // the issue being built: its files are Dex's outputs, never a row's source
+    const files = jobFiles(jobId, { exceptDir: openDir }), anyIssued = job.drawings.some(x => x.rev);   // a job with issued drawings: a numbered row with no rev and no file is a reserved number, not work to do
     // a made file renamed by hand in its folder (7142_P04 -> 7142 P04) is still the row's file: the record follows it
     for (const w of Object.values(dl)) if (w && Array.isArray(w.files)) w.files = w.files.map(f => { if (!f || fs.existsSync(f)) return f; const dir = path.dirname(f), base = path.basename(f); const alt = base.replace(/_([PCAX]\d{2})(\.[a-z0-9]+)$/i, ' $1$2'); const alt2 = base.replace(/ ([PCAX]\d{2})(\.[a-z0-9]+)$/i, '_$1$2'); for (const a of [alt, alt2]) if (a !== base && fs.existsSync(path.join(dir, a))) return path.join(dir, a); return f; });
     const rows = job.drawings.filter(d => !/cancel|superseded/i.test(d.status)).map(d => { const src = sourceFor(d, files), k = kindOf(d); const reserved = !d.rev && !src.dxf && !src.dwg && !src.pdf && !dl[d.no] && !/^TBC-/i.test(d.no) && anyIssued; return { ...d, ...k, group: reserved ? 'reserved' : (d.group || groupOf(d)), num: realNo(d) || d.no, ctitle: desk.titleFor(d.no, cleanTitle(d) || d.title, src.dxf || src.dwg || src.pdf || src.docx || src.xlsx || ''), work: dl[d.no] || null, src, canRev: !reserved && !!(k.agent === 'Dex' || src.dxf || src.docx || src.xlsx) }; });   // reserved: a number in the register never issued and with no file: listed, not counted
@@ -257,17 +258,19 @@ function register({ ipcMain, HANDLERS, BIZ, claudeFull }) {
   const sayEdit = (f) => f.action === 'replace_text' ? `${f.before} -> ${f.after}` : f.action === 'delete_text' ? `removed "${f.before || f.text}"` : f.action === 'add_text' ? `added "${f.text}"` : `text to ${f.colour || 'black'}`;
   async function revise({ jobId, no, comments = '', people = null, status = '' }) {
     const job = jobOf(jobId), d = job.drawings.find(x => x.no === no); if (!d) throw new Error('Not on the drawing list: ' + no);
-    const open = (desk.load(jobId).crs || []).filter(c => (c.doc === no || c.doc === '*') && !/responded|closed/i.test(c.status || ''));
-    const asked = String(comments || '').trim() || open.map(c => `${c.no ? c.no + ': ' : ''}${c.comment}`).join('\n');
-    let src = sourceFor(d, jobFiles(jobId)), fname = (src.dxf || src.dwg || '').split('/').pop();
-    if (!src.dxf && src.dwg) { await dwgToDxf({ jobId, job, no, rel: src.dwg }); src = sourceFor(d, jobFiles(jobId)); fname = (src.dxf || src.dwg || '').split('/').pop(); if (!src.dxf) throw new Error(`${no}: Dex saved ${fname} as DXF but the folder does not show it yet. Press ↻ above the list and Revise again.`); }
-    if (!src.dxf) { if (!kindOf(d).agent) throw new Error(`${no}: there is no drawing file for it in the job folder and no agent draws this kind. Put the DXF in the folder, press ↻, then Revise.`); return make({ jobId, no, people, revision: { on: true, stage: '', note: asked.slice(0, 2000) }, note: asked ? `Client comments to address: ${asked}` : '' }); }
-    if (!asked) throw new Error(`${no}: nothing is logged against it to change. Log the comments on the Comments tab (or forward the email to Eli), then press Revise.`);
-    // a second Revise before the issue goes out: the same file in the open issue folder is edited again at the same revision (P03 stays
-    // P03); a new revision is only cut when the issue has gone out (Tom 9 Nov: a second press made a P04 of the P03)
-    const prev0 = delivOf(jobId)[no] || {}, issueDir = openIssueDir(jobId), again = prev0.files && prev0.files[0] && /\.dxf$/i.test(prev0.files[0]) && path.dirname(prev0.files[0]).toLowerCase() === issueDir.toLowerCase() && fs.existsSync(prev0.files[0]) ? prev0.files[0] : '';
-    const dxffix = require('./dxffix'), full = again || path.join(job.folder, src.dxf), buf = fs.readFileSync(full); if (again) fname = path.basename(again);
+    const issueDir = openIssueDir(jobId), RU = require('./revup');
+    let src = sourceFor(d, jobFiles(jobId, { exceptDir: issueDir })), fname = (src.dxf || src.dwg || '').split('/').pop();
+    if (!src.dxf && src.dwg) { await dwgToDxf({ jobId, job, no, rel: src.dwg }); src = sourceFor(d, jobFiles(jobId, { exceptDir: issueDir })); fname = (src.dxf || src.dwg || '').split('/').pop(); if (!src.dxf) throw new Error(`${no}: Dex saved ${fname} as DXF but the folder does not show it yet. Press ↻ above the list and Revise again.`); }
+    const allCrs = desk.load(jobId).crs || [], mine = allCrs.filter(c => (c.doc === no || c.doc === '*') && !/closed/i.test(c.status || ''));
+    if (!src.dxf) { const open0 = mine.filter(c => !/responded/i.test(c.status || '')), asked0 = String(comments || '').trim() || open0.map(c => `${c.no ? c.no + ': ' : ''}${c.comment}`).join('\n'); if (!kindOf(d).agent) throw new Error(`${no}: there is no drawing file for it in the job folder and no agent draws this kind. Put the DXF in the folder, press ↻, then Revise.`); return make({ jobId, no, people, revision: { on: true, stage: '', note: asked0.slice(0, 2000) }, note: asked0 ? `Client comments to address: ${asked0}` : '' }); }
+    // ALWAYS from the working file (never from Dex's own last output, however it went), with EVERY change logged for this issue: the open
+    // ones and the ones already done in this same unissued revision. Pressed twice, it makes the same P03 twice. (Tom 9 Nov)
+    const dxffix = require('./dxffix'), full = path.join(job.folder, src.dxf), buf = fs.readFileSync(full);
     let parsed; try { parsed = dxffix.parseDxf(buf); } catch (e) { throw new Error(`${no}: Dex could not read ${fname} (${String(e.message || e)}).`); }
+    let next = ''; try { const ib = RU.issueBoxes(parsed.pairs, RU.entities(parsed.pairs)); next = ib ? RU.nextOf(ib.rev) : ''; } catch {}
+    const open = mine.filter(c => !/responded/i.test(c.status || '') || (next && new RegExp('Revised (in|again at) ' + next + '\\b').test(c.response || '')));
+    const asked = [String(comments || '').trim(), ...open.map(c => `${c.no ? c.no + ': ' : ''}${c.comment}`)].filter(Boolean).join('\n');
+    if (!asked) throw new Error(`${no}: nothing is logged against it to change. Log the comments on the Comments tab (or forward the email to Eli), then press Revise.`);
     const prev = delivOf(jobId)[no] || {}; people = people || prev.people || null;
     const R = runs.start({ kind: 'revise', who: 'Dex', jobId, no });
     setDeliv(jobId, no, { status: 'working', run: RUN, runId: R.id, agent: 'Dex', summary: 'Dex is reading the comments against the drawing', people });
@@ -294,13 +297,7 @@ function register({ ipcMain, HANDLERS, BIZ, claudeFull }) {
       out.results.forEach((x, i) => { const who = fixes[i] && fixes[i].for; if (!who) return; if (x.status === 'applied') okFor.add(who); else failedFor.set(who, [...(failedFor.get(who) || []), `${sayEdit(x)}: ${x.reason}`]); });
       if (!applied.length) { const why = missed.map(x => `${sayEdit(x)}: ${x.reason}`).join(' · '); runs.finish(R.id, { ok: false, error: why }); setDeliv(jobId, no, { status: 'needs you', summary: `Dex: none of the edits went in — ${why}` }); throw new Error(`${no}: ${why}`); }
       const note = `${applied.length} edit${applied.length === 1 ? '' : 's'}: ${applied.map(x => sayEdit(x) + (x.places > 1 ? ` (×${x.places})` : '')).join(', ')}`;
-      let w;
-      if (again) {   // same revision, same file: the edits go in and that is all
-        runs.stage(R.id, 'Dex is saving it', 80); fs.writeFileSync(again, require('./revup').repairBoxes(out.buf).buf);
-        const rev = prev0.rev || revInName(fname) || '';
-        w = setDeliv(jobId, no, { status: 'made', rev, files: [again], by: 'Dex', summary: `Revised again at ${rev} (this issue has not gone out, so no new revision): ${note}` });
-        BIZ.log({ who: 'Dex', action: `Revised ${no} again at ${rev} (${note})`, jobId, detail: path.basename(again) });
-      } else { runs.stage(R.id, 'Dex is revving it up', 80); w = await revUp({ jobId, no, status, people, edited: { buf: out.buf, note } }); }
+      runs.stage(R.id, 'Dex is revving it up', 80); const w = await revUp({ jobId, no, status, people, edited: { buf: out.buf, note }, exceptDir: issueDir });
       // each comment answered: a comment closes only when an edit that came from it went in. One Dex could not do stays Open with his
       // reason; one no edit came from stays Open too (never closed on the strength of another comment's edit). Only when Dex named no
       // comment at all on any edit does the whole set close on the revision.
@@ -358,11 +355,12 @@ function register({ ipcMain, HANDLERS, BIZ, claudeFull }) {
     try { BIZ.projects.gather(job.id, job.folder, { checker: require('./checker') }); } catch {}
     return w;
   }
-  async function revUp({ jobId, no, to = '', status = '', people = null, edited = null }) {   // edited: { buf, note } when Revise changed the text first
+  async function revUp({ jobId, no, to = '', status = '', people = null, edited = null, exceptDir = '' }) {   // edited: { buf, note } when Revise changed the text first
     const job = jobOf(jobId), d = job.drawings.find(x => x.no === no); if (!d) throw new Error('No such row');
-    let src = sourceFor(d, jobFiles(jobId));
+    exceptDir = exceptDir || openIssueDir(jobId);   // the issue being built is never the source: a rev up starts from the working file every time
+    let src = sourceFor(d, jobFiles(jobId, { exceptDir }));
     if (!src.dxf && (src.docx || src.xlsx)) return revUpDocument({ jobId, job, d, src, to, status });
-    if (!src.dxf && src.dwg) { await dwgToDxf({ jobId, job, no, rel: src.dwg }); src = sourceFor(d, jobFiles(jobId)); }
+    if (!src.dxf && src.dwg) { await dwgToDxf({ jobId, job, no, rel: src.dwg }); src = sourceFor(d, jobFiles(jobId, { exceptDir })); }
     if (!src.dxf) throw new Error(`${no} has no DXF in the job folder${src.dwg ? ` (only ${src.dwg.split('/').pop()}): save it as DXF from AutoCAD next to the DWG` : ''}.`);
     const dxffix = require('./dxffix'), full = path.join(job.folder, src.dxf), buf = edited && edited.buf ? edited.buf : fs.readFileSync(full), cur = d.rev || src.fileRev || '';
 
