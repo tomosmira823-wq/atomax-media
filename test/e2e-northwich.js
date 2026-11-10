@@ -465,7 +465,7 @@ const step = (name, fn) => { try { const r = fn(); if (r && r.then) return r.the
     const dxf = fs.readdirSync(TMP, { recursive: true }).map(String).find(n => /\.dxf$/i.test(n)); fs.copyFileSync(path.join(TMP, dxf), path.join(sld, 'X101127-01-70-0001 P01.dxf'));
     const job = biz.saveJob(BIZ.data(), { number: 'X101127', name: 'Cal check job', client: 'Test', folder, drawings: [{ no: 'X101127-01-70-0001', title: 'Single line diagram', rev: 'P01', status: 'Issued' }] }, 'Tom'); BIZ.store.save(); await call('proj:gather', { jobId: job.id }).catch(() => {});
     let seen = null; HANDLERS['check:run'] = async (_e, a) => { seen = a; return { findings: [], headline: 'all good', markups: { dir: '' } }; };
-    const r = await call('jobs:check', { jobId: job.id, nos: ['X101127-01-70-0001'] }); delete HANDLERS['check:run'];
+    const r = await call('jobs:check', { jobId: job.id, nos: ['X101127-01-70-0001'] }); seen = null; await call('jobs:check', { jobId: job.id }); assert.ok(seen && seen.drawings.length === 1, 'the button (no rows named) checks the drawings on file too'); delete HANDLERS['check:run'];
     assert.strictEqual(seen.schedule.name, 'Cable Schedule Rev 2.xlsx', 'the cable schedule: ' + seen.schedule.name); assert.deepStrictEqual(seen.drawings.map(d => d.name), ['X101127-01-70-0001 P01.dxf']); assert.strictEqual(r.findings, 0);
   });
   // the real Gwrhyd handoff, when GWRHYD points at it (10 Nov): a new job laid out the way Tom's is (the handoff's Word files in
