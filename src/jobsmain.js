@@ -223,6 +223,11 @@ function register({ ipcMain, HANDLERS, BIZ, claudeFull, getAgents }) {
         runs.stage(R.id, 'writing the document', 20); r = await call('o365:word', { run: R.id, jobId, request: (asked || plan({ jobId, no }).request) + (note ? ' ' + note : '') + answered(answers), skills, files: inputFiles(plan({ jobId, no }).inputPaths) });
         files = [r.path].filter(Boolean);
       }
+      // Wren's and Lex's documents come with their PDF, made by Word / Excel on this PC (contents and page numbers updated first)
+      if ((k.agent === 'Wren' || k.agent === 'Lex') && files.length) {
+        runs.stage(R.id, 'making the PDF', 90);
+        for (const f of files.filter(x => /\.(docx|xlsx|xlsm)$/i.test(x))) { const pdf = f.replace(/\.[^.]+$/, '.pdf'); try { await require('./officepdf').toPdf(f, pdf); pdfs.push(pdf); } catch (err) { r.warnings = [...(r.warnings || []), `PDF not made: ${runs.plain(err)}`]; } }
+      }
       if (calOpen.length && !r.incomplete && !r.questions) for (const c of calOpen) { try { desk.saveCrs(jobId, { no: c.no, status: 'Responded', response: `Fixed in ${r.revision || d.rev || 'the remake'}` }); } catch {} }
       runs.finish(R.id, { ok: true });
       return setDeliv(jobId, no, { status: r.incomplete ? 'needs you' : 'made', questions: null, check: null, files, pdfs, given: { file: r.givenFile || '', request: r.request || '', skills: r.skills || [], read: r.read || [], fromSchedule: r.fromSchedule || [], queries: r.queries || [], warnings: r.warnings || [], at: new Date().toISOString() }, rev: r.revision || d.rev || '', archived: r.archived || 0, summary: (r.incomplete ? 'CUT SHORT: ' : '') + (r.summary || 'Made') + (r.fromSchedule && r.fromSchedule.length ? ` · ${r.fromSchedule.length} value(s) matched to the schedule` : '') + (r.queries && r.queries.length ? ` · ${r.queries.length} question(s) to the RFI register` : '') + (r.warnings && r.warnings.length ? ' · LAYOUT: ' + r.warnings.join('; ') : ''), notes: r.notes || [], warning: r.borderWarning || '' });
