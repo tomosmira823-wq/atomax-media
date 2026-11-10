@@ -5,15 +5,19 @@ const fs = require('fs');
 const path = require('path');
 
 // which agent makes a deliverable, from its QS 006 type code (or its title)
+const EARTH_DOC = /\b(study|studies|assessment|report|design basis|calculations?|epr|analysis|specification)\b/i;
+const RFI_REG = /\b(rfi|request for information|technical quer(y|ies))\b.*\b(register|log|list|schedule)\b|\b(register|log)\b.*\b(rfis?|requests? for information)\b/i;
 function kindOf(d) {
   const t = (String(d.no).match(/-(\d{2})-\d{4}(?:\b|_)/) || [])[1] || '';
   const s = (d.title || '') + ' ' + t;
   if (t === '71' || /\bbcd\b|block cable/i.test(s)) return { agent: 'Dex', kind: 'bcd', verb: 'Draw the BCD' };
   if (t === '70' || /single line|\bsld\b/i.test(s)) return { agent: 'Dex', kind: 'sld', verb: 'Draw the SLD' };
-  if (t === '74' || /earthing/i.test(s)) return { agent: 'Dex', kind: 'earthing', verb: 'Draw the earthing drawing' };
+  // QS 006 74 is "earthing report & calculation": a study or report on earthing is a document for Wren, only an earthing drawing / layout is Dex's
+  if ((t === '74' || /earthing/i.test(s)) && !EARTH_DOC.test(d.title || '')) return { agent: 'Dex', kind: 'earthing', verb: 'Draw the earthing drawing' };
+  if (RFI_REG.test(d.title || '')) return { agent: 'Eli', kind: 'rfi', verb: 'Write the' };   // the RFI register is written from the job's RFIs, not from the master list
   if (/\b(survey|site visit|point cloud|laser scan|3d model|modelling|inspection|attendance|witness|package)\b/i.test(s)) return { agent: '', kind: 'manual', verb: '' };   // site work and models: nobody in the office makes those
   if (t === '23' || /\b(schedules?|registers?|lists?)\b/i.test(s)) return { agent: 'Lex', kind: 'schedule', verb: 'Make the' };   // whole words: a "registered point cloud" is not a register
-  if (['00', '03', '05', '08', '09', '15', '20', '21', '22'].includes(t) || /report|spec|calc|method|rams|itp|query/i.test(s)) return { agent: 'Wren', kind: 'document', verb: 'Write the' };
+  if (['00', '03', '05', '08', '09', '15', '20', '21', '22'].includes(t) || /report|spec|calc|method|rams|itp|query|stud(y|ies)|assessment|analysis|design basis/i.test(s) || (t === '74' && EARTH_DOC.test(d.title || ''))) return { agent: 'Wren', kind: 'document', verb: 'Write the' };
   return { agent: '', kind: 'manual', verb: '' };   // termination / interconnection / layouts: not made by an agent yet
 }
 
@@ -70,7 +74,7 @@ function sourceFor(d, files) {
   return { dxf: dxf ? dxf.rel : '', dwg: dwg ? dwg.rel : '', pdf: pdf ? pdf.rel : '', docx: docx ? docx.rel : '', xlsx: xlsx ? xlsx.rel : '', fileNo, fileRev: revInName((dxf || dwg || docx || xlsx || pdf || {}).name || '') };
 }
 // the group a row sits in on the Deliverables tab: a numbered drawing (QS 006 disciplines 70-79 are drawings, 23 a schedule) or by its words
-const groupOf = (d) => { const t = (String(d.no).match(/-(\d{2})-\d{4,5}(?:\b|_)/) || [])[1] || ''; if (/^7\d$/.test(t)) return 'drawing'; if (t === '23') return 'schedule'; return require('./jobdesk').kindTag(d.type || '', d.title).group; };
+const groupOf = (d) => { const t = (String(d.no).match(/-(\d{2})-\d{4,5}(?:\b|_)/) || [])[1] || ''; if (/^7\d$/.test(t) && !(t === '74' && EARTH_DOC.test(d.title || ''))) return 'drawing';   /* 74 is the earthing report too */ if (t === '23') return 'schedule'; return require('./jobdesk').kindTag(d.type || '', d.title).group; };
 const realNo = (d) => /^TBC-/i.test(d.no) ? ((String(d.title).match(QS) || [])[0] || '') : d.no;
 const cleanTitle = (d) => String(d.title).replace(QS, '').replace(/\(\s*\)/g, '').replace(/\s+P\d{1,2}\s*$/i, '').replace(/\s{2,}/g, ' ').trim();
 const AGENT_ID = { Dex: 'dex', Lex: 'excel', Wren: 'word' };
@@ -107,7 +111,7 @@ function register({ ipcMain, HANDLERS, BIZ, claudeFull, getAgents }) {
     const files = jobFiles(jobId, { exceptDir: openDir }), anyIssued = job.drawings.some(x => x.rev);   // a job with issued drawings: a numbered row with no rev and no file is a reserved number, not work to do
     // a made file renamed by hand in its folder (7142_P04 -> 7142 P04) is still the row's file: the record follows it
     for (const w of Object.values(dl)) if (w && Array.isArray(w.files)) w.files = w.files.map(f => { if (!f || fs.existsSync(f)) return f; const dir = path.dirname(f), base = path.basename(f); const alt = base.replace(/_([PCAX]\d{2})(\.[a-z0-9]+)$/i, ' $1$2'); const alt2 = base.replace(/ ([PCAX]\d{2})(\.[a-z0-9]+)$/i, '_$1$2'); for (const a of [alt, alt2]) if (a !== base && fs.existsSync(path.join(dir, a))) return path.join(dir, a); return f; });
-    const rows = job.drawings.filter(d => !/cancel|superseded/i.test(d.status)).map(d => { const src = sourceFor(d, files), k = kindOf(d); const reserved = !d.rev && !src.dxf && !src.dwg && !src.pdf && !dl[d.no] && !/^TBC-/i.test(d.no) && anyIssued; return { ...d, ...k, group: reserved ? 'reserved' : (d.group || groupOf(d)), num: realNo(d) || d.no, ctitle: desk.titleFor(d.no, cleanTitle(d) || d.title, src.dxf || src.dwg || src.pdf || src.docx || src.xlsx || ''), work: dl[d.no] || null, src, canRev: !reserved && !!(k.agent === 'Dex' || src.dxf || src.docx || src.xlsx) }; });   // reserved: a number in the register never issued and with no file: listed, not counted
+    const rows = job.drawings.filter(d => !/cancel|superseded/i.test(d.status)).map(d => { const src = sourceFor(d, files), k = kindOf(d); const reserved = !d.rev && !src.dxf && !src.dwg && !src.pdf && !dl[d.no] && !/^TBC-/i.test(d.no) && anyIssued; return { ...d, ...k, group: reserved ? 'reserved' : (k.kind === 'earthing' || k.agent !== 'Wren' ? (d.group || groupOf(d)) : groupOf(d)), num: realNo(d) || d.no, ctitle: desk.titleFor(d.no, cleanTitle(d) || d.title, src.dxf || src.dwg || src.pdf || src.docx || src.xlsx || ''), work: dl[d.no] || null, src, canRev: !reserved && !!(k.agent === 'Dex' || src.dxf || src.docx || src.xlsx) }; });   // reserved: a number in the register never issued and with no file: listed, not counted
     const DR = require('./docreq'), ng = DR.ngJob(rows), needNg = ng ? DR.needsRequest(rows).map(r => r.no) : [];
     return { job: { id: job.id, number: job.number, name: job.name, client: job.client, folder: job.folder, status: job.status }, desk: V, rows, needsMaster: rows.some(r => r.kind === 'bcd' || r.kind === 'schedule'), ngJob: ng, needNg, dex: dexSays(rows, V) };
   }
@@ -150,6 +154,11 @@ function register({ ipcMain, HANDLERS, BIZ, claudeFull, getAgents }) {
   async function make({ jobId, no, answers = [], note = '', revision = null, request: asked = '', skills, people }) {
     const job = jobOf(jobId), d = job.drawings.find(x => x.no === no); if (!d) throw new Error('Not on the drawing list: ' + no);
     const k = kindOf(d); if (!k.agent) throw new Error(`No agent makes ${d.title} yet. Do this one by hand.`);
+    if (k.kind === 'rfi') {   // the job's RFIs, on the Atomax RFI register under this row's number
+      if (!(desk.load(jobId).rfis || []).length) throw new Error('There are no RFIs on this job yet: raise them on Inputs & setup (or ask Eli), then make the register.');
+      const file = await desk.writeRfiRegister(jobId, { templateDir: BIZ.projects.templateDir(), people: people || {} }); if (!file) throw new Error('The RFI register needs the job folder linked first.');
+      return setDeliv(jobId, no, { status: 'made', rev: desk.load(jobId).rfiRegisterRev || 'P01', files: [file], by: 'Eli', summary: `RFI register written from the job's ${desk.load(jobId).rfis.length} RFIs` });
+    }
     const prev = delivOf(jobId)[no] || {};
     if (answers && answers.length) answers = [...(prev.answers || []).filter(p => !answers.some(a => a.q === p.q)), ...answers]; else answers = prev.answers || [];   // answers given once are kept for remakes and revisions
     people = people || prev.people || {};   // drawn / checked / approved, kept for remakes and revisions

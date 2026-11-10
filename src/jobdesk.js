@@ -143,7 +143,7 @@ function setNumbering(id, { area, disc }) { const d = load(id); if (area != null
 // the kind of a drawing (by its QS 006 code, else its words): used to match emails and register rows to the row that already exists
 const QSNO = /X\d{4,6}(?:-[A-Z0-9]{2,4}){2,5}-\d{4}/i;
 function kindKey(no, title) { const t = (String(no || '').match(/-(\d{2})-\d{4}(?:\b|_)/) || [])[1] || '', s = `${title || ''} ${no || ''}`;
-  if (t === '71' || /\bbcd\b|block cable/i.test(s)) return 'bcd'; if (t === '70' || /single.?line|\bsld\b/i.test(s)) return 'sld'; if (t === '74' || /earthing/i.test(s)) return 'earthing';
+  if (t === '71' || /\bbcd\b|block cable/i.test(s)) return 'bcd'; if (t === '70' || /single.?line|\bsld\b/i.test(s)) return 'sld'; if ((t === '74' || /earthing/i.test(s)) && !/\b(study|studies|assessment|report|design basis|calculations?|epr|analysis|specification)\b/i.test(title || '')) return 'earthing';
   if (t === '72' || t === '23' || /cable schedule/i.test(s)) return 'schedule'; if (/\bloop\b/i.test(s)) return 'loop'; return ''; }
 // what a deliverable is, from its type and title: the tag goes in its TBC number (TBC-GA-03), the group heads it on the Deliverables tab
 const KIND_TAGS = [
@@ -161,7 +161,9 @@ const KIND_TAGS = [
 ];
 function kindTag(type, title) {
   const t = String(type || '').toLowerCase(), s = `${type || ''} ${title || ''}`;
-  if (/^(sld|bcd|earthing|loop)$/.test(t)) return { group: 'drawing', tag: t === 'earthing' ? 'EARTH' : t.toUpperCase() };
+  const earthDoc = /\b(study|studies|assessment|report|design basis|calculations?|epr|analysis|specification)\b/i.test(String(title || ''));   // an earthing study is a document, not a drawing
+  if (/^(sld|bcd|earthing|loop)$/.test(t) && !(t === 'earthing' && earthDoc)) return { group: 'drawing', tag: t === 'earthing' ? 'EARTH' : t.toUpperCase() };
+  if (earthDoc && /earthing|bonding/i.test(s)) return { group: 'document', tag: 'RPT' };
   if (t === 'cable schedule') return { group: 'schedule', tag: 'CABLES' };
   if (t === 'calculation') return { group: 'document', tag: 'CALC' };
   for (const [group, tag, re] of KIND_TAGS) if (re.test(s)) return { group, tag };
@@ -411,7 +413,9 @@ function view(id) {
 async function writeRfiRegister(id, { templateDir = '', people = {} } = {}) {
   const job = jobOf(id), d = load(id); if (!job || !job.folder || !fs.existsSync(job.folder) || !(d.rfis || []).length) return '';
   const dir = BIZ.outputDirFor(id, 'rfi') || path.join(job.folder, '003 Technical Queries'); fs.mkdirSync(dir, { recursive: true });
-  const area = (d.area || '').trim() || '0000', docNo = `${job.number}-${area}-01-01-0003`;
+  const area = (d.area || '').trim() || '0000';
+  const row = (job.drawings || []).find(r => /\b(rfi|request for information|technical quer(y|ies))\b/i.test(r.title || '') && /\b(register|log|list|schedule)\b/i.test(r.title || ''));   // the job's own RFI register row, when it has one
+  const docNo = row ? row.no : `${job.number}-${area}-01-01-0003`;
   const prev = fs.readdirSync(dir).filter(n => /RFI REGISTER.*\.xlsx$/i.test(n) && !/^~\$/.test(n));
   const rev = d.rfiRegisterRev || 'P01';
   const file = path.join(dir, `${docNo} - RFI REGISTER ${rev}.xlsx`);

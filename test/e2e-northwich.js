@@ -304,6 +304,14 @@ const step = (name, fn) => { try { const r = fn(); if (r && r.then) return r.the
       global.__lead = { reply: 'Noted.', actions: [] }; await call('lead:chat', { jobId: J.id, agentId: 'dave', text: 'and the volt drop?' }); assert.ok(/CONVERSATION SO FAR:[\s\S]*DAVE: Ze at the new PDB/.test(global.__leadAsked), 'he remembers his own chat');
       let bad = ''; try { await call('lead:chat', { jobId: J.id, agentId: 'eli', text: 'hi' }); } catch (e) { bad = e.message; } assert.ok(/No such agent/.test(bad));
       global.__lead = null; }
+    // Gwrhyd (10 Nov): an earthing study numbered 74 is a document for Wren, not a drawing for Dex; the RFI register row is written from the job's RFIs under its own number
+    { const job = BIZ.data().jobs.find(j => j.id === J.id); job.drawings.push({ no: 'X11475-0000-06-74-0001', title: 'Earthing Design Basis and EPR Assessment', rev: '' }, { no: 'X11475-0000-06-01-0001', title: 'Request for Information Register', rev: '' }, { no: 'X11475-0000-06-74-0002', title: 'Earthing layout drawing', rev: '' }); BIZ.store.save();
+      const O = await call('jobs:overview', { jobId: J.id }), row = (n) => O.rows.find(r => r.no === n);
+      assert.strictEqual(row('X11475-0000-06-74-0001').agent, 'Wren', 'earthing study: ' + JSON.stringify(row('X11475-0000-06-74-0001'))); { const j = BIZ.data().jobs.find(x => x.id === J.id), d = j.drawings.find(x => x.no === 'X11475-0000-06-74-0001'); d.rev = 'P01'; d.group = 'drawing'; BIZ.store.save(); const O2 = await call('jobs:overview', { jobId: J.id }); assert.strictEqual(O2.rows.find(r => r.no === d.no).group, 'document', 'listed under documents, even on a row saved as a drawing'); } 
+      assert.strictEqual(row('X11475-0000-06-74-0002').agent, 'Dex', 'an earthing drawing is still Dex\'s');
+      assert.strictEqual(row('X11475-0000-06-01-0001').kind, 'rfi'); assert.ok(!O.needsMaster || O.rows.some(r => r.kind === 'bcd' || r.kind === 'schedule'), 'the RFI register does not wait on a master list');
+      const W = await call('jobs:make', { jobId: J.id, no: 'X11475-0000-06-01-0001' }); assert.strictEqual(W.status, 'made'); assert.ok(/X11475-0000-06-01-0001 - RFI REGISTER P01\.xlsx$/.test(W.files[0]) && fs.existsSync(W.files[0]), W.files[0]);
+      const j2 = BIZ.data().jobs.find(j => j.id === J.id); j2.drawings = j2.drawings.filter(d => !/^X11475-0000-06-(74|01)-/.test(d.no)); BIZ.store.save(); }
     // Revise (Tom 9 Nov: "dex shouldve told me then... why isnt he telling me when theres a problem"): comments logged against a drawing ->
     // Dex says on the job what he can do; Revise makes the text edits on the DXF on file and revs it up; DWG-only says what it needs
     { for (const c of ['LT1 should read CT1', 'C-I04 should be C-104 (letter I for digit 1)', 'All text to be black', 'Cloud the changes']) await call('desk:addComment', { jobId: J.id, doc: 'X11475-BGN-ZZ-XX-DR-E-7153', comment: c, by: 'NG' });
