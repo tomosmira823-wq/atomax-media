@@ -200,7 +200,8 @@ function register({ ipcMain, HANDLERS, BIZ, claudeFull, getAgents }) {
     const job = jobOf(jobId), d = job.drawings.find(x => x.no === no); if (!d) throw new Error('Not on the drawing list: ' + no);
     const k = kindOf(d); if (!k.agent) throw new Error(`No agent makes ${d.title} yet. Do this one by hand.`);
     // a document handed over from earlier work under another number: issued as it is under this row's number (see carryover.js)
-    if (k.agent === 'Wren' || k.agent === 'Lex' || k.kind === 'rfi') { const c = await carryOver(jobId, d, k, people); if (c) return c; }
+    // only for a first issue: once the row has its own file (made, or issued under its number) or a revision is asked for, the handed-over copy is history
+    if ((k.agent === 'Wren' || k.agent === 'Lex' || k.kind === 'rfi') && !revision) { const own = sourceFor(d, jobFiles(jobId)); if (!(own.docx || own.xlsx) || k.kind === 'rfi') { const c = await carryOver(jobId, d, k, people); if (c) return c; } }
     if (k.kind === 'rfi') {   // the job's RFIs, on the Atomax RFI register under this row's number
       if (!(desk.load(jobId).rfis || []).length) throw new Error('There are no RFIs on this job yet: raise them on Inputs & setup (or ask Eli), then make the register.');
       const file = await desk.writeRfiRegister(jobId, { templateDir: BIZ.projects.templateDir(), people: people || {} }); if (!file) throw new Error('The RFI register needs the job folder linked first.');
@@ -371,6 +372,24 @@ function register({ ipcMain, HANDLERS, BIZ, claudeFull, getAgents }) {
     let src = sourceFor(d, jobFiles(jobId, { exceptDir: issueDir })), fname = (src.dxf || src.dwg || '').split('/').pop();
     if (!src.dxf && src.dwg) { await dwgToDxf({ jobId, job, no, rel: src.dwg }); src = sourceFor(d, jobFiles(jobId, { exceptDir: issueDir })); fname = (src.dxf || src.dwg || '').split('/').pop(); if (!src.dxf) throw new Error(`${no}: Dex saved ${fname} as DXF but the folder does not show it yet. Press ↻ above the list and Revise again.`); }
     const allCrs = desk.load(jobId).crs || [], mine = allCrs.filter(c => (c.doc === no || c.doc === '*') && !/closed/i.test(c.status || ''));
+    if (!src.dxf && src.docx) {   // a Word document: Wren makes the asked text changes in the .docx itself (pictures, tables, styles kept), then it revs up
+      const open0 = mine.filter(c => !/responded/i.test(c.status || '')), asked0 = String(comments || '').trim() || open0.map(c => `${c.no ? c.no + ': ' : ''}${c.comment}`).join('\n');
+      if (!asked0) return revUpDocument({ jobId, job, d, src, status });
+      const DE = require('./docedit'), full = path.join(job.folder, src.docx), buf = fs.readFileSync(full);
+      const R = runs.start({ kind: 'document:revise', who: 'Wren', jobId, no }); runs.stage(R.id, 'Wren is reading the comments against the document', 20); let out;
+      try { const paras = await DE.paragraphs(buf);
+        const r = await claudeFull({ system: DE.SYSTEM, who: 'word', maxTokens: 8000, messages: [{ role: 'user', content: [{ type: 'text', text: `DOCUMENT ${path.basename(full)} (${paras.length} paragraphs):\n${paras.join('\n').slice(0, 150000)}\n\nCOMMENTS TO MAKE:\n${asked0}` }] }], run: R.id });
+        let plan; try { plan = require('./checker').parseJson(r.text).value || {}; } catch { plan = {}; }
+        out = await DE.apply(buf, plan.edits || []);
+        const cannot = [...(plan.cannot || []).map(c => `${c.comment}: ${c.why}`), ...out.failed.map(f => `${f.e.do} "${String(f.e.find || f.e.after || '').slice(0, 80)}": ${f.why}`)];
+        if (!out.done.length) { runs.finish(R.id, { ok: true }); return setDeliv(jobId, no, { status: 'needs you', questions: cannot.length ? cannot : ['Wren found nothing in the document to change for these comments. Say what to change.'], summary: 'Wren could not make the changes as text: answer below or change it by hand' }); }
+        runs.finish(R.id, { ok: true });
+        const w = await revUpDocument({ jobId, job, d, src, status, edited: { buf: out.buf, note: `Wren made ${out.done.length} change${out.done.length === 1 ? '' : 's'}${plan.summary ? ' (' + plan.summary + ')' : ''}${cannot.length ? '; not done: ' + cannot.join(' · ') : ''}` }, description: remarkFor(open0) });
+        for (const c of open0) { try { desk.saveCrs(jobId, { no: c.no, status: cannot.length ? c.status : 'Responded', response: `Revised in ${w.rev}` }); } catch {} }
+        if (cannot.length) setDeliv(jobId, no, { status: 'needs you', questions: cannot });
+        return delivOf(jobId)[no];
+      } catch (e) { runs.finish(R.id, { ok: false, error: runs.plain(e) }); throw e; }
+    }
     if (!src.dxf) { const open0 = mine.filter(c => !/responded/i.test(c.status || '')), asked0 = String(comments || '').trim() || open0.map(c => `${c.no ? c.no + ': ' : ''}${c.comment}`).join('\n'); if (!kindOf(d).agent) throw new Error(`${no}: there is no drawing file for it in the job folder and no agent draws this kind. Put the DXF in the folder, press ↻, then Revise.`); return make({ jobId, no, people, revision: { on: true, stage: '', note: asked0.slice(0, 2000) }, note: asked0 ? `Client comments to address: ${asked0}` : '' }); }
     // ALWAYS from the working file (never from Dex's own last output, however it went), with EVERY change logged for this issue: the open
     // ones and the ones already done in this same unissued revision. Pressed twice, it makes the same P03 twice. (Tom 9 Nov)
@@ -492,18 +511,18 @@ function register({ ipcMain, HANDLERS, BIZ, claudeFull, getAgents }) {
   const issueName = (no, rev) => /^X\d{5,6}-/i.test(no) ? `${no} ${rev}` : `${no}_${rev}`;
   // a Word or Excel document: new revision rows, header and cover moved on by docrev; the native goes in ISSUE n/ISSUE n NATIVES (the PDF
   // for the issue itself is made from it by Word or Excel when the issue is plotted)
-  async function revUpDocument({ jobId, job, d, src, to = '', status = '' }) {
+  async function revUpDocument({ jobId, job, d, src, to = '', status = '', edited = null, description = '' }) {   // edited: { buf, note } when Revise changed the text first
     const DR = require('./docrev'), rel = src.docx || src.xlsx, full = path.join(job.folder, rel), name = path.basename(full), no = d.no;
     const from = DR.revOfName(name) || d.rev || ''; const want = askedRev(to, '') || '';
     const renumber = src.fileNo && src.fileNo !== no.toUpperCase() ? { from: src.fileNo, to: no } : null;
-    let r; try { r = src.docx ? await DR.revUpDocx(fs.readFileSync(full), { from, to: want, status, renumber }) : await DR.revUpXlsx(fs.readFileSync(full), { from, to: want, status }); }
+    let r; try { r = src.docx ? await DR.revUpDocx(edited && edited.buf ? edited.buf : fs.readFileSync(full), { from, to: want, status, renumber, description: description || undefined }) : await DR.revUpXlsx(fs.readFileSync(full), { from, to: want, status }); }
     catch (e) { throw new Error(`${no}: ${name} could not be revved up (${String(e.message || e)}). Rev it by hand this time.`); }
     const outDir = openIssueDir(jobId), natives = path.join(outDir, `${path.basename(outDir)} NATIVES`); fs.mkdirSync(natives, { recursive: true });
     const outPath = path.join(natives, DR.revName(name, r.from, r.to, renumber)); fs.writeFileSync(outPath, r.buf);
     d.rev = r.to; require('./business').saveJob(BIZ.data(), job, 'Wren'); BIZ.store.save();
     const who = src.docx ? 'Wren' : 'Lex', ch = r.changes;
     const { pdfs, pdfNote } = await pdfFor({ jobId, file: outPath });   // Word / Excel make the PDF now, into the issue folder
-    const w = setDeliv(jobId, no, { status: 'made', rev: r.to, files: [outPath], pdfs, warning: pdfNote, archived: 0, by: who, summary: `Rev up ${r.from} -> ${r.to}: ${src.docx ? `${ch.rows} revision row${ch.rows === 1 ? '' : 's'} added, header${ch.cover ? ' and cover' : ''} to ${r.to}, dated today` : `revision row ${r.to} on the cover sheet, dated today`}${renumber ? `; renumbered ${renumber.from} -> ${renumber.to}` : ''}; content unchanged`, source: rel });
+    const w = setDeliv(jobId, no, { status: 'made', rev: r.to, files: [outPath], pdfs, warning: pdfNote, archived: 0, by: who, summary: `${edited && edited.note ? edited.note + '. ' : ''}Rev up ${r.from} -> ${r.to}: ${src.docx ? `${ch.rows} revision row${ch.rows === 1 ? '' : 's'} added, header${ch.cover ? ' and cover' : ''} to ${r.to}, dated today` : `revision row ${r.to} on the cover sheet, dated today`}${renumber ? `; renumbered ${renumber.from} -> ${renumber.to}` : ''}; content unchanged`, source: rel });
     BIZ.log({ who, action: `Revved up ${no} ${r.from} -> ${r.to} (revision tables, header${renumber ? ', renumbered' : ''})`, jobId, detail: path.basename(outPath) });
     try { BIZ.projects.gather(job.id, job.folder, { checker: require('./checker') }); } catch {}
     return w;
@@ -563,6 +582,7 @@ function register({ ipcMain, HANDLERS, BIZ, claudeFull, getAgents }) {
       const mine = (desk.load(a.jobId).crs || []).filter(c => (c.doc === a.no || c.doc === '*') && !/closed/i.test(c.status || '') && (!/responded/i.test(c.status || '') || (next && new RegExp('Revised (in|again at) ' + next + '\\b').test(c.response || ''))));
       if (mine.some(c => c.doc === a.no && !/^Dex couldn't/.test(c.response || ''))) return revise({ jobId: a.jobId, no: a.no, people: a.people, status: a.status });   /* a change on THIS drawing; one Dex already said he can't do by text (a cloud) stays open and does not block a plain rev up */
     } catch (e) { if (!/No such row|Not on the drawing list/.test(String(e.message || e))) { /* fall through to a plain rev up only when the look-up itself failed */ } } }
+    if (!src.dxf && src.docx && (desk.load(a.jobId).crs || []).some(c => c.doc === a.no && !/closed|responded/i.test(c.status || ''))) return revise({ jobId: a.jobId, no: a.no, people: a.people, status: a.status });   // a Word document with comments on it: the changes, then the rev up
     return revUp(a);
   }
   ipcMain.handle('jobs:revUp', wrap((a) => revUpOrRevise(a)));
