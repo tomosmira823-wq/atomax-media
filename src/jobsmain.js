@@ -33,7 +33,7 @@ function jobFiles(jobId, { exceptDir = '' } = {}) {
     // hand-made issue folder before the app opened it is his and stays a source
     let since = 0; try { const oi = require('./jobdesk').load(jobId).openIssue; if (oi && oi.found && oi.openedAt) since = Date.parse(oi.openedAt) - 5000; } catch {}
     return (p && p.files || []).map(f => ({ rel: f.rel.replace(/\\/g, '/'), name: f.rel.split(/[\\/]/).pop(), mtime: f.mtime || 0, abs: path.join(p.folder || '', f.rel) }))
-      .filter(f => !/(^|\/)(archive|superseded|markups?|old|fixed)(\/|$)/i.test(f.rel) && !(ex && f.abs.replace(/\\/g, '/').toLowerCase().startsWith(ex) && (!since || f.mtime >= since)));
+      .filter(f => !/(^|\/)(archive|superseded|markups?|old|fixed)(\/|$)/i.test(f.rel) && !/(^|\/)[^\/]*(do not (issue|use)|superseded|wrong number)[^\/]*\//i.test(f.rel) && !(ex && f.abs.replace(/\\/g, '/').toLowerCase().startsWith(ex) && (!since || f.mtime >= since)));
   } catch (e) { console.error('jobFiles', e); return []; }
 }
 const revInName = (n) => { const m = String(n).match(/[\s_-]([PCAX]\d{2})(?=[\s_.)-]|$)/i); return m ? m[1].toUpperCase() : ''; };

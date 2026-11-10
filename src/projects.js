@@ -152,7 +152,7 @@ function relevantFiles(jobId, request, { exts = ['.pdf'], max = 3 } = {}) {
     return s;
   };
   // inputs are the client's documents: never Atomax's own outputs (drawings Dex made, older versions, markups)
-  const ours = (f) => /(^|[\\/])(archive|superseded|markups?)([\\/]|$)/i.test(f.rel) || /_DRAFT(_\d+)?\.[a-z]+$/i.test(f.rel) || /X\d{4,6}(?:-[A-Z0-9]{2,4}){2,5}-\d{4}_[PACX]\d{2}(_SH\d+)?(_\d{8}-\d{6})?\.[a-z]+$/i.test(f.rel);
+  const ours = (f) => /(^|[\\/])(archive|superseded|markups?)([\\/]|$)/i.test(f.rel) || /(^|[\\/])[^\\/]*(superseded|do not (issue|use)|wrong number|archive)[^\\/]*[\\/]/i.test(f.rel) || /\b(superseded|do not issue)\b/i.test(path.basename(f.rel)) || /_DRAFT(_\d+)?\.[a-z]+$/i.test(f.rel) || /X\d{4,6}(?:-[A-Z0-9]{2,4}){2,5}-\d{4}_[PACX]\d{2}(_SH\d+)?(_\d{8}-\d{6})?\.[a-z]+$/i.test(f.rel);
   return p.files.filter(f => exts.includes(f.ext) && f.size < 20 * 1024 * 1024 && !ours(f))
     .map(f => ({ f, s: score(f) }))
     .filter(x => x.s > 0).sort((a, b) => b.s - a.s || b.f.mtime - a.f.mtime).slice(0, max).map(x => path.join(p.folder, x.f.rel));
@@ -381,7 +381,9 @@ function filesUnder(paths, maxFiles = 2000) {
 function fileIn(folder, paths) {
   const filed = [], skipped = [];
   const list = Array.isArray(paths) && paths.length && typeof paths[0] === 'object' ? paths : filesUnder(paths);   // paths, or entries from filesUnder (keeps the dropped folder's sub-paths)
+  const inside = (p) => { const r = path.relative(path.resolve(folder), path.resolve(p)); return r && !r.startsWith('..') && !path.isAbsolute(r); };
   for (const f of list) {
+    if (inside(f.path)) { skipped.push(f.rel); continue; }   // dragged from inside the job folder itself: already filed, a second copy elsewhere would be two sources for one number
     const kind = fileKind(f.name), out = outputDir(folder, kind); if (!out) { skipped.push(f.rel); continue; }
     const keepTree = kind === 'site-data' && f.rel.includes(path.sep), dstDir = keepTree ? path.join(out, path.dirname(f.rel)) : out;
     fs.mkdirSync(dstDir, { recursive: true });
