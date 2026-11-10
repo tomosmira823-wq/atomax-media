@@ -306,7 +306,7 @@ function saveRfi(id, rfi) { const d = load(id), r = d.rfis.find(x => x.no === rf
 function addComments(id, comments = [], fromEmail = '') {
   const d = load(id), added = [];
   const key = (c) => `${String(c.doc || '').toUpperCase()}|${String(c.comment || '').trim().toLowerCase()}`, have = new Set(d.crs.map(key));
-  for (const c of comments) { if (!c || !c.comment || have.has(key(c))) continue; have.add(key(c)); const row = { no: 'C-' + String(d.crs.length + 1).padStart(3, '0'), doc: String(c.doc || ''), comment: String(c.comment), by: String(c.by || ''), response: '', agent: String(c.agent || ''), status: 'Open', raised: today(), from: fromEmail }; d.crs.push(row); added.push(row); }
+  for (const c of comments) { if (!c || !c.comment || have.has(key(c))) continue; have.add(key(c)); const row = { no: 'C-' + String(Math.max(0, ...d.crs.map(x => +((String(x.no || '').match(/(\d+)$/) || [])[1] || 0))) + 1).padStart(3, '0'),   /* after the highest: a tidied-away duplicate must not hand its number to the next comment */ doc: String(c.doc || ''), comment: String(c.comment), by: String(c.by || ''), response: '', agent: String(c.agent || ''), status: 'Open', raised: today(), from: fromEmail }; d.crs.push(row); added.push(row); }
   save(id, d); return added;
 }
 function saveCrs(id, row) { const d = load(id), r = d.crs.find(x => x.no === row.no); if (!r) throw new Error('No such comment'); Object.assign(r, { response: row.response ?? r.response, status: row.status || r.status }); save(id, d); return d; }
