@@ -497,6 +497,9 @@ const step = (name, fn) => { try { const r = fn(); if (r && r.then) return r.the
       assert.ok(/P02 \| Updated to incorporate client comments \|/.test(t2) || /P02 \| [^|]*comments/i.test(t2), 'revision row: ' + (t2.match(/P02 \|[^\n]*/g) || []).join(' / '));
       assert.strictEqual(Object.keys((await JSZip.loadAsync(fs.readFileSync(f2))).files).filter(x => /media\//.test(x)).length, pics0, 'every picture kept');
       assert.ok((RV.questions || []).some(q => /text that is not there/.test(q)), 'the edit that did not fit is said: ' + JSON.stringify(RV.questions)); }
+    // "Next revision" on a document with no comments: the file revved (content as it was), never rewritten by Wren
+    { global.__o365 = [() => { throw new Error('Wren must not rewrite it'); }]; const NR = await call('jobs:revision', { jobId: job.id, no: 'X101126-0000-06-08-0005' }); global.__o365 = null;
+      assert.strictEqual(NR.rev, 'P02', JSON.stringify(NR)); const t5 = await DT.docxText(fs.readFileSync(NR.files[0])); assert.ok(/Proposed Preliminary Settings/.test(t5) && /P02 \|/.test(t5), 'the protection study, revved'); }
     const V = desk.load(job.id); assert.strictEqual(V.rfis.length, 25, 'the register\'s 24 RFIs and the new one'); assert.ok(V.rfisBefore.some(r => /BESS make and model/.test(r.q)), 'the job\'s own kept aside');
     return '9 made';
   });

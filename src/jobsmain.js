@@ -456,6 +456,9 @@ function register({ ipcMain, HANDLERS, BIZ, claudeFull, getAgents }) {
   ipcMain.handle('jobs:revision', wrap(async ({ jobId, no, note = '', to = '', people, desc = '' }) => {
     const desk = require('./jobdesk'), V = desk.load(jobId), open = (V.crs || []).filter(c => (c.doc === no || c.doc === '*') && !/responded|closed/i.test(c.status || ''));   // '*': a change asked for on every drawing
     const said = String(note || '').trim(), rev = askedRev(to, said);
+    // a Word / Excel deliverable already on file is revised in the file (its content, tables and pictures kept), never written again from scratch
+    { const job = jobOf(jobId), d = job.drawings.find(x => x.no === no), src = d ? sourceFor(d, jobFiles(jobId, { exceptDir: peekIssueDir(jobId) })) : {};
+      if (d && !src.dxf && (src.docx || src.xlsx)) { if (said) desk.addComments(jobId, [{ doc: no, comment: said, by: 'Tom' }]); return src.docx && (said || open.length) ? revise({ jobId, no, people }) : revUp({ jobId, no, to: rev || '', people }); } }
     const r = await make({ jobId, no, people, revision: { on: true, to: rev, stage: '', note: said.slice(0, 2000), desc: String(desc || '').trim() }, note: said ? `Changes for this revision: ${said}` : 'New revision: no other changes asked for.' });
     if (r && r.status === 'made') for (const c of open) { if (c.doc === '*') continue; /* asked for on every drawing: stays open until Tom closes it */ try { desk.saveCrs(jobId, { no: c.no, status: 'Responded', response: `Revised in ${r.rev}` }); } catch {} }
     return r;
