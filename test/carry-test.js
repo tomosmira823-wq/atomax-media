@@ -22,3 +22,10 @@ console.log('carry ok');
   assert.ok(/<w:p><w:r><w:t>after/.test(out), 'the paragraph after is left alone');
   const long = `<w:tbl>${Array.from({ length: 30 }, (_, i) => row(i)).join('')}</w:tbl>`; assert.strictEqual(C.tidyPagination(long), long, 'a long table may run on'); }
 console.log('pagination ok');
+// Document Approval: the revision's row takes the initials given, a blank one is left as it was
+{ const cell = (t) => `<w:tc><w:p><w:r><w:t>${t}</w:t></w:r></w:p></w:tc>`, row = (...c) => `<w:tr>${c.map(cell).join('')}</w:tr>`;
+  const doc = `<w:tbl>${row('Rev', 'Prepared by', 'Checked By', 'Approved by')}${row('P01', 'D. Mira', '', '')}${row('', '', '', '')}</w:tbl>`;
+  const out = C.setApproval(doc, 'P01', { drawn: 'DM', checked: 'TM' }); const DR = require('../src/docrev');
+  const cells = (out.match(/<w:tr>[\s\S]*?<\/w:tr>/g)[1].match(/<w:tc>[\s\S]*?<\/w:tc>/g)).map(c => DR.text(c));
+  assert.deepStrictEqual(cells, ['P01', 'DM', 'TM', ''], JSON.stringify(cells)); }
+console.log('approval ok');

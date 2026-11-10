@@ -165,7 +165,8 @@ function register({ ipcMain, HANDLERS, BIZ, claudeFull, getAgents }) {
     const R = runs.start({ kind: `${k.kind}:carry`, who: k.agent === 'Lex' || k.kind === 'rfi' ? (k.agent || 'Eli') : 'Wren', jobId, no }); runs.stage(R.id, `issuing ${e.name} under ${no}`, 30);
     try {
       const buf = fs.readFileSync(e.abs), xl = /\.(xlsx|xlsm)$/i.test(e.name);
-      const out = xl ? await C.reissueXlsx(buf, { map }) : await C.reissueDocx(buf, { map });
+      const pp = people || (delivOf(jobId)[no] || {}).people || Object.values(delivOf(jobId)).map(x => x.people).filter(Boolean).pop() || {};   // drawn / checked / approved as on the Make screen
+      const out = xl ? await C.reissueXlsx(buf, { map }) : await C.reissueDocx(buf, { map, people: pp });
       const rev = (xl ? DR().revOfName(e.name) : out.rev) || 'P01', title = cleanTitle(d) || d.title;
       const dir = BIZ.outputDirFor(jobId, xl ? 'rfi' : 'documents') || path.dirname(e.abs); fs.mkdirSync(dir, { recursive: true });
       const file = path.join(dir, `${no} ${rev} ${title}`.replace(/[\\/:*?"<>|]+/g, '-').slice(0, 150) + path.extname(e.name));

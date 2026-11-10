@@ -115,8 +115,26 @@ function tidyPagination(doc, changes = {}) {
   return doc;
 }
 
-// a Word document under its new number: { buf, map, date } -> { buf, rev, changes }
-async function reissueDocx(buf, { map, date } = {}) {
+// the Document Approval table: the row for this revision gets the initials given (Prepared by / Checked By / Approved by); a blank
+// one is left as it is in the file, "-" clears it
+function setApproval(doc, rev, people = {}, changes = {}) {
+  const want = { prepared: people.drawn || people.prepared || '', checked: people.checked || '', approved: people.approved || '' };
+  if (!want.prepared && !want.checked && !want.approved) return doc;
+  return doc.replace(/<w:tbl>(?:(?!<w:tbl>)[\s\S])*?<\/w:tbl>/g, (tbl) => {
+    const rows = tbl.match(/<w:tr\b[\s\S]*?<\/w:tr>/g) || []; if (!rows.length) return tbl;
+    const head = DR.cellsOf(rows[0]).map(c => DR.text(c).toLowerCase());
+    const col = { prepared: head.findIndex(h => /prepared|made|drawn|author/.test(h)), checked: head.findIndex(h => /checked/.test(h)), approved: head.findIndex(h => /approved/.test(h)) };
+    if (col.prepared < 0 || col.checked < 0 || !/^rev/.test(head[0] || '')) return tbl;
+    return tbl.replace(/<w:tr\b[\s\S]*?<\/w:tr>/g, (tr) => {
+      if (DR.text(DR.cellsOf(tr)[0] || '').toUpperCase() !== rev) return tr;
+      let k = 0;
+      return tr.replace(/<w:tc\b[\s\S]*?<\/w:tc>/g, (tc) => { const i = k++; for (const key of ['prepared', 'checked', 'approved']) if (i === col[key] && want[key]) { changes.approval = (changes.approval || 0) + 1; return DR.setTc(tc, want[key] === '-' ? '' : want[key]); } return tc; });
+    });
+  });
+}
+
+// a Word document under its new number: { buf, map, date, people } -> { buf, rev, changes }
+async function reissueDocx(buf, { map, date, people } = {}) {
   const zip = await JSZip.loadAsync(buf);
   const parts = Object.keys(zip.files).filter(n => /^word\/(document|header\d*|footer\d*|footnotes|endnotes)\.xml$/.test(n));
   const reps = replacements(map || {}); const changes = { renumbered: 0, dated: 0 };
@@ -140,6 +158,7 @@ async function reissueDocx(buf, { map, date } = {}) {
     { const firstTbl = doc.indexOf('<w:tbl>'), head = firstTbl > 0 ? doc.slice(0, firstTbl) : doc;
       const fixed = head.replace(/<w:p\b[\s\S]*?<\/w:p>/g, (p) => { const t = DR.text(p); if (DR.DATE.test(t)) { const r = DR.replaceAcrossRuns(p, /\d{1,2}\/\d{1,2}\/\d{2,4}/, (d) => DR.todayLike(d, date)); if (r.n) { changes.dated++; return r.xml; } } return p; });
       doc = fixed + doc.slice(head.length); }
+    doc = setApproval(doc, rev, people || {}, changes);
     doc = tidyPagination(doc, changes);
     zip.file('word/document.xml', doc);
     for (const n of parts.filter(p => /header|footer/.test(p))) {
@@ -181,4 +200,4 @@ async function rfisOf(buf) {
   return out;
 }
 
-module.exports = { whyNot, sameWords, tidyPagination, norm, earlierVersion, numberMap, replacements, reissueDocx, reissueXlsx, rfisOf };
+module.exports = { setApproval, whyNot, sameWords, tidyPagination, norm, earlierVersion, numberMap, replacements, reissueDocx, reissueXlsx, rfisOf };

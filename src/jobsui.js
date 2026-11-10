@@ -340,7 +340,7 @@ export function initJobsUI({ api, getAgents, openIssue, onWorkOn }) {
     box.innerHTML = `<div class="jbprep-g"><div><label>What ${esc(P.agent)} will do</label><textarea id="jpReq" rows="3">${esc(P.request)}</textarea>
         ${fixes.length ? `<div class="jbmsg">Also fixes ${fixes.length} open item${fixes.length === 1 ? '' : 's'} (same revision): ${esc(fixes.map(c => c.comment).slice(0, 4).join(' · '))}${fixes.length > 4 ? ' …' : ''}. Close any you disagree with on the Comments tab first.</div>` : ''}
         <div class="bsub">Drawing number: <b>${esc(P.number || 'next free QS 006 number')}</b></div>
-        ${P.agent === 'Dex' ? `<label>Title block</label><div class="jppeople">${['drawn', 'checked', 'approved'].map(k => `<span><i>${k[0].toUpperCase() + k.slice(1)}</i><input id="jp_${k}" maxlength="24" placeholder="initials" value="${esc(((P.people || lastPeople())[k]) || '')}"></span>`).join('')}</div>` : ''}
+        ${P.agent === 'Dex' || P.carry ? `<label>${P.carry ? 'Document Approval (this revision)' : 'Title block'}</label><div class="jppeople">${['drawn', 'checked', 'approved'].map(k => `<span><i>${P.carry && k === 'drawn' ? 'Prepared' : k[0].toUpperCase() + k.slice(1)}</i><input id="jp_${k}" maxlength="24" placeholder="initials" value="${esc(((P.people || lastPeople())[k]) || '')}"></span>`).join('')}</div>` : ''}
         ${P.noCarry ? `<div class="bsub" style="margin:6px 0">No earlier version of this document to issue as it is: ${esc(P.noCarry)}</div>` : ''}<label>Inputs ${esc(P.agent)} will read from the job folder</label><div class="jpin">${P.inputs.length ? P.inputs.map(f => `<span>${esc(f)}</span>`).join('') : `<i class="warn">${P.folder ? 'Nothing matching found in the folder: add the inputs, then Read folder again in Inputs & setup' : 'No project folder linked'}</i>`}</div></div>
       <div id="jpSkills"></div></div>
       <div class="jbbar"><button class="jbbtn primary" id="jpGo">Start ${esc(P.agent)}</button><button class="jbbtn" id="jpCancel">Cancel</button></div>`;
@@ -349,7 +349,7 @@ export function initJobsUI({ api, getAgents, openIssue, onWorkOn }) {
     box.querySelector('#jpGo').onclick = () => {
       const request = box.querySelector('#jpReq').value.trim(), skills = picker ? picker.selected() : undefined;
       let people;
-      if (P.agent === 'Dex') {
+      if (P.agent === 'Dex' || P.carry) {
         people = Object.fromEntries(['drawn', 'checked', 'approved'].map(k => [k, box.querySelector('#jp_' + k).value.trim().toUpperCase()]));
         if (!people.drawn) { const f = box.querySelector('#jp_drawn'); f.focus(); f.classList.add('need'); f.placeholder = 'who drew it'; return; }
         try { localStorage.setItem('amo.people', JSON.stringify(people)); } catch {}
