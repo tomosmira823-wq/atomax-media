@@ -46,10 +46,12 @@ async function fill(templateFile, job, head, rfis) {
   const H = { B3: job.client || '', B4: `${job.number} ${job.name || ''}`.trim(), B5: head.title || 'Request for Information (RFI) Register', B6: head.docNo || '', B7: head.compiledBy || '', B8: head.revision || 'P01', B9: head.issueDate || ddmmyy() };
   for (const [ref, val] of Object.entries(H)) x = setCell(x, ref, val);
   const first = 13, max = 1061;
-  rfis.slice(0, max - first + 1).forEach((r, i) => {
+  // in number order, each row carrying the RFI's own number: the documents cite these numbers (a template row's RFI-004 must not hold RFI-19)
+  const num = (r) => +((String(r.no || '').match(/(\d+)$/) || [])[1] || 1e9);
+  [...rfis].sort((a, b) => num(a) - num(b)).slice(0, max - first + 1).forEach((r, i) => {
     const row = first + i, open = !/closed|answered/i.test(r.status || '');
-    const q = String(r.q || '').replace(/^please send:\s*/i, '').trim();
-    const cells = { B: head.discipline || 'Electrical', C: q, D: head.issuedBy || 'Atomax-UK', E: r.to || head.issueTo || job.client || '', F: ddmmyy(r.raised), G: r.requiredBy || '', H: (r.priority || 'Medium').toUpperCase(), I: r.attachments || '', J: r.answer || '', M: open ? '' : ddmmyy(r.closed || r.answeredAt || new Date()), N: open ? 'OPEN' : 'CLOSED' };
+    const q = String(r.q || '').replace(/^please send:\s*/i, '').trim() + (r.why ? ` (Reason: ${String(r.why).trim()})` : '');   // a handed-over register's reason / impact column has no column here: it stays with the question
+    const cells = { A: r.no || '', B: head.discipline || 'Electrical', C: q, D: head.issuedBy || 'Atomax-UK', E: r.to || head.issueTo || job.client || '', F: ddmmyy(r.raised), G: r.requiredBy || '', H: (r.priority || 'Medium').toUpperCase(), I: r.attachments || '', J: r.answer || '', M: open ? '' : ddmmyy(r.closed || r.answeredAt || new Date()), N: open ? 'OPEN' : 'CLOSED' };
     for (const [col, val] of Object.entries(cells)) x = setCell(x, `${col}${row}`, val);
   });
   // rows beyond the RFIs stay as the template left them (RFI-0nn with nothing against it)
