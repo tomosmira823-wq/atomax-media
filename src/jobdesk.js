@@ -271,7 +271,7 @@ function addDeliverables(id, list, opts = {}) {
       if (num && sameKind.length === 1 && /^TBC-/i.test(sameKind[0].no)) { const r = sameKind[0], d0 = load(id); if (d0.deliv && d0.deliv[r.no]) { d0.deliv[num] = d0.deliv[r.no]; delete d0.deliv[r.no]; save(id, d0); } for (const c of (d0.crs || [])) if (c.doc === r.no) c.doc = num; save(id, d0); r.no = num; renamed = true; BIZ.log({ who: 'Eli', action: 'Numbered a drawing from the email', jobId: id, detail: `${title}: ${num}` }); continue; }   // the TBC row IS this drawing
       if (sameKind.length && (opts.commentReturn || /\brev(ision)?\b|reissue|re-issue|\b[PC]\d\d\b|updated?\b/i.test(title))) continue;   // a revision of a drawing we have is not a new drawing
       const kt = kindTag(dl.type, dl.title);
-      const no = proposeNumber(job, dl.title + ' ' + dl.type, taken, id) || `TBC-${kt.tag}-${String(job.drawings.filter(d => /^TBC-/.test(d.no)).length + added.length + 1).padStart(2, '0')}`;
+      const no = proposeNumber(job, dl.title + ' ' + dl.type, taken, id) || (() => { const used = new Set([...job.drawings.map(d => d.no), ...added.map(a => a.no)].map(x => String(x).toUpperCase())); let n = job.drawings.filter(d => /^TBC-/.test(d.no)).length + added.length + 1, c; do { c = `TBC-${kt.tag}-${String(n++).padStart(2, '0')}`; } while (used.has(c.toUpperCase())); return c; })();
       taken.push(no); added.push({ no, title, rev: '', status: 'To do', type: String(dl.type || ''), group: kt.group });
     }
   }
