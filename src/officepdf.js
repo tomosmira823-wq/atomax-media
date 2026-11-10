@@ -31,8 +31,17 @@ try {
 Write-Output 'done'`;
 }
 
-// one document to a PDF; resolves { pdf } or throws with PowerShell's own words
-function toPdf(src, pdf, { timeoutMs = 180000 } = {}) {
+// one document to a PDF; resolves { pdf } or throws with PowerShell's own words. Word and Excel cannot open a path over 259 characters (deep
+// OneDrive job folders with long titles get there): such a file is converted from a short copy in the temp folder and the PDF copied back
+function toPdf(src, pdf, opts = {}) {
+  if (process.platform === 'win32' && (src.length > 240 || pdf.length > 240)) {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'amo-')), s2 = path.join(tmp, 'doc' + path.extname(src)), p2 = path.join(tmp, 'doc.pdf');
+    fs.copyFileSync(src, s2);
+    return toPdfShort(s2, p2, opts).then(() => { fs.copyFileSync(p2, pdf); return { pdf }; }).finally(() => { try { fs.rmSync(tmp, { recursive: true, force: true }); } catch {} });
+  }
+  return toPdfShort(src, pdf, opts);
+}
+function toPdfShort(src, pdf, { timeoutMs = 180000 } = {}) {
   return new Promise((resolve, reject) => {
     if (process.platform !== 'win32') return reject(new Error('Word and Excel PDFs need Windows'));
     const scr = path.join(os.tmpdir(), `amo-pdf-${Date.now()}-${Math.random().toString(36).slice(2, 7)}.ps1`);
