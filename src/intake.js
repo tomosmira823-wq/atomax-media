@@ -419,6 +419,8 @@ function register({ ipcMain, dialog, shell, getWin, userDir, claudeFull, checker
 
       const CODE = { SLD: '70', 'SINGLE LINE': '70', 'SINGLE LINE DIAGRAM': '70', BCD: '71', 'BLOCK CABLE DIAGRAM': '71', EARTHING: '74' }, code = CODE[up];   // QS 006 type code in the number
       const byCode = code && ds.filter(x => new RegExp('-' + code + '-\\d{3,4}$').test(String(x.no))); if (byCode && byCode.length === 1) return byCode[0].no;
+      { const DK = require('./jobdesk'), same = ds.filter(x => DK.sameDeliverable(x.title, t)); if (same.length === 1) return same[0].no;   // "the G5/5 report", "protection study": the one row it can only mean
+        const key = [...DK.dwords(t)].filter(w => /^[gp]\d{2,3}(_\d)?$/.test(w) || w.length >= 4); if (key.length) { const hit = ds.filter(x => { const W = DK.dwords(x.title); return key.every(w => W.has(w)); }); if (hit.length === 1) return hit[0].no; } }
       const want = (WORDS[up] || t).toLowerCase(), raw = t.toLowerCase(), words = want.split(/[^a-z0-9]+/).filter(w => w.length > 2);
       let best = null, score = 0; for (const x of ds) { const tl = String(x.title || '').toLowerCase(); const sc = tl.includes(want) || new RegExp('\\b' + raw.replace(/[^a-z0-9 ]/g, '') + '\\b').test(tl) ? 99 : words.filter(w => tl.includes(w)).length; if (sc > score) { score = sc; best = x; } }
       return best && score >= Math.min(2, words.length) ? best.no : t; };
