@@ -35,15 +35,15 @@ const live = () => [...RUNS.values()].filter(r => !r.done).map(r => ({ id: r.id,
 // errors in plain words, with what to do next
 const PLAIN = [
   [/aborted|AbortError|The operation was aborted/i, 'Stopped.'],
-  [/EBUSY|EPERM|resource busy or locked|being used by another process/i, 'A file is open in another program (usually Excel or a PDF viewer). Close it and press the button again.'],
-  [/ENOENT|no such file/i, 'A file the job needs has gone or moved. Check the job folder in OneDrive, then press the button again.'],
-  [/EACCES|permission denied/i, 'Windows would not let the app write there. Check the folder is not read-only and OneDrive is not blocking it.'],
-  [/Claude 401|invalid x-api-key|authentication/i, 'The Claude key is wrong or has expired. Put the right key in Settings.'],
+  [/\bEBUSY\b|\bEPERM\b|resource busy or locked|being used by another process/i, 'A file is open in another program (usually Excel or a PDF viewer). Close it and press the button again.'],
+  [/\bENOENT\b|no such file or directory/i, (m) => `A file the job needs has gone or moved${(m.match(/'([^']+)'/) || [])[1] ? ': ' + (m.match(/'([^']+)'/) || [])[1] : ''}. Check the job folder in OneDrive, then press the button again.`],
+  [/\bEACCES\b|EACCES: permission denied/i, 'Windows would not let the app write there. Check the folder is not read-only and OneDrive is not blocking it.'],
+  [/Claude 401|invalid x-api-key|authentication_error/i, 'The Claude key is wrong or has expired. Put the right key in Settings.'],
   [/Claude 429|rate.?limit/i, 'Claude is rate-limited. Wait a minute and press the button again.'],
   [/Claude 5\d\d|overloaded|Claude 529/i, 'Claude is busy at their end. Wait a minute and press the button again.'],
-  [/fetch failed|ENOTFOUND|ECONNRESET|ETIMEDOUT|EAI_AGAIN|network/i, 'No connection to Claude. Check the internet or the VPN, then press the button again.'],
+  [/fetch failed|\bENOTFOUND\b|\bECONNRESET\b|\bETIMEDOUT\b|\bEAI_AGAIN\b|network error|socket hang up/i, 'No connection to Claude. Check the internet or the VPN, then press the button again.'],
   [/No Claude API key/i, 'No Claude key yet. Put it in Settings first.'],
-  [/did not return JSON|cut off|max_tokens/i, 'The reply was cut off before it finished. Press the button again; it usually goes through second time.'],
+  [/did not return JSON|\bmax_tokens\b|reply was cut off/i, 'The reply was cut off before it finished. Press the button again; it usually goes through second time.'],
   [/cables that overlap or cross/i, 'The layout could not avoid cables crossing. Press Make again; if it happens twice, tell Tom which cables it names.'],
   [/No cable schedule/i, 'There is no cable schedule to work from. Put it in the job folder (7.8 Schedules or 008) and press the button again.'],
   [/No project folder|outside your Projects/i, 'This job has no folder linked. Open it from the Projects list so the app knows where it lives.'],
@@ -51,8 +51,9 @@ const PLAIN = [
 ];
 function plain(e) {
   const m = String(e && e.message || e || '').replace(/^Error invoking remote method '[^']+': (Error: )?/, '');
-  for (const [re, text] of PLAIN) if (re.test(m)) return text;
-  return m.length > 220 ? m.slice(0, 220) + '…' : m;
+  // the canned words are for the app's own faults (a locked file, no connection); an agent's question or a long explanation is shown as it is
+  if (!(e && e.question)) for (const [re, text] of PLAIN) if (re.test(m)) return typeof text === 'function' ? text(m) : text;
+  return m.length > 1500 ? m.slice(0, 1500) + '…' : m;
 }
 
 module.exports = { init, start, stage, finish, stop, stopFor, signal, aborted, live, estimate, plain };

@@ -188,6 +188,8 @@ function register({ ipcMain, HANDLERS, BIZ, claudeFull, getAgents }) {
     } catch (err) { runs.finish(R.id, { ok: false, error: runs.plain(err) }); throw err; }
   }
   const DR = () => require('./docrev');
+  // the deliverable as Wren / Lex must write it: the row's own number (the client's when it has one), its revision, the approval initials
+  const rowFor = (jobId, d, people, revision) => { const prev = delivOf(jobId)[d.no] || {}; const cur = (revision && revision.rev) || prev.rev || d.rev || ''; return { no: realNo(d) || '', rev: revision && revision.to ? revision.to : (cur || 'P01'),   /* a remake stays at its revision; a new revision says which */ title: cleanTitle(d) || d.title, people: people || prev.people || {} }; };
   // what Tom answered to the agent's questions, carried into the next go (Wren and Lex read it with the request)
   const answered = (answers) => (answers || []).filter(a => a && String(a.a || '').trim()).length ? `\n\nYOU ASKED, TOM ANSWERED (go ahead on these answers; do not ask again):\n${answers.filter(a => String(a.a || '').trim()).map(a => `Q: ${a.q}\nA: ${a.a}`).join('\n')}` : '';
   async function make({ jobId, no, answers = [], note = '', revision = null, request: asked = '', skills, people }) {
@@ -217,11 +219,12 @@ function register({ ipcMain, HANDLERS, BIZ, claudeFull, getAgents }) {
         if (r.questions) { runs.finish(R.id, { ok: true }); return setDeliv(jobId, no, { status: 'needs you', questions: r.questions, summary: 'Dex has questions' }); }
         files = (r.sheets && r.sheets.length ? r.sheets.map(s => s.path) : [r.path]).filter(Boolean); pdfs = r.pdfs || [];
       } else if (k.agent === 'Lex') {
-        runs.stage(R.id, 'Lex is building the workbook', 20); r = await call('o365:excel', { run: R.id, jobId, request: (asked || plan({ jobId, no }).request) + (note ? ' ' + note : '') + answered(answers), skills, files: inputFiles(plan({ jobId, no }).inputPaths) });
+        runs.stage(R.id, 'Lex is building the workbook', 20); r = await call('o365:excel', { row: rowFor(jobId, d, people, revision), run: R.id, jobId, request: (asked || plan({ jobId, no }).request) + (note ? ' ' + note : '') + answered(answers), skills, files: inputFiles(plan({ jobId, no }).inputPaths) });
         files = [r.path].filter(Boolean);
       } else {
-        runs.stage(R.id, 'writing the document', 20); r = await call('o365:word', { run: R.id, jobId, request: (asked || plan({ jobId, no }).request) + (note ? ' ' + note : '') + answered(answers), skills, files: inputFiles(plan({ jobId, no }).inputPaths) });
+        runs.stage(R.id, 'writing the document', 20); r = await call('o365:word', { row: rowFor(jobId, d, people, revision), run: R.id, jobId, request: (asked || plan({ jobId, no }).request) + (note ? ' ' + note : '') + answered(answers), skills, files: inputFiles(plan({ jobId, no }).inputPaths) });
         files = [r.path].filter(Boolean);
+        if (/^TBC-/i.test(no) && QS.test(String(r.docNumber || '')) && desk.renameRow(jobId, no, r.docNumber)) no = r.docNumber;   // a TBC row takes the number Wren gave the document
       }
       // Wren's and Lex's documents come with their PDF, made by Word / Excel on this PC (contents and page numbers updated first)
       if ((k.agent === 'Wren' || k.agent === 'Lex') && files.length) {
@@ -230,7 +233,7 @@ function register({ ipcMain, HANDLERS, BIZ, claudeFull, getAgents }) {
       }
       if (calOpen.length && !r.incomplete && !r.questions) for (const c of calOpen) { try { desk.saveCrs(jobId, { no: c.no, status: 'Responded', response: `Fixed in ${r.revision || d.rev || 'the remake'}` }); } catch {} }
       runs.finish(R.id, { ok: true });
-      return setDeliv(jobId, no, { status: r.incomplete ? 'needs you' : 'made', questions: null, check: null, files, pdfs, given: { file: r.givenFile || '', request: r.request || '', skills: r.skills || [], read: r.read || [], fromSchedule: r.fromSchedule || [], queries: r.queries || [], warnings: r.warnings || [], at: new Date().toISOString() }, rev: r.revision || d.rev || '', archived: r.archived || 0, summary: (r.incomplete ? 'CUT SHORT: ' : '') + (r.summary || 'Made') + (r.fromSchedule && r.fromSchedule.length ? ` · ${r.fromSchedule.length} value(s) matched to the schedule` : '') + (r.queries && r.queries.length ? ` · ${r.queries.length} question(s) to the RFI register` : '') + (r.warnings && r.warnings.length ? ' · LAYOUT: ' + r.warnings.join('; ') : ''), notes: r.notes || [], warning: r.borderWarning || '' });
+      return setDeliv(jobId, no, { status: r.incomplete ? 'needs you' : 'made', questions: null, check: null, files, pdfs, given: { file: r.givenFile || '', request: r.request || '', skills: r.skills || [], read: r.read || [], fromSchedule: r.fromSchedule || [], queries: r.queries || [], warnings: r.warnings || [], at: new Date().toISOString() }, rev: r.revision || (k.agent !== 'Dex' ? rowFor(jobId, d, people, revision).rev : '') || d.rev || '', archived: r.archived || 0, summary: (r.incomplete ? 'CUT SHORT: ' : '') + (r.summary || 'Made') + (r.fromSchedule && r.fromSchedule.length ? ` · ${r.fromSchedule.length} value(s) matched to the schedule` : '') + (r.queries && r.queries.length ? ` · ${r.queries.length} question(s) to the RFI register` : '') + (r.warnings && r.warnings.length ? ' · LAYOUT: ' + r.warnings.join('; ') : ''), notes: r.notes || [], warning: r.borderWarning || '' });
     } catch (e) { const stopped = runs.aborted(R.id);
       if (e && e.question && !stopped) {   // the agent asked something: shown in full on the row with a box to answer, and in Waiting on you
         runs.finish(R.id, { ok: true }); BIZ.log({ who: k.agent, action: 'Has a question before making it', jobId, detail: `${no}: ${String(e.message).slice(0, 300)}` });

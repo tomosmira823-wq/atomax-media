@@ -139,7 +139,7 @@ ${AN.GUIDE}`;
   const parse = (text) => { try { return dxfmaker.parseReply(text); } catch { return null; } };
 
   // one turn of the chat. role: 'word' | 'excel'
-  async function chatTurn({ jobId = '', role = 'word', text = '', files = [], skills, prepared = '', run = '', fresh = false, keyOverride = '' }) {
+  async function chatTurn({ jobId = '', role = 'word', text = '', files = [], skills, prepared = '', run = '', fresh = false, keyOverride = '', row = null }) {   // row: { no, rev, title, people } when Make writes a deliverable: its own number, revision and approval, never one Wren picks
     const who = role === 'word' ? 'Wren' : 'Lex', what = role === 'word' ? 'document' : 'workbook';
     if (!String(text).trim() && !(files || []).length) throw new Error(`Say what ${who} should do`);
     const d = BIZ.data(), job = jobId && d.jobs.find(j => j.id === jobId);
@@ -206,9 +206,10 @@ ${AN.GUIDE}`;
         }
         spec.sections = [{ content: nodes }];
         const j = job || { number: 'TBC', name: '', client: '', drawings: [] };
-        const num = thread.docNumber || (job ? biz.nextDocNumber(d, job) : 'TBC'); thread.docNumber = num;
-        const cfg = biz.docConfig({ kind: 'report', job: j, docNumber: num, revision: 'P01', drafted: spec, prepared, description: 'Draft for review' }); cfg.logoPath = LOGO;
-        let file = thread.lastFile && fs.existsSync(thread.lastFile) ? thread.lastFile : outFile(job && job.id, `${num !== 'TBC' ? num + ' ' : ''}${spec.documentTitle || 'Document'} P01 DRAFT`, '.docx');
+        const num = (row && row.no) || thread.docNumber || (job ? biz.nextDocNumber(d, job) : 'TBC'); thread.docNumber = num;
+        const rev = (row && row.rev) || 'P01', pp = (row && row.people) || {};
+        const cfg = biz.docConfig({ kind: 'report', job: j, docNumber: num, revision: rev, drafted: spec, prepared: pp.drawn || prepared, checked: pp.checked || '', approved: pp.approved || '', description: row ? 'Preliminary - issued for comment' : 'Draft for review' }); cfg.logoPath = LOGO;
+        let file = thread.lastFile && fs.existsSync(thread.lastFile) ? thread.lastFile : outFile(job && job.id, row ? `${num} ${rev} ${row.title || spec.documentTitle || 'Document'}` : `${num !== 'TBC' ? num + ' ' : ''}${spec.documentTitle || 'Document'} P01 DRAFT`, '.docx');
         const buf = await Packer.toBuffer(buildAtomaxDoc(cfg));
         try { fs.writeFileSync(file, buf); } catch { file = outFile(job && job.id, path.basename(file, '.docx'), '.docx'); fs.writeFileSync(file, buf); }   // open in Word: a new copy beside it
         out.path = file; out.title = spec.documentTitle || ''; out.docNumber = num; out.figures = fig;
@@ -218,7 +219,7 @@ ${AN.GUIDE}`;
         BIZ.log({ who, action: thread.messages.some(m => m.doc) ? 'Changed a document' : 'Wrote a document', jobId: job ? job.id : '', detail: path.basename(file) + (fig ? ` · ${fig} figure${fig === 1 ? '' : 's'}` : '') });
       } else {
         const sheets = spec.sheets.map(sh => { if (sh.fromTable) { const t = R.tables.find(x => x.id === String(sh.fromTable)); if (t) return { name: sh.name || t.title || t.id, columns: t.headers.map(h => ({ header: h })), rows: t.rows }; } return sh; }).filter(sh => Array.isArray(sh.rows));
-        let file = thread.lastFile && fs.existsSync(thread.lastFile) ? thread.lastFile : outFile(job && job.id, spec.filename || (job ? job.number + ' workbook' : 'Workbook'), '.xlsx', /schedule|register|list|index/i.test(text + ' ' + (spec.filename || '')) ? 'schedules' : /calc/i.test(text) ? 'calcs' : 'documents');
+        let file = thread.lastFile && fs.existsSync(thread.lastFile) ? thread.lastFile : outFile(job && job.id, row ? `${row.no} ${row.rev || 'P01'} ${row.title || spec.filename || 'Workbook'}` : (spec.filename || (job ? job.number + ' workbook' : 'Workbook')), '.xlsx', /schedule|register|list|index/i.test(text + ' ' + (spec.filename || '')) ? 'schedules' : /calc/i.test(text) ? 'calcs' : 'documents');
         const buf = writeXlsx(sheets); try { fs.writeFileSync(file, buf); } catch { file = outFile(job && job.id, path.basename(file, '.xlsx'), '.xlsx'); fs.writeFileSync(file, buf); }
         out.path = file; out.summary = spec.summary || ''; out.sheets = sheets.map(sh => ({ name: sh.name, rows: (sh.rows || []).length })); const s0 = sheets[0] || { columns: [], rows: [] }; out.preview = { columns: (s0.columns || []).map(c => c.header), rows: (s0.rows || []).slice(0, 25) };
         thread.lastSpec = spec; thread.lastFile = file;
@@ -245,14 +246,14 @@ ${AN.GUIDE}`;
     const r = await chatTurn({ jobId, role, text: request, files: [], run, prepared, fresh: true, keyOverride: `once:${role}:${jobId}:${Date.now()}` });
     if (!r.path) throw Object.assign(new Error(r.say), { question: true }); return r;   // Wren / Lex asking, not a fault: Make shows it as a question to answer
   };
-  ipcMain.handle('o365:excel', wrap(async ({ jobId = '', request = '', files = [], skills, run = '' }) => {
+  ipcMain.handle('o365:excel', wrap(async ({ jobId = '', request = '', files = [], skills, run = '', row = null }) => {
     if (!request.trim()) throw new Error('Say what Lex should make');
-    const r = await chatTurn({ jobId, role: 'excel', text: request, files, skills, run, fresh: true, keyOverride: `once:excel:${jobId}:${Date.now()}` });
+    const r = await chatTurn({ jobId, role: 'excel', text: request, files, skills, run, row, fresh: true, keyOverride: `once:excel:${jobId}:${Date.now()}` });
     if (!r.path) throw Object.assign(new Error(r.say), { question: true }); return r;   // Wren / Lex asking, not a fault: Make shows it as a question to answer
   }));
-  ipcMain.handle('o365:word', wrap(async ({ jobId = '', request = '', files = [], skills, prepared = '', run = '' }) => {
+  ipcMain.handle('o365:word', wrap(async ({ jobId = '', request = '', files = [], skills, prepared = '', run = '', row = null }) => {
     if (!request.trim()) throw new Error('Say what Wren should write');
-    const r = await chatTurn({ jobId, role: 'word', text: request, files, skills, prepared, run, fresh: true, keyOverride: `once:word:${jobId}:${Date.now()}` });
+    const r = await chatTurn({ jobId, role: 'word', text: request, files, skills, prepared, run, row, fresh: true, keyOverride: `once:word:${jobId}:${Date.now()}` });
     if (!r.path) throw Object.assign(new Error(r.say), { question: true }); return r;   // Wren / Lex asking, not a fault: Make shows it as a question to answer
   }));
 }

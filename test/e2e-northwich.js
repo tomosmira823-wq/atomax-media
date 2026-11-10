@@ -325,6 +325,13 @@ const step = (name, fn) => { try { const r = fn(); if (r && r.then) return r.the
           const Wq = await call('jobs:waiting', {}).catch(() => null); if (Wq) assert.ok(JSON.stringify(Wq).includes('Wren has questions on X11475-0000-06-08-0003'), 'in Waiting on you');
           global.__o365 = [{ say: 'Still asking.' }]; await call('jobs:make', { jobId: J.id, no: 'X11475-0000-06-08-0003', answers: [{ q: 'Read it.', a: 'Use RFI-011 for the OEM data' }] });
           assert.ok(/YOU ASKED, TOM ANSWERED[\s\S]*Q: Read it\.\nA: Use RFI-011 for the OEM data/.test(global.__o365Asked), 'the answer goes to Wren'); global.__o365 = null; }
+        // Gwrhyd 14:01: all 8 of Wren's documents said Doc No. X101126-0000-06-09-0001; Make's document carries the row's own number, revision and initials
+        { global.__o365 = [() => JSON.stringify({ say: 'Written.', document: { documentTitle: 'Harmonic Assessment to EREC G5/5', projectDetails: [], sections: [{ content: [{ type: 'heading1', text: 'Results' }, { type: 'paragraph', text: 'THD 1.12 %.' }] }] } })];
+          const W = await call('jobs:make', { jobId: J.id, no: 'X11475-0000-06-08-0003', people: { drawn: 'DM', checked: 'TM', approved: '' } }); global.__o365 = null;
+          assert.strictEqual(W.status, 'made', JSON.stringify(W)); assert.ok(/X11475-0000-06-08-0003 P01 Harmonic Assessment to EREC G5-5\.docx$|X11475-0000-06-08-0003 P01 Harmonic Assessment to EREC G5\/5/.test(W.files[0]) || /X11475-0000-06-08-0003 P01/.test(W.files[0]), W.files[0]);
+          const z = await require('jszip').loadAsync(fs.readFileSync(W.files[0])); const all = (await Promise.all(Object.keys(z.files).filter(n => /^word\/(header\d*|document)\.xml$/.test(n)).map(n => z.file(n).async('string')))).join(' ').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
+          assert.ok(/X11475-0000-06-08-0003/.test(all) && !/06-09-0001/.test(all), 'the row\'s number: ' + all.slice(0, 400)); assert.ok(/P01 DM TM/.test(all), 'approval initials: ' + (all.match(/Document Approval.{0,120}/) || [''])[0]);
+          fs.unlinkSync(W.files[0]); const D0 = desk.load(J.id); delete (D0.deliv || {})['X11475-0000-06-08-0003']; desk.saveRaw(J.id, D0); }
         for (const x of ['.docx', '.pdf']) fs.unlinkSync(path.join(dir, base + x)); }
       // Gwrhyd: the studies handed over as X281026 P01. Make issues the handed-over Word file under the row's number as it is (no Wren
       // rewrite): numbers and cross-references changed, the project reference too, dated today; the RFI register brings its RFIs
@@ -449,6 +456,30 @@ const step = (name, fn) => { try { const r = fn(); if (r && r.then) return r.the
     global.__o365 = [{ say: 'Got the board list.' }];
     const r = await call('o365:chat', { jobId: job2.id, role: 'word', text: 'Read this', files: [{ name: 'LV_Board_Survey.xlsx', base64: Buffer.from(xlsx).toString('base64') }], fresh: true });
     assert.deepStrictEqual(r.warnings, [], 'no read errors: ' + JSON.stringify(r.warnings)); assert.ok(/TABLE "LV_Board_Survey \/ Boards": 120 rows, 3 columns/.test(global.__o365Asked) && /TABLE "LV_Board_Survey \/ Meters": 70 rows/.test(global.__o365Asked), 'profile per sheet given: ' + (global.__o365Asked.match(/ATTACHED WORKBOOK[^\n]*\n[^\n]*/) || [''])[0]);
+  });
+  // the real Gwrhyd handoff, when GWRHYD points at it (10 Nov): a new job laid out the way Tom's is (the handoff's Word files in
+  // 7.0 Incoming Correspondance, its RFI register in 7.8 Schedules), the rows as the job has them, Make everything: all nine issued as
+  // they are under the job's numbers, DM / TM, nothing asked of Wren, nothing of X281026 left
+  if (process.env.GWRHYD && fs.existsSync(process.env.GWRHYD)) await step('Gwrhyd handoff: Make everything issues the nine handed-over documents under X101126', async () => {
+    const H = process.env.GWRHYD, folder = projects.createJobFolder(PROJECTS, 'X101126', 'Gwrhyd PV Farm');
+    const inc = path.join(folder, '7. Electrical', '7.0 Incoming Correspondance'), sch = path.join(folder, '7. Electrical', '7.8 Schedules'); fs.mkdirSync(inc, { recursive: true }); fs.mkdirSync(sch, { recursive: true });
+    const W = path.join(H, '01_Issued_Deliverables_P01', 'Word'); for (const n of fs.readdirSync(W)) fs.copyFileSync(path.join(W, n), path.join(inc, n));
+    fs.copyFileSync(path.join(H, '01_Issued_Deliverables_P01', 'X281026-0000-06-22-0001_P01 RFI Register.xlsx'), path.join(sch, 'X281026-0000-06-22-0001_P01 RFI Register.xlsx'));
+    const rows = [['01-0001', 'Request for Information Register'], ['08-0001', 'Short Circuit Study and Review of UCE Fault Level Study'], ['08-0002', 'Load Flow and Reactive Power Capability Study'], ['08-0003', 'Harmonic Assessment to EREC G5/5'], ['08-0004', 'Voltage Fluctuation, Flicker (P28) and Unbalance (P29) Study'], ['08-0005', '33 kV Protection Co-ordination Study'], ['74-0001', 'Earthing Design Basis and EPR Assessment'], ['08-0006', 'EREC G99 Type B and G100 Compliance Study'], ['05-0001', 'Intertripping Scheme Functional Design Specification (Gwrhyd, NGED Haul y Gwrhyd 33 kV source to site 33 kV incomer)']];
+    const job = biz.saveJob(BIZ.data(), { number: 'X101126', name: 'Gwrhyd PV Farm', client: 'OCU Group', folder, drawings: rows.map(([n, t]) => ({ no: 'X101126-0000-06-' + n, title: t, rev: '', status: 'To do' })) }, 'Tom'); BIZ.store.save();
+    desk.addInputs(job.id, { questions: ['What is the BESS make and model?'] });   // the job's own RFIs before the register comes over
+    await call('proj:gather', { jobId: job.id }).catch(() => {});
+    const P = await call('jobs:plan', { jobId: job.id, no: 'X101126-0000-06-08-0001' }); assert.ok(P.carry && /^Issue X281026-0000-06-09-0001/.test(P.request), 'the Make screen: ' + JSON.stringify({ carry: P.carry, noCarry: P.noCarry }));
+    await call('jobs:make', { jobId: job.id, no: 'X101126-0000-06-08-0001', people: { drawn: 'DM', checked: 'TM', approved: '' } });   // the initials, as the Make screen gives them
+    global.__o365 = [() => { throw new Error('Wren must not be asked'); }];
+    await call('jobs:makeAll', { jobId: job.id }); global.__o365 = null;
+    const O = await call('jobs:overview', { jobId: job.id }), DT = require(path.join(ROOT, 'datatable.js')), JSZip = require('jszip');
+    for (const [n] of rows) { const no = 'X101126-0000-06-' + n, w = O.rows.find(r => r.no === no).work; assert.ok(w && w.status === 'made', no + ': ' + JSON.stringify(w));
+      const f = w.files[0]; assert.ok(path.basename(f).startsWith(no + ' P01 '), f);
+      const z = await JSZip.loadAsync(fs.readFileSync(f)); let all = ''; for (const x of Object.keys(z.files).filter(x => /\.xml$/.test(x))) all += await z.file(x).async('string');
+      assert.ok(!/X281026/.test(all), no + ': X281026 left'); if (/\.docx$/.test(f)) { const t = await DT.docxText(fs.readFileSync(f)); assert.ok(/P01 \| DM \| TM \|/.test(t), no + ': approval ' + (t.match(/P01 \|[^\n]*/) || [''])[0]); assert.ok(all.includes(no), no + ': its number'); } }
+    const V = desk.load(job.id); assert.strictEqual(V.rfis.length, 24, 'the register\'s 24 RFIs'); assert.ok(V.rfisBefore.some(r => /BESS make and model/.test(r.q)), 'the job\'s own kept aside');
+    return '9 made';
   });
   await step('365 room: a turn that dies lands in the chat as a message, and nothing is left pending', async () => {
     global.__o365 = [() => { throw new Error('the model fell over'); }];
