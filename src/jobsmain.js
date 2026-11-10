@@ -144,6 +144,7 @@ function register({ ipcMain, HANDLERS, BIZ, claudeFull, getAgents }) {
     const request = k.agent === 'Dex' ? `${k.verb}: ${title}${num ? ` (drawing ${num})` : ''}. Use the job's inputs, every item on them for this drawing and nothing else.`
       : k.agent === 'Lex' ? `${k.verb} ${title} for job ${job.number}${num ? ` (document ${num})` : ''} from the job's inputs and the approved master device list. House template from your skill.`
       : `${k.verb} ${title} for job ${job.number}${num ? ` (document ${num})` : ''} from the job's inputs.`;
+    let carry = null; if (k.agent === 'Wren' || k.agent === 'Lex' || k.kind === 'rfi') { try { const e = require('./carryover').earlierVersion(d, jobFiles(jobId)); if (e) carry = e.name; } catch {} }
     const want = k.kind === 'bcd' ? 'cable schedule instrument index io list bcd' : k.kind === 'sld' ? 'single line sld load schedule cable schedule protection' : k.kind === 'earthing' ? 'earthing cable schedule' : k.kind === 'schedule' ? 'cable schedule instrument index io list' : title;
     // Wren also reads Word files (an earlier version of the same document is the best input there is); a Word file and its own PDF are one input, the Word one
     let inputPaths = job.folder ? BIZ.projects.relevantFiles(job.id, title + ' ' + want, { exts: ['.pdf', '.xlsx', '.xlsm', '.csv', ...(k.agent === 'Wren' ? ['.docx'] : [])], max: 8 }) : [];
@@ -153,13 +154,44 @@ function register({ ipcMain, HANDLERS, BIZ, claudeFull, getAgents }) {
     // drawn / checked / approved: this drawing's from last time, else the last ones used on the job
     const dl = delivOf(jobId), people = (dl[no] || {}).people || Object.values(dl).map(x => x.people).filter(Boolean).pop() || null;
     const rev = (dl[no] || {}).files ? ((dl[no] || {}).rev || 'P01') : '';
-    return { inputPaths, agent: k.agent, agentId: AGENT_ID[k.agent] || '', kind: k.kind, number: num, title, request, inputs, folder: job.folder || '', people, rev, nextRev: rev ? require('./docnumber').nextRev(rev) : 'P01' };
+    const carryReq = carry ? `Issue ${carry} under ${num || d.no} as it is: every result, table, figure and assumption unchanged; the old document numbers and project reference changed to this job's (cross-references included); the P01 row, header and cover dated today.${k.kind === 'rfi' ? ' Its RFIs become the job\'s RFIs.' : ''}` : '';
+    return { carry, inputPaths, agent: k.agent, agentId: AGENT_ID[k.agent] || '', kind: k.kind, number: num, title, request: carryReq || request, inputs: carry ? [carry] : inputs, folder: job.folder || '', people, rev, nextRev: rev ? require('./docnumber').nextRev(rev) : 'P01' };
   }
   // the inputs the Make screen lists, sent to Wren / Lex as the files themselves (they were only listed before: Gwrhyd 10 Nov, "the harmonic inputs didn't reach me")
   const inputFiles = (paths) => (paths || []).filter(p => { try { return fs.statSync(p).size <= 25 * 1024 * 1024; } catch { return false; } }).map(p => ({ name: path.basename(p), base64: fs.readFileSync(p).toString('base64') }));
+  async function carryOver(jobId, d, k, people) {
+    const C = require('./carryover'), files = jobFiles(jobId), e = C.earlierVersion(d, files); if (!e) return null;
+    const job = jobOf(jobId), map = C.numberMap(job.drawings, files), no = d.no;
+    const R = runs.start({ kind: `${k.kind}:carry`, who: k.agent === 'Lex' || k.kind === 'rfi' ? (k.agent || 'Eli') : 'Wren', jobId, no }); runs.stage(R.id, `issuing ${e.name} under ${no}`, 30);
+    try {
+      const buf = fs.readFileSync(e.abs), xl = /\.(xlsx|xlsm)$/i.test(e.name);
+      const out = xl ? await C.reissueXlsx(buf, { map }) : await C.reissueDocx(buf, { map });
+      const rev = (xl ? DR().revOfName(e.name) : out.rev) || 'P01', title = cleanTitle(d) || d.title;
+      const dir = BIZ.outputDirFor(jobId, xl ? 'rfi' : 'documents') || path.dirname(e.abs); fs.mkdirSync(dir, { recursive: true });
+      const file = path.join(dir, `${no} ${rev} ${title}`.replace(/[\\/:*?"<>|]+/g, '-').slice(0, 150) + path.extname(e.name));
+      if (path.resolve(file) === path.resolve(e.abs)) throw new Error('the earlier version is already under this number');
+      fs.writeFileSync(file, out.buf);
+      let pdfs = [], note = '';
+      try { const pdf = file.replace(/\.[^.]+$/, '.pdf'); await require('./officepdf').toPdf(file, pdf); pdfs = [pdf]; } catch (err) { note = ` PDF not made here (${runs.plain(err)}): it is made with the issue.`; }
+      let rfis = '';
+      if (k.kind === 'rfi') {   // the register's RFIs become the job's, so the documents' RFI references and the register agree; the ones the job had are kept aside
+        const list = await C.rfisOf(buf);
+        if (list.length) { const D = desk.load(jobId); D.rfisBefore = [...(D.rfisBefore || []), ...(D.rfis || []).map(r => ({ ...r, setAside: new Date().toISOString() }))]; D.rfis = list.map(r => ({ ...r, from: e.name })); D.rfiRegisterRev = rev; D.rfiRegisterFile = file; desk.saveRaw(jobId, D); rfis = ` The job's RFIs are now its ${list.length} (the ${(D.rfisBefore || []).length} the job had before are kept aside).`; }
+      }
+      runs.finish(R.id, { ok: true });
+      const old = e.no;
+      BIZ.log({ who: 'Wren', action: 'Issued a handed-over document under its job number', jobId, detail: `${e.name} -> ${path.basename(file)}` });
+      return setDeliv(jobId, no, { status: 'made', rev, files: [file], pdfs, by: k.agent || 'Eli', questions: null, check: null, people: people || null,
+        summary: `${old} ${rev} issued as ${no} ${rev}: content as it was; ${out.changes.renumbered} number${out.changes.renumbered === 1 ? '' : 's'} changed to this job's${out.changes.dated ? ', dated today' : ''}.${rfis}${note}`,
+        given: { file: e.abs, request: 'carried over', read: [e.name], at: new Date().toISOString() } });
+    } catch (err) { runs.finish(R.id, { ok: false, error: runs.plain(err) }); throw err; }
+  }
+  const DR = () => require('./docrev');
   async function make({ jobId, no, answers = [], note = '', revision = null, request: asked = '', skills, people }) {
     const job = jobOf(jobId), d = job.drawings.find(x => x.no === no); if (!d) throw new Error('Not on the drawing list: ' + no);
     const k = kindOf(d); if (!k.agent) throw new Error(`No agent makes ${d.title} yet. Do this one by hand.`);
+    // a document handed over from earlier work under another number: issued as it is under this row's number (see carryover.js)
+    if (k.agent === 'Wren' || k.agent === 'Lex' || k.kind === 'rfi') { const c = await carryOver(jobId, d, k, people); if (c) return c; }
     if (k.kind === 'rfi') {   // the job's RFIs, on the Atomax RFI register under this row's number
       if (!(desk.load(jobId).rfis || []).length) throw new Error('There are no RFIs on this job yet: raise them on Inputs & setup (or ask Eli), then make the register.');
       const file = await desk.writeRfiRegister(jobId, { templateDir: BIZ.projects.templateDir(), people: people || {} }); if (!file) throw new Error('The RFI register needs the job folder linked first.');

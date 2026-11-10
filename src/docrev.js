@@ -170,4 +170,4 @@ function revName(name, from, to, renumber) {
 }
 const revOfName = (name) => { const m = String(name).match(/\b([PCAX]\d{2})\b(?!.*\b[PCAX]\d{2}\b)/); return m ? m[1].toUpperCase() : ''; };
 
-module.exports = { revUpDocx, revUpXlsx, revName, revOfName, nextOf, todayLike };
+module.exports = { revUpDocx, revUpXlsx, revName, revOfName, nextOf, todayLike, replaceAcrossRuns, text, cellsOf, setTc, DATE };
