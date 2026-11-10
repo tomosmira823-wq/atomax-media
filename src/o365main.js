@@ -110,7 +110,7 @@ function register({ ipcMain, claudeFull, BIZ, checker, userDir, projects }) {
   const outFile = (jobId, base, ext, kind = 'documents') => {
     const dir = (jobId && BIZ.outputDirFor(jobId, kind)) || path.join(userDir(), 'office365');
     fs.mkdirSync(dir, { recursive: true });
-    const safe = String(base || 'Document').replace(/[\\/:*?"<>|]+/g, '-').replace(/\s+/g, ' ').trim().slice(0, 80) || 'Document';
+    const safe = String(base || 'Document').replace(/[\\/:*?"<>|]+/g, '-').replace(/\s+/g, ' ').trim().replace(/^(.{0,140})(\s.*)?$/, '$1').replace(/\s*\([^)]*$/, '').trim() || 'Document';   // whole words, up to 140 characters (an 80-character cut left 'Design Specific.docx'); a bracket left open is dropped
     let p = path.join(dir, safe + ext), i = 2; while (fs.existsSync(p)) p = path.join(dir, `${safe} (${i++})${ext}`);
     return p;
   };
