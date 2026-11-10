@@ -74,7 +74,7 @@ function sourceFor(d, files) {
   return { dxf: dxf ? dxf.rel : '', dwg: dwg ? dwg.rel : '', pdf: pdf ? pdf.rel : '', docx: docx ? docx.rel : '', xlsx: xlsx ? xlsx.rel : '', fileNo, fileRev: revInName((dxf || dwg || docx || xlsx || pdf || {}).name || '') };
 }
 // the group a row sits in on the Deliverables tab: a numbered drawing (QS 006 disciplines 70-79 are drawings, 23 a schedule) or by its words
-const groupOf = (d) => { const t = (String(d.no).match(/-(\d{2})-\d{4,5}(?:\b|_)/) || [])[1] || ''; if (/^7\d$/.test(t) && !(t === '74' && EARTH_DOC.test(d.title || ''))) return 'drawing';   /* 74 is the earthing report too */ if (t === '23') return 'schedule'; return require('./jobdesk').kindTag(d.type || '', d.title).group; };
+const groupOf = (d) => { const t = (String(d.no).match(/-(\d{2})-\d{4,5}(?:\b|_)/) || [])[1] || ''; if (/^7\d$/.test(t) && !(t === '74' && EARTH_DOC.test(d.title || ''))) return 'drawing';   /* 74 is the earthing report too */ if (t === '23' || t === '01') return 'schedule'; if (/^(0[0-9]|1[1-9]|2[0-2])$/.test(t) && t !== '10' && t !== '12') return 'document';   /* QS 006: 05 specs, 08 calcs, 09 reports... are documents whatever their words ("Short Circuit Study" is not a circuit drawing) */ return require('./jobdesk').kindTag(d.type || '', d.title).group; };
 const realNo = (d) => /^TBC-/i.test(d.no) ? ((String(d.title).match(QS) || [])[0] || '') : d.no;
 const cleanTitle = (d) => String(d.title).replace(QS, '').replace(/\(\s*\)/g, '').replace(/\s+P\d{1,2}\s*$/i, '').replace(/\s{2,}/g, ' ').trim();
 const AGENT_ID = { Dex: 'dex', Lex: 'excel', Wren: 'word' };
@@ -501,7 +501,8 @@ function register({ ipcMain, HANDLERS, BIZ, claudeFull, getAgents }) {
     const ov = overview(jobId), made = ov.rows.filter(r => r.work && r.work.status === 'made' && (r.work.files || []).length);
     if (!made.length) throw new Error('Nothing is made yet on this job: make the deliverables first.');
     const dir = openIssueDir(jobId), natives = path.join(dir, `${path.basename(dir)} NATIVES`); const copied = [], missing = [];
-    for (const r of made) for (const f of [...(r.work.files || []), ...(r.work.pdfs || [])]) {
+    // a Word / Excel deliverable goes in as its native only: the issue's own PDF of it is made from that (named <no> <rev>.pdf), so there is one PDF per document
+    for (const r of made) for (const f of [...(r.work.files || []), ...((r.work.files || []).some(x => /\.(docx|xlsx|xlsm)$/i.test(x)) ? [] : (r.work.pdfs || []))]) {
       if (!f) continue; if (!fs.existsSync(f)) { missing.push(path.basename(f)); continue; }
       const dst = path.join(/\.(docx|xlsx|xlsm)$/i.test(f) ? natives : dir, path.basename(f)); if (path.resolve(f) === path.resolve(dst)) continue;
       fs.mkdirSync(path.dirname(dst), { recursive: true }); if (!fs.existsSync(dst)) { fs.copyFileSync(f, dst); copied.push(path.basename(f)); }

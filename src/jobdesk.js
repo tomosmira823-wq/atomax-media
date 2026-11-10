@@ -166,6 +166,10 @@ function kindTag(type, title) {
   if (earthDoc && /earthing|bonding/i.test(s)) return { group: 'document', tag: 'RPT' };
   if (t === 'cable schedule') return { group: 'schedule', tag: 'CABLES' };
   if (t === 'calculation') return { group: 'document', tag: 'CALC' };
+  if (/\b(stud(y|ies)|report|assessment|analysis|calculations?|specification|philosophy|proposal|technical note|design basis)\b/i.test(String(title || '')) && !/\b(drawing|diagram|layout|schematic|sld|bcd|arrangement)\b/i.test(String(title || ''))) {   // a study or report is a document, whatever else its title says ("Short Circuit Study")
+    for (const [group, tag, re] of KIND_TAGS) if (group === 'document' && re.test(s)) return { group, tag };
+    return { group: 'document', tag: 'RPT' }; }
+  if (/\b(schedules?|registers?|lists?|index)\b/i.test(String(title || '')) && !/\b(drawing|diagram|layout|schematic)\b/i.test(String(title || ''))) return { group: 'schedule', tag: /cable schedule/i.test(s) ? 'CABLES' : 'LIST' };   // "Circuit schedule" is a schedule, not a circuit drawing
   for (const [group, tag, re] of KIND_TAGS) if (re.test(s)) return { group, tag };
   return { group: 'document', tag: 'DOC' };
 }
