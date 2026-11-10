@@ -40,7 +40,7 @@ Who does what (use these, do not send them to "none"):
 - SLDs and other electrical drawings: "dex".
 - Fault level, load flow, reactive power capability, protection co-ordination, harmonics (G5/5), flicker and unbalance (P28 / P29), G99 / G100 compliance studies, intertripping scheme design: "engineer" for a first-pass note (say in the detail that a full study needs PowerFactory if it does).
 - A quote or fee proposal: "documents".
-Existing jobs: the list of Atomax's jobs (its project folders) is given below the email. If the email is about one or more of them (same job number, site, client or project, e.g. "malt" and "wheat" are two jobs), list every one in "existingJobs" (job numbers) and do not add an "eli" task to set them up again. When it is about several jobs, put the job number each change is for in that change's "job".
+Existing jobs: the list of Atomax's jobs (its project folders) is given below the email. If the email is about one or more of them (same job number, site or project, e.g. "malt" and "wheat" are two jobs; the same client alone is NOT enough: a new site for a client we already work for is a new job), list every one in "existingJobs" (job numbers) and do not add an "eli" task to set them up again. When it is about several jobs, put the job number each change is for in that change's "job".
 Client comments and changes: if the email returns comments on issued drawings or documents (a comment sheet, a marked-up PDF, "please address the following") OR asks for changes to drawings / documents Atomax has already made, even informally ("can you change F3 to 125A on the SLD", "the generator is now 600kVA"), set "commentReturn": true, list every comment under "comments" (document number, or its title when no number is given, e.g. "SLD"; the comment or change as written; who made it) and make one task per document for the agent who changes it (drawings: "dex", schedules and registers: "excel", documents: "documents" or "word").
 Deliverables: list what Atomax is being asked to produce under "deliverables" (e.g. {"type":"BCD","title":"Block cable diagram - Malt RIO1","qty":2}, {"type":"cable schedule","title":"Cable schedule","qty":1}); type is one of BCD, cable schedule, SLD, earthing, loop, layout, document, other.
 Inputs: list every input document the client sent or refers to under "inputs" with its revision as written, and under "missingInputs" what is needed to do the work properly but has not been sent (e.g. instrument index, IO list, cable datasheets, latest tag list, panel GA).
@@ -191,7 +191,9 @@ function register({ ipcMain, dialog, shell, getWin, userDir, claudeFull, checker
     const byNo = jobs.find(j => j.number && hay.includes(j.number.toLowerCase())); if (byNo) return byNo.id;
     const words = (s) => String(s || '').toLowerCase().split(/[^a-z0-9]+/).filter(w => w.length >= 4);
     let best = null, score = 0;
-    for (const j of jobs) { const s = words(j.name + ' ' + j.client).filter(w => hay.includes(w)).length; if (s > score) { score = s; best = j; } }
+    // the site / job name must match: the client alone does not say which job (OCU has Five Fords and Gwrhyd; a new OCU site is a new job)
+    const generic = new Set(['farm', 'solar', 'wind', 'site', 'substation', 'project', 'pumping', 'station', 'works', 'plant', 'line', 'upgrade', 'replacement', 'study', 'studies', 'design', 'grid', 'connection', 'energy', 'power', 'limited', 'group', 'industries', 'services']);
+    for (const j of jobs) { const nameHit = words(j.name).filter(w => !generic.has(w) && hay.includes(w)).length; if (!nameHit) continue; const s = nameHit * 3 + words(j.client).filter(w => !generic.has(w) && hay.includes(w)).length; if (s > score) { score = s; best = j; } }
     return best ? best.id : '';
   }
 
