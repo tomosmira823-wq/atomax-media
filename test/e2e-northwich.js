@@ -458,6 +458,16 @@ const step = (name, fn) => { try { const r = fn(); if (r && r.then) return r.the
     const r = await call('o365:chat', { jobId: job2.id, role: 'word', text: 'Read this', files: [{ name: 'LV_Board_Survey.xlsx', base64: Buffer.from(xlsx).toString('base64') }], fresh: true });
     assert.deepStrictEqual(r.warnings, [], 'no read errors: ' + JSON.stringify(r.warnings)); assert.ok(/TABLE "LV_Board_Survey \/ Boards": 120 rows, 3 columns/.test(global.__o365Asked) && /TABLE "LV_Board_Survey \/ Meters": 70 rows/.test(global.__o365Asked), 'profile per sheet given: ' + (global.__o365Asked.match(/ATTACHED WORKBOOK[^\n]*\n[^\n]*/) || [''])[0]);
   });
+  // Cal (10 Nov audit): checks against the CABLE schedule, not the first schedule-like file (an IO list), and checks a drawing on file that Dex did not make
+  await step('Cal checks a drawing on file against the cable schedule, not the IO list', async () => {
+    const folder = projects.createJobFolder(PROJECTS, 'X101127', 'Cal check job'), sch = path.join(folder, '7. Electrical', '7.8 Schedules'), sld = path.join(folder, '7. Electrical', '7.4 Single Line Diagrams'); fs.mkdirSync(sch, { recursive: true }); fs.mkdirSync(sld, { recursive: true });
+    fs.copyFileSync(path.join(__dirname, 'fixtures', 'northwich-equipment-list.xlsx'), path.join(sch, 'IO list schedule.xlsx')); fs.copyFileSync(path.join(__dirname, 'fixtures', 'northwich-cable-schedule.xlsx'), path.join(sch, 'Cable Schedule Rev 2.xlsx'));
+    const dxf = fs.readdirSync(TMP, { recursive: true }).map(String).find(n => /\.dxf$/i.test(n)); fs.copyFileSync(path.join(TMP, dxf), path.join(sld, 'X101127-01-70-0001 P01.dxf'));
+    const job = biz.saveJob(BIZ.data(), { number: 'X101127', name: 'Cal check job', client: 'Test', folder, drawings: [{ no: 'X101127-01-70-0001', title: 'Single line diagram', rev: 'P01', status: 'Issued' }] }, 'Tom'); BIZ.store.save(); await call('proj:gather', { jobId: job.id }).catch(() => {});
+    let seen = null; HANDLERS['check:run'] = async (_e, a) => { seen = a; return { findings: [], headline: 'all good', markups: { dir: '' } }; };
+    const r = await call('jobs:check', { jobId: job.id, nos: ['X101127-01-70-0001'] }); delete HANDLERS['check:run'];
+    assert.strictEqual(seen.schedule.name, 'Cable Schedule Rev 2.xlsx', 'the cable schedule: ' + seen.schedule.name); assert.deepStrictEqual(seen.drawings.map(d => d.name), ['X101127-01-70-0001 P01.dxf']); assert.strictEqual(r.findings, 0);
+  });
   // the real Gwrhyd handoff, when GWRHYD points at it (10 Nov): a new job laid out the way Tom's is (the handoff's Word files in
   // 7.0 Incoming Correspondance, its RFI register in 7.8 Schedules), the rows as the job has them, Make everything: all nine issued as
   // they are under the job's numbers, DM / TM, nothing asked of Wren, nothing of X281026 left

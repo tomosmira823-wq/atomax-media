@@ -250,13 +250,17 @@ function register({ ipcMain, HANDLERS, BIZ, claudeFull, getAgents }) {
   // Cal checks the made drawings against the job's schedule (made by Lex, else the schedule in the job folder)
   async function check({ jobId, nos }) {
     const job = jobOf(jobId), dl = delivOf(jobId);
-    const sched = job.drawings.filter(d => kindOf(d).kind === 'schedule').map(d => dl[d.no]).find(w => w && w.files && w.files[0] && fs.existsSync(w.files[0]));
-    let schedule = sched && sched.files[0];
-    if (!schedule) schedule = (BIZ.projects.relevantFiles(job.id, 'cable schedule', { exts: ['.xlsx', '.xlsm', '.pdf'], max: 1 }) || [])[0];
+    // the cable schedule, not just any schedule (an instrument index or IO list made by Lex is a schedule too)
+    const schedRows = job.drawings.filter(d => kindOf(d).kind === 'schedule').sort((a, b) => (/cable/i.test(b.title) ? 1 : 0) - (/cable/i.test(a.title) ? 1 : 0));
+    const sched = schedRows.map(d => dl[d.no]).find(w => w && w.files && w.files[0] && fs.existsSync(w.files[0]));
+    let schedule = sched && sched.files[0] && (/cable/i.test(path.basename(sched.files[0])) || schedRows.length === 1) ? sched.files[0] : '';
+    if (!schedule) { const cands = BIZ.projects.relevantFiles(job.id, 'cable schedule', { exts: ['.xlsx', '.xlsm', '.pdf'], max: 6 }) || []; schedule = cands.find(p => /cable/i.test(path.basename(p)) && /sched/i.test(path.basename(p))) || cands.find(p => /cable/i.test(path.basename(p))) || (sched && sched.files[0]) || ''; }
     if (!schedule) throw new Error('No cable schedule to check against: make the schedule first or put it in the job folder');
-    const targets = (nos && nos.length ? nos : Object.keys(dl)).filter(n => dl[n] && dl[n].files && kindOf(job.drawings.find(d => d.no === n) || { no: n }).agent === 'Dex');
+    // Dex's drawings, and any drawing named for the check that has its DXF / PDF in the job folder (one Tom or the client drew)
+    const onFile = {}; if (nos && nos.length) { const fl = jobFiles(jobId); for (const n of nos) { const d = job.drawings.find(x => x.no === n); if (!d) continue; const sf = sourceFor(d, fl); const p = sf.dxf || sf.pdf; if (p) onFile[n] = [path.join(job.folder, p)]; } }
+    const targets = (nos && nos.length ? nos : Object.keys(dl)).filter(n => (dl[n] && dl[n].files && kindOf(job.drawings.find(d => d.no === n) || { no: n }).agent === 'Dex') || onFile[n]);
     // the DXF Dex made, not its PDF: every word exact and each cable's ends traced from the lines (a PDF of an A0 sheet is too small to read)
-    const drawings = targets.flatMap(n => { const dx = (dl[n].files || []).filter(p => /\.dxf$/i.test(p) && fs.existsSync(p)); return dx.length ? dx : [...(dl[n].pdfs || []), ...(dl[n].files || [])]; }).filter(p => fs.existsSync(p));
+    const drawings = targets.flatMap(n => { const w = dl[n] && dl[n].files ? dl[n] : { files: onFile[n] || [] }; const dx = (w.files || []).filter(p => /\.dxf$/i.test(p) && fs.existsSync(p)); return dx.length ? dx : [...(w.pdfs || []), ...(w.files || [])]; }).filter(p => fs.existsSync(p));
     if (!drawings.length) throw new Error('No drawings made yet to check');
     const enc = (p) => ({ name: path.basename(p), path: p, base64: fs.readFileSync(p).toString('base64') });
     const R = runs.start({ kind: 'check', who: 'Cal', jobId, no: targets.join(',') }); runs.stage(R.id, 'Cal is reading the schedule and the drawings', 10);
