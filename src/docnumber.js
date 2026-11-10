@@ -16,7 +16,7 @@ const DOC_TYPE = {
 // what a deliverable is called → its document type code
 const TYPE_OF = [
   [/\bsld\b|single.?line/i, '70'], [/\bbcd\b|block cable/i, '71'], [/interconnect|loop/i, '72'], [/cable rout|equipment layout|cable layout/i, '73'], [/earthing (report|calc)|earthing/i, '74'],
-  [/cable schedule|schedule/i, '23'], [/register/i, '01'], [/technical query|\btq\b|\brfi\b/i, '22'], [/calc/i, '08'], [/report|technical note/i, '09'], [/spec/i, '05'], [/data ?sheet/i, '07'],
+  [/cable schedule|schedule/i, '23'], [/register/i, '01'], [/technical query|\btq\b|\brfi\b/i, '22'], [/\bstud(y|ies)\b|\bassessment\b|report|technical note/i, '09'], [/calc/i, '08'],   /* a study is a report (Dave's own numbering on Gwrhyd: 06-09-0001..7), a calculation on its own is 08 */ [/spec/i, '05'], [/data ?sheet/i, '07'],
   [/general arrangement|\bga\b/i, '24'], [/tie.?in/i, '25'], [/\bbom\b|bill of material/i, '06'], [/estimate|quot/i, '02'], [/scope/i, '03'], [/letter|correspondence|transmittal/i, '04'], [/rams|method statement|risk assess|health|safety/i, '15'],
   [/p&id|pid|eld/i, '12'], [/3d model|model/i, '49'], [/diagram/i, '10'],
 ];

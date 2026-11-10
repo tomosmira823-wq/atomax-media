@@ -81,7 +81,7 @@ function register({ ipcMain, dialog, shell, Notification, getWin, userDir, claud
     for (const n of names) { const dst = path.join(out, n); if (path.resolve(path.join(p.srcDir, n)) !== path.resolve(dst)) fs.copyFileSync(path.join(p.srcDir, n), dst); }   // copies only: the originals stay where they are (a file already in the issue folder is left as it is)
     try { const dk = require('./jobdesk'), dd = dk.load(job.id); if (dd.openIssue) { dd.issued = [...(dd.issued || []), { ...dd.openIssue, issuedAt: new Date().toISOString() }]; delete dd.openIssue; dk.saveRaw(job.id, dd); } } catch {}   // the issue is out: the next rev up opens the next folder
     const rows = p.rows.map(r => ({ ...r }));
-    const docNumber = p.docNumber || biz.nextDocNumber(d, job);
+    const docNumber = p.docNumber || biz.nextDocNumber(d, job, 'transmittal');   // QS 006 04 (correspondence / transmittal), never a report number
     const cfg = biz.transmittalConfig({ job, rows, revision: p.revision || 'P01', docNumber, to: p.to, purpose: p.purpose, prepared: p.prepared });
     cfg.logoPath = LOGO;
     const tpath = path.join(out, safe(`${docNumber}_Transmittal_${cfg.revision}.docx`));

@@ -471,6 +471,22 @@ function register({ ipcMain, HANDLERS, BIZ, claudeFull, getAgents }) {
     BIZ.log({ who: 'Dex', action: `Opened ISSUE ${nx.n} for the next issue`, jobId, detail: nx.path });
     return nx.path;
   }
+  // Prepare the issue from the job (10 Nov): the made deliverables are spread over the job's folders (7.12 Reports, 9.3 RFI, 7.4 SLDs); their
+  // files are copied into the issue being built (DXFs and PDFs in it, Word / Excel in its NATIVES folder, the way plotIssue reads it), so the
+  // issue check has one folder with everything. Copies only; a file already in the issue folder is left as it is
+  function gatherIssue(jobId) {
+    const ov = overview(jobId), made = ov.rows.filter(r => r.work && r.work.status === 'made' && (r.work.files || []).length);
+    if (!made.length) throw new Error('Nothing is made yet on this job: make the deliverables first.');
+    const dir = openIssueDir(jobId), natives = path.join(dir, `${path.basename(dir)} NATIVES`); const copied = [], missing = [];
+    for (const r of made) for (const f of [...(r.work.files || []), ...(r.work.pdfs || [])]) {
+      if (!f) continue; if (!fs.existsSync(f)) { missing.push(path.basename(f)); continue; }
+      const dst = path.join(/\.(docx|xlsx|xlsm)$/i.test(f) ? natives : dir, path.basename(f)); if (path.resolve(f) === path.resolve(dst)) continue;
+      fs.mkdirSync(path.dirname(dst), { recursive: true }); if (!fs.existsSync(dst)) { fs.copyFileSync(f, dst); copied.push(path.basename(f)); }
+    }
+    BIZ.log({ who: 'Eli', action: `Put ${copied.length} made file${copied.length === 1 ? '' : 's'} in ${path.basename(dir)}`, jobId, detail: copied.join(', ') + (missing.length ? ` · missing: ${missing.join(', ')}` : '') });
+    return { dir, copied, missing, rows: made.length };
+  }
+  ipcMain.handle('jobs:gatherIssue', wrap(async ({ jobId, pdfs = true }) => { const g = gatherIssue(jobId); let plotted = null; if (pdfs) { try { plotted = await plotIssue({ jobId }); } catch (e) { plotted = { error: runs.plain(e), done: [], failed: [] }; } } return { ...g, plotted }; }));
   ipcMain.handle('jobs:issueSent', wrap(({ jobId }) => { const d = desk.load(jobId); if (!d.openIssue) throw new Error('No issue is being built on this job.'); const n = d.openIssue.n; d.openIssue.sent = true; closeIssue(jobId, d, 'marked sent by Tom'); return { n }; }));
   const issueName = (no, rev) => /^X\d{5,6}-/i.test(no) ? `${no} ${rev}` : `${no}_${rev}`;
   // a Word or Excel document: new revision rows, header and cover moved on by docrev; the native goes in ISSUE n/ISSUE n NATIVES (the PDF

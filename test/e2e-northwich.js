@@ -478,6 +478,9 @@ const step = (name, fn) => { try { const r = fn(); if (r && r.then) return r.the
       const f = w.files[0]; assert.ok(path.basename(f).startsWith(no + ' P01 '), f);
       const z = await JSZip.loadAsync(fs.readFileSync(f)); let all = ''; for (const x of Object.keys(z.files).filter(x => /\.xml$/.test(x))) all += await z.file(x).async('string');
       assert.ok(!/X281026/.test(all), no + ': X281026 left'); if (/\.docx$/.test(f)) { const t = await DT.docxText(fs.readFileSync(f)); assert.ok(/P01 \| DM \| TM \|/.test(t), no + ': approval ' + (t.match(/P01 \|[^\n]*/) || [''])[0]); assert.ok(all.includes(no), no + ': its number'); } }
+    // Prepare the issue: the made files go into the issue being built (Word / Excel in its NATIVES), so the issue check has them in one folder
+    const G = await call('jobs:gatherIssue', { jobId: job.id }); assert.strictEqual(G.copied.length, 9, JSON.stringify(G)); assert.ok(/ISSUE \d+$/.test(G.dir), G.dir);
+    assert.strictEqual(fs.readdirSync(path.join(G.dir, path.basename(G.dir) + ' NATIVES')).length, 9); assert.ok(G.plotted && (G.plotted.error || (G.plotted.failed || []).length || (G.plotted.done || []).length >= 0), 'PDFs tried');
     const V = desk.load(job.id); assert.strictEqual(V.rfis.length, 24, 'the register\'s 24 RFIs'); assert.ok(V.rfisBefore.some(r => /BESS make and model/.test(r.q)), 'the job\'s own kept aside');
     return '9 made';
   });

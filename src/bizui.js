@@ -196,7 +196,7 @@ export function initBizUI({ api, getSettings, openSettings }) {
   api.biz.onBrief(async () => { await refresh(); if ($('#bizModal').classList.contains('open')) render(); });
 
   return {
-    async open(which) { await refresh(); if (which) pane = which; render(); },
+    async open(which, opts = {}) { await refresh(); if (which) pane = which; if (opts.folder) { issue.folder = opts.folder; report = null; } render(); },   // opts.folder: the issue folder the job gathered
     refresh,
     // job picker for the Cal and Dex panels
     async fillJobSelect(sel) {

@@ -589,7 +589,7 @@ const boardUI = initBoardUI({
 });
 // the Jobs screen: home for engineering work (opened from the top bar or the projects whiteboard)
 document.addEventListener('keydown', (e) => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f' && document.body.classList.contains('jobs-open')) { e.preventDefault(); jobsUI.focusSearch(); } });
-const jobsUI = initJobsUI({ api, getAgents: () => agents, openIssue: () => { bizUI.open('issue').then(() => openModal('bizModal')); }, onWorkOn: () => {} });
+const jobsUI = initJobsUI({ api, getAgents: () => agents, openIssue: (id, folder) => { bizUI.open('issue', { folder }).then(() => openModal('bizModal')); }, onWorkOn: () => {} });
 window.__jobsUI = jobsUI;
 $('#jobsBtn').addEventListener('click', () => { if (jobsUI.isOpen()) jobsUI.hide(); else jobsUI.show(); });
 // open the agent a task was set for, with the job in hand and the task text ready as the prompt
