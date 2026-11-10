@@ -29,3 +29,8 @@ console.log('pagination ok');
   const cells = (out.match(/<w:tr>[\s\S]*?<\/w:tr>/g)[1].match(/<w:tc>[\s\S]*?<\/w:tc>/g)).map(c => DR.text(c));
   assert.deepStrictEqual(cells, ['P01', 'DM', 'TM', ''], JSON.stringify(cells)); }
 console.log('approval ok');
+// a follow-up email's title for a deliverable already on the list is not a second row; a set's other sheet or another phase is
+{ const D = require('../src/jobdesk');
+  for (const [a, b] of [['Harmonic Assessment to EREC G5/5', 'G5/5 harmonic study'], ['33 kV Protection Co-ordination Study', 'Protection Co-Ordination'], ['Load Flow and Reactive Power Capability Study', 'Load Flow & Reactive Power Capability Studies']]) assert.ok(D.sameDeliverable(a, b), a + ' / ' + b);
+  for (const [a, b] of [['SLD sheet 1', 'SLD sheet 2'], ['Block cable diagram - RIO1', 'Block cable diagram - RIO2'], ['LV board SLD - Phase 1', 'LV board SLD - Phase 2'], ['Cable schedule', 'Cable calculations'], ['LV SLD', 'HV SLD']]) assert.ok(!D.sameDeliverable(a, b), a + ' / ' + b); }
+console.log('same deliverable ok');

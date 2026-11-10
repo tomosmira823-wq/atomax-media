@@ -238,6 +238,17 @@ function titleFor(no, title, file) {
     if (folder && !numLike(folder) && !/^(archive|dxf|dwg|pdf|claude|to be checked|issue \d+|superseded|old|markup|electrical|transmittal|document control|drawing|native|cad)$/i.test(folder) && !/^X\d{5,6}/i.test(dir)) return folder.charAt(0).toUpperCase() + folder.slice(1).toLowerCase(); }
   return t || 'Drawing';
 }
+// two titles for one deliverable: their key words (standards like G5/5, P28, G99 kept whole) mostly the same and nothing that tells them apart
+const DSTOP = new Set(['the', 'and', 'of', 'for', 'to', 'a', 'an', 'in', 'on', 'at', 'new', 'study', 'studies', 'assessment', 'report', 'document', 'review', 'design', 'drawing', 'diagram', 'final', 'updated', 'revised', 'draft', 'issue', 'erec', 'ena', 'including', 'with']);
+const dwords = (t) => new Set(String(t || '').toLowerCase().replace(/\b([gp]\d{2,3})\s*[\/-]\s*(\d)\b/g, '$1_$2').replace(/&/g, ' and ').replace(/\([^)]*\)/g, (m) => ' ' + m.slice(1, -1) + ' ').split(/[^a-z0-9_]+/).filter(w => (w.length > 1 || /^\d$/.test(w)) && !DSTOP.has(w) && !/^x\d{5,6}$|^\d{4}$/.test(w)));
+function sameDeliverable(a, b) {
+  const A = dwords(a), B = dwords(b); if (A.size < 2 || B.size < 2) return false;
+  const tell = /^(sheet|phase|stage|area|zone|rio\d*|mcc\d*|jb\d*|\d)$/;   /* a lone digit (sheet 2, phase 1) tells them apart; 33 kV does not */   // a set's sheets and a job's phases are different drawings
+  if ([...A, ...B].some(w => tell.test(w) && !(A.has(w) && B.has(w)))) return false;
+  let both = 0; for (const w of A) if (B.has(w)) both++;
+  const small = Math.min(A.size, B.size), big = Math.max(A.size, B.size);
+  return both >= 2 && both === small && small / big >= 0.5;
+}
 function addDeliverables(id, list, opts = {}) {
   const job = jobOf(id); if (!job || !Array.isArray(list) || !list.length) return [];
   const added = [], taken = []; let renamed = false;
@@ -253,6 +264,7 @@ function addDeliverables(id, list, opts = {}) {
     for (let i = 0; i < qty; i++) {
       const title = qty > 1 ? `${dl.title || dl.type} (sheet ${i + 1})` : (dl.title || dl.type);
       if (job.drawings.some(d => d.title.toLowerCase() === String(title).toLowerCase())) continue;
+      if (qty === 1 && job.drawings.some(d => !/cancel|superseded/i.test(d.status || '') && sameDeliverable(d.title, title))) continue;   // the same deliverable in other words (a follow-up email's "harmonic study (G5/5)" for our "Harmonic Assessment to EREC G5/5"): not a second row
       const num = (String(`${dl.number || ''} ${dl.title || ''}`).match(QSNO) || [])[0], kind = kindKey(num || '', `${dl.type || ''} ${dl.title || ''}`);
       if (num && job.drawings.some(d => d.no.toUpperCase() === num.toUpperCase())) continue;   // already on the list
       const sameKind = kind && ['sld', 'bcd', 'earthing'].includes(kind) ? job.drawings.filter(d => kindKey(d.no, d.title) === kind && !/cancel|superseded/i.test(d.status || '')) : [];
@@ -463,4 +475,4 @@ function borderFor(job) {
 }
 
 const saveRaw = (id, d) => save(id, d);
-module.exports = { titleFor, closeRfisFor, sameAsk, writeRfiRegister, kindTag, GROUPS, setCount, setBase, setScopeNotes, tidyRows, kindKey, renameRow, setBorder, borderFor, saveRaw, setNumbering, init, load, getRules, setRules, addCorrection, clientProfile, titleBlockFor, findRegisters, readRegister, checkRegister, makeRegister, proposeNumber, addDeliverables, addInputs, saveRfi, addComments, saveCrs, buildMaster, exportMaster, importMaster, approveMaster, context, view, exportSheet, masterOf, MASTER_SYSTEM, RULES_FILE };
+module.exports = { sameDeliverable, titleFor, closeRfisFor, sameAsk, writeRfiRegister, kindTag, GROUPS, setCount, setBase, setScopeNotes, tidyRows, kindKey, renameRow, setBorder, borderFor, saveRaw, setNumbering, init, load, getRules, setRules, addCorrection, clientProfile, titleBlockFor, findRegisters, readRegister, checkRegister, makeRegister, proposeNumber, addDeliverables, addInputs, saveRfi, addComments, saveCrs, buildMaster, exportMaster, importMaster, approveMaster, context, view, exportSheet, masterOf, MASTER_SYSTEM, RULES_FILE };
