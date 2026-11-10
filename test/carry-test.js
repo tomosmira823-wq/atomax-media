@@ -13,3 +13,12 @@ assert.ok(C.earlierVersion({ no: 'X101126-0000-06-05-0001', title: 'Intertrippin
 assert.strictEqual(C.earlierVersion({ no: 'X101126-0000-06-08-0001', title: 'Short Circuit Study' }, files), null, 'never from a Superseded folder');
 assert.strictEqual(C.earlierVersion({ no: 'X281026-0000-06-09-0003', title: 'Harmonic Assessment to EREC G5/5' }, files), null, 'not itself');
 console.log('carry ok');
+// page breaks: a small table is kept on one page (every row but the last kept with the next), its "Table n" caption with it
+{ const row = (t) => `<w:tr><w:tc><w:p><w:r><w:t>${t}</w:t></w:r></w:p></w:tc></w:tr>`;
+  const doc = `<w:body><w:p><w:pPr><w:pStyle w:val="Caption"/></w:pPr><w:r><w:t>Table 2 - Revision History</w:t></w:r></w:p><w:tbl>${row('Rev')}${row('P01')}${row('')}${row('')}</w:tbl><w:p><w:r><w:t>after</w:t></w:r></w:p></w:body>`;
+  const out = C.tidyPagination(doc); const rows = out.match(/<w:tr>[\s\S]*?<\/w:tr>/g);
+  assert.deepStrictEqual(rows.map(r => /keepNext/.test(r)), [true, true, true, false], 'rows kept with the next, not the last');
+  assert.ok(/<w:pStyle w:val="Caption"\/><w:keepNext\/>/.test(out), 'caption kept with its table, after its style');
+  assert.ok(/<w:p><w:r><w:t>after/.test(out), 'the paragraph after is left alone');
+  const long = `<w:tbl>${Array.from({ length: 30 }, (_, i) => row(i)).join('')}</w:tbl>`; assert.strictEqual(C.tidyPagination(long), long, 'a long table may run on'); }
+console.log('pagination ok');

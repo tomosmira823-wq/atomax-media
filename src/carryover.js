@@ -69,6 +69,36 @@ function replacements(map) {
   return out;
 }
 
+// page breaks the way a person would set them (Tom 10 Nov: "no need to have two empty tables carrying onto the next page"): a table
+// of up to 25 rows stays on one page (each row kept with the next), a "Table n" caption stays with its table, a picture with its
+// "Figure n" caption. A longer table may run on, and its header row already repeats. Only paragraph and row properties change.
+const KEEP_ROWS = 25;
+function keepNext(p) {
+  if (/<w:keepNext\/>/.test(p)) return p;
+  if (/<w:pPr>/.test(p) || /<w:pPr\s[^>]*>/.test(p)) return p.replace(/(<w:pPr(?:\s[^>]*)?>)(\s*<w:pStyle\b[^>]*\/>)?/, (m, a, st) => `${a}${st || ''}<w:keepNext/>`);
+  return p.replace(/^<w:p\b[^>]*>/, (m) => `${m}<w:pPr><w:keepNext/></w:pPr>`);
+}
+function tidyPagination(doc, changes = {}) {
+  let n = 0;
+  // tables: every paragraph of every row but the last kept with the next, so the table moves to the next page whole
+  doc = doc.replace(/<w:tbl>(?:(?!<w:tbl>)[\s\S])*?<\/w:tbl>/g, (tbl) => {
+    const rows = tbl.match(/<w:tr\b[\s\S]*?<\/w:tr>/g) || []; if (rows.length < 2 || rows.length > KEEP_ROWS) return tbl;
+    let i = 0; n++;
+    return tbl.replace(/<w:tr\b[\s\S]*?<\/w:tr>/g, (tr) => (i++ < rows.length - 1 ? tr.replace(/<w:p\b(?:(?!<w:p\b)[\s\S])*?<\/w:p>/g, keepNext) : tr));
+  });
+  // captions: "Table n" before a table, a picture before its "Figure n", a "Figure n" before its picture
+  const paras = [...doc.matchAll(/<w:p\b(?:(?!<w:p\b)[\s\S])*?<\/w:p>|<w:tbl>/g)];
+  const marks = [];
+  for (let k = 0; k < paras.length - 1; k++) {
+    const a = paras[k][0], b = paras[k + 1][0]; if (a === '<w:tbl>') continue;
+    const ta = DR.text(a), tb = b === '<w:tbl>' ? '' : DR.text(b), pic = (x) => /<w:drawing\b|<w:pict\b/.test(x);
+    if ((b === '<w:tbl>' && /^table\s+\d+/i.test(ta)) || (pic(a) && /^figure\s+\d+/i.test(tb)) || (/^figure\s+\d+/i.test(ta) && pic(b))) marks.push(paras[k]);
+  }
+  for (const m of marks.reverse()) { const p = keepNext(m[0]); if (p !== m[0]) { doc = doc.slice(0, m.index) + p + doc.slice(m.index + m[0].length); n++; } }
+  changes.pagination = n;
+  return doc;
+}
+
 // a Word document under its new number: { buf, map, date } -> { buf, rev, changes }
 async function reissueDocx(buf, { map, date } = {}) {
   const zip = await JSZip.loadAsync(buf);
@@ -94,6 +124,7 @@ async function reissueDocx(buf, { map, date } = {}) {
     { const firstTbl = doc.indexOf('<w:tbl>'), head = firstTbl > 0 ? doc.slice(0, firstTbl) : doc;
       const fixed = head.replace(/<w:p\b[\s\S]*?<\/w:p>/g, (p) => { const t = DR.text(p); if (DR.DATE.test(t)) { const r = DR.replaceAcrossRuns(p, /\d{1,2}\/\d{1,2}\/\d{2,4}/, (d) => DR.todayLike(d, date)); if (r.n) { changes.dated++; return r.xml; } } return p; });
       doc = fixed + doc.slice(head.length); }
+    doc = tidyPagination(doc, changes);
     zip.file('word/document.xml', doc);
     for (const n of parts.filter(p => /header|footer/.test(p))) {
       let x = await zip.file(n).async('string'), b = x;
@@ -134,4 +165,4 @@ async function rfisOf(buf) {
   return out;
 }
 
-module.exports = { norm, earlierVersion, numberMap, replacements, reissueDocx, reissueXlsx, rfisOf };
+module.exports = { tidyPagination, norm, earlierVersion, numberMap, replacements, reissueDocx, reissueXlsx, rfisOf };
