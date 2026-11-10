@@ -565,7 +565,7 @@ export class Office {
     this.#furnishBuilding();
     this.#buildNav();
     // if agents were requested before the models arrived, place them now
-    if (this.pendingAgents) { const l = this.pendingAgents; this.pendingAgents = null; this.setAgents(l.list, l.drawing, l.modelling, l.docs, l.email, l.o365); }
+    if (this.pendingAgents) { const l = this.pendingAgents; this.pendingAgents = null; this.setAgents(l.list, l.drawing, l.modelling, l.docs, l.email, l.o365, l.leads); }
     this.setBoard(this.boardLines);
   }
 
@@ -636,11 +636,11 @@ export class Office {
   }
 
   // ---------- public API ----------
-  setAgents(list, drawing = null, modelling = null, docs = null, email = null, o365 = null) {
-    if (!this.models['desk-teacher']) { this.pendingAgents = { list, drawing, modelling, docs, email, o365 }; return; }
+  setAgents(list, drawing = null, modelling = null, docs = null, email = null, o365 = null, leads = null) {
+    if (!this.models['desk-teacher']) { this.pendingAgents = { list, drawing, modelling, docs, email, o365, leads }; return; }
     (this.drawExtras || []).forEach(o => { this.scene.remove(o); if (o.element) o.element.remove(); }); this.drawExtras = [];
     for (const a of this.agents.values()) { this.scene.remove(a.group); if (a.desk) this.scene.remove(a.desk); if (a.chair) this.scene.remove(a.chair); a.label.element.remove(); }
-    this.agents.clear(); this.dexRoots = []; this.modRoots = {}; this.docsAgentRoots = []; (this.emailExtras || []).forEach(o => this.scene.remove(o)); this.emailExtras = []; this.emailAgentRoots = []; this.o365Roots = {};
+    this.agents.clear(); this.dexRoots = []; this.modRoots = {}; this.docsAgentRoots = []; this.leadRoots = {}; (this.emailExtras || []).forEach(o => this.scene.remove(o)); this.emailExtras = []; this.emailAgentRoots = []; this.o365Roots = {};
     this.obstacles = this.obstacles.filter(o => !o.desk);
     (this.podRugs || []).forEach(r => this.scene.remove(r)); const a_rugs = []; this.podRugs = a_rugs;
     list.forEach((data, i) => {
@@ -688,6 +688,7 @@ export class Office {
     (Array.isArray(docs) ? docs : []).forEach((d, i) => this.#addDocsAgent(d, i));
     for (const d of (Array.isArray(email) ? email : [])) this.#addEmailAgent(d);
     for (const d of (Array.isArray(o365) ? o365 : [])) this.#add365Agent(d, d.role === 'word' ? 1 : 0);
+    (Array.isArray(leads) ? leads : []).slice(0, 2).forEach((d, i) => this.#addLeadAgent(d, i));
     this.#buildNav();
     for (const a of this.agents.values()) a.path = null;
     this.setBoard(this.boardLines);
@@ -933,6 +934,24 @@ export class Office {
     this.docsAgentRoots = [...(this.docsAgentRoots || []), desk, group, chair];
   }
 
+  // Dave (director) and Tom (CAD and document control) work at two desks along the meeting room's west wall, beside the projects
+  // whiteboard, facing into the room: the people who lead the jobs sit with the board that shows them
+  #addLeadAgent(data, slot = 0) {
+    const colour = new THREE.Color(data.colour || '#40bd00'), dx = MEET.x0 + 1.5, dz = slot ? MEET.z0 + 8.6 : MEET.z0 + 2.6;
+    const desk = this.#desk(colour); desk.position.set(dx, 0, dz); desk.rotation.y = Math.PI / 2; this.scene.add(desk); desk.updateMatrixWorld(true);
+    const front = new THREE.Vector3(0, 0, 1).applyQuaternion(desk.quaternion);
+    const chair = this.#officeChair(colour); chair.position.set(dx, 0, dz).addScaledVector(front, 1.15); chair.rotation.y = Math.atan2(-front.x, -front.z); this.scene.add(chair);
+    const seat = new THREE.Vector3(dx, 0, dz).addScaledVector(front, 1.05), faceSeat = Math.atan2(-front.x, -front.z);
+    this.obstacles.push({ rect: true, x0: dx - 0.75, x1: dx + 0.75, z0: dz - 1.45, z1: dz + 1.45, desk: true });
+    const group = buildCharacter(data.colour, 'reviewer', data.gear);
+    group.position.copy(this.#randomIdlePoint('meeting')); this.scene.add(group);
+    const el = document.createElement('div'); el.className = 'lbl';
+    el.innerHTML = `<b>${data.name}</b> · ${data.platform} <span class="st"></span>`;
+    const label = new CSS2DObject(el); label.position.set(0, 2.6, 0); group.add(label);
+    this.agents.set(data.id, { data, group, desk, chair, seat, faceSeat, zone: 'meeting', state: 'idle', label, el, walkTarget: null, waypoint: null, faceTo: null, wait: Math.random() * 3, t: Math.random() * 10, blink: 2 + Math.random() * 3 });
+    this.leadRoots[data.id] = [desk, group, chair];
+  }
+
   // Lex and Wren work at two desks in the 365 room, under their boards, facing the corridor
   #add365Agent(data, slot) {
     const colour = new THREE.Color(data.colour || '#21a366'), dx = O365.cx + (slot ? 2.8 : -2.8), dz = O365.z0 + 4.2;
@@ -1090,6 +1109,7 @@ export class Office {
       if (wide && this.docRoots && this.ray.intersectObjects(this.docRoots.approvals, true).length) return 'approvals';
       if (wide && this.docRoots && this.ray.intersectObjects(this.docRoots.issue, true).length) return 'issue';
       if ((wide || this.room === 'o365') && this.o365Roots) for (const [role, roots] of Object.entries(this.o365Roots)) if (roots.length && this.ray.intersectObjects(roots, true).some(h => visibleChain(h.object))) return 'o365:' + role;
+      if ((wide || this.room === 'board') && this.leadRoots) for (const [id, roots] of Object.entries(this.leadRoots)) if (roots.length && this.ray.intersectObjects(roots, true).some(h => visibleChain(h.object))) return 'lead:' + id;
       if (wide && this.docsAgentRoots && this.docsAgentRoots.length && this.ray.intersectObjects(this.docsAgentRoots, true).some(h => visibleChain(h.object))) return 'docs';
       if (wide && this.emailAgentRoots && this.emailAgentRoots.length && this.ray.intersectObjects(this.emailAgentRoots, true).some(h => visibleChain(h.object))) return 'email';
       if (wide && this.doorPlaque && visibleChain(this.doorPlaque) && this.ray.intersectObject(this.doorPlaque, true).length) return 'door';
@@ -1379,6 +1399,10 @@ export class Office {
     if (zone === 'reception') {
       for (let i = 0; i < 80; i++) { const x = RECEP.x0 + 1.5 + Math.random() * (RECEP.w - 3), z = RECEP.z0 + 5.5 + Math.random() * (RECEP.d - 7); if (this.#walkable(x, z)) return new THREE.Vector3(x, 0, z); }
       return this.#nearestWalkable(RECEP.cx, RECEP.cz + 2);
+    }
+    if (zone === 'meeting') {
+      for (let i = 0; i < 80; i++) { const x = MEET.x0 + 3.0 + Math.random() * 3.0, z = MEET.z0 + 1.5 + Math.random() * (MEET.d - 3); if (this.#walkable(x, z)) return new THREE.Vector3(x, 0, z); }
+      return this.#nearestWalkable(MEET.x0 + 3.5, MEET.cz);
     }
     if (zone === 'docs') {
       for (let i = 0; i < 80; i++) { const x = DOCS.x0 + 1.5 + Math.random() * (DOCS.w - 3), z = DOCS.z0 + 2.5 + Math.random() * (DOCS.d - 4); if (this.#walkable(x, z)) return new THREE.Vector3(x, 0, z); }

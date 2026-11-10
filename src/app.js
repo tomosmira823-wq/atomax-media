@@ -32,7 +32,7 @@ async function boot() {
 boot();
 function syncOffice() {
   const on = agents.filter(a => a.enabled);
-  office.setAgents(on.filter(a => !isDrawing(a)), on.filter(a => !isModelling(a) && !isDocs(a) && !isEmail(a) && !is365(a) && isDrawing(a)).slice(0, 2), on.filter(isModelling).slice(0, 3), on.filter(isDocs).slice(0, 2), on.filter(isEmail).slice(0, 1), on.filter(is365).slice(0, 2));
+  office.setAgents(on.filter(a => !isDrawing(a)), on.filter(a => !isModelling(a) && !isDocs(a) && !isEmail(a) && !is365(a) && !isLead(a) && isDrawing(a)).slice(0, 2), on.filter(isModelling).slice(0, 3), on.filter(isDocs).slice(0, 2), on.filter(isEmail).slice(0, 1), on.filter(is365).slice(0, 2), on.filter(isLead).slice(0, 2));
 }
 
 // ---------- updates ----------
@@ -218,7 +218,8 @@ const isModelling = (a) => a.role === 'modeller' || a.role === 'builder' || a.ro
 const isDocs = (a) => a.role === 'documents' || a.role === 'engineer';
 const isEmail = (a) => a.role === 'email';
 const is365 = (a) => a.role === 'excel' || a.role === 'word';
-function isDrawing(a) { return a.role === 'drawing' || a.role === 'drafter' || isModelling(a) || isDocs(a) || isEmail(a) || is365(a); }
+const isLead = (a) => a.role === 'lead';   // Dave and Tom: they lead the jobs from the meeting room
+function isDrawing(a) { return a.role === 'drawing' || a.role === 'drafter' || isModelling(a) || isDocs(a) || isEmail(a) || is365(a) || isLead(a); }
 const isDrafter = (a) => a.role === 'drafter';
 function renderAgentPick() {
   const writers = agents.filter(a => a.enabled && !isReviewer(a) && !isDrawing(a));
@@ -231,7 +232,7 @@ function renderAgentPick() {
 const SWATCHES = ['#0a66c2', '#e1306c', '#1877f2', '#111111', '#00f2ea', '#f59f00', '#40bd00', '#8e44ad', '#20c997', '#ff6b35', '#ffffff', '#ff4757'];
 let preview = null, loIndex = -1, loDraft = null;
 
-function roleBadge(a) { if (isDrawing(a)) return '<span class="badge role rev">' + (isDocs(a) ? 'DOCUMENTS' : isModelling(a) ? (a.role === 'modeller' ? '3D MODELLER' : a.role === 'builder' ? '3D BUILDER' : '3D CHECKER') : isDrafter(a) ? 'DXF FIXER' : 'DRAWINGS') + '</span>'; return isReviewer(a) ? '<span class="badge role rev">REVIEWER</span>' : '<span class="badge role">WRITER</span>'; }
+function roleBadge(a) { if (isDrawing(a)) return '<span class="badge role rev">' + (isLead(a) ? 'LEADS JOBS' : isDocs(a) ? 'DOCUMENTS' : isModelling(a) ? (a.role === 'modeller' ? '3D MODELLER' : a.role === 'builder' ? '3D BUILDER' : '3D CHECKER') : isDrafter(a) ? 'DXF FIXER' : 'DRAWINGS') + '</span>'; return isReviewer(a) ? '<span class="badge role rev">REVIEWER</span>' : '<span class="badge role">WRITER</span>'; }
 
 function renderTeam() {
   $('#teamView').style.display = ''; $('#loadoutView').style.display = 'none';
@@ -256,8 +257,8 @@ function openLoadout(i) {
 
 function fillLoadout() {
   const a = loDraft, rev = isReviewer(a);
-  $('#loName').textContent = a.name; $('#loRole').textContent = isDrawing(a) ? (isModelling(a) ? (a.role === 'modeller' ? '3D modeller' : a.role === 'builder' ? '3D builder' : '3D model checker') : isDrafter(a) ? 'DXF fixer' : 'drawing checker') : (rev ? 'reviewer' : a.platform);
-  $('#lo_name').value = a.name; $('#lo_platform').value = a.platform; $('#lo_role').innerHTML = isDrawing(a) ? (isModelling(a) ? `<option value="${a.role}">${a.role === 'modeller' ? '3D modeller — sits at the board in the modeling room' : a.role === 'builder' ? '3D builder — builds from scratch at his desk' : '3D model checker — sits at the review table'}</option>` : isDrafter(a) ? '<option value="drafter">DXF maker and fixer — sits at the drafting table</option>' : is365(a) ? `<option value="${a.role}">${a.role === 'excel' ? 'Excel' : 'Word'} agent — works in the 365 room</option>` : isEmail(a) ? '<option value="email">Email checker — works at reception</option>' : a.role === 'engineer' ? '<option value="engineer">Engineer — calculations and technical notes, Documents room</option>' : isDocs(a) ? '<option value="documents">Documents — works in the Documents room</option>' : '<option value="drawing">Drawing checker — works in the drawing room</option>') : '<option value="writer">Writer — posts to one account</option><option value="reviewer">Reviewer — checks every post</option>'; $('#lo_role').value = isDrawing(a) ? a.role : (rev ? 'reviewer' : 'writer');
+  $('#loName').textContent = a.name; $('#loRole').textContent = isLead(a) ? 'leads the jobs' : isDrawing(a) ? (isModelling(a) ? (a.role === 'modeller' ? '3D modeller' : a.role === 'builder' ? '3D builder' : '3D model checker') : isDrafter(a) ? 'DXF fixer' : 'drawing checker') : (rev ? 'reviewer' : a.platform);
+  $('#lo_name').value = a.name; $('#lo_platform').value = a.platform; $('#lo_role').innerHTML = isLead(a) ? '<option value="lead">Leads the jobs — sits in the meeting room, does what his brief says</option>' : isDrawing(a) ? (isModelling(a) ? `<option value="${a.role}">${a.role === 'modeller' ? '3D modeller — sits at the board in the modeling room' : a.role === 'builder' ? '3D builder — builds from scratch at his desk' : '3D model checker — sits at the review table'}</option>` : isDrafter(a) ? '<option value="drafter">DXF maker and fixer — sits at the drafting table</option>' : is365(a) ? `<option value="${a.role}">${a.role === 'excel' ? 'Excel' : 'Word'} agent — works in the 365 room</option>` : isEmail(a) ? '<option value="email">Email checker — works at reception</option>' : a.role === 'engineer' ? '<option value="engineer">Engineer — calculations and technical notes, Documents room</option>' : isDocs(a) ? '<option value="documents">Documents — works in the Documents room</option>' : '<option value="drawing">Drawing checker — works in the drawing room</option>') : '<option value="writer">Writer — posts to one account</option><option value="reviewer">Reviewer — checks every post</option>'; $('#lo_role').value = isDrawing(a) ? a.role : (rev ? 'reviewer' : 'writer');
   $('#lo_enabled').checked = !!a.enabled; $('#lo_colour').value = a.colour;
   $('#lo_tone').value = a.tone || ''; $('#lo_rules').value = a.rules || ''; $('#lo_examples').value = a.examples || '';
   const dr = isDrawing(a);
@@ -638,6 +639,7 @@ $('#deskBack').addEventListener('click', () => goRoom('drawing'));
 $('#dexBack').addEventListener('click', () => goRoom('drawing'));
 $('#modelBack').addEventListener('click', () => goRoom('modeling'));
 function routeRoomPick(what) {
+  if (what.startsWith('lead:')) { const id = what.slice(5); if (typeof jobsUI !== 'undefined') jobsUI.show(undefined, 'lead:' + id); return true; }   /* Dave or Tom: their chat on the job in front of you */
   if (what === 'fileroom') { goRoom('file'); return true; }
   if (what === 'email') { goRoom('email'); return true; }
   if (what.startsWith('o365:')) { const r = what.slice(5); goRoom('o365'); o365UI.show(r); return true; }

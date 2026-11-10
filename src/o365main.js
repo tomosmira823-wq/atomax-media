@@ -239,6 +239,12 @@ ${AN.GUIDE}`;
 
   // the one-shot calls (the Deliverables tab's Make for a Wren or Lex row) go through the same engine: a question or a problem comes
   // back as the run's error, in the agent's own words, instead of a document written around it
+  // the same one-shot for Dave and Tom when they hand Lex or Wren a piece of work from their chat
+  module.exports.once = async ({ role = 'word', jobId = '', request = '', prepared = '', run = '' }) => {
+    if (!String(request).trim()) throw new Error(`Say what ${role === 'excel' ? 'Lex' : 'Wren'} should make`);
+    const r = await chatTurn({ jobId, role, text: request, files: [], run, prepared, fresh: true, keyOverride: `once:${role}:${jobId}:${Date.now()}` });
+    if (!r.path) throw new Error(r.say); return r;
+  };
   ipcMain.handle('o365:excel', wrap(async ({ jobId = '', request = '', files = [], skills, run = '' }) => {
     if (!request.trim()) throw new Error('Say what Lex should make');
     const r = await chatTurn({ jobId, role: 'excel', text: request, files, skills, run, fresh: true, keyOverride: `once:excel:${jobId}:${Date.now()}` });

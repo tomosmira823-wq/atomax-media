@@ -13,6 +13,11 @@ function readBody(req) { return new Promise(r => { const c = []; req.on('data', 
 function claudeReply(body) {
   const sys = body.system || '';
   const userText = JSON.stringify(body.messages || []);
+  // ---- Dave / Tom (lead agents) on a job's chat ----
+  if (/working as an AI agent in the office app/.test(sys)) {
+    const name = (sys.match(/^You are (\w+)/) || [])[1] || 'Dave';
+    return JSON.stringify({ reply: `${name} here. Ze at the new board is not in anything on the job, so I have raised an RFI rather than guess; the cable calc follows once it is answered.`, actions: [{ do: 'addRfi', q: 'What is Ze at the new board?' }] });
+  }
   // ---- Eli (email checker) ----
   if (/You are Eli, the email checker/.test(sys)) {
     calls.push({ eli: true, images: (userText.match(/"type":"image"/g) || []).length, pdfs: (userText.match(/"type":"document"/g) || []).length, hasBody: /SLD|single line/i.test(userText), earthing: /Earthing Design/.test(userText), forwardNote: /dummy folder/i.test(userText) });

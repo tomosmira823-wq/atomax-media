@@ -114,8 +114,8 @@ function revUp(buf, opts = {}) {
     clone.push(...np); changes.cloned++;
     if (e === label) labelCopy = { np, type: e.type };
   }
-  if (opts.remarks && String(opts.remarks).trim()) {
-    if (!labelCopy) throw new Error('the issue box has no Remarks label to write the remark under');
+  if (opts.remarks && String(opts.remarks).trim() && !labelCopy) changes.remarkNotWritten = `the issue box has no Remarks label, so "${String(opts.remarks).trim()}" was not written: add it by hand if the sheet needs it`;   // an NG-style box with no remarks column: rev it, say so
+  else if (opts.remarks && String(opts.remarks).trim()) {
     const hAt = labelCopy.np.find(p => p.code === 40), h = hAt ? +hAt.val || 2 : 2;
     const cellRight = snapTo != null ? snapTo : edge, room = Math.max(10, Math.floor((cellRight - (label.xs[0] + ib.pitch) - h) / (h * 0.95)));
     const words = String(opts.remarks).trim().split(/\s+/), lines = [];

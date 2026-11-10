@@ -504,6 +504,27 @@ Show where every input came from (document and table). Do the arithmetic step by
 Be honest about limits: a first-pass hand calculation is not a full study. Say plainly what can be relied on, what needs PowerFactory / ETAP, and what data is still needed.
 Write in plain British English as Markdown: "# title", "## Summary" (3 lines max, the answer first), "## Inputs used", "## Method and working", "## Results" (tables), "## Limits and what is still needed".
 EARTHING tasks: size every protective / earth conductor the drawing needs (MET to each switchboard, transformer tank and neutral links, RMU earth bars, cable screen bonds, mesh and electrode tails) with the adiabatic equation S = I·√t / k (BS 7671 543.1.3 / ENA TS 41-24), using the documented earth fault currents for each voltage level. State the fault duration t (the protection clearing time if documented, otherwise ENA TS 41-24 1 s for 33 kV / 11 kV and 3 s for conductor rating checks) and k (Cu 143, bare Cu 159 for buried conductors, Al 94, with the table reference) as assumptions. Round up to the next standard size (mm²) and give a "## Conductor schedule" table: From | To | Fault current (kA) | t (s) | k | Min size (mm²) | Selected size and material. Electrode count, mesh size and rise of earth potential need soil resistivity: if it is not given, say so and leave those TBC.`;
+  // Ada's technical note on a task Dave or Tom hands her from their chat: the job's PDFs that fit the task go with it, the note is saved in
+  // the job's documents folder, the same as one she writes from an email
+  module.exports.adaNote = async ({ jobId = '', title = '', detail = '', from = '' }) => {
+    const job = jobId && BIZ.data().jobs.find(j => j.id === jobId), content = [];
+    const pdfs = job ? BIZ.projects.relevantFiles(job.id, title + ' ' + detail, { exts: ['.pdf'], max: 2 }) : [];
+    for (const p of pdfs) { try { content.push({ type: 'text', text: 'Project file: ' + path.basename(p) }); content.push(checker.contentBlock('pdf', p, fs.readFileSync(p))); } catch {} }
+    content.push({ type: 'text', text: `THE TASK: ${title}\n${detail}${from ? `\n\nASKED BY: ${from}` : ''}` });
+    const system = ENG_SYSTEM + (job ? '\n\n' + BIZ.contextFor(job.id, 'Ada') : '');
+    const r = await claudeFull({ system, who: 'engineer', maxTokens: 16000, messages: [{ role: 'user', content }] });
+    let text = String(r.text || '').trim(); if (!text) throw new Error('Ada got an empty reply from Claude');
+    if (r.stop === 'max_tokens') text += '\n\n_(Ada ran out of room here: the note is cut short.)_';
+    text = '**DRAFT for review** (asked for by ' + (from || 'a lead') + '; an engineer checks it before it is used)\n\n' + text;
+    const outDir = (job && BIZ.outputDirFor(job.id, 'documents')) || path.join(userDir(), 'engineering'); fs.mkdirSync(outDir, { recursive: true });
+    const safe = String(title || 'Technical note').replace(/[\\/:*?"<>|]+/g, '-').replace(/\s+/g, ' ').slice(0, 70);
+    let file = path.join(outDir, `Technical note - ${safe} DRAFT.md`), k = 2; while (fs.existsSync(file)) file = path.join(outDir, `Technical note - ${safe} DRAFT (${k++}).md`);
+    fs.writeFileSync(file, text, 'utf8');
+    if (job && job.folder) { try { BIZ.projects.gather(job.id, job.folder, { checker, dxffix: require('./dxffix') }); } catch {} }
+    const summary = ((text.match(/## Summary\s*\n([\s\S]*?)(\n## |$)/) || [])[1] || text.slice(0, 400)).trim();
+    BIZ.log({ who: 'Ada', action: `Wrote a technical note for ${from || 'a lead'}`, jobId, detail: path.basename(file) + ' · ' + summary.slice(0, 160) });
+    return { path: file, summary };
+  };
   ipcMain.handle('eng:run', wrap(async ({ id, ask, skills }) => {
     const list = load(), e = list.find(x => x.id === id); if (!e || !e.asks[ask]) throw new Error('No such task');
     const a = e.asks[ask], job = a.jobId && BIZ.data().jobs.find(j => j.id === a.jobId);

@@ -4,10 +4,8 @@
 'use strict';
 const fs = require('fs'), path = require('path');
 
-const SYSTEM = `You are Eli, the document controller at Atomax-UK (an electrical engineering consultancy). You are talking to Tom, the CAD engineer running this job, in a chat on the job's page. You have the job's register (its deliverables with numbers, revisions and the files on disk), the RFIs, the client's open comments, what the scope documents said, and the job folder's file list.
-How you talk: short, plain British English, like a colleague across the desk. Answer what he asked. If something he says contradicts the register, say so and ask rather than guess. When he tells you to change something, do it and say exactly what you did (numbers and titles). Never invent a document number, revision or file: use the ones in front of you. If you cannot do something from here, say what he or the app would need to do instead.
-What you can change (only when Tom asks, never on your own initiative):
-- remove a deliverable row: {"do":"remove","no":"<row number>"}
+// what can be done on a job from a chat: Eli's list, shared with Dave and Tom (leadchat.js)
+const ACTIONS = `- remove a deliverable row: {"do":"remove","no":"<row number>"}
 - rename a row (new title): {"do":"rename","no":"<row number>","title":"..."}
 - renumber a row: {"do":"renumber","no":"<row number>","to":"<new number>"}
 - add a deliverable: {"do":"add","type":"SLD|BCD|earthing|loop|layout|cable schedule|schedule|calculation|document|other","title":"...","qty":1}
@@ -26,7 +24,12 @@ What you can change (only when Tom asks, never on your own initiative):
 - write a Document Request to BGEN document control for NG numbers (every deliverable without one, or the ones named): {"do":"docRequest","nos":["<row numbers, optional>"]}
 On a National Grid job nothing is issued under our own number: a deliverable without an NG number (X11475-BGN-ZZ-XX-DR-E-7153 style) goes on a Document Request before the issue; the NG number is the primary number and the file name, ours (42_BG_0055) sits beside it.
 A drawing with only a DWG is saved as DXF by AutoCAD first, then revved; if AutoCAD is not on this PC, say so and name the file to save as DXF by hand. A change to what is drawn (a new switchroom, a moved board) is CAD work for Tom or a redraw by Dex, not a rev up; say which.
-Reply with JSON only, no markdown: {"reply":"what you say to Tom","actions":[...]} ("actions" empty when nothing is to change).`;
+`;
+
+const SYSTEM = `You are Eli, the document controller at Atomax-UK (an electrical engineering consultancy). You are talking to Tom, the CAD engineer running this job, in a chat on the job's page. You have the job's register (its deliverables with numbers, revisions and the files on disk), the RFIs, the client's open comments, what the scope documents said, and the job folder's file list.
+How you talk: short, plain British English, like a colleague across the desk. Answer what he asked. If something he says contradicts the register, say so and ask rather than guess. When he tells you to change something, do it and say exactly what you did (numbers and titles). Never invent a document number, revision or file: use the ones in front of you. If you cannot do something from here, say what he or the app would need to do instead.
+What you can change (only when Tom asks, never on your own initiative):
+${ACTIONS}Reply with JSON only, no markdown: {"reply":"what you say to Tom","actions":[...]} ("actions" empty when nothing is to change).`;
 
 const rel = (job, p) => { try { const r = path.relative(job.folder || '', p); return r && !r.startsWith('..') ? r : p; } catch { return p; } };   // where it went, from the job folder
 const cap = (s, n) => { s = String(s || ''); return s.length > n ? s.slice(0, n) + '…' : s; };
@@ -39,7 +42,7 @@ function context({ job, overview, desk, files, history, nextIssue, needNg }) {
   const inputs = (desk.inputs || []).map(i => `${i.name}${i.rev ? ' ' + i.rev : ''}${i.what ? ' — ' + i.what : ''}`);
   const sc = desk.scope || {};
   const scope = sc.summary || sc.facts || sc.byOthers || sc.conflicts ? `SCOPE (from the documents): ${sc.summary || ''}\nFACTS: ${(sc.facts || []).map(f => `${f.name}: ${f.value}`).join('; ')}\nBY OTHERS: ${(sc.byOthers || []).map(b => `${b.title} (${b.who})`).join('; ')}\nWHERE THE DOCUMENTS DISAGREE: ${(sc.conflicts || []).join(' | ')}` : '';
-  const hist = (history || []).slice(-24).map(m => `${m.role === 'tom' ? 'TOM' : 'ELI'}: ${cap(m.text, 1200)}`).join('\n');
+  const hist = (history || []).slice(-24).map(m => `${m.role === 'tom' ? 'TOM' : String(m.name || 'ELI').toUpperCase()}: ${cap(m.text, 1200)}`).join('\n');
   return [
     `JOB: ${job.number} ${job.name || ''} | client ${job.client || '-'} | folder ${job.folder || '-'}${nextIssue ? ` | ${nextIssue.open ? 'issue being built' : 'next issue'}: ISSUE ${nextIssue.n}${nextIssue.previous ? ' (ISSUE ' + nextIssue.previous.n + ' went out)' : ''} — rev ups are written there as new files; the working set (CLAUDE DESGIN / 006) and earlier issue folders are never written to or moved; each rev up makes its PDF beside it and is checked against the working file; the issue closes when its transmittal is on file or Tom says it has gone` : ''} | rules: ${cap(desk.rules || '', 1500)}`,
     `REGISTER (${rows.length} rows; number | rev | group | title | file):\n${rows.join('\n') || '(empty)'}`,
@@ -87,4 +90,4 @@ async function apply(actions, { job, desk, deskMod, biz, BIZ, overview, doers = 
   return done;
 }
 
-module.exports = { SYSTEM, context, apply };
+module.exports = { SYSTEM, ACTIONS, context, apply };

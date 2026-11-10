@@ -180,7 +180,8 @@ export function initJobsUI({ api, getAgents, openIssue, onWorkOn }) {
     closeViewer(); const m = $('#jbMain'); if (!O) { m.innerHTML = `<div class="bhint">${esc(msg)}</div>`; return; }
     const j = O.job, V = O.desk, rows = O.rows;
     const openC = (V.crs || []).filter(c => !/responded|closed/i.test(c.status || '')).length;
-    const tabs = [['eli', '💬 Eli'], ['files', 'Files'], ['deliv', `Deliverables <em>${rows.length}</em>`], ['setup', 'Inputs &amp; setup'], ['comments', `Comments${openC ? ` <em>${openC}</em>` : ''}`], ['issue', 'Issue']];
+    const leads = (getAgents ? getAgents() : []).filter(a => a.role === 'lead' && a.enabled !== false).slice(0, 2);
+    const tabs = [['eli', '💬 Eli'], ...leads.map(a => ['lead:' + a.id, '💬 ' + esc(a.name)]), ['files', 'Files'], ['deliv', `Deliverables <em>${rows.length}</em>`], ['setup', 'Inputs &amp; setup'], ['comments', `Comments${openC ? ` <em>${openC}</em>` : ''}`], ['issue', 'Issue']];
     m.innerHTML = `<div class="jbhead"><div><h2>${esc(j.number)} ${esc(j.name || '')}</h2><div class="bsub">${esc(j.client || 'No client')} · border: <select id="jbBorderQ" class="jbinline" title="Drawing border for every drawing on this job">${[['auto', 'Automatic (by client)'], ['atomax', 'Atomax'], ['ng', 'National Grid'], ['bgen', 'BGEN'], ['pbe', 'PBE Group'], ['client', 'Client title block (File Room)']].map(([k, t]) => `<option value="${k}" ${(V.border || 'auto') === k ? 'selected' : ''}>${k === 'auto' ? 'Automatic: ' + (V.borderUsed || '') : t}</option>`).join('')}</select>${j.folder ? ` · <a href="#" id="jbFolder">open folder</a>` : ' · <b class="warn">no folder linked</b>'}</div></div>
         <div class="jbbar" style="margin:0"><button class="jbbtn primary" id="jbAddMail">✉ Add email / changes</button><button class="jbbtn" id="jbAddFiles" title="Drop the client's folder or files: they are filed into the job folder, emails read by Eli">📁 Add files</button><button class="jbbtn" id="jbWork">Work on this job</button></div></div>
       <div class="jbtabs">${tabs.map(([k, t]) => `<button data-t="${k}" class="${tab === k ? 'on' : ''}">${t}</button>`).join('')}</div>
@@ -192,7 +193,8 @@ export function initJobsUI({ api, getAgents, openIssue, onWorkOn }) {
     $('#jbAddFiles').onclick = () => addFiles(j);
     $('#jbAddMail').onclick = () => emailPanel(j.id);
     $('#jbWork').onclick = async () => { await api.biz.setCurrent({ id: j.id }); if (onWorkOn) onWorkOn(j.id); $('#jbWork').textContent = '✓ Job in hand'; };
-    ({ eli: tabEli, files: tabFiles, deliv: tabDeliv, setup: tabSetup, comments: tabComments, issue: tabIssue })[tab]();
+    if (/^lead:/.test(tab) && !leads.some(a => 'lead:' + a.id === tab)) tab = 'eli';   /* a lead switched off: back to Eli */
+    if (/^lead:/.test(tab)) tabLead(leads.find(a => 'lead:' + a.id === tab)); else ({ eli: tabEli, files: tabFiles, deliv: tabDeliv, setup: tabSetup, comments: tabComments, issue: tabIssue })[tab]();
     const working = rows.some(r => r.work && (r.work.status === 'working' || (r.work.check && r.work.check.status === 'working')));
     clearTimeout(poll); if (working && panel.classList.contains('open')) poll = setTimeout(refreshWhenFree, 3000);
   }
@@ -495,6 +497,33 @@ export function initJobsUI({ api, getAgents, openIssue, onWorkOn }) {
       else toast(`Eli (${O.job.number}): ${r.reply.slice(0, 140)}${r.reply.length > 140 ? '…' : ''}`); };
     $('#eliGo').onclick = send; $('#eliIn').onkeydown = (ev) => { if (ev.key === 'Enter' && !ev.shiftKey) { ev.preventDefault(); send(); } }; $('#eliIn').focus();
   }
+  // talk to Dave or Tom about this job. They work from their own brief and can do what Eli can on the job, and hand work to Lex, Wren, Ada,
+  // Cal and Dex; nothing goes to a client and nothing is approved by them. A question in flight survives clicking away, as with Eli
+  const leadPending = new Map();   // agentId:jobId -> { text, promise }
+  async function tabLead(agent) {
+    const el = $('#jbTab'), jobId = O.job.id, key = agent.id + ':' + jobId, who = agent.name;
+    el.innerHTML = `<div class="jbcard elichat"><div class="elilog" id="eliLog"><div class="bsub">Loading…</div></div>
+      <div class="jbbar elibar"><textarea id="eliIn" rows="2" placeholder="${esc(agent.id === 'dave' ? "Ask Dave: 'draft the fee proposal for this enquiry', 'check the protection on the SLD', 'what do we need from the client before we start?'" : "Ask Tom: 'revise the drawings for the SPEN comments', 'check the loop sheets against the BCD', 'build the issue and draft the transmittal'")}"></textarea><button class="jbbtn primary" id="eliGo">Send</button></div><div id="eliFiles"></div>
+      <div class="bsub">${esc(who)} works from his brief, plus anything you add to his rulebook in the File Room. He can do what Eli can on the job, and hand work to Lex, Wren, Ada, Cal and Dex. Engineering work comes back marked DRAFT, and he never sends or approves anything.</div></div>`;
+    const draw = (chat) => { const log = $('#eliLog'); if (!log) return; log.innerHTML = (chat || []).length ? chat.map(m => `<div class="elim ${m.role === 'tom' ? 'tom' : 'eli'}"><b>${m.role === 'tom' ? 'You' : esc(who)}</b><div>${esc(m.text).replace(/\n/g, '<br>')}</div>${m.done && m.done.length ? `<div class="elidone">${m.done.map(x => `<span>✓ ${esc(x)}</span>`).join('')}</div>` : ''}</div>`).join('') : `<div class="elim eli"><b>${esc(who)}</b><div>I've got ${esc(O.job.number)} open with ${O.rows.length} row${O.rows.length === 1 ? '' : 's'} on the register. What do you need?</div></div>`;
+      const p = leadPending.get(key); if (p) { log.insertAdjacentHTML('beforeend', `<div class="elim eli thinking"><b>${esc(who)}</b><div>… (working on: ${esc(p.text.slice(0, 80))})</div></div>`); if ($('#eliGo')) $('#eliGo').disabled = true; }
+      log.scrollTop = log.scrollHeight; };
+    try { draw((await api.lead.chatLog({ agentId: agent.id, jobId })).chat); } catch (e) { const log = $('#eliLog'); if (log) log.innerHTML = `<div class="bsub">${esc(clean(e))}</div>`; }
+    const pics = []; const readF = (f) => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res({ name: f.name, base64: String(r.result).split(',')[1] || '' }); r.onerror = rej; r.readAsDataURL(f); });
+    const showPics = () => { const box = $('#eliFiles'); if (box) box.innerHTML = pics.map((f, i) => `<span class="o3f">${esc(f.name)} <button data-rm="${i}">×</button></span>`).join(''); if (box) box.querySelectorAll('[data-rm]').forEach(b => b.onclick = () => { pics.splice(+b.dataset.rm, 1); showPics(); }); };
+    const take = async (list) => { for (const f of [...(list || [])]) if (/^image\//.test(f.type) || /\.pdf$/i.test(f.name || '')) pics.push(await readF(f)); showPics(); };
+    $('#eliIn').onpaste = (e) => { const items = [...((e.clipboardData || {}).items || [])].filter(i => i.kind === 'file'); if (!items.length) return; e.preventDefault(); take(items.map((i, k) => { const f = i.getAsFile(); return f && new File([f], `screenshot-${pics.length + k + 1}.${(f.type.split('/')[1] || 'png').replace('jpeg', 'jpg')}`, { type: f.type }); }).filter(Boolean)); };
+    $('#eliIn').ondragover = (e) => e.preventDefault(); $('#eliIn').ondrop = (e) => { e.preventDefault(); e.stopPropagation(); take(e.dataTransfer.files); };
+    const send = async () => { const t = $('#eliIn').value.trim(); if ((!t && !pics.length) || leadPending.has(key)) return; const log = $('#eliLog'); $('#eliIn').value = ''; $('#eliGo').disabled = true; const files = pics.splice(0); showPics(); log.insertAdjacentHTML('beforeend', `<div class="elim tom"><b>You</b><div>${esc(t)}${files.length ? `<div class="bsub">${esc(files.map(f => f.name).join(', '))}</div>` : ''}</div></div><div class="elim eli thinking"><b>${esc(who)}</b><div>…</div></div>`); log.scrollTop = log.scrollHeight;
+      const promise = api.lead.chat({ agentId: agent.id, jobId, text: t || '(see the attachment)', files }); leadPending.set(key, { text: t, promise });
+      let r = null, err = null; try { r = await promise; } catch (e) { err = e; } leadPending.delete(key);
+      const here = sel === jobId && tab === 'lead:' + agent.id;
+      if (err) { if (here) { const th = document.querySelector('#eliLog .thinking div'); if (th) th.textContent = clean(err); const g = $('#eliGo'); if (g) g.disabled = false; } else toast(`${who}: ${clean(err)}`, 'err'); return; }
+      if (r.done && r.done.length) { try { O = await api.jobs.overview({ jobId }); } catch {} }
+      if (here) { if (r.done && r.done.length) renderJob(); else { draw(r.chat); const g = $('#eliGo'); if (g) g.disabled = false; } }
+      else toast(`${who} (${O.job.number}): ${r.reply.slice(0, 140)}${r.reply.length > 140 ? '…' : ''}`); };
+    $('#eliGo').onclick = send; $('#eliIn').onkeydown = (ev) => { if (ev.key === 'Enter' && !ev.shiftKey) { ev.preventDefault(); send(); } }; $('#eliIn').focus();
+  }
   function tabComments() {
     const V = O.desk, el = $('#jbTab'), docs = O.rows.map(r => r.no);
     const byDoc = {}; (V.crs || []).forEach(c => { const k = c.doc === '*' ? 'All drawings and documents' : (c.doc || 'General'); (byDoc[k] = byDoc[k] || []).push(c); });
@@ -581,7 +610,7 @@ export function initJobsUI({ api, getAgents, openIssue, onWorkOn }) {
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && panel.classList.contains('open') && !document.querySelector('.modal.open')) hide(); });
   return {
     focusSearch() { const q = $('#jbQ'); if (q) { q.focus(); q.select(); } },
-    async show(jobId) { if (jobId !== undefined) { sel = jobId; selPath = ''; filesAt = ''; selFolder = ''; tab = 'deliv'; } clearInterval(listTimer); listTimer = setInterval(async () => { if (!panel.classList.contains('open') || busyPanel() || !treeOpen.size || !document.hasFocus()) return; const before = treeSig(); await relist(); if (treeSig() !== before) renderList(); }, 15000); panel.classList.remove('collapsed'); panel.classList.add('open'); document.body.classList.add('jobs-open'); document.body.classList.remove('jobs-full'); if ($('#jbFull')) { $('#jbFull').textContent = '⛶'; $('#jbFull').title = 'Full screen (F11)'; } document.querySelectorAll('#top .tabs:not(.rooms) button').forEach(x => x.classList.toggle('active', x.id === 'jobsBtn')); await refresh().catch(e => { $('#jbMain').innerHTML = `<div class="bhint">${esc(clean(e))}</div>`; }); },
+    async show(jobId, wantTab) { if (jobId !== undefined) { sel = jobId; selPath = ''; filesAt = ''; selFolder = ''; tab = 'deliv'; } if (wantTab) { tab = wantTab; if (!sel) { try { const c = await api.biz.current(); if (c) sel = typeof c === 'string' ? c : c.id; } catch {} } if (!sel) toast('Pick a job on the left, then the ' + wantTab.replace('lead:', '').replace(/^./, m => m.toUpperCase()) + ' tab'); } clearInterval(listTimer); listTimer = setInterval(async () => { if (!panel.classList.contains('open') || busyPanel() || !treeOpen.size || !document.hasFocus()) return; const before = treeSig(); await relist(); if (treeSig() !== before) renderList(); }, 15000); panel.classList.remove('collapsed'); panel.classList.add('open'); document.body.classList.add('jobs-open'); document.body.classList.remove('jobs-full'); if ($('#jbFull')) { $('#jbFull').textContent = '⛶'; $('#jbFull').title = 'Full screen (F11)'; } document.querySelectorAll('#top .tabs:not(.rooms) button').forEach(x => x.classList.toggle('active', x.id === 'jobsBtn')); await refresh().catch(e => { $('#jbMain').innerHTML = `<div class="bhint">${esc(clean(e))}</div>`; }); },
     hide, refresh, isOpen: () => panel.classList.contains('open')
   };
 }
