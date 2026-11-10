@@ -46,7 +46,7 @@ async function apply(actions, ctx, { agent, doers = {} }) {
       if (!a || !a.do) continue;
       if (a.do === 'word' || a.do === 'excel') {
         if (!doers.office) { done.push(`${a.do}: not available here`); continue; }
-        const r = await doers.office({ role: a.do, request: String(a.request || ''), prepared: draft });
+        const r = await doers.office({ role: a.do, request: `${String(a.request || '')}\n\n${draft}`, prepared: agent.initials || String(name).slice(0, 2).toUpperCase() });   // the approval cell takes initials; the DRAFT instruction goes to Wren / Lex with the request
         done.push(`${a.do === 'excel' ? 'Lex' : 'Wren'} made ${path.basename(r.path)} (DRAFT)`);
       } else if (a.do === 'calc') {
         if (!doers.calc) { done.push('calc: not available here'); continue; }

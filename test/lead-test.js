@@ -14,7 +14,7 @@ const L = require(path.join(__dirname, '..', 'src', 'leadchat.js'));
   const ctx = { job, desk: {}, deskMod: { load: () => ({}), saveRaw() {}, setRules() {}, addInputs() {} }, biz: { saveJob() {} }, BIZ: { data: () => ({}), store: { save() {} } }, overview: { rows: [] } };
   const done = await L.apply([{ do: 'word', request: 'scope' }, { do: 'excel', request: 'loads' }, { do: 'calc', title: 'Volt drop', detail: 'PDB feeder' }, { do: 'check', nos: ['0008'] }, { do: 'note', text: 'Ze TBC' }], ctx, { agent: dave, doers });
   assert.deepStrictEqual(done, ['Wren made Note.docx (DRAFT)', 'Lex made Load.xlsx (DRAFT)', 'Ada wrote Technical note - VD DRAFT.md (DRAFT)', 'Cal checked against Cable Schedule.xlsx: 2 findings — two sizes differ', 'noted: Ze TBC']);
-  assert.ok(/Prepared by Dave \(AI agent\) — DRAFT for review/.test(seen.word.prepared) && /DRAFT/.test(seen.excel.prepared), 'everything Wren and Lex make for Dave is marked DRAFT');
+  assert.ok(/Prepared by Dave \(AI agent\) — DRAFT for review/.test(seen.word.request) && /DRAFT/.test(seen.excel.request), 'everything Wren and Lex make for Dave is marked DRAFT'); assert.strictEqual(seen.word.prepared, 'DA', 'initials in the approval cell, not a sentence');
   assert.strictEqual(seen.calc.from, 'Dave'); assert.deepStrictEqual(seen.check.nos, ['0008']);
   const none = await L.apply([{ do: 'word', request: 'x' }], ctx, { agent: tom, doers: {} }); assert.deepStrictEqual(none, ['word: not available here']);
   const err = await L.apply([{ do: 'calc', title: 't' }], ctx, { agent: tom, doers: { calc: async () => { throw new Error('no files'); } } }); assert.deepStrictEqual(err, ['calc: no files']);

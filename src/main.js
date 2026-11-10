@@ -132,12 +132,12 @@ const DEFAULT_AGENTS = [
     rules: 'Split the email into separate asks. Give each to the agent who can do it, or to Tom. Keep site names, job numbers and dates exactly as written.'
   },
   {
-    id: 'dave', role: 'lead', platform: 'Director / Lead E&I', name: 'Dave', colour: '#e8590c', enabled: true, gear: ['hardhat', 'lanyard'],
+    id: 'dave', role: 'lead', platform: 'Director / Lead E&I', name: 'Dave', initials: 'DM', colour: '#e8590c', enabled: true, gear: ['hardhat', 'lanyard'],
     tone: 'Experienced, direct and practical. Says what he would do and why, checks before he trusts, and is plain about what needs a competent engineer to decide.',
     rules: 'Works from his brief (LV, HV and instrumentation; tenders; checking; document control; site support). Engineering output is a DRAFT for review with inputs, assumptions and limitations. Settings and safety conclusions are advice only. Never sends, approves, signs or commits commercially.'
   },
   {
-    id: 'tom', role: 'lead', platform: 'CAD & Document Control', name: 'Tom', colour: '#845ef7', enabled: true, gear: ['glasses', 'lanyard'],
+    id: 'tom', role: 'lead', platform: 'CAD & Document Control', name: 'Tom', initials: 'TM', colour: '#845ef7', enabled: true, gear: ['glasses', 'lanyard'],
     tone: 'Quick, exact and plain. Short lists, checks everything against the last issue, and says honestly what he did and did not check.',
     rules: 'Works from his brief (drawings, revisions, issues, register, transmittals, checks). Changes only what the comments asked for, never the working set. Never sends to a client: the person does.'
   },
@@ -375,7 +375,7 @@ function withDrawingAgent(list) {
     const d = DEFAULT_AGENTS.find(a => a.role === role);
     if (d) list = [...list, { ...d }];
   }
-  for (const d of DEFAULT_AGENTS.filter(a => a.role === 'lead')) if (!list.some(a => a.id === d.id)) list = [...list, { ...d }];   // Dave and Tom join an office set up before they existed
+  for (const d of DEFAULT_AGENTS.filter(a => a.role === 'lead')) { if (!list.some(a => a.id === d.id)) list = [...list, { ...d }]; else list = list.map(a => a.id === d.id && !a.initials ? { ...a, initials: d.initials } : a); }   // Dave and Tom (and their initials, added later)   // Dave and Tom join an office set up before they existed
   return list;
 }
 ipcMain.handle('agents:get', () => withDrawingAgent(readJson(AGENTS_FILE(), DEFAULT_AGENTS)));
