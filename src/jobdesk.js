@@ -269,9 +269,11 @@ function addInputs(id, { inputs = [], missing = [], questions = [], fromEmail = 
   const d = load(id);
   for (const x of inputs) { if (!x || !x.name) continue; const old = d.inputs.find(i => i.name.toLowerCase() === String(x.name).toLowerCase()); if (old) { if (x.rev) old.rev = x.rev; old.received = today(); } else d.inputs.push({ name: String(x.name), rev: String(x.rev || ''), what: String(x.what || ''), received: today(), from: fromEmail }); }
   const ask = [...missing.map(m => 'Please send: ' + m), ...questions];
-  for (const q of ask) { const t = String(q || '').trim(); if (!t || d.rfis.some(r => sameAsk(r.q, t))) continue; d.rfis.push({ no: 'RFI-' + String(d.rfis.length + 1).padStart(3, '0'), q: t, status: 'Draft', raised: today(), answer: '', from: fromEmail }); }
+  for (const q of ask) { const t = String(q || '').trim(); if (!t || d.rfis.some(r => sameAsk(r.q, t))) continue; d.rfis.push({ no: nextRfiNo(d.rfis), q: t, status: 'Draft', raised: today(), answer: '', from: fromEmail }); }
   return save(id, d);
 }
+// the next RFI number in the job's own style: after the highest, padded the way the register already pads them (RFI-24 -> RFI-25, RFI-011 -> RFI-012)
+function nextRfiNo(rfis) { const nums = (rfis || []).map(r => String(r.no || '').match(/^RFI-(\d+)$/i)).filter(Boolean); const pad = nums.length ? Math.max(...nums.map(m => m[1].length)) : 3; return 'RFI-' + String(Math.max(0, ...nums.map(m => +m[1])) + 1).padStart(pad, '0'); }
 // the same question asked twice in other words ("Please send: Bustleholm deliverables list" / "Please send the Bustleholm deliverables
 // list from 19 Oct") is one RFI: the words that carry meaning mostly overlap
 const askWords = (q) => new Set(String(q || '').toLowerCase().replace(/please (send|confirm|provide|advise)|can you|could you|at its latest revision|if (possible|you can)/g, ' ').split(/[^a-z0-9&]+/).filter(w => w.length > 1 && !/^(the|and|for|of|to|a|an|in|on|from|is|are|be|it|its|this|that|with|any|do|does|not|have|has|we|you|your|our|us|what|which|do|yet|one|list)$/.test(w)));
@@ -416,7 +418,8 @@ async function writeRfiRegister(id, { templateDir = '', people = {} } = {}) {
   const area = (d.area || '').trim() || '0000';
   const row = (job.drawings || []).find(r => /\b(rfi|request for information|technical quer(y|ies))\b/i.test(r.title || '') && /\b(register|log|list|schedule)\b/i.test(r.title || ''));   // the job's own RFI register row, when it has one
   const docNo = row ? row.no : `${job.number}-${area}-01-01-0003`;
-  const prev = fs.readdirSync(dir).filter(n => /RFI REGISTER.*\.xlsx$/i.test(n) && !/^~\$/.test(n));
+  const carried = d.rfiRegisterFile && path.dirname(d.rfiRegisterFile) === dir ? path.basename(d.rfiRegisterFile) : '';   // a register brought over from a handoff: replaced by this one, to Archive
+  const prev = fs.readdirSync(dir).filter(n => (/RFI REGISTER.*\.xlsx$/i.test(n) || n === carried) && !/^~\$/.test(n));
   const rev = d.rfiRegisterRev || 'P01';
   const file = path.join(dir, `${docNo} - RFI REGISTER ${rev}.xlsx`);
   const R = require('./rfireg'), tpl = R.templatePath(templateDir);

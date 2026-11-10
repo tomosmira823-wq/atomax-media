@@ -481,7 +481,11 @@ const step = (name, fn) => { try { const r = fn(); if (r && r.then) return r.the
     // Prepare the issue: the made files go into the issue being built (Word / Excel in its NATIVES), so the issue check has them in one folder
     const G = await call('jobs:gatherIssue', { jobId: job.id }); assert.strictEqual(G.copied.length, 9, JSON.stringify(G)); assert.ok(/ISSUE \d+$/.test(G.dir), G.dir);
     assert.strictEqual(fs.readdirSync(path.join(G.dir, path.basename(G.dir) + ' NATIVES')).length, 9); assert.ok(G.plotted && (G.plotted.error || (G.plotted.failed || []).length || (G.plotted.done || []).length >= 0), 'PDFs tried');
-    const V = desk.load(job.id); assert.strictEqual(V.rfis.length, 24, 'the register\'s 24 RFIs'); assert.ok(V.rfisBefore.some(r => /BESS make and model/.test(r.q)), 'the job\'s own kept aside');
+    // a new RFI after the register came over, then Make on the register again: written from the job's 25 RFIs, the handed-over copy to Archive, nothing re-imported
+    desk.addInputs(job.id, { questions: ['Confirm the site access arrangements for the earthing survey team'] }); const RR = await call('jobs:make', { jobId: job.id, no: 'X101126-0000-06-01-0001' });
+    assert.strictEqual(RR.status, 'made'); assert.strictEqual(desk.load(job.id).rfis.length, 25, 'not re-imported over the new RFI'); assert.strictEqual(desk.load(job.id).rfis[24].no, 'RFI-25', 'numbered on from the register'); const rdir = path.dirname(RR.files[0]);
+    assert.ok(!fs.readdirSync(rdir).some(n => /Request for Information Register\.xlsx$/.test(n)), 'one register in the folder: ' + fs.readdirSync(rdir).join(', '));
+    const V = desk.load(job.id); assert.strictEqual(V.rfis.length, 25, 'the register\'s 24 RFIs and the new one'); assert.ok(V.rfisBefore.some(r => /BESS make and model/.test(r.q)), 'the job\'s own kept aside');
     return '9 made';
   });
   await step('365 room: a turn that dies lands in the chat as a message, and nothing is left pending', async () => {

@@ -164,6 +164,7 @@ function register({ ipcMain, HANDLERS, BIZ, claudeFull, getAgents }) {
     return out; };
   async function carryOver(jobId, d, k, people) {
     const C = require('./carryover'), files = jobFiles(jobId), e = C.earlierVersion(d, files); if (!e) return null;
+    if (k.kind === 'rfi' && desk.load(jobId).rfiCarriedFrom === e.abs) return null;   // brought over once: its RFIs are the job's now, and a second Make writes the register from them (never imports the old one over new RFIs)
     const job = jobOf(jobId), map = C.numberMap(job.drawings, files), no = d.no;
     const R = runs.start({ kind: `${k.kind}:carry`, who: k.agent === 'Lex' || k.kind === 'rfi' ? (k.agent || 'Eli') : 'Wren', jobId, no }); runs.stage(R.id, `issuing ${e.name} under ${no}`, 30);
     try {
@@ -180,7 +181,7 @@ function register({ ipcMain, HANDLERS, BIZ, claudeFull, getAgents }) {
       let rfis = '';
       if (k.kind === 'rfi') {   // the register's RFIs become the job's, so the documents' RFI references and the register agree; the ones the job had are kept aside
         const list = await C.rfisOf(buf);
-        if (list.length) { const D = desk.load(jobId); D.rfisBefore = [...(D.rfisBefore || []), ...(D.rfis || []).map(r => ({ ...r, setAside: new Date().toISOString() }))]; D.rfis = list.map(r => ({ ...r, from: e.name })); D.rfiRegisterRev = rev; D.rfiRegisterFile = file; desk.saveRaw(jobId, D); rfis = ` The job's RFIs are now its ${list.length} (the ${(D.rfisBefore || []).length} the job had before are kept aside).`; }
+        if (list.length) { const D = desk.load(jobId); D.rfisBefore = [...(D.rfisBefore || []), ...(D.rfis || []).map(r => ({ ...r, setAside: new Date().toISOString() }))]; D.rfis = list.map(r => ({ ...r, from: e.name })); D.rfiRegisterRev = rev; D.rfiRegisterFile = file; D.rfiCarriedFrom = e.abs; desk.saveRaw(jobId, D); rfis = ` The job's RFIs are now its ${list.length} (the ${(D.rfisBefore || []).length} the job had before are kept aside).`; }
       }
       runs.finish(R.id, { ok: true });
       const old = e.no;
