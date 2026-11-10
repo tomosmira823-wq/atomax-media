@@ -462,7 +462,9 @@ function register({ ipcMain, dialog, shell, getWin, userDir, claudeFull, checker
     number = String(number || '').trim().toUpperCase(); if (!number) throw new Error('Give the job a number');
     const d = BIZ.data(); if (d.jobs.some(j => String(j.number).toUpperCase() === number)) throw new Error(number + ' is already a job');
     if (mode === 'create') { const s = loadSettings ? loadSettings() : {}; if (!folder || !fs.existsSync(folder)) throw new Error('Choose where your job folders live'); if (saveSettings && s.jobsFolder !== folder) saveSettings({ ...s, jobsFolder: folder }); folder = BIZ.projects.createJobFolder(folder, number, name || ''); }
-    else if (mode === 'link') { if (!folder || !fs.existsSync(folder)) throw new Error('Choose the job folder'); }
+    else if (mode === 'link') { if (!folder || !fs.existsSync(folder)) throw new Error('Choose the job folder');
+      const same = (a, b) => path.resolve(String(a || '')).toLowerCase() === path.resolve(String(b || '')).toLowerCase(), other = d.jobs.find(j => j.folder && same(j.folder, folder));
+      if (other) throw new Error(`That folder is already job ${other.number}${other.name ? ' ' + other.name : ''}. Open that job instead, or pick the new job's own folder.`); }
     else folder = '';
     const job = biz.saveJob(d, { number, name: String(name || '').trim(), client: String(client || '').trim(), folder }, 'Tom');
     BIZ.store.save();

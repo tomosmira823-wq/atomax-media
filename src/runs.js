@@ -44,8 +44,8 @@ const PLAIN = [
   [/fetch failed|\bENOTFOUND\b|\bECONNRESET\b|\bETIMEDOUT\b|\bEAI_AGAIN\b|network error|socket hang up/i, 'No connection to Claude. Check the internet or the VPN, then press the button again.'],
   [/No Claude API key/i, 'No Claude key yet. Put it in Settings first.'],
   [/did not return JSON|\bmax_tokens\b|reply was cut off/i, 'The reply was cut off before it finished. Press the button again; it usually goes through second time.'],
-  [/cables that overlap or cross/i, 'The layout could not avoid cables crossing. Press Make again; if it happens twice, tell Tom which cables it names.'],
-  [/No cable schedule/i, 'There is no cable schedule to work from. Put it in the job folder (7.8 Schedules or 008) and press the button again.'],
+  [/cables that overlap or cross/i, (m) => `The layout could not avoid cables crossing${(m.match(/\(([^)]*)\)/) || [])[1] ? ': ' + (m.match(/\(([^)]*)\)/) || [])[1] : ''}. Press Make again; if it happens twice, send Claude these cable names.`],
+  [/^No cable schedule/i, 'There is no cable schedule to work from. Put it in the job folder (7.8 Schedules or 008) and press the button again.'],
   [/No project folder|outside your Projects/i, 'This job has no folder linked. Open it from the Projects list so the app knows where it lives.'],
   [/monthly cap|usage cap/i, 'The monthly Claude spend cap has been reached. Raise it in Settings if that is right.'],
 ];
