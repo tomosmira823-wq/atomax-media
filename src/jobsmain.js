@@ -158,7 +158,10 @@ function register({ ipcMain, HANDLERS, BIZ, claudeFull, getAgents }) {
     return { carry, noCarry, inputPaths, agent: k.agent, agentId: AGENT_ID[k.agent] || '', kind: k.kind, number: num, title, request: carryReq || request, inputs: carry ? [carry] : inputs, folder: job.folder || '', people, rev, nextRev: rev ? require('./docnumber').nextRev(rev) : 'P01' };
   }
   // the inputs the Make screen lists, sent to Wren / Lex as the files themselves (they were only listed before: Gwrhyd 10 Nov, "the harmonic inputs didn't reach me")
-  const inputFiles = (paths) => (paths || []).filter(p => { try { return fs.statSync(p).size <= 25 * 1024 * 1024; } catch { return false; } }).map(p => ({ name: path.basename(p), base64: fs.readFileSync(p).toString('base64') }));
+  // one request to Claude holds about 32 MB: the inputs in order of relevance until 18 MB, the rest named so the agent knows they were left out
+  const inputFiles = (paths) => { let room = 18 * 1024 * 1024; const out = [];
+    for (const p of paths || []) { let n = 0; try { n = fs.statSync(p).size; } catch { continue; } if (n > room) { out.left = [...(out.left || []), path.basename(p)]; continue; } room -= n; out.push({ name: path.basename(p), base64: fs.readFileSync(p).toString('base64') }); }
+    return out; };
   async function carryOver(jobId, d, k, people) {
     const C = require('./carryover'), files = jobFiles(jobId), e = C.earlierVersion(d, files); if (!e) return null;
     const job = jobOf(jobId), map = C.numberMap(job.drawings, files), no = d.no;
@@ -216,7 +219,7 @@ function register({ ipcMain, HANDLERS, BIZ, claudeFull, getAgents }) {
         const P = plan({ jobId, no }); r = await call('dex:make', { run: R.id, jobId, kind: P.kind, drawingNumber: P.number, request: (asked || P.request) + (note ? ' ' + note : ''), answers, revision, skills, drawn: people.drawn || '', checked: people.checked || '', approved: people.approved || '' });
         // a TBC row that Dex numbered when he made it (from the register / the job's QS 006 numbering): the row takes that number now
         if (/^TBC-/i.test(no) && QS.test(String(r.drawingNumber || '')) && desk.renameRow(jobId, no, r.drawingNumber)) no = r.drawingNumber;
-        if (r.questions) { runs.finish(R.id, { ok: true }); return setDeliv(jobId, no, { status: 'needs you', questions: r.questions, summary: 'Dex has questions' }); }
+        if (r.questions) { runs.finish(R.id, { ok: true }); try { const { Notification } = require('electron'); new Notification({ title: `Dex has a question on ${no}`, body: String(r.questions[0] || '').slice(0, 240) }).show(); } catch {} return setDeliv(jobId, no, { status: 'needs you', questions: r.questions, summary: 'Dex has questions: answer them below and press Send answers' }); }
         files = (r.sheets && r.sheets.length ? r.sheets.map(s => s.path) : [r.path]).filter(Boolean); pdfs = r.pdfs || [];
       } else if (k.agent === 'Lex') {
         runs.stage(R.id, 'Lex is building the workbook', 20); r = await call('o365:excel', { row: rowFor(jobId, d, people, revision), run: R.id, jobId, request: (asked || plan({ jobId, no }).request) + (note ? ' ' + note : '') + answered(answers), skills, files: inputFiles(plan({ jobId, no }).inputPaths) });
