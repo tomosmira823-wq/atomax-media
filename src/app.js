@@ -90,7 +90,7 @@ window.toast = function (text, kind = '', opts = {}) {
   const t = document.createElement('div'); t.className = 'toast ' + kind; t.textContent = text;
   if (opts.action) { const b = document.createElement('button'); b.className = 'jbbtn primary'; b.textContent = opts.action; b.onclick = () => { opts.onAction && opts.onAction(); gone(); }; t.appendChild(b); }
   const gone = () => { t.classList.add('out'); setTimeout(() => t.remove(), 300); };
-  box.appendChild(t); if (!opts.sticky) setTimeout(gone, opts.ms || (kind === 'err' ? 8000 : 4000)); t.onclick = (e) => { if (e.target === t) gone(); };
+  box.appendChild(t); if (!opts.sticky && kind !== 'err') setTimeout(gone, opts.ms || 4000);   // an error stays until it is clicked away, so it can be read in full t.onclick = (e) => { if (e.target === t) gone(); };
 };
 
 // ---------- tabs / modals ----------
