@@ -11,11 +11,19 @@ const DR = require('./docrev');
 
 const QS = /X\d{4,6}(?:-[A-Z0-9]{2,4}){2,5}-\d{4}/i;
 // a title as words, so "EREC G5-5" and "EREC G5/5", "RFI Register" and "Request for Information Register" are the same title
-const norm = (t) => String(t || '').toLowerCase()
+const norm = (t) => String(t || '').replace(/X\d{4,6}(?:-[A-Z0-9]{2,4}){2,5}-\d{4}/gi, ' ').replace(/\bX\d{6}\b/gi, ' ').replace(/&/g, ' and ').toLowerCase()
   .replace(/\brequest for information\b/g, 'rfi').replace(/\brequests? for information\b/g, 'rfi')
   .replace(/\b[pcax]\d{2}\b/g, ' ').replace(/\([^)]*\)/g, ' ').replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ').trim();
 const titleOfFile = (name) => norm(path.basename(name).replace(/\.[^.]+$/, '').replace(QS, ' ').replace(/^[\s_-]+/, ''));
 
+// the same title in other words: every word of the shorter title is in the longer one, and the shorter has most of the longer's words
+// ("Earthing Design Basis and EPR Assessment" / "Earthing Design Basis & EPR Assessment - Gwrhyd"); 1 = a fit, 0 = not
+const STOP = new Set(['and', 'of', 'the', 'to', 'for', 'a', 'an', 'in', 'on', 'at', 'gwrhyd']);
+function sameWords(a, b) {
+  const A = new Set(String(a).split(' ').filter(w => w && !STOP.has(w))), B = new Set(String(b).split(' ').filter(w => w && !STOP.has(w)));
+  const [S, L] = A.size <= B.size ? [A, B] : [B, A]; if (S.size < 3) return 0;
+  return [...S].every(w => L.has(w)) && S.size / L.size >= 0.6 ? 1 : 0;
+}
 // the earlier version of a row's document: a Word file (Excel for a register or schedule) whose title is the row's title and whose
 // number is not the row's; Archive / Superseded copies never count
 function earlierVersion(row, files) {
@@ -24,12 +32,20 @@ function earlierVersion(row, files) {
   const exts = /register|schedule|list/i.test(row.title) ? /\.(xlsx|xlsm)$/i : /\.docx$/i;
   const cands = files.filter(f => exts.test(f.name) && !/(^|\/)[^\/]*(archive|superseded)[^\/]*\//i.test(f.rel) && !/^~\$/.test(f.name))
     .map(f => { const no = (f.name.match(QS) || [])[0] || ''; return { ...f, no, t: titleOfFile(f.name) }; })
-    .filter(f => f.no && f.no.toUpperCase() !== String(row.no).toUpperCase() && (f.t === want || f.t === wantShort));
+    .filter(f => f.no && f.no.toUpperCase() !== String(row.no).toUpperCase()).map(f => ({ ...f, fit: f.t === want || f.t === wantShort ? 2 : sameWords(f.t, want) }))
+    .filter(f => f.fit > 0);
   if (!cands.length) return null;
-  cands.sort((a, b) => (DR.revOfName(b.name) || '').localeCompare(DR.revOfName(a.name) || '') || (b.mtime || 0) - (a.mtime || 0));
+  cands.sort((a, b) => b.fit - a.fit || (DR.revOfName(b.name) || '').localeCompare(DR.revOfName(a.name) || '') || (b.mtime || 0) - (a.mtime || 0));
   return cands[0];
 }
 
+// why no earlier version was found, for the Make screen: how many Word / Excel files were looked at and the nearest title
+function whyNot(row, files) {
+  const exts = /register|schedule|list/i.test(row.title) ? /\.(xlsx|xlsm)$/i : /\.docx$/i, want = norm(row.title);
+  const look = files.filter(f => exts.test(f.name)); if (!look.length) return `no ${exts.source.includes('xls') ? 'Excel' : 'Word'} files in the job folder`;
+  const W = new Set(want.split(' ')), best = look.map(f => { const t = titleOfFile(f.name), T = t.split(' '); return { f, t, n: T.filter(w => W.has(w)).length }; }).sort((a, b) => b.n - a.n)[0];
+  return `looked at ${look.length} ${exts.source.includes('xls') ? 'Excel' : 'Word'} file${look.length === 1 ? '' : 's'}; nearest: ${best.f.rel} (title read as "${best.t}", the row's as "${want}"${(best.f.name.match(QS) || [])[0] ? '' : ', no document number in its name'})`;
+}
 // every handed-over document on the job: old number -> the row's number
 function numberMap(rows, files) {
   const map = {};
@@ -165,4 +181,4 @@ async function rfisOf(buf) {
   return out;
 }
 
-module.exports = { tidyPagination, norm, earlierVersion, numberMap, replacements, reissueDocx, reissueXlsx, rfisOf };
+module.exports = { whyNot, sameWords, tidyPagination, norm, earlierVersion, numberMap, replacements, reissueDocx, reissueXlsx, rfisOf };

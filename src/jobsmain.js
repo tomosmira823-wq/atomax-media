@@ -144,7 +144,7 @@ function register({ ipcMain, HANDLERS, BIZ, claudeFull, getAgents }) {
     const request = k.agent === 'Dex' ? `${k.verb}: ${title}${num ? ` (drawing ${num})` : ''}. Use the job's inputs, every item on them for this drawing and nothing else.`
       : k.agent === 'Lex' ? `${k.verb} ${title} for job ${job.number}${num ? ` (document ${num})` : ''} from the job's inputs and the approved master device list. House template from your skill.`
       : `${k.verb} ${title} for job ${job.number}${num ? ` (document ${num})` : ''} from the job's inputs.`;
-    let carry = null; if (k.agent === 'Wren' || k.agent === 'Lex' || k.kind === 'rfi') { try { const e = require('./carryover').earlierVersion(d, jobFiles(jobId)); if (e) carry = e.name; } catch {} }
+    let carry = null, noCarry = ''; if (k.agent === 'Wren' || k.agent === 'Lex' || k.kind === 'rfi') { try { const C = require('./carryover'), fl = jobFiles(jobId), e = C.earlierVersion(d, fl); if (e) carry = e.name; else noCarry = `${fl.length} files listed; ` + C.whyNot(d, fl); } catch (err) { noCarry = 'could not look: ' + String(err && err.message || err); } }
     const want = k.kind === 'bcd' ? 'cable schedule instrument index io list bcd' : k.kind === 'sld' ? 'single line sld load schedule cable schedule protection' : k.kind === 'earthing' ? 'earthing cable schedule' : k.kind === 'schedule' ? 'cable schedule instrument index io list' : title;
     // Wren also reads Word files (an earlier version of the same document is the best input there is); a Word file and its own PDF are one input, the Word one
     let inputPaths = job.folder ? BIZ.projects.relevantFiles(job.id, title + ' ' + want, { exts: ['.pdf', '.xlsx', '.xlsm', '.csv', ...(k.agent === 'Wren' ? ['.docx'] : [])], max: 8 }) : [];
@@ -155,7 +155,7 @@ function register({ ipcMain, HANDLERS, BIZ, claudeFull, getAgents }) {
     const dl = delivOf(jobId), people = (dl[no] || {}).people || Object.values(dl).map(x => x.people).filter(Boolean).pop() || null;
     const rev = (dl[no] || {}).files ? ((dl[no] || {}).rev || 'P01') : '';
     const carryReq = carry ? `Issue ${carry} under ${num || d.no} as it is: every result, table, figure and assumption unchanged; the old document numbers and project reference changed to this job's (cross-references included); the P01 row, header and cover dated today.${k.kind === 'rfi' ? ' Its RFIs become the job\'s RFIs.' : ''}` : '';
-    return { carry, inputPaths, agent: k.agent, agentId: AGENT_ID[k.agent] || '', kind: k.kind, number: num, title, request: carryReq || request, inputs: carry ? [carry] : inputs, folder: job.folder || '', people, rev, nextRev: rev ? require('./docnumber').nextRev(rev) : 'P01' };
+    return { carry, noCarry, inputPaths, agent: k.agent, agentId: AGENT_ID[k.agent] || '', kind: k.kind, number: num, title, request: carryReq || request, inputs: carry ? [carry] : inputs, folder: job.folder || '', people, rev, nextRev: rev ? require('./docnumber').nextRev(rev) : 'P01' };
   }
   // the inputs the Make screen lists, sent to Wren / Lex as the files themselves (they were only listed before: Gwrhyd 10 Nov, "the harmonic inputs didn't reach me")
   const inputFiles = (paths) => (paths || []).filter(p => { try { return fs.statSync(p).size <= 25 * 1024 * 1024; } catch { return false; } }).map(p => ({ name: path.basename(p), base64: fs.readFileSync(p).toString('base64') }));
@@ -228,6 +228,7 @@ function register({ ipcMain, HANDLERS, BIZ, claudeFull, getAgents }) {
     } catch (e) { const stopped = runs.aborted(R.id);
       if (e && e.question && !stopped) {   // the agent asked something: shown in full on the row with a box to answer, and in Waiting on you
         runs.finish(R.id, { ok: true }); BIZ.log({ who: k.agent, action: 'Has a question before making it', jobId, detail: `${no}: ${String(e.message).slice(0, 300)}` });
+        try { const { Notification } = require('electron'); new Notification({ title: `${k.agent} has a question on ${no}`, body: String(e.message).slice(0, 240) }).show(); } catch {}
         return setDeliv(jobId, no, { status: 'needs you', questions: [String(e.message)], answers, summary: `${k.agent} has a question: answer it below and press Send answers` }); }
       runs.finish(R.id, { ok: false, error: runs.plain(e) }); setDeliv(jobId, no, { status: stopped ? 'stopped' : 'failed', summary: stopped ? 'Stopped. Nothing was changed; press Make to start again.' : runs.plain(e) }); throw e; }
   }
@@ -334,7 +335,7 @@ function register({ ipcMain, HANDLERS, BIZ, claudeFull, getAgents }) {
   ipcMain.handle('lead:chatLog', wrap(({ agentId, jobId }) => ({ chat: chatOf(desk.load(jobId), agentId) })));
   ipcMain.handle('jobs:plan', wrap((a) => plan(a)));
   ipcMain.handle('jobs:make', wrap((a) => make(a)));
-  ipcMain.handle('jobs:makeAll', wrap(async ({ jobId }) => { const o = overview(jobId), done = [], masterOk = o.desk.master && o.desk.master.status === 'approved'; for (const r of o.rows.filter(r => r.agent && (!r.work || ['failed'].includes(r.work.status)) && (masterOk || !['bcd', 'schedule'].includes(r.kind)))) { try { await make({ jobId, no: r.no }); done.push(r.no); } catch {} } return { done, overview: overview(jobId) }; }));
+  ipcMain.handle('jobs:makeAll', wrap(async ({ jobId }) => { const o = overview(jobId), done = [], masterOk = o.desk.master && o.desk.master.status === 'approved'; for (const r of o.rows.filter(r => r.agent && (!r.work || ['failed'].includes(r.work.status)) && (masterOk || !['bcd', 'schedule'].includes(r.kind)))) { try { await make({ jobId, no: r.no }); done.push(r.no); } catch (e) { try { const w = delivOf(jobId)[r.no]; if (!w || w.status !== 'failed') setDeliv(jobId, r.no, { status: 'failed', summary: runs.plain(e) }); } catch {} } } return { done, overview: overview(jobId) }; }));
   ipcMain.handle('jobs:check', wrap((a) => check(a)));
   // Revise: the changes logged against a drawing, done by Dex. With a DXF on file he edits its text (I -> 1, LT -> CT, a rename, all text in
   // black) and revs it up into the issue folder; what he was not asked about is untouched. DWG only: he asks for a DXF. No file at all: the

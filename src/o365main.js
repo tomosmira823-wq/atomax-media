@@ -75,7 +75,7 @@ Reply with JSON only, no markdown: {"filename":"short file name without extensio
 const WORD_SYSTEM = (base) => `You are Wren, the Word agent in the Atomax-UK 365 room. The engineer's request decides the document type (report, technical note, letter, specification, method statement, minutes) and its sections; the default sections below are only a fallback. Turn any attached notes (for example a Markdown technical note) into a proper Atomax document without changing their facts.\n\n${base}`;
 
 function register({ ipcMain, claudeFull, BIZ, checker, userDir, projects }) {
-  const wrap = (fn) => async (_e, a) => { try { return await fn(a || {}); } catch (e) { throw Object.assign(new Error(require('./runs').plain(e)), e && e.question ? { question: true } : {}); } };   // a question stays a question
+  const wrap = (fn) => async (_e, a) => { try { return await fn(a || {}); } catch (e) { throw e && e.question ? e : new Error(require('./runs').plain(e)); } };   // a question stays whole and stays a question   // a question stays a question
   const IMG = /\.(png|jpe?g|gif|webp)$/i;
   // attached files -> Claude content: data (CSV, big workbooks) as a profile with the full table kept for the analysis code, documents
   // as text, PDFs and pictures as themselves. Nothing is cut without saying so: a text file over the limit is reported, not trimmed quietly
