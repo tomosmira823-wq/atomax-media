@@ -275,7 +275,7 @@ function register({ ipcMain, HANDLERS, BIZ, claudeFull, getAgents }) {
     const reply = String(out.reply || '').trim() || `(${who} said nothing)`;
     const doers = { issueSent: () => { const d = desk.load(jobId); if (!d.openIssue) throw new Error('No issue is being built on this job.'); const n = d.openIssue.n; d.openIssue.sent = true; closeIssue(jobId, d, `Tom told ${who} it was sent`); return { n }; }, revUp: (a) => revUpOrRevise({ jobId, no: a.no, to: a.to || '', status: a.status || '', people: a.people || null }), revise: (a) => revise({ jobId, no: a.no, comments: a.note || '', status: a.status || '' }), comment: (a) => desk.addComments(jobId, [{ doc: a.no, comment: a.text, by: agent ? who : 'Tom' }]), make: (a) => make({ jobId, no: a.no, people: a.people || {}, note: a.note || '' }), rows: () => overview(jobId).rows, docRequest: (a) => docRequest({ jobId, submittedBy: a.submittedBy || '', nos: a.nos || null }), plot: (a) => plotIssue({ jobId, files: a.files || null }),
       office: (a) => require('./o365main').once({ ...a, jobId }), calc: (a) => require('./intake').adaNote({ ...a, jobId }), check: (a) => check({ jobId, nos: a.nos }) };
-    const actx = { job, desk: desk.load(jobId), deskMod: desk, biz, BIZ, overview: ov };
+    const actx = { job, desk: desk.load(jobId), deskMod: desk, biz, BIZ, overview: ov, said: { who, text: t } };
     const done = agent ? await L.apply(Array.isArray(out.actions) ? out.actions : [], actx, { agent, doers }) : await E.apply(Array.isArray(out.actions) ? out.actions : [], { ...actx, doers });
     try { desk.tidyRows(jobId); } catch {}
     try { if (done.some(x => /RFI|closed/i.test(x))) await desk.writeRfiRegister(jobId, { templateDir: BIZ.projects.templateDir() }); } catch {}

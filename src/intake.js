@@ -42,7 +42,7 @@ Who does what (use these, do not send them to "none"):
 - A quote or fee proposal: "documents".
 Existing jobs: the list of Atomax's jobs (its project folders) is given below the email. If the email is about one or more of them (same job number, site, client or project, e.g. "malt" and "wheat" are two jobs), list every one in "existingJobs" (job numbers) and do not add an "eli" task to set them up again. When it is about several jobs, put the job number each change is for in that change's "job".
 Client comments and changes: if the email returns comments on issued drawings or documents (a comment sheet, a marked-up PDF, "please address the following") OR asks for changes to drawings / documents Atomax has already made, even informally ("can you change F3 to 125A on the SLD", "the generator is now 600kVA"), set "commentReturn": true, list every comment under "comments" (document number, or its title when no number is given, e.g. "SLD"; the comment or change as written; who made it) and make one task per document for the agent who changes it (drawings: "dex", schedules and registers: "excel", documents: "documents" or "word").
-Deliverables: list what Atomax is being asked to produce under "deliverables" (e.g. {"type":"BCD","title":"Block cable diagram - Malt RIO1","qty":2}, {"type":"cable schedule","title":"Cable schedule","qty":1}); type is one of BCD, cable schedule, SLD, earthing, loop, layout, document, other.
+Deliverables: list what Atomax is being asked to produce under "deliverables" (e.g. {"type":"BCD","title":"Block cable diagram - Malt RIO1","qty":2}, {"type":"cable schedule","title":"Cable schedule","qty":1}); type is one of BCD, cable schedule, SLD, earthing, loop, layout, document, other. For each one give "why": the words in the email or attachment that ask for it, copied exactly (one short sentence), and "from": the file it is in ("the email" when it is the email body).
 Inputs: list every input document the client sent or refers to under "inputs" with its revision as written, and under "missingInputs" what is needed to do the work properly but has not been sent (e.g. instrument index, IO list, cable datasheets, latest tag list, panel GA).
 A revision, reissue or update of a drawing Atomax has already made ("please revise and reissue as P02", comments on P01) is NOT a new deliverable: list nothing under deliverables for it, its changes go under comments against that drawing's number. Only list real asks from the email. Do not invent work. Copy site names, job numbers, drawing numbers, ratings and dates exactly as written.
 Also work out, from the whole thread:
@@ -60,7 +60,7 @@ Reply with JSON only, no markdown:
 "asks":[{"title":"short task title, e.g. Draw the earthing schematic for Gwrhyd PV Farm","detail":"everything the agent needs for this task: what to produce, which attachment to use and the key data from it, what is missing","agent":"dex|engineer|documents|cal|milo|theo|eli|none","kind":"sld|earthing|dxf-fix|drawing-check|document|study|model|admin|other","due":"deadline if given, else empty"}],
 "clientQuestions":["short question for the client"],
 "existingJob":"the first job number from the existing jobs list this email is about, else empty","existingJobs":["every job number from the existing jobs list this email is about"],
-"deliverables":[{"type":"BCD|cable schedule|SLD|earthing|loop|layout|document|other","title":"...","qty":1}],
+"deliverables":[{"type":"BCD|cable schedule|SLD|earthing|loop|layout|document|other","title":"...","qty":1,"why":"the words that ask for it, exactly","from":"the email, or the attachment's file name"}],
 "inputs":[{"name":"document name or number as written","rev":"revision if shown","what":"what it is"}],"missingInputs":["..."],
 "commentReturn":false,"comments":[{"doc":"document number","comment":"as written","by":"name","job":"job number it is for, when the email is about several jobs"}],
 "replyTo":"name <address> the reply should go to","reply":"the suggested reply"}`;
@@ -76,7 +76,7 @@ Work out the DELIVERABLES REGISTER: every drawing, schedule, calculation and doc
 Do not invent deliverables; if a document lists them, use that list. Plain British English.
 Reply with JSON only, no markdown:
 {"summary":"three lines: the job, who it is for, what Atomax produces","facts":[{"name":"...","value":"..."}],
-"deliverables":[{"type":"SLD|BCD|earthing|loop|layout|cable schedule|schedule|calculation|document|other","title":"...","qty":1,"discipline":"E&I|piping|mechanical|structural|process|general","source":"document and section it comes from"}],
+"deliverables":[{"type":"SLD|BCD|earthing|loop|layout|cable schedule|schedule|calculation|document|other","title":"...","qty":1,"discipline":"E&I|piping|mechanical|structural|process|general","source":"document and section it comes from","why":"the words in that document that ask for it, copied exactly (one short sentence)"}],
 "byOthers":[{"title":"...","who":"..."}],"conflicts":["..."],"inputs":[{"name":"...","rev":"...","what":"..."}],"missingInputs":["..."]}`;
 
 const MATCH_SYSTEM = `You are Eli at Atomax-UK. An email has been read and filed against a job. You are given what the email asks for (the deliverables, which may be whole packages such as "LVAC SLDs stage by stage"), what it says is still needed from the client, and the list of files already in the job's folder (path inside the job folder).
@@ -354,8 +354,8 @@ function register({ ipcMain, dialog, shell, getWin, userDir, claudeFull, checker
     if (!out || typeof out !== 'object') return null;
     const desk = require('./jobdesk');
     try { desk.checkRegister(jobId, checker); } catch {}
-    const rows = (out.deliverables || []).filter(d => d && d.title).map(d => ({ type: d.type || 'document', title: d.title, qty: d.qty || 1, discipline: d.discipline || '', source: d.source || '' }));
-    let added = 0; try { added = (desk.addDeliverables(jobId, rows, { source: 'scope' }) || []).length; } catch {}
+    const rows = (out.deliverables || []).filter(d => d && d.title).map(d => ({ type: d.type || 'document', title: d.title, qty: d.qty || 1, discipline: d.discipline || '', source: d.source || '', why: d.why || '', from: d.source || '' }));
+    let added = 0; try { added = (desk.addDeliverables(jobId, rows, { source: 'scope', how: 'scope' }) || []).length; } catch {}
     try { desk.tidyRows(jobId); } catch {}
     try { desk.addInputs(jobId, { inputs: out.inputs || [], missing: out.missingInputs || [], questions: [] }); } catch {}
     try { await desk.writeRfiRegister(jobId, { templateDir: BIZ.projects.templateDir() }); } catch {}
@@ -427,7 +427,7 @@ function register({ ipcMain, dialog, shell, getWin, userDir, claudeFull, checker
     try { desk.checkRegister(job.id, checker); } catch {}   // the register's numbers first, so the email's deliverables land on the rows that exist
     if (e.matchedJob !== job.id) { try { await matchFolder(job, e); } catch {} }   // filed on a job other than the one it was read against: match that job's folder
     for (const f of e.foundInputs || []) { e.inputs = [...(e.inputs || []), { name: f.need, rev: '', what: 'already in the job folder: ' + f.files.join(', ') }]; try { desk.closeRfisFor(job.id, f.need, f.files.join(', ')); } catch {} }   // an RFI raised for it earlier closes itself
-    try { r.deliverables = (desk.addDeliverables(job.id, (e.deliverables || []).filter(mine), { commentReturn: !!e.commentReturn }) || []).length; } catch {}
+    try { r.deliverables = (desk.addDeliverables(job.id, (e.deliverables || []).filter(mine), { commentReturn: !!e.commentReturn, how: 'email', email: e.subject || e.from || '' }) || []).length; } catch {}
     try { desk.tidyRows(job.id); } catch {}
     try { desk.addInputs(job.id, { inputs: e.inputs || [], missing: e.missingInputs || [], questions: e.clientQuestions || [], fromEmail: e.subject || e.from }); } catch {}
     try { r.rfiRegister = await desk.writeRfiRegister(job.id, { templateDir: BIZ.projects.templateDir() }); } catch (err) { BIZ.log({ who: 'Eli', action: 'Could not write the RFI register: ' + String(err.message || err), jobId: job.id }); }   // the questions go on the house RFI register in the job folder
@@ -485,7 +485,7 @@ function register({ ipcMain, dialog, shell, getWin, userDir, claudeFull, checker
     if (!e.desk[job.id]) {
       const desk = require('./jobdesk'), r = {};
       try { r.register = desk.checkRegister(job.id, checker); } catch (err) { r.register = { error: err.message }; }
-      try { r.deliverables = desk.addDeliverables(job.id, e.deliverables || []); } catch {}
+      try { r.deliverables = desk.addDeliverables(job.id, e.deliverables || [], { how: 'email', email: e.subject || e.from || '' }); } catch {}
       try { desk.addInputs(job.id, { inputs: e.inputs || [], missing: e.missingInputs || [], questions: e.clientQuestions || [], fromEmail: e.subject || e.from }); r.rfis = (e.missingInputs || []).length + (e.clientQuestions || []).length; } catch {}
       if (e.commentReturn && e.comments.length) { try { r.comments = desk.addComments(job.id, e.comments, e.subject || e.from).length; } catch {} }
       e.desk[job.id] = r;

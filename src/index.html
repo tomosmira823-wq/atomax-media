@@ -575,6 +575,11 @@ body.fp canvas#scene{cursor:grab}
 #jbList .jbj.jbdir{padding:4px 8px;border-radius:6px;min-height:0}
 #jbList .jbj.jbdir b{font-size:13px;line-height:1.35}
 #jbList .jbj.jbdir.on{border-color:var(--green)}
+/* why a deliverable is on the list: a line across the row, under it, when the row is clicked */
+.jbrow [data-whyrow]{cursor:pointer}
+.jbrow .jbwhy{grid-column:1/-1;order:99;font-size:12.5px;color:#cfd6e3;border-top:1px dashed #2c3850;padding-top:8px}
+.jbrow .jbwhy q{color:var(--text);font-style:italic}
+:root[data-theme="light"] .jbrow .jbwhy{color:#3a4557}
 /* 10 Nov: with many folders open the rows were squashed on top of each other (flex items shrinking in the scrolling list) and long names wrapped
    into the next row: every row keeps its height, one line each, a long name ends in … (the full path shows on hover) */
 #jbList > *{flex:none}

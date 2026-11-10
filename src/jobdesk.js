@@ -234,13 +234,20 @@ function titleFor(no, title, file) {
     if (folder && !numLike(folder) && !/^(archive|dxf|dwg|pdf|claude|to be checked|issue \d+|superseded|old|markup|electrical|transmittal|document control|drawing|native|cad)$/i.test(folder) && !/^X\d{5,6}/i.test(dir)) return folder.charAt(0).toUpperCase() + folder.slice(1).toLowerCase(); }
   return t || 'Drawing';
 }
+// why a row is on the list: where it came from and the words that asked for it (Tom 10 Nov: "click on a job and it would tell u why it chose that job")
+function whyOf(dl, opts) {
+  const how = opts.how || (opts.source === 'eli-chat' ? 'chat' : opts.source === 'scope' ? 'scope' : opts.source || '');
+  const from = String(dl.from || dl.source || (how === 'email' ? (opts.email ? `the email "${opts.email}"` : 'the email') : how === 'chat' ? `the chat with ${opts.who || 'Eli'}` : how === 'hand' ? 'added by hand' : '')).trim();
+  const quote = String(dl.why || opts.said || '').trim().slice(0, 400);
+  return how || from || quote ? { how, from, quote, at: new Date().toISOString() } : null;
+}
 function addDeliverables(id, list, opts = {}) {
   const job = jobOf(id); if (!job || !Array.isArray(list) || !list.length) return [];
   const added = [], taken = []; let renamed = false;
   for (const dl0 of list) {
     if (dl0.no) {   // a document Atomax already has in the job folder (matched by Eli): its own number, title and latest revision
       const no = String(dl0.no).trim(), up = no.toUpperCase(); if (!no || job.drawings.some(d => d.no.toUpperCase() === up || (d.alt && d.alt.toUpperCase() === up)) || added.some(a => a.no.toUpperCase() === up)) continue;   // on the list already, under this number or as our number beside the client's
-      const kt = kindTag(dl0.type, dl0.title); added.push({ no, title: titleFor(no, dl0.title, dl0.file || dl0.path || ''), rev: String(dl0.rev || ''), status: 'To do', type: String(dl0.type || ''), group: kt.group }); continue;
+      const kt = kindTag(dl0.type, dl0.title); added.push({ no, title: titleFor(no, dl0.title, dl0.file || dl0.path || ''), rev: String(dl0.rev || ''), status: 'To do', type: String(dl0.type || ''), group: kt.group, why: whyOf(dl0, opts) || undefined }); continue;
     }
     const sc = setCount(dl0.title || dl0.type, dl0.qty), dl = { ...dl0, title: cap(sc.title) };
     const qty = Math.max(1, Math.min(60, sc.qty));
@@ -256,7 +263,7 @@ function addDeliverables(id, list, opts = {}) {
       if (sameKind.length && (opts.commentReturn || /\brev(ision)?\b|reissue|re-issue|\b[PC]\d\d\b|updated?\b/i.test(title))) continue;   // a revision of a drawing we have is not a new drawing
       const kt = kindTag(dl.type, dl.title);
       const no = proposeNumber(job, dl.title + ' ' + dl.type, taken, id) || `TBC-${kt.tag}-${String(job.drawings.filter(d => /^TBC-/.test(d.no)).length + added.length + 1).padStart(2, '0')}`;
-      taken.push(no); added.push({ no, title, rev: '', status: 'To do', type: String(dl.type || ''), group: kt.group });
+      taken.push(no); added.push({ no, title, rev: '', status: 'To do', type: String(dl.type || ''), group: kt.group, why: whyOf(dl0, opts) || undefined });
     }
   }
   if (renamed && !added.length) { biz.saveJob(BIZ.data(), job, 'Eli'); BIZ.store.save(); }
