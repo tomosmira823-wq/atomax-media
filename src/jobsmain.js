@@ -41,10 +41,10 @@ const revInName = (n) => { const m = String(n).match(/[\s_-]([PCAX]\d{2})(?=[\s_
 // (X130726-0000-06-72-0012 on the sheet for the register's -00012); '' when the sheet agrees or does not say
 // the new issue box's remark for a revision made to comments, the way the office writes it ("Updated to incorporate SPEN comments", the
 // block diagram's P02): whose comments, from the sender's email when it is a known client, else "client"
-function remarkFor(comments) {
+function remarkFor(comments, client = '') {   // client: the job's client, named when the sender is not a known network company ("OCU Group" -> OCU comments)
   const KNOWN = [[/spenergynetworks|scottishpower/i, 'SPEN'], [/nationalgrid/i, 'National Grid'], [/ukpowernetworks/i, 'UKPN'], [/enwl|electricitynorthwest/i, 'ENWL'], [/nationalgrid\.co\.uk|westernpower|nged/i, 'NGED'], [/ssen|sse\.com/i, 'SSEN'], [/northernpowergrid/i, 'Northern Powergrid']];
   const whose = new Set();
-  for (const c of comments || []) { if (/^tom$/i.test(c.by || '')) continue; const k = KNOWN.find(([re]) => re.test(String(c.from || ''))); whose.add(k ? k[1] : 'client'); }
+  for (const c of comments || []) { if (/^tom$/i.test(c.by || '')) continue; const k = KNOWN.find(([re]) => re.test(String(c.from || ''))); whose.add(k ? k[1] : (String(client || '').trim().split(/\s+/)[0] || 'client')); }
   if (!whose.size) return 'Updated to incorporate comments';
   return `Updated to incorporate ${[...whose].join(' / ')} comments`;
 }
@@ -384,7 +384,7 @@ function register({ ipcMain, HANDLERS, BIZ, claudeFull, getAgents }) {
         const cannot = [...(plan.cannot || []).map(c => `${c.comment}: ${c.why}`), ...out.failed.map(f => `${f.e.do} "${String(f.e.find || f.e.after || '').slice(0, 80)}": ${f.why}`)];
         if (!out.done.length) { runs.finish(R.id, { ok: true }); return setDeliv(jobId, no, { status: 'needs you', questions: cannot.length ? cannot : ['Wren found nothing in the document to change for these comments. Say what to change.'], summary: 'Wren could not make the changes as text: answer below or change it by hand' }); }
         runs.finish(R.id, { ok: true });
-        const w = await revUpDocument({ jobId, job, d, src, status, edited: { buf: out.buf, note: `Wren made ${out.done.length} change${out.done.length === 1 ? '' : 's'}${plan.summary ? ' (' + plan.summary + ')' : ''}${cannot.length ? '; not done: ' + cannot.join(' · ') : ''}` }, description: remarkFor(open0) });
+        const w = await revUpDocument({ jobId, job, d, src, status, edited: { buf: out.buf, note: `Wren made ${out.done.length} change${out.done.length === 1 ? '' : 's'}${plan.summary ? ' (' + plan.summary + ')' : ''}${cannot.length ? '; not done: ' + cannot.join(' · ') : ''}` }, description: remarkFor(open0, job.client) });
         for (const c of open0) { try { desk.saveCrs(jobId, { no: c.no, status: cannot.length ? c.status : 'Responded', response: `Revised in ${w.rev}` }); } catch {} }
         if (cannot.length) setDeliv(jobId, no, { status: 'needs you', questions: cannot });
         return delivOf(jobId)[no];
@@ -435,7 +435,7 @@ function register({ ipcMain, HANDLERS, BIZ, claudeFull, getAgents }) {
       out.results.forEach((x, i) => { const who = fixes[i] && fixes[i].for; if (!who) return; if (x.status === 'applied') okFor.add(who); else failedFor.set(who, [...(failedFor.get(who) || []), `${sayEdit(x)}: ${x.reason}`]); });
       if (!applied.length) { const why = missed.map(x => `${sayEdit(x)}: ${x.reason}`).join(' · '); runs.finish(R.id, { ok: false, error: why }); setDeliv(jobId, no, { status: 'needs you', summary: `Dex: none of the edits went in — ${why}` }); throw new Error(`${no}: ${why}`); }
       const note = `${applied.length} edit${applied.length === 1 ? '' : 's'}: ${applied.map(x => sayEdit(x) + (x.places > 1 ? ` (×${x.places})` : '')).join(', ')}`;
-      runs.stage(R.id, 'Dex is revving it up and checking it', 80); const w = await revUp({ jobId, no, status, people, remarks: remarkFor(open), edited: { buf: out.buf, note, fixes, results: out.results, asked, wantBlack: fixes.some(f => /set_colou?r/.test(f.action) && /black|^7$/i.test(f.colour || 'black')) }, exceptDir: issueDir, run: R.id });
+      runs.stage(R.id, 'Dex is revving it up and checking it', 80); const w = await revUp({ jobId, no, status, people, remarks: remarkFor(open, job.client), edited: { buf: out.buf, note, fixes, results: out.results, asked, wantBlack: fixes.some(f => /set_colou?r/.test(f.action) && /black|^7$/i.test(f.colour || 'black')) }, exceptDir: issueDir, run: R.id });
       // each comment answered: a comment closes only when an edit that came from it went in. One Dex could not do stays Open with his
       // reason; one no edit came from stays Open too (never closed on the strength of another comment's edit). Only when Dex named no
       // comment at all on any edit does the whole set close on the revision.
