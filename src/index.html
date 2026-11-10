@@ -575,6 +575,13 @@ body.fp canvas#scene{cursor:grab}
 #jbList .jbj.jbdir{padding:4px 8px;border-radius:6px;min-height:0}
 #jbList .jbj.jbdir b{font-size:13px;line-height:1.35}
 #jbList .jbj.jbdir.on{border-color:var(--green)}
+/* 10 Nov: with many folders open the rows were squashed on top of each other (flex items shrinking in the scrolling list) and long names wrapped
+   into the next row: every row keeps its height, one line each, a long name ends in … (the full path shows on hover) */
+#jbList > *{flex:none}
+#jbList{overflow-x:hidden}
+#jbList .jbj{min-width:0;max-width:100%;box-sizing:border-box;overflow:hidden}
+#jbList .jbj.jbdir b{display:block;width:100%;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#jbList .jbj.recent b, #jbList .jbj.recent span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block}
 .jbrootlink{color:var(--green)!important;opacity:1}
 .jbhead .bsub{display:flex;align-items:center;flex-wrap:wrap;gap:6px}
 .jbhead select.jbinline{width:auto;max-width:260px;display:inline-block;padding:2px 6px;font-size:12px;margin:0}
