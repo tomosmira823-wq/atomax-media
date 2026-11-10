@@ -145,12 +145,18 @@ function register({ ipcMain, HANDLERS, BIZ, claudeFull, getAgents }) {
       : k.agent === 'Lex' ? `${k.verb} ${title} for job ${job.number}${num ? ` (document ${num})` : ''} from the job's inputs and the approved master device list. House template from your skill.`
       : `${k.verb} ${title} for job ${job.number}${num ? ` (document ${num})` : ''} from the job's inputs.`;
     const want = k.kind === 'bcd' ? 'cable schedule instrument index io list bcd' : k.kind === 'sld' ? 'single line sld load schedule cable schedule protection' : k.kind === 'earthing' ? 'earthing cable schedule' : k.kind === 'schedule' ? 'cable schedule instrument index io list' : title;
-    const inputs = job.folder ? BIZ.projects.relevantFiles(job.id, title + ' ' + want, { exts: ['.pdf', '.xlsx', '.xlsm', '.csv'], max: 6 }).map(p => path.basename(p)) : [];
+    // Wren also reads Word files (an earlier version of the same document is the best input there is); a Word file and its own PDF are one input, the Word one
+    let inputPaths = job.folder ? BIZ.projects.relevantFiles(job.id, title + ' ' + want, { exts: ['.pdf', '.xlsx', '.xlsm', '.csv', ...(k.agent === 'Wren' ? ['.docx'] : [])], max: 8 }) : [];
+    const stem = (p) => path.basename(p).replace(/\.[^.]+$/, '').toLowerCase();
+    inputPaths = inputPaths.filter(p => !(/\.pdf$/i.test(p) && inputPaths.some(q => /\.docx$/i.test(q) && stem(q) === stem(p)))).slice(0, 6);
+    const inputs = inputPaths.map(p => path.basename(p));
     // drawn / checked / approved: this drawing's from last time, else the last ones used on the job
     const dl = delivOf(jobId), people = (dl[no] || {}).people || Object.values(dl).map(x => x.people).filter(Boolean).pop() || null;
     const rev = (dl[no] || {}).files ? ((dl[no] || {}).rev || 'P01') : '';
-    return { agent: k.agent, agentId: AGENT_ID[k.agent] || '', kind: k.kind, number: num, title, request, inputs, folder: job.folder || '', people, rev, nextRev: rev ? require('./docnumber').nextRev(rev) : 'P01' };
+    return { inputPaths, agent: k.agent, agentId: AGENT_ID[k.agent] || '', kind: k.kind, number: num, title, request, inputs, folder: job.folder || '', people, rev, nextRev: rev ? require('./docnumber').nextRev(rev) : 'P01' };
   }
+  // the inputs the Make screen lists, sent to Wren / Lex as the files themselves (they were only listed before: Gwrhyd 10 Nov, "the harmonic inputs didn't reach me")
+  const inputFiles = (paths) => (paths || []).filter(p => { try { return fs.statSync(p).size <= 25 * 1024 * 1024; } catch { return false; } }).map(p => ({ name: path.basename(p), base64: fs.readFileSync(p).toString('base64') }));
   async function make({ jobId, no, answers = [], note = '', revision = null, request: asked = '', skills, people }) {
     const job = jobOf(jobId), d = job.drawings.find(x => x.no === no); if (!d) throw new Error('Not on the drawing list: ' + no);
     const k = kindOf(d); if (!k.agent) throw new Error(`No agent makes ${d.title} yet. Do this one by hand.`);
@@ -176,10 +182,10 @@ function register({ ipcMain, HANDLERS, BIZ, claudeFull, getAgents }) {
         if (r.questions) { runs.finish(R.id, { ok: true }); return setDeliv(jobId, no, { status: 'needs you', questions: r.questions, summary: 'Dex has questions' }); }
         files = (r.sheets && r.sheets.length ? r.sheets.map(s => s.path) : [r.path]).filter(Boolean); pdfs = r.pdfs || [];
       } else if (k.agent === 'Lex') {
-        runs.stage(R.id, 'Lex is building the workbook', 20); r = await call('o365:excel', { run: R.id, jobId, request: (asked || plan({ jobId, no }).request) + (note ? ' ' + note : ''), skills });
+        runs.stage(R.id, 'Lex is building the workbook', 20); r = await call('o365:excel', { run: R.id, jobId, request: (asked || plan({ jobId, no }).request) + (note ? ' ' + note : ''), skills, files: inputFiles(plan({ jobId, no }).inputPaths) });
         files = [r.path].filter(Boolean);
       } else {
-        runs.stage(R.id, 'writing the document', 20); r = await call('o365:word', { run: R.id, jobId, request: (asked || plan({ jobId, no }).request) + (note ? ' ' + note : ''), skills });
+        runs.stage(R.id, 'writing the document', 20); r = await call('o365:word', { run: R.id, jobId, request: (asked || plan({ jobId, no }).request) + (note ? ' ' + note : ''), skills, files: inputFiles(plan({ jobId, no }).inputPaths) });
         files = [r.path].filter(Boolean);
       }
       if (calOpen.length && !r.incomplete && !r.questions) for (const c of calOpen) { try { desk.saveCrs(jobId, { no: c.no, status: 'Responded', response: `Fixed in ${r.revision || d.rev || 'the remake'}` }); } catch {} }

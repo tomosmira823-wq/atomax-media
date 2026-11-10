@@ -311,7 +311,15 @@ const step = (name, fn) => { try { const r = fn(); if (r && r.then) return r.the
       assert.strictEqual(row('X11475-0000-06-74-0002').agent, 'Dex', 'an earthing drawing is still Dex\'s');
       assert.strictEqual(row('X11475-0000-06-01-0001').kind, 'rfi'); assert.ok(!O.needsMaster || O.rows.some(r => r.kind === 'bcd' || r.kind === 'schedule'), 'the RFI register does not wait on a master list');
       const W = await call('jobs:make', { jobId: J.id, no: 'X11475-0000-06-01-0001' }); assert.strictEqual(W.status, 'made'); assert.ok(/X11475-0000-06-01-0001 - RFI REGISTER P01\.xlsx$/.test(W.files[0]) && fs.existsSync(W.files[0]), W.files[0]);
-      const j2 = BIZ.data().jobs.find(j => j.id === J.id); j2.drawings = j2.drawings.filter(d => !/^X11475-0000-06-(74|01)-/.test(d.no)); BIZ.store.save(); }
+      // Make on a document: the inputs the Make screen lists reach Wren as the files, the Word copy of an earlier version read instead of its own PDF
+      { const D = require(path.join(ROOT, '..', 'node_modules', 'docx')); const doc = new D.Document({ sections: [{ children: [new D.Paragraph('Emission THD 1.12 % at the PoC; resonance near h17.')] }] });
+        const dir = path.join(F, '009 Calculations'); fs.mkdirSync(dir, { recursive: true }); const base = 'X281026-0000-06-09-0003 P01 Harmonic Assessment to EREC G5-5';
+        fs.writeFileSync(path.join(dir, base + '.docx'), await D.Packer.toBuffer(doc)); fs.copyFileSync(path.join(F, '013 Transmittals & Drawing Register', 'ISSUE 12', fs.readdirSync(path.join(F, '013 Transmittals & Drawing Register', 'ISSUE 12')).find(n => /\.pdf$/i.test(n))), path.join(dir, base + '.pdf'));
+        const job = BIZ.data().jobs.find(j => j.id === J.id); job.drawings.push({ no: 'X11475-0000-06-08-0003', title: 'Harmonic Assessment to EREC G5/5', rev: '' }); BIZ.store.save(); await call('proj:gather', { jobId: J.id }).catch(() => {});
+        global.__o365 = [{ say: 'Read it.' }]; let err = ''; try { await call('jobs:make', { jobId: J.id, no: 'X11475-0000-06-08-0003' }); } catch (e) { err = e.message; }
+        assert.ok(/ATTACHED DOCUMENT X281026-0000-06-09-0003 P01 Harmonic Assessment to EREC G5-5\.docx/.test(global.__o365Asked) && /Emission THD 1\.12/.test(global.__o365Asked), 'Wren got the Word file: ' + err + ' ' + String(global.__o365Asked).slice(0, 300));
+        assert.ok(!/Attached: X281026-0000-06-09-0003 P01 Harmonic Assessment to EREC G5-5\.pdf/.test(global.__o365Asked), 'not its PDF as well'); global.__o365 = null; }
+      const j2 = BIZ.data().jobs.find(j => j.id === J.id); j2.drawings = j2.drawings.filter(d => !/^X11475-0000-06-(74|01|08)-/.test(d.no)); BIZ.store.save(); }
     // Revise (Tom 9 Nov: "dex shouldve told me then... why isnt he telling me when theres a problem"): comments logged against a drawing ->
     // Dex says on the job what he can do; Revise makes the text edits on the DXF on file and revs it up; DWG-only says what it needs
     { for (const c of ['LT1 should read CT1', 'C-I04 should be C-104 (letter I for digit 1)', 'All text to be black', 'Cloud the changes']) await call('desk:addComment', { jobId: J.id, doc: 'X11475-BGN-ZZ-XX-DR-E-7153', comment: c, by: 'NG' });
