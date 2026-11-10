@@ -320,6 +320,11 @@ const step = (name, fn) => { try { const r = fn(); if (r && r.then) return r.the
         global.__o365 = [{ say: 'Read it.' }]; let err = ''; try { await call('jobs:make', { jobId: J.id, no: 'X11475-0000-06-08-0003' }); } catch (e) { err = e.message; }
         assert.ok(/ATTACHED DOCUMENT X281026-0000-06-09-0009 P01 Harmonic background notes for G5-5\.docx/.test(global.__o365Asked) && /Emission THD 1\.12/.test(global.__o365Asked), 'Wren got the Word file: ' + err + ' ' + String(global.__o365Asked).slice(0, 300));
         assert.ok(!/Attached: X281026-0000-06-09-0009 P01 Harmonic background notes for G5-5\.pdf/.test(global.__o365Asked), 'not its PDF as well'); global.__o365 = null;
+        // Tom 13:48 "its trying to tell me something but cuts off... a notification i can acc read and reply to": the question in full on the row, answered there
+        { const O = await call('jobs:overview', { jobId: J.id }), w = O.rows.find(r => r.no === 'X11475-0000-06-08-0003').work; assert.strictEqual(w.status, 'needs you', JSON.stringify(w)); assert.deepStrictEqual(w.questions, ['Read it.']);
+          const Wq = await call('jobs:waiting', {}).catch(() => null); if (Wq) assert.ok(JSON.stringify(Wq).includes('Wren has questions on X11475-0000-06-08-0003'), 'in Waiting on you');
+          global.__o365 = [{ say: 'Still asking.' }]; await call('jobs:make', { jobId: J.id, no: 'X11475-0000-06-08-0003', answers: [{ q: 'Read it.', a: 'Use RFI-011 for the OEM data' }] });
+          assert.ok(/YOU ASKED, TOM ANSWERED[\s\S]*Q: Read it\.\nA: Use RFI-011 for the OEM data/.test(global.__o365Asked), 'the answer goes to Wren'); global.__o365 = null; }
         for (const x of ['.docx', '.pdf']) fs.unlinkSync(path.join(dir, base + x)); }
       // Gwrhyd: the studies handed over as X281026 P01. Make issues the handed-over Word file under the row's number as it is (no Wren
       // rewrite): numbers and cross-references changed, the project reference too, dated today; the RFI register brings its RFIs

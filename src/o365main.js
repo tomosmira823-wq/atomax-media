@@ -75,7 +75,7 @@ Reply with JSON only, no markdown: {"filename":"short file name without extensio
 const WORD_SYSTEM = (base) => `You are Wren, the Word agent in the Atomax-UK 365 room. The engineer's request decides the document type (report, technical note, letter, specification, method statement, minutes) and its sections; the default sections below are only a fallback. Turn any attached notes (for example a Markdown technical note) into a proper Atomax document without changing their facts.\n\n${base}`;
 
 function register({ ipcMain, claudeFull, BIZ, checker, userDir, projects }) {
-  const wrap = (fn) => async (_e, a) => { try { return await fn(a || {}); } catch (e) { throw new Error(require('./runs').plain(e)); } };
+  const wrap = (fn) => async (_e, a) => { try { return await fn(a || {}); } catch (e) { throw Object.assign(new Error(require('./runs').plain(e)), e && e.question ? { question: true } : {}); } };   // a question stays a question
   const IMG = /\.(png|jpe?g|gif|webp)$/i;
   // attached files -> Claude content: data (CSV, big workbooks) as a profile with the full table kept for the analysis code, documents
   // as text, PDFs and pictures as themselves. Nothing is cut without saying so: a text file over the limit is reported, not trimmed quietly
@@ -243,17 +243,17 @@ ${AN.GUIDE}`;
   module.exports.once = async ({ role = 'word', jobId = '', request = '', prepared = '', run = '' }) => {
     if (!String(request).trim()) throw new Error(`Say what ${role === 'excel' ? 'Lex' : 'Wren'} should make`);
     const r = await chatTurn({ jobId, role, text: request, files: [], run, prepared, fresh: true, keyOverride: `once:${role}:${jobId}:${Date.now()}` });
-    if (!r.path) throw new Error(r.say); return r;
+    if (!r.path) throw Object.assign(new Error(r.say), { question: true }); return r;   // Wren / Lex asking, not a fault: Make shows it as a question to answer
   };
   ipcMain.handle('o365:excel', wrap(async ({ jobId = '', request = '', files = [], skills, run = '' }) => {
     if (!request.trim()) throw new Error('Say what Lex should make');
     const r = await chatTurn({ jobId, role: 'excel', text: request, files, skills, run, fresh: true, keyOverride: `once:excel:${jobId}:${Date.now()}` });
-    if (!r.path) throw new Error(r.say); return r;
+    if (!r.path) throw Object.assign(new Error(r.say), { question: true }); return r;   // Wren / Lex asking, not a fault: Make shows it as a question to answer
   }));
   ipcMain.handle('o365:word', wrap(async ({ jobId = '', request = '', files = [], skills, prepared = '', run = '' }) => {
     if (!request.trim()) throw new Error('Say what Wren should write');
     const r = await chatTurn({ jobId, role: 'word', text: request, files, skills, prepared, run, fresh: true, keyOverride: `once:word:${jobId}:${Date.now()}` });
-    if (!r.path) throw new Error(r.say); return r;
+    if (!r.path) throw Object.assign(new Error(r.say), { question: true }); return r;   // Wren / Lex asking, not a fault: Make shows it as a question to answer
   }));
 }
 

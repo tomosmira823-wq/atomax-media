@@ -187,6 +187,8 @@ function register({ ipcMain, HANDLERS, BIZ, claudeFull, getAgents }) {
     } catch (err) { runs.finish(R.id, { ok: false, error: runs.plain(err) }); throw err; }
   }
   const DR = () => require('./docrev');
+  // what Tom answered to the agent's questions, carried into the next go (Wren and Lex read it with the request)
+  const answered = (answers) => (answers || []).filter(a => a && String(a.a || '').trim()).length ? `\n\nYOU ASKED, TOM ANSWERED (go ahead on these answers; do not ask again):\n${answers.filter(a => String(a.a || '').trim()).map(a => `Q: ${a.q}\nA: ${a.a}`).join('\n')}` : '';
   async function make({ jobId, no, answers = [], note = '', revision = null, request: asked = '', skills, people }) {
     const job = jobOf(jobId), d = job.drawings.find(x => x.no === no); if (!d) throw new Error('Not on the drawing list: ' + no);
     const k = kindOf(d); if (!k.agent) throw new Error(`No agent makes ${d.title} yet. Do this one by hand.`);
@@ -214,16 +216,20 @@ function register({ ipcMain, HANDLERS, BIZ, claudeFull, getAgents }) {
         if (r.questions) { runs.finish(R.id, { ok: true }); return setDeliv(jobId, no, { status: 'needs you', questions: r.questions, summary: 'Dex has questions' }); }
         files = (r.sheets && r.sheets.length ? r.sheets.map(s => s.path) : [r.path]).filter(Boolean); pdfs = r.pdfs || [];
       } else if (k.agent === 'Lex') {
-        runs.stage(R.id, 'Lex is building the workbook', 20); r = await call('o365:excel', { run: R.id, jobId, request: (asked || plan({ jobId, no }).request) + (note ? ' ' + note : ''), skills, files: inputFiles(plan({ jobId, no }).inputPaths) });
+        runs.stage(R.id, 'Lex is building the workbook', 20); r = await call('o365:excel', { run: R.id, jobId, request: (asked || plan({ jobId, no }).request) + (note ? ' ' + note : '') + answered(answers), skills, files: inputFiles(plan({ jobId, no }).inputPaths) });
         files = [r.path].filter(Boolean);
       } else {
-        runs.stage(R.id, 'writing the document', 20); r = await call('o365:word', { run: R.id, jobId, request: (asked || plan({ jobId, no }).request) + (note ? ' ' + note : ''), skills, files: inputFiles(plan({ jobId, no }).inputPaths) });
+        runs.stage(R.id, 'writing the document', 20); r = await call('o365:word', { run: R.id, jobId, request: (asked || plan({ jobId, no }).request) + (note ? ' ' + note : '') + answered(answers), skills, files: inputFiles(plan({ jobId, no }).inputPaths) });
         files = [r.path].filter(Boolean);
       }
       if (calOpen.length && !r.incomplete && !r.questions) for (const c of calOpen) { try { desk.saveCrs(jobId, { no: c.no, status: 'Responded', response: `Fixed in ${r.revision || d.rev || 'the remake'}` }); } catch {} }
       runs.finish(R.id, { ok: true });
       return setDeliv(jobId, no, { status: r.incomplete ? 'needs you' : 'made', questions: null, check: null, files, pdfs, given: { file: r.givenFile || '', request: r.request || '', skills: r.skills || [], read: r.read || [], fromSchedule: r.fromSchedule || [], queries: r.queries || [], warnings: r.warnings || [], at: new Date().toISOString() }, rev: r.revision || d.rev || '', archived: r.archived || 0, summary: (r.incomplete ? 'CUT SHORT: ' : '') + (r.summary || 'Made') + (r.fromSchedule && r.fromSchedule.length ? ` · ${r.fromSchedule.length} value(s) matched to the schedule` : '') + (r.queries && r.queries.length ? ` · ${r.queries.length} question(s) to the RFI register` : '') + (r.warnings && r.warnings.length ? ' · LAYOUT: ' + r.warnings.join('; ') : ''), notes: r.notes || [], warning: r.borderWarning || '' });
-    } catch (e) { const stopped = runs.aborted(R.id); runs.finish(R.id, { ok: false, error: runs.plain(e) }); setDeliv(jobId, no, { status: stopped ? 'stopped' : 'failed', summary: stopped ? 'Stopped. Nothing was changed; press Make to start again.' : runs.plain(e) }); throw e; }
+    } catch (e) { const stopped = runs.aborted(R.id);
+      if (e && e.question && !stopped) {   // the agent asked something: shown in full on the row with a box to answer, and in Waiting on you
+        runs.finish(R.id, { ok: true }); BIZ.log({ who: k.agent, action: 'Has a question before making it', jobId, detail: `${no}: ${String(e.message).slice(0, 300)}` });
+        return setDeliv(jobId, no, { status: 'needs you', questions: [String(e.message)], answers, summary: `${k.agent} has a question: answer it below and press Send answers` }); }
+      runs.finish(R.id, { ok: false, error: runs.plain(e) }); setDeliv(jobId, no, { status: stopped ? 'stopped' : 'failed', summary: stopped ? 'Stopped. Nothing was changed; press Make to start again.' : runs.plain(e) }); throw e; }
   }
 
   // Cal checks the made drawings against the job's schedule (made by Lex, else the schedule in the job folder)
