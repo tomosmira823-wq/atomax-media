@@ -10,7 +10,7 @@ const REV = /\b([PCAX]\d{2})\b/;
 const DATE = /^\d{1,2}\/\d{1,2}\/(\d{2}|\d{4})$/;
 const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 const unesc = (s) => String(s ?? '').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, '&');
-const nextOf = (rev) => String(rev).replace(/\d+$/, (n) => String(+n + 1).padStart(n.length, '0'));
+const nextOf = (rev) => require('./docnumber').nextRev(rev);   // one rule everywhere: P01 -> P02, a client's Rev B -> C
 // today in the shape of the date it replaces (28/10/2026 -> 05/11/2026, 28/10/26 -> 05/11/26)
 function todayLike(sample, when) {
   const d = when ? new Date(when) : new Date(); const yy = String(d.getFullYear());

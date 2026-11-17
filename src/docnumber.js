@@ -51,7 +51,11 @@ function next(job, what, { area = '', disc = '', taken = [], seen = [] } = {}) {
 // revisions in QS 006 order; always two digits (P01)
 const STAGES = { preliminary: 'P', comment: 'A', construction: 'C', asbuilt: 'X', cancelled: 'Z' };
 function nextRev(cur, stage = '') {
-  const m = String(cur || '').toUpperCase().match(/^([A-Z])(\d+)$/), pad = Math.max(2, m ? m[2].length : 2);   // Atomax revisions are two digits: P01, A01, C01
+  const c = String(cur || '').toUpperCase().trim().replace(/^REV\.?\s*/, '');
+  // a client's own scheme carries on when no stage is asked for: Rev B -> C, Rev 2 -> 3 (a SPEN or NG drawing does not become P01)
+  if (!stage && /^[A-Y]$/.test(c)) return String.fromCharCode(c.charCodeAt(0) + 1);
+  if (!stage && /^\d{1,2}$/.test(c)) return String(+c + 1).padStart(c.length, '0');
+  const m = c.match(/^([A-Z])(\d+)$/), pad = Math.max(2, m ? m[2].length : 2);   // Atomax revisions are two digits: P01, A01, C01
   const want = stage ? STAGES[stage] : (m ? m[1] : 'P');
   if (!m || m[1] !== want) return want + '1'.padStart(pad, '0');
   return want + String(+m[2] + 1).padStart(pad, '0');
