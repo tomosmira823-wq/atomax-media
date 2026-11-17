@@ -41,7 +41,9 @@ function parseDxf(buf) {
     else if (code === 20 && cur.y === undefined) cur.y = parseFloat(val);
     else if (code === 40 && cur.h === undefined) cur.h = parseFloat(val);
   }
-  for (const e of ents) e.plain = plainText(e.refs.map(r => pairs[r].val).join(''));
+  const vi = pairs.findIndex(p => p.code === 9 && p.val === '$ACADVER'), utf8 = vi >= 0 && pairs[vi + 1] && /^AC10(2[1-9]|3\d)$/.test(pairs[vi + 1].val);
+  const shown = (t) => utf8 && /[\x80-\xFF]/.test(t) ? Buffer.from(t, 'latin1').toString('utf8') : t;   // what the drawing says (mm², not its UTF-8 bytes), for Dex and Cal to read and quote back
+  for (const e of ents) e.plain = shown(plainText(e.refs.map(r => pairs[r].val).join('')));
   return { pairs, eol, ents, lines, inserts, layers, ver };
 }
 
@@ -86,7 +88,14 @@ function inventory(dxf, max = 2500, focus = []) {
 }
 
 const handleNum = (h) => { const n = parseInt(h, 16); return Number.isNaN(n) ? 0 : n; };
-const printable = (t) => typeof t === 'string' && t.length > 0 && !/[^\x20-\x7E]/.test(t);
+const printable = (t) => typeof t === 'string' && t.length > 0 && !/[\x00-\x1F\x7F]/.test(t);   // any text but control characters: mm², °, Ω are written in the file's own encoding (encodeFor)
+// a JS string as it sits in the latin1-read text of this DXF: UTF-8 bytes for AutoCAD 2007+ (AC1021 on), else the 1252 byte, else \U+XXXX
+function encodeFor(pairs, t) {
+  if (typeof t !== 'string' || !/[^\x00-\x7F]/.test(t)) return t;
+  const i = pairs.findIndex(p => p.code === 9 && p.val === '$ACADVER'), ver = i >= 0 && pairs[i + 1] ? pairs[i + 1].val : '';
+  if (/^AC10(2[1-9]|3\d)$/.test(ver)) return Buffer.from(t, 'utf8').toString('latin1');
+  return [...t].map(c => c.charCodeAt(0) <= 0xFF ? c : '\\U+' + c.codePointAt(0).toString(16).toUpperCase().padStart(4, '0')).join('');
+}
 
 // Is this proposed edit possible on this file, and how many places does it touch?
 function checkItem(dxf, it) {
@@ -142,6 +151,7 @@ function templateFor(dxf, layer) {
 // Returns { buf, results: [{ id, action, places, inBlocks, status, reason }] }
 function applyFixes(buf, fixes) {
   const dxf = parseDxf(buf); const results = [];
+  fixes = (fixes || []).map(f => ({ ...f, before: encodeFor(dxf.pairs, f.before), after: encodeFor(dxf.pairs, f.after), text: encodeFor(dxf.pairs, f.text) }));   // "2.5mm²" matched and written the way this file stores it
   const pairs = dxf.pairs.map(p => ({ ...p }));
   const before = dxf.pairs.map(p => p.val);
   const removed = new Set(); const added = []; let entsAdded = 0, entsRemoved = 0; const inserts = new Map(); let insertedPairs = 0;   // inserts: pairs slipped in before an index (a colour code a text item never had)
@@ -263,7 +273,8 @@ function applyFixes(buf, fixes) {
   // check: same structure apart from what was added or removed on purpose
   const re2 = parseDxf(Buffer.from(outText, 'latin1'));
   if (re2.pairs.length !== dxf.pairs.length - removed.size + added.length + insertedPairs || re2.ents.length !== dxf.ents.length - entsRemoved + entsAdded) throw new Error('Dex stopped: the fixed file did not keep the same structure as the original.');
-  return { buf: Buffer.from(outText, 'latin1'), results, linesChanged: changed };
+  const dec = (t) => typeof t === 'string' && /[\x80-\xFF]/.test(t) && encodeFor(dxf.pairs, '\u00B2') !== '\u00B2' ? Buffer.from(t, 'latin1').toString('utf8') : t;   // the report shows mm², not its bytes
+  return { buf: Buffer.from(outText, 'latin1'), results: results.map(r => ({ ...r, before: dec(r.before), after: dec(r.after), text: dec(r.text) })), linesChanged: changed };
 }
 
 // ---- turning markups into proposed fixes ----

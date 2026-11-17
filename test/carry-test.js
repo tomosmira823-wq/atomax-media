@@ -34,3 +34,8 @@ console.log('approval ok');
   for (const [a, b] of [['Harmonic Assessment to EREC G5/5', 'G5/5 harmonic study'], ['33 kV Protection Co-ordination Study', 'Protection Co-Ordination'], ['Load Flow and Reactive Power Capability Study', 'Load Flow & Reactive Power Capability Studies']]) assert.ok(D.sameDeliverable(a, b), a + ' / ' + b);
   for (const [a, b] of [['SLD sheet 1', 'SLD sheet 2'], ['Block cable diagram - RIO1', 'Block cable diagram - RIO2'], ['LV board SLD - Phase 1', 'LV board SLD - Phase 2'], ['Cable schedule', 'Cable calculations'], ['LV SLD', 'HV SLD']]) assert.ok(!D.sameDeliverable(a, b), a + ' / ' + b); }
 console.log('same deliverable ok');
+// DXF text with mm², ° written in the file's own encoding (AutoCAD 2007+ DXFs are UTF-8): it used to be refused as unprintable
+if (process.env.FIVE_FORDS) { const F = require('../src/dxffix'), fs = require('fs'), path = require('path'); const walk = (d) => fs.readdirSync(d, { withFileTypes: true }).flatMap(e => e.isDirectory() ? walk(path.join(d, e.name)) : [path.join(d, e.name)]);
+  const f = walk(process.env.FIVE_FORDS).find(p => /\.dxf$/i.test(p)), buf = fs.readFileSync(f), r = F.applyFixes(buf, [{ id: 'a', action: 'replace_text', before: 'METERING X 2', after: 'METERING X 2 (2.5mm²)' }]);
+  assert.strictEqual(r.results[0].status, 'applied', JSON.stringify(r.results)); assert.ok(r.buf.toString('utf8').includes('METERING X 2 (2.5mm²)')); assert.strictEqual(r.results[0].after, 'METERING X 2 (2.5mm²)');
+  const r2 = F.applyFixes(r.buf, [{ id: 'b', action: 'replace_text', before: '(2.5mm²)', after: '(4mm²)' }]); assert.strictEqual(r2.results[0].status, 'applied', 'matched with the ² in it'); console.log('dxf encoding ok'); }
