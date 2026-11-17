@@ -323,11 +323,20 @@ function register({ ipcMain, HANDLERS, BIZ, claudeFull, getAgents }) {
   // one chat turn on a job, with Eli or with a lead agent (Dave, Tom): same job in front of them, same doers; the lead's chat is kept apart
   const chatOf = (d, agentId) => agentId ? ((d.leadChat || {})[agentId] || []) : (d.chat || []);
   const setChat = (d, agentId, list) => { if (agentId) { d.leadChat = { ...(d.leadChat || {}), [agentId]: list }; } else d.chat = list; };
+  // a dropped Word / Excel / text / email file as plain text for Eli and the leads
+  async function fileText(name, buf) {
+    if (/\.docx$/i.test(name)) return require('./datatable').docxText(buf);
+    if (/\.(xlsx|xlsm)$/i.test(name)) return require('./checker').readXlsx(buf).map(sh => `SHEET ${sh.name}\n` + (sh.rows || []).map(r => (r.c || r).map(c => c ?? '').join(' | ')).join('\n')).join('\n\n');
+    if (/\.(eml|msg)$/i.test(name)) { const I = require('./intake'); try { const e = /\.msg$/i.test(name) ? I.parseMsg(buf) : I.parseEml(buf); return `From: ${e.from || ''}\nSubject: ${e.subject || ''}\n\n${e.text || e.body || ''}`; } catch { return buf.toString('utf8'); } }
+    if (/\.(txt|csv)$/i.test(name)) return buf.toString('utf8');
+    return '';
+  }
   async function jobChat({ jobId, text = '', skills, files: attached = [], agent = null }) {
     const job = jobOf(jobId), t = String(text || '').trim(); const who = agent ? agent.name || agent.id : 'Eli', aid = agent ? agent.id : '';
     if (!t && !(attached || []).length) throw new Error('Say something to ' + who);
     // a screenshot or picture pasted into the chat goes in as a picture
-    const pics = []; for (const f of (attached || []).slice(0, 6)) { try { if (/\.(png|jpe?g|gif|webp)$/i.test(f.name)) { pics.push({ type: 'text', text: `PICTURE: ${f.name}` }); pics.push(require('./checker').contentBlock('image', f.name, Buffer.from(f.base64, 'base64'))); } else if (/\.pdf$/i.test(f.name)) { pics.push({ type: 'text', text: `PDF: ${f.name}` }); pics.push(require('./checker').contentBlock('pdf', f.name, Buffer.from(f.base64, 'base64'))); } } catch {} }
+    const pics = []; for (const f of (attached || []).slice(0, 6)) { try { if (/\.(png|jpe?g|gif|webp)$/i.test(f.name)) { pics.push({ type: 'text', text: `PICTURE: ${f.name}` }); pics.push(require('./checker').contentBlock('image', f.name, Buffer.from(f.base64, 'base64'))); } else if (/\.pdf$/i.test(f.name)) { pics.push({ type: 'text', text: `PDF: ${f.name}` }); pics.push(require('./checker').contentBlock('pdf', f.name, Buffer.from(f.base64, 'base64'))); }
+      else { const t = await fileText(f.name, Buffer.from(f.base64, 'base64')); if (t) pics.push({ type: 'text', text: `ATTACHED ${f.name}:\n${t.slice(0, 60000)}` }); } } catch {} }   // a comment sheet in Word, a schedule in Excel, an email: read as text
     const E = require('./elichat'), L = require('./leadchat'), biz = require('./business');
     const d0 = desk.load(jobId); const hist0 = [...chatOf(d0, aid), { role: 'tom', text: t + ((attached || []).length ? ` [${attached.map(f => f.name).join(', ')}]` : ''), at: new Date().toISOString() }].slice(-200); setChat(d0, aid, hist0); desk.saveRaw(jobId, d0);
     try { if (job.folder && fs.existsSync(job.folder)) BIZ.projects.gather(job.id, job.folder, { checker: require('./checker') }); } catch {}   // the folder as it is now, not as it was: never answer from a stale file list
