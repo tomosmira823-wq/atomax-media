@@ -525,6 +525,15 @@ const step = (name, fn) => { try { const r = fn(); if (r && r.then) return r.the
       assert.ok(/P01 \| TM \| CMcH\/JA \| DM/.test(t1), 'approval: ' + (t1.match(/P01 \|[^\n]*/g) || []).join(' / ')); assert.ok(/P01 \| [^\n]*27\/11\/2026/.test(t1) && !/P02 \|/.test(t1), 'P01 dated 27 November, no P02');
       assert.ok(desk.load(job.id).crs.some(c => c.doc === '*' && !/responded/i.test(c.status || '')), 'the all-documents comment is still open for the rest');
       const O2 = await call('jobs:overview', { jobId: job.id }); assert.ok(O2.rows.filter(r => r.group !== 'reserved' && /^X101126-0000-06-0[58]/.test(r.no) && r.no !== no).every(r => r.changes > 0 || (r.crs || []).length || true), 'others still to do'); }
+    // the same all-documents question from Wren on two documents: Eli sees it once, answers it once, it clears on both, and the answer goes to the next Revise
+    { const star = desk.load(job.id).crs.find(c => c.doc === '*' && /units/i.test(c.comment)); const q = `${star.no}: should units in tables be joined too?`;
+      for (const n of ['X101126-0000-06-08-0002', 'X101126-0000-06-08-0004']) { global.__docEdit = { edits: [], cannot: [{ comment: star.no, why: 'should units in tables be joined too?' }] }; await call('jobs:revise', { jobId: job.id, no: n }); }
+      global.__docEdit = null; let O3 = await call('jobs:overview', { jobId: job.id }); assert.ok(O3.rows.filter(r => ((r.work || {}).questions || []).some(x => x.startsWith(star.no))).length === 2, 'asked on both');
+      global.__chat = { reply: 'Answered.', actions: [{ do: 'answer', comment: star.no, text: 'yes, tables too' }] }; const CH2 = await call('eli:chat', { jobId: job.id, text: 'what is waiting?' }); global.__chat = null;
+      assert.ok(new RegExp(`${star.no} \\| asked on 2 documents`).test(global.__chatAsked), 'Eli sees it as one question: ' + (global.__chatAsked.match(/QUESTIONS THE AGENTS[\s\S]{0,300}/) || [''])[0]); assert.ok(CH2.done.some(x => /answered .* for every document: yes, tables too/.test(x)), JSON.stringify(CH2.done));
+      O3 = await call('jobs:overview', { jobId: job.id }); assert.ok(!O3.rows.some(r => ((r.work || {}).questions || []).some(x => x.startsWith(star.no))), 'cleared on both');
+      global.__docEdit = { edits: [{ do: 'rule', rule: 'no-space-before-units' }], cannot: [] }; await call('jobs:revise', { jobId: job.id, no: 'X101126-0000-06-08-0002' }); global.__docEdit = null;
+      assert.ok(/TOM ANSWERED \(do this, do not ask again\): yes, tables too/.test(global.__docEditAsked), 'the answer goes to Wren'); }
     { const D0 = desk.load(job.id); for (const c of D0.crs.filter(c => c.doc === '*')) desk.saveCrs(job.id, { no: c.no, status: 'Closed' }); }
     // "Next revision" on a document with no comments: the file revved (content as it was), never rewritten by Wren
     { global.__o365 = [() => { throw new Error('Wren must not rewrite it'); }]; const NR = await call('jobs:revision', { jobId: job.id, no: 'X101126-0000-06-08-0005' }); global.__o365 = null;

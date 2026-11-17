@@ -55,7 +55,8 @@ async function apply(buf, edits) {
   const done = [], failed = [];
   const escRe = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const paraWith = (t) => [...doc.matchAll(paraRe)].filter(m => !/<w:pStyle w:val="TOC/i.test(m[0]) && DR.text(m[0]).includes(String(t).trim()));   // the contents page's copy of a heading is not the heading
-  for (const e of edits || []) {
+  const order = { insert: 0, section: 0, delete: 1, replace: 2, rule: 3 };   // inserts and sections find their place on the text as Wren read it, before a replace or the units rule changes that text
+  for (const e of [...(edits || [])].sort((a, b) => (order[a && a.do] ?? 2) - (order[b && b.do] ?? 2))) {
     try {
       if (e.do === 'replace') {
         const hits = paraWith(e.find); if (hits.length !== 1) { failed.push({ e, why: hits.length ? `"${e.find}" is in ${hits.length} places` : `"${e.find}" is not in the document` }); continue; }
