@@ -6,7 +6,7 @@
 const dxffix = require('./dxffix');
 
 const REV = /^[PCAX]\d{2}$/i;
-const DATE = /^\d{1,2}[\/.-]\d{1,2}[\/.-]\d{2,4}$/;
+const DATE = require("./docrev").DATE;   // d/m/y with / . or -, and 28-Oct-26 / 28 October 2026
 const STATUS = /^(ISSUED? FOR [A-Z ]+|PRELIMINARY|FOR CONSTRUCTION|FOR APPROVAL|FOR INFORMATION|FOR COMMENT|FOR TENDER|AS BUILT)$/i;
 const today = () => { const d = new Date(); return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getFullYear()).slice(2)}`; };
 const nextOf = (rev) => require('./docnumber').nextRev(rev);   // one rule everywhere: P01 -> P02, a client's Rev B -> C

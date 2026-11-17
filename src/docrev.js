@@ -7,14 +7,19 @@ const JSZip = require('jszip');
 const { setCell } = require('./rfireg');
 
 const REV = /\b([PCAX]\d{2})\b/;
-const DATE = /^\d{1,2}\/\d{1,2}\/(\d{2}|\d{4})$/;
+const DATE = /^\d{1,2}[\/.-]\d{1,2}[\/.-](\d{2}|\d{4})$|^\d{1,2}[\s.\/-]+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*[\s.\/-]+(\d{2}|\d{4})$/i;
 const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 const unesc = (s) => String(s ?? '').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, '&');
 const nextOf = (rev) => require('./docnumber').nextRev(rev);   // one rule everywhere: P01 -> P02, a client's Rev B -> C
 // today in the shape of the date it replaces (28/10/2026 -> 05/11/2026, 28/10/26 -> 05/11/26)
+// the separator, a short year and a month written as a word are kept (28.10.26 -> 17.11.26, 28-Oct-2026 -> 17-Nov-2026, 28 October 2026 -> 17 November 2026)
+const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 function todayLike(sample, when) {
-  const d = when ? new Date(when) : new Date(); const yy = String(d.getFullYear());
-  return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${/\/\d{2}$/.test(sample || '') ? yy.slice(2) : yy}`;
+  const d = when ? new Date(when) : new Date(), yy = String(d.getFullYear()), smp = String(sample || '').trim();
+  const w = smp.match(/^(\d{1,2})([\s.\/-]+)([A-Za-z]{3,9})([\s.\/-]+)(\d{2,4})$/);
+  if (w) { const long = w[3].length > 3 && !/^sept$/i.test(w[3]), name = long ? MONTHS[d.getMonth()] : MONTHS[d.getMonth()].slice(0, 3); const cased = w[3] === w[3].toUpperCase() ? name.toUpperCase() : name; return `${String(d.getDate()).padStart(w[1].length, '0')}${w[2]}${cased}${w[4]}${w[5].length === 2 ? yy.slice(2) : yy}`; }
+  const sep = (smp.match(/^\d{1,2}([.\/-])/) || [])[1] || '/';
+  return `${String(d.getDate()).padStart(2, '0')}${sep}${String(d.getMonth() + 1).padStart(2, '0')}${sep}${/[.\/-]\d{2}$/.test(smp) ? yy.slice(2) : yy}`;
 }
 const text = (xml) => unesc(xml.replace(/<w:tab\/>/g, ' ').replace(/<[^>]+>/g, '')).trim();
 const hex8 = () => (Math.floor(Math.random() * 0x7fffffff) + 1).toString(16).toUpperCase().padStart(8, '0');
