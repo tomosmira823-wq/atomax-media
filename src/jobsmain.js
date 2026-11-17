@@ -388,10 +388,12 @@ function register({ ipcMain, HANDLERS, BIZ, claudeFull, getAgents }) {
         let plan; try { plan = require('./checker').parseJson(r.text).value || {}; } catch { plan = {}; }
         out = await DE.apply(buf, plan.edits || []);
         const cannot = [...(plan.cannot || []).map(c => `${c.comment}: ${c.why}`), ...out.failed.map(f => `${f.e.do} "${String(f.e.find || f.e.after || '').slice(0, 80)}": ${f.why}`)];
-        if (!out.done.length) { runs.finish(R.id, { ok: true }); return setDeliv(jobId, no, { status: 'needs you', questions: cannot.length ? cannot : ['Wren found nothing in the document to change for these comments. Say what to change.'], summary: 'Wren could not make the changes as text: answer below or change it by hand' }); }
+        const settings = (plan.approval && Object.keys(plan.approval).length) || /^\d{4}-\d{2}-\d{2}$/.test(String(plan.date || ''));
+        if (!out.done.length && !settings) { runs.finish(R.id, { ok: true }); return setDeliv(jobId, no, { status: 'needs you', questions: cannot.length ? cannot : ['Wren found nothing in the document to change for these comments. Say what to change.'], summary: 'Wren could not make the changes as text: answer below or change it by hand' }); }
         runs.finish(R.id, { ok: true });
-        const w = await revUpDocument({ jobId, job, d, src, status, edited: { buf: out.buf, note: `Wren made ${out.done.length} change${out.done.length === 1 ? '' : 's'}${plan.summary ? ' (' + plan.summary + ')' : ''}${cannot.length ? '; not done: ' + cannot.join(' · ') : ''}` }, description: remarkFor(open0, job.client) });
-        for (const c of open0) { try { desk.saveCrs(jobId, { no: c.no, status: cannot.length ? c.status : 'Responded', response: `Revised in ${w.rev}` }); } catch {} }
+        const when = /^\d{4}-\d{2}-\d{2}$/.test(String(plan.date || '')) ? plan.date : '';
+        const w = await revUpDocument({ jobId, job, d, src, status, date: when, approval: plan.approval && Object.keys(plan.approval).length ? plan.approval : null, edited: { buf: out.buf, note: `Wren made ${out.done.length} change${out.done.length === 1 ? '' : 's'}${plan.summary ? ' (' + plan.summary + ')' : ''}${cannot.length ? '; not done: ' + cannot.join(' · ') : ''}` }, description: remarkFor(open0, job.client) });
+        for (const c of open0) { if (c.doc === '*') continue; /* an all-documents comment stays open for the other documents */ try { desk.saveCrs(jobId, { no: c.no, status: cannot.length ? c.status : 'Responded', response: `Revised in ${w.rev}` }); } catch {} }
         if (cannot.length) setDeliv(jobId, no, { status: 'needs you', questions: cannot });
         return delivOf(jobId)[no];
       } catch (e) { runs.finish(R.id, { ok: false, error: runs.plain(e) }); throw e; }
@@ -521,11 +523,11 @@ function register({ ipcMain, HANDLERS, BIZ, claudeFull, getAgents }) {
   const issueName = (no, rev) => /^X\d{5,6}-/i.test(no) ? `${no} ${rev}` : `${no}_${rev}`;
   // a Word or Excel document: new revision rows, header and cover moved on by docrev; the native goes in ISSUE n/ISSUE n NATIVES (the PDF
   // for the issue itself is made from it by Word or Excel when the issue is plotted)
-  async function revUpDocument({ jobId, job, d, src, to = '', status = '', edited = null, description = '' }) {   // edited: { buf, note } when Revise changed the text first
+  async function revUpDocument({ jobId, job, d, src, to = '', status = '', edited = null, description = '', date = '', approval = null }) {   // date: the issue date asked for (not today); approval: initials for the new revision   // edited: { buf, note } when Revise changed the text first
     const DR = require('./docrev'), rel = src.docx || src.xlsx, full = path.join(job.folder, rel), name = path.basename(full), no = d.no;
     const from = DR.revOfName(name) || d.rev || ''; const want = askedRev(to, '') || '';
     const renumber = src.fileNo && src.fileNo !== no.toUpperCase() ? { from: src.fileNo, to: no } : null;
-    let r; try { r = src.docx ? await DR.revUpDocx(edited && edited.buf ? edited.buf : fs.readFileSync(full), { from, to: want, status, renumber, description: description || undefined }) : await DR.revUpXlsx(fs.readFileSync(full), { from, to: want, status }); }
+    let r; try { r = src.docx ? await DR.revUpDocx(edited && edited.buf ? edited.buf : fs.readFileSync(full), { from, to: want, status, renumber, description: description || undefined, date: date || undefined, approval: approval || undefined }) : await DR.revUpXlsx(fs.readFileSync(full), { from, to: want, status }); }
     catch (e) { throw new Error(`${no}: ${name} could not be revved up (${String(e.message || e)}). Rev it by hand this time.`); }
     const outDir = openIssueDir(jobId), natives = path.join(outDir, `${path.basename(outDir)} NATIVES`); fs.mkdirSync(natives, { recursive: true });
     const outPath = path.join(natives, DR.revName(name, r.from, r.to, renumber)); fs.writeFileSync(outPath, r.buf);
@@ -592,7 +594,7 @@ function register({ ipcMain, HANDLERS, BIZ, claudeFull, getAgents }) {
       const mine = (desk.load(a.jobId).crs || []).filter(c => (c.doc === a.no || c.doc === '*') && !/closed/i.test(c.status || '') && (!/responded/i.test(c.status || '') || (next && new RegExp('Revised (in|again at) ' + next + '\\b').test(c.response || ''))));
       if (mine.some(c => c.doc === a.no && !/^Dex couldn't/.test(c.response || ''))) return revise({ jobId: a.jobId, no: a.no, people: a.people, status: a.status });   /* a change on THIS drawing; one Dex already said he can't do by text (a cloud) stays open and does not block a plain rev up */
     } catch (e) { if (!/No such row|Not on the drawing list/.test(String(e.message || e))) { /* fall through to a plain rev up only when the look-up itself failed */ } } }
-    if (!src.dxf && src.docx && (desk.load(a.jobId).crs || []).some(c => c.doc === a.no && !/closed|responded/i.test(c.status || ''))) return revise({ jobId: a.jobId, no: a.no, people: a.people, status: a.status });   // a Word document with comments on it: the changes, then the rev up
+    if (!src.dxf && src.docx && (desk.load(a.jobId).crs || []).some(c => (c.doc === a.no || c.doc === '*') && !/closed|responded/i.test(c.status || ''))) return revise({ jobId: a.jobId, no: a.no, people: a.people, status: a.status });   // a Word document with comments on it: the changes, then the rev up
     return revUp(a);
   }
   ipcMain.handle('jobs:revUp', wrap((a) => revUpOrRevise(a)));

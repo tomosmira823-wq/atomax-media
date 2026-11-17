@@ -110,6 +110,12 @@ async function revUpDocx(buf, opts = {}) {
     if (changed) changes.cover++;
     return out;
   });
+  // the new revision's approval initials when they are given (Prepared TM, Checked CMcH/JA, Approved DM), the cover's own date line,
+  // and page breaks the way a person sets them (a small table kept on one page, a caption with its table or picture)
+  if (opts.approval) { const C = require('./carryover'); doc = C.setApproval(doc, next, { drawn: opts.approval.prepared || opts.approval.drawn || '', checked: opts.approval.checked || '', approved: opts.approval.approved || '' }, changes); }
+  { const firstTbl = doc.indexOf('<w:tbl>'), head = firstTbl > 0 ? doc.slice(0, firstTbl) : '';
+    if (head) { const fixed = head.replace(/<w:p\b[\s\S]*?<\/w:p>/g, (p) => { const t = text(p); if (!DATE.test(t)) return p; const r = replaceAcrossRuns(p, /\d{1,2}[\/.-]\d{1,2}[\/.-]\d{2,4}|\d{1,2}[\s.\/-]+[A-Za-z]{3,9}[\s.\/-]+\d{2,4}/, (d) => todayLike(d, opts.date)); if (r.n) changes.cover++; return r.xml; }); doc = fixed + doc.slice(head.length); } }
+  doc = require('./carryover').tidyPagination(doc, changes);
   zip.file('word/document.xml', doc);
   // running headers and footers: Rev P02 -> P03, the date -> today
   for (const n of parts.filter(p => /header|footer/.test(p))) {

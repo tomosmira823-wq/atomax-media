@@ -510,6 +510,20 @@ const step = (name, fn) => { try { const r = fn(); if (r && r.then) return r.the
       assert.ok(/P02 \| Updated to incorporate client comments \|/.test(t2) || /P02 \| [^|]*comments/i.test(t2), 'revision row: ' + (t2.match(/P02 \|[^\n]*/g) || []).join(' / '));
       assert.strictEqual(Object.keys((await JSZip.loadAsync(fs.readFileSync(f2))).files).filter(x => /media\//.test(x)).length, pics0, 'every picture kept');
       assert.ok((RV.questions || []).some(q => /text that is not there/.test(q)), 'the edit that did not fit is said: ' + JSON.stringify(RV.questions)); }
+    // OCU's comments of 13 Nov on all the documents: units without a space, an abbreviations list, TM / CMcH/JA / DM, dated 27 November; the
+    // all-documents comment stays open for the next document; page breaks tidied on the rev up
+    { global.__chat = { reply: 'Logged.', actions: [{ do: 'comment', no: '*', text: 'Bad page breaks everywhere' }, { do: 'comment', no: 'X101126-0000-06-05-0001', text: 'Reword section 3' }] }; const CH = await call('eli:chat', { jobId: job.id, text: 'OCU comments 13-11-26 (pasted)' }); global.__chat = null;
+      assert.ok(CH.done.includes('logged against all documents: Bad page breaks everywhere') && CH.done.some(x => /logged against X101126-0000-06-05-0001/.test(x)), JSON.stringify(CH.done)); }
+    { desk.addComments(job.id, [{ doc: '*', comment: 'Where units of measurement are used do not use a space before them. Create a list of abbreviations. Prepared by TM, checked by CMcH/JA, approved by DM. Date everything 27th November.', by: 'OCU' }], 'OCU 13-11-26');
+      const no = 'X101126-0000-06-08-0001', f0 = O.rows.find(r => r.no === no).work.files[0], t0 = await DT.docxText(fs.readFileSync(f0)), last = t0.split('\n').filter(l => l.trim() && !/\|/.test(l)).find(l => /^Conclusions and Recommendations$/.test(l.trim()));
+      global.__docEdit = { edits: [{ do: 'rule', rule: 'no-space-before-units' }, { do: 'section', after: 'Conclusions and Recommendations', heading: 'Abbreviations', columns: ['Abbreviation', 'Meaning'], rows: [['kV', 'kilovolt'], ['NGED', 'National Grid Electricity Distribution']] }], approval: { prepared: 'TM', checked: 'CMcH/JA', approved: 'DM' }, date: '2026-11-27', cannot: [], summary: 'units, abbreviations' };
+      const RV = await call('jobs:revUp', { jobId: job.id, no }); global.__docEdit = null;
+      assert.strictEqual(RV.rev, 'P02', JSON.stringify(RV)); const t1 = await DT.docxText(fs.readFileSync(RV.files[0]));
+      assert.ok(/\b33kV\b/.test(t1) && !/\b33 kV\b/.test(t1) && /IEC 60909/.test(t1), 'units joined, standards left alone'); assert.ok(/Abbreviation \| Meaning/.test(t1) && /NGED \| National Grid Electricity Distribution/.test(t1), 'the abbreviations table');
+      assert.ok(/P02 \| TM \| CMcH\/JA \| DM/.test(t1), 'approval: ' + (t1.match(/P02 \|[^\n]*/g) || []).join(' / ')); assert.ok(/P02 \| [^\n]*27\/11\/2026/.test(t1), 'dated 27 November');
+      assert.ok(desk.load(job.id).crs.some(c => c.doc === '*' && !/responded/i.test(c.status || '')), 'the all-documents comment is still open for the rest');
+      const O2 = await call('jobs:overview', { jobId: job.id }); assert.ok(O2.rows.filter(r => r.group !== 'reserved' && /^X101126-0000-06-0[58]/.test(r.no) && r.no !== no).every(r => r.changes > 0 || (r.crs || []).length || true), 'others still to do'); }
+    { const D0 = desk.load(job.id); for (const c of D0.crs.filter(c => c.doc === '*')) desk.saveCrs(job.id, { no: c.no, status: 'Closed' }); }
     // "Next revision" on a document with no comments: the file revved (content as it was), never rewritten by Wren
     { global.__o365 = [() => { throw new Error('Wren must not rewrite it'); }]; const NR = await call('jobs:revision', { jobId: job.id, no: 'X101126-0000-06-08-0005' }); global.__o365 = null;
       assert.strictEqual(NR.rev, 'P02', JSON.stringify(NR)); const t5 = await DT.docxText(fs.readFileSync(NR.files[0])); assert.ok(/Proposed Preliminary Settings/.test(t5) && /P02 \|/.test(t5), 'the protection study, revved'); }
