@@ -181,4 +181,24 @@ function revName(name, from, to, renumber) {
 }
 const revOfName = (name) => { const m = String(name).match(/\b([PCAX]\d{2})\b(?!.*\b[PCAX]\d{2}\b)/); return m ? m[1].toUpperCase() : ''; };
 
-module.exports = { revUpDocx, revUpXlsx, revName, revOfName, nextOf, todayLike, replaceAcrossRuns, text, cellsOf, setTc, DATE };
+// a document that has never been issued, changed where it is: no new revision. The current revision's row in the revision table, the header
+// and the cover take the date asked for (or today), its approval row the initials given, and page breaks are tidied
+async function inPlaceDocx(buf, opts = {}) {
+  const zip = await JSZip.loadAsync(buf), parts = Object.keys(zip.files).filter(n => /^word\/(header\d*|footer\d*)\.xml$/.test(n));
+  let doc = await zip.file('word/document.xml').async('string'); const changes = { dated: 0, approval: 0, pagination: 0 };
+  let cur = opts.rev || '';
+  if (!cur) for (const n of parts) { const m = text(await zip.file(n).async('string')).match(/Rev\.?:?\s*([PCAX]\d{2})\b/i); if (m) { cur = m[1].toUpperCase(); break; } }
+  if (!cur) throw new Error('no revision found in the document');
+  doc = doc.replace(/<w:tr\b[\s\S]*?<\/w:tr>/g, (tr) => { const cells = cellsOf(tr); if (cells.length < 2) return tr; const mine = text(cells[0]).toUpperCase() === cur; let k = 0;
+    return tr.replace(/<w:tc\b[\s\S]*?<\/w:tc>/g, (tc) => { const i = k++, t = text(tc), label = i ? text(cells[i - 1]) : ''; if (i && DATE.test(t) && (mine || /^date:?$/i.test(label))) { changes.dated++; return setTc(tc, todayLike(t, opts.date)); } return tc; }); });
+  { const firstTbl = doc.indexOf('<w:tbl>'), head = firstTbl > 0 ? doc.slice(0, firstTbl) : '';
+    if (head) doc = head.replace(/<w:p\b[\s\S]*?<\/w:p>/g, (p) => { if (!DATE.test(text(p))) return p; const r = replaceAcrossRuns(p, /\d{1,2}[\/.-]\d{1,2}[\/.-]\d{2,4}|\d{1,2}[\s.\/-]+[A-Za-z]{3,9}[\s.\/-]+\d{2,4}/, (d) => todayLike(d, opts.date)); changes.dated += r.n; return r.xml; }) + doc.slice(head.length); }
+  if (opts.approval) doc = require('./carryover').setApproval(doc, cur, { drawn: opts.approval.prepared || opts.approval.drawn || '', checked: opts.approval.checked || '', approved: opts.approval.approved || '' }, changes);
+  doc = require('./carryover').tidyPagination(doc, changes);
+  zip.file('word/document.xml', doc);
+  for (const n of parts) { let x = await zip.file(n).async('string'), b = x;
+    x = x.replace(/<w:tr\b[\s\S]*?<\/w:tr>/g, (tr) => { let k = 0; const cells = cellsOf(tr); return tr.replace(/<w:tc\b[\s\S]*?<\/w:tc>/g, (tc) => { const i = k++, t = text(tc); if (i && /^date:?$/i.test(text(cells[i - 1])) && DATE.test(t)) return setTc(tc, todayLike(t, opts.date)); return tc; }); });
+    if (x !== b) { changes.dated++; zip.file(n, x); } }
+  return { buf: await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' }), rev: cur, changes };
+}
+module.exports = { inPlaceDocx, revUpDocx, revUpXlsx, revName, revOfName, nextOf, todayLike, replaceAcrossRuns, text, cellsOf, setTc, DATE };

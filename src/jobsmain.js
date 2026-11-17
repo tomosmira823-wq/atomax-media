@@ -146,7 +146,7 @@ function register({ ipcMain, HANDLERS, BIZ, claudeFull, getAgents }) {
     const request = k.agent === 'Dex' ? `${k.verb}: ${title}${num ? ` (drawing ${num})` : ''}. Use the job's inputs, every item on them for this drawing and nothing else.`
       : k.agent === 'Lex' ? `${k.verb} ${title} for job ${job.number}${num ? ` (document ${num})` : ''} from the job's inputs and the approved master device list. House template from your skill.`
       : `${k.verb} ${title} for job ${job.number}${num ? ` (document ${num})` : ''} from the job's inputs.`;
-    let carry = null, noCarry = ''; if (k.agent === 'Wren' || k.agent === 'Lex' || k.kind === 'rfi') { try { const C = require('./carryover'), fl = jobFiles(jobId), e = C.earlierVersion(d, fl); if (e) carry = e.name; else noCarry = `${fl.length} files listed; ` + C.whyNot(d, fl); } catch (err) { noCarry = 'could not look: ' + String(err && err.message || err); } }
+    let carry = null, noCarry = ''; if (k.agent === 'Wren' || k.agent === 'Lex' || k.kind === 'rfi') { try { const C = require('./carryover'), fl = jobFiles(jobId), e = C.earlierVersion(d, fl), own = sourceFor(d, fl); if (e && !(k.kind === 'rfi' && desk.load(jobId).rfiCarriedFrom === e.abs) && !(k.kind !== 'rfi' && (own.docx || own.xlsx))) carry = e.name; else noCarry = `${fl.length} files listed; ` + C.whyNot(d, fl); } catch (err) { noCarry = 'could not look: ' + String(err && err.message || err); } }
     const want = k.kind === 'bcd' ? 'cable schedule instrument index io list bcd' : k.kind === 'sld' ? 'single line sld load schedule cable schedule protection' : k.kind === 'earthing' ? 'earthing cable schedule' : k.kind === 'schedule' ? 'cable schedule instrument index io list' : title;
     // Wren also reads Word files (an earlier version of the same document is the best input there is); a Word file and its own PDF are one input, the Word one
     let inputPaths = job.folder ? BIZ.projects.relevantFiles(job.id, title + ' ' + want, { exts: ['.pdf', '.xlsx', '.xlsm', '.csv', ...(k.agent === 'Wren' ? ['.docx'] : [])], max: 8 }) : [];
@@ -154,7 +154,7 @@ function register({ ipcMain, HANDLERS, BIZ, claudeFull, getAgents }) {
     inputPaths = inputPaths.filter(p => !(/\.pdf$/i.test(p) && inputPaths.some(q => /\.docx$/i.test(q) && stem(q) === stem(p)))).slice(0, 6);
     const inputs = inputPaths.map(p => path.basename(p));
     // drawn / checked / approved: this drawing's from last time, else the last ones used on the job
-    const dl = delivOf(jobId), people = (dl[no] || {}).people || Object.values(dl).map(x => x.people).filter(Boolean).pop() || null;
+    const dl = delivOf(jobId), people = peopleFromComments(jobId, no) || (dl[no] || {}).people || Object.values(dl).map(x => x.people).filter(Boolean).pop() || null;   // what the client's comments say first ("prepared by TM, checked by CMcH/JA, approved by DM")
     const rev = (dl[no] || {}).files ? ((dl[no] || {}).rev || 'P01') : '';
     const carryReq = carry ? `Issue ${carry} under ${num || d.no} as it is: every result, table, figure and assumption unchanged; the old document numbers and project reference changed to this job's (cross-references included); the P01 row, header and cover dated today.${k.kind === 'rfi' ? ' Its RFIs become the job\'s RFIs.' : ''}` : '';
     return { carry, noCarry, inputPaths, agent: k.agent, agentId: AGENT_ID[k.agent] || '', kind: k.kind, number: num, title, request: carryReq || request, inputs: carry ? [carry] : inputs, folder: job.folder || '', people, rev, nextRev: rev ? require('./docnumber').nextRev(rev) : 'P01' };
@@ -194,6 +194,21 @@ function register({ ipcMain, HANDLERS, BIZ, claudeFull, getAgents }) {
     } catch (err) { runs.finish(R.id, { ok: false, error: runs.plain(err) }); throw err; }
   }
   const DR = () => require('./docrev');
+  // initials an open comment gives for a row (or for all documents): "Make prepared by TM, CHECKED BY CMcH/JA and approved by DM"
+  function peopleFromComments(jobId, no) {
+    const open = (desk.load(jobId).crs || []).filter(c => (c.doc === no || c.doc === '*') && !/closed/i.test(c.status || '')).map(c => String(c.comment || '')).reverse();
+    const grab = (re) => { for (const t of open) { const m = t.match(re); if (m && /^[A-Z]/.test(m[1]) && !/^(THE|AN?|ME|US|HIM|HER|ATOMAX|TOM|DAVE)$/i.test(m[1])) return m[1].replace(/[.,;]+$/, '').replace(/\s+/g, ''); } return ''; };   // initials, written as given (not "the engineer")
+    const ini = "([A-Z][A-Za-z]{0,4}(?:\\s*[\\/&]\\s*[A-Z][A-Za-z]{0,4})*)";
+    const p = { drawn: grab(new RegExp(`(?:prepared|drawn|made)\\s*by\\s*:?\\s*${ini}\\b`, 'i')), checked: grab(new RegExp(`checked\\s*by\\s*:?\\s*${ini}\\b`, 'i')), approved: grab(new RegExp(`approved\\s*by\\s*:?\\s*${ini}\\b`, 'i')) };
+    return p.drawn || p.checked || p.approved ? p : null;
+  }
+  // has this deliverable ever gone out: a sent issue folder or a transmittal on file names its number
+  function everIssued(jobId, no) {
+    const job = jobOf(jobId), d = desk.load(jobId), key = String(no).toUpperCase();
+    for (const x of d.issued || []) { try { if (x.path && fs.readdirSync(x.path).some(n => n.toUpperCase().includes(key))) return true; } catch {} }
+    try { for (const dir of BIZ.projects.issueDirs(job.folder || '')) { if (d.openIssue && d.openIssue.path === dir.path) continue; if (fs.readdirSync(dir.path).some(n => n.toUpperCase().includes(key) && /\.pdf$/i.test(n))) return true; } } catch {}
+    return false;
+  }
   // the deliverable as Wren / Lex must write it: the row's own number (the client's when it has one), its revision, the approval initials
   const rowFor = (jobId, d, people, revision) => { const prev = delivOf(jobId)[d.no] || {}; const cur = (revision && revision.rev) || prev.rev || d.rev || ''; return { no: realNo(d) || '', rev: revision && revision.to ? revision.to : (cur || 'P01'),   /* a remake stays at its revision; a new revision says which */ title: cleanTitle(d) || d.title, people: people || prev.people || {} }; };
   // what Tom answered to the agent's questions, carried into the next go (Wren and Lex read it with the request)
@@ -211,7 +226,7 @@ function register({ ipcMain, HANDLERS, BIZ, claudeFull, getAgents }) {
     }
     const prev = delivOf(jobId)[no] || {};
     if (answers && answers.length) answers = [...(prev.answers || []).filter(p => !answers.some(a => a.q === p.q)), ...answers]; else answers = prev.answers || [];   // answers given once are kept for remakes and revisions
-    people = people || prev.people || {};   // drawn / checked / approved, kept for remakes and revisions
+    people = (people && Object.values(people).some(Boolean) ? people : null) || peopleFromComments(jobId, no) || prev.people || {};   // drawn / checked / approved: asked, else what the comments say, else kept from before
     // open items from Cal's check (and any other open comment) on a remake at the same revision: fixed in this make, then marked done
     let calOpen = [];
     if (!revision) { try { calOpen = (desk.load(jobId).crs || []).filter(c => c.doc === no && !/responded|closed/i.test(c.status || '')); } catch {} if (calOpen.length) note = [note, 'Fix these check findings and comments (keep everything else as it was): ' + calOpen.map(c => c.comment).join(' | ')].filter(Boolean).join(' '); }
@@ -347,7 +362,7 @@ function register({ ipcMain, HANDLERS, BIZ, claudeFull, getAgents }) {
     try { r = await claudeFull({ system: agent ? L.system(agent) : E.SYSTEM, who: agent ? agent.id : 'email', skills, maxTokens: agent ? 6000 : 4000, messages: [{ role: 'user', content: [{ type: 'text', text: `${ctx}\n\n${agent ? 'THEY SAY NOW' : 'TOM SAYS NOW'}: ${t || '(see the attachment)'}` }, ...pics] }], run: R.id }); runs.finish(R.id); } catch (e) { runs.finish(R.id, { ok: false, error: String(e && e.message || e) }); throw e; }
     let out; try { out = require('./dxfmaker').parseReply(r.text); } catch { out = { reply: String(r.text || '').trim(), actions: [] }; }
     const reply = String(out.reply || '').trim() || `(${who} said nothing)`;
-    const doers = { issueSent: () => { const d = desk.load(jobId); if (!d.openIssue) throw new Error('No issue is being built on this job.'); const n = d.openIssue.n; d.openIssue.sent = true; closeIssue(jobId, d, `Tom told ${who} it was sent`); return { n }; }, revUp: (a) => revUpOrRevise({ jobId, no: a.no, to: a.to || '', status: a.status || '', people: a.people || null }), revise: (a) => revise({ jobId, no: a.no, comments: a.note || '', status: a.status || '' }), comment: (a) => desk.addComments(jobId, [{ doc: a.no, comment: a.text, by: agent ? who : 'Tom' }]), make: (a) => { const d = jobOf(jobId).drawings.find(x => x.no === a.no), k = d ? kindOf(d) : {}, own = d ? sourceFor(d, jobFiles(jobId)) : {}; if (d && (k.agent === 'Wren' || k.agent === 'Lex') && (own.docx || own.xlsx) && !/scratch|rewrite|again from/i.test(a.note || '')) throw new Error(`${a.no} is already on file (${(own.docx || own.xlsx).split('/').pop()}): revise or rev it up instead; it is written again from scratch only when asked to rewrite it`); return make({ jobId, no: a.no, people: a.people || {}, note: a.note || '' }); }, rows: () => overview(jobId).rows, docRequest: (a) => docRequest({ jobId, submittedBy: a.submittedBy || '', nos: a.nos || null }), plot: (a) => plotIssue({ jobId, files: a.files || null }),
+    const doers = { issueSent: () => { const d = desk.load(jobId); if (!d.openIssue) throw new Error('No issue is being built on this job.'); const n = d.openIssue.n; d.openIssue.sent = true; closeIssue(jobId, d, `Tom told ${who} it was sent`); return { n }; }, revUp: (a) => revUpOrRevise({ jobId, no: a.no, to: a.to || '', status: a.status || '', people: a.people || null }), revise: (a) => revise({ jobId, no: a.no, comments: a.note || '', status: a.status || '' }), comment: (a) => desk.addComments(jobId, [{ doc: a.no, comment: a.text, by: agent ? who : 'Tom' }]), make: (a) => { const d = jobOf(jobId).drawings.find(x => x.no === a.no), k = d ? kindOf(d) : {}, own = d ? sourceFor(d, jobFiles(jobId)) : {}; if (d && (k.agent === 'Wren' || k.agent === 'Lex') && (own.docx || own.xlsx) && !/scratch|rewrite|again from/i.test(a.note || '')) throw new Error(`${a.no} is already on file (${(own.docx || own.xlsx).split('/').pop()}): revise or rev it up instead; it is written again from scratch only when asked to rewrite it`); return make({ jobId, no: a.no, people: a.people && Object.values(a.people).some(Boolean) ? a.people : null, note: a.note || '' }); }, rows: () => overview(jobId).rows, docRequest: (a) => docRequest({ jobId, submittedBy: a.submittedBy || '', nos: a.nos || null }), plot: (a) => plotIssue({ jobId, files: a.files || null }),
       office: (a) => require('./o365main').once({ ...a, jobId }), calc: (a) => require('./intake').adaNote({ ...a, jobId }), check: (a) => check({ jobId, nos: a.nos }) };
     const actx = { job, desk: desk.load(jobId), deskMod: desk, biz, BIZ, overview: ov };
     const done = agent ? await L.apply(Array.isArray(out.actions) ? out.actions : [], actx, { agent, doers }) : await E.apply(Array.isArray(out.actions) ? out.actions : [], { ...actx, doers });
@@ -382,6 +397,7 @@ function register({ ipcMain, HANDLERS, BIZ, claudeFull, getAgents }) {
   const refOf = (v) => Number.isInteger(v) ? v : /^\d+$/.test(String(v ?? '')) ? +v : String(v || '').toLowerCase() === 'all' ? 'all' : undefined;
   const sayEdit = (f) => f.action === 'replace_text' ? `${f.before} -> ${f.after}` : f.action === 'delete_text' ? `removed "${f.before || f.text}"` : f.action === 'add_text' ? `added "${f.text}"` : `text to ${f.colour || 'black'}`;
   async function revise({ jobId, no, comments = '', people = null, status = '' }) {
+    people = people || peopleFromComments(jobId, no);   // "prepared by TM, checked by CMcH/JA, approved by DM" in the comments
     const job = jobOf(jobId), d = job.drawings.find(x => x.no === no); if (!d) throw new Error('Not on the drawing list: ' + no);
     const issueDir = peekIssueDir(jobId), RU = require('./revup');
     let src = sourceFor(d, jobFiles(jobId, { exceptDir: issueDir })), fname = (src.dxf || src.dwg || '').split('/').pop();
@@ -401,7 +417,16 @@ function register({ ipcMain, HANDLERS, BIZ, claudeFull, getAgents }) {
         if (!out.done.length && !settings) { runs.finish(R.id, { ok: true }); return setDeliv(jobId, no, { status: 'needs you', questions: cannot.length ? cannot : ['Wren found nothing in the document to change for these comments. Say what to change.'], summary: 'Wren could not make the changes as text: answer below or change it by hand' }); }
         runs.finish(R.id, { ok: true });
         const when = /^\d{4}-\d{2}-\d{2}$/.test(String(plan.date || '')) ? plan.date : '';
-        const w = await revUpDocument({ jobId, job, d, src, status, date: when, approval: plan.approval && Object.keys(plan.approval).length ? plan.approval : null, edited: { buf: out.buf, note: `Wren made ${out.done.length} change${out.done.length === 1 ? '' : 's'}${plan.summary ? ' (' + plan.summary + ')' : ''}${cannot.length ? '; not done: ' + cannot.join(' · ') : ''}` }, description: remarkFor(open0, job.client) });
+        // never issued (no issue folder holds it, no transmittal sent it): the changes go into the file at its own revision, no rev up
+        if (!everIssued(jobId, no)) {
+          const ip = await require('./docrev').inPlaceDocx(out.buf, { rev: require('./docrev').revOfName(path.basename(full)) || (d.rev && /^[PCAX]\d{2}$/i.test(d.rev) ? d.rev.toUpperCase() : ''), date: when, approval: plan.approval && Object.keys(plan.approval).length ? plan.approval : (people && (people.drawn || people.checked || people.approved) ? { prepared: people.drawn || '', checked: people.checked || '', approved: people.approved || '' } : null) });
+          const arch = path.join(path.dirname(full), 'Archive'); try { fs.mkdirSync(arch, { recursive: true }); fs.copyFileSync(full, path.join(arch, path.basename(full).replace(/(\.docx)$/i, ` (before ${new Date().toISOString().slice(0, 10)})$1`))); } catch {}
+          fs.writeFileSync(full, ip.buf); let pdfs = []; try { const pdf = full.replace(/\.docx$/i, '.pdf'); await require('./officepdf').toPdf(full, pdf); pdfs = [pdf]; } catch {}
+          runs.finish(R.id, { ok: true });
+          for (const c of open0) { if (c.doc === '*') continue; try { desk.saveCrs(jobId, { no: c.no, status: cannot.length ? c.status : 'Responded', response: `Changed in ${ip.rev} (not issued yet)` }); } catch {} }
+          return setDeliv(jobId, no, { status: cannot.length ? 'needs you' : 'made', rev: ip.rev, files: [full], pdfs, by: 'Wren', questions: cannot.length ? cannot : null, summary: `Wren made ${out.done.length} change${out.done.length === 1 ? '' : 's'} in ${ip.rev} itself (never issued, so no new revision; the file before is in Archive)${plan.summary ? ': ' + plan.summary : ''}` });
+        }
+        const w = await revUpDocument({ jobId, job, d, src, status, date: when, approval: plan.approval && Object.keys(plan.approval).length ? plan.approval : (people && (people.drawn || people.checked || people.approved) ? { prepared: people.drawn || '', checked: people.checked || '', approved: people.approved || '' } : null), edited: { buf: out.buf, note: `Wren made ${out.done.length} change${out.done.length === 1 ? '' : 's'}${plan.summary ? ' (' + plan.summary + ')' : ''}${cannot.length ? '; not done: ' + cannot.join(' · ') : ''}` }, description: remarkFor(open0, job.client) });
         for (const c of open0) { if (c.doc === '*') continue; /* an all-documents comment stays open for the other documents */ try { desk.saveCrs(jobId, { no: c.no, status: cannot.length ? c.status : 'Responded', response: `Revised in ${w.rev}` }); } catch {} }
         if (cannot.length) setDeliv(jobId, no, { status: 'needs you', questions: cannot });
         return delivOf(jobId)[no];
@@ -418,7 +443,7 @@ function register({ ipcMain, HANDLERS, BIZ, claudeFull, getAgents }) {
     const line = (c) => `${/^tom$/i.test(c.by || '') ? 'ENGINEER' : 'CLIENT'} ${c.no ? c.no + ': ' : ''}${c.comment}`;
     const asked = [String(comments || '').trim() ? 'ENGINEER (now): ' + String(comments).trim() : '', ...open.filter(c => /^tom$/i.test(c.by || '')).map(line), ...open.filter(c => !/^tom$/i.test(c.by || '')).map(line)].filter(Boolean).join('\n');
     if (!asked) throw new Error(`${no}: nothing is logged against it to change. Log the comments on the Comments tab (or forward the email to Eli), then press Revise.`);
-    const prev = delivOf(jobId)[no] || {}; people = people || prev.people || null;
+    const prev = delivOf(jobId)[no] || {}; people = people || peopleFromComments(jobId, no) || prev.people || null;
     const R = runs.start({ kind: 'revise', who: 'Dex', jobId, no });
     setDeliv(jobId, no, { status: 'working', run: RUN, runId: R.id, agent: 'Dex', summary: 'Dex is reading the comments against the drawing', people });
     try {

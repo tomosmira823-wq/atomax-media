@@ -505,9 +505,9 @@ const step = (name, fn) => { try { const r = fn(); if (r && r.then) return r.the
       const before = O.rows.find(r => r.no === no).work.files[0], pics0 = Object.keys((await JSZip.loadAsync(fs.readFileSync(before))).files).filter(x => /media\//.test(x)).length;
       const RV = await call('jobs:revise', { jobId: job.id, no }); global.__docEdit = null;
       assert.ok(/\[\d+\] This is a preliminary \(P01\) issue/.test(global.__docEditAsked) && /BESS harmonic data/.test(global.__docEditAsked), 'Wren sees the paragraphs and the comment');
-      assert.strictEqual(RV.rev, 'P02', JSON.stringify(RV)); const f2 = RV.files[0]; assert.ok(/ISSUE \d+ NATIVES/.test(f2) && /P02/.test(path.basename(f2)), f2);
+      assert.strictEqual(RV.rev, 'P01', 'never issued: changed at P01 ' + JSON.stringify(RV)); const f2 = RV.files[0]; assert.ok(/7\.12 Reports/.test(f2) && /P01/.test(path.basename(f2)), f2); assert.ok(fs.readdirSync(path.join(path.dirname(f2), 'Archive')).some(n => /before/.test(n)), 'the file before kept in Archive');
       const t2 = await DT.docxText(fs.readFileSync(f2)); assert.ok(/once OCU send the BESS harmonic data and the relevant items/.test(t2), 'the edit is in');
-      assert.ok(/P02 \| Updated to incorporate client comments \|/.test(t2) || /P02 \| [^|]*comments/i.test(t2), 'revision row: ' + (t2.match(/P02 \|[^\n]*/g) || []).join(' / '));
+      assert.ok(!/P02 \|/.test(t2), 'no new revision row');
       assert.strictEqual(Object.keys((await JSZip.loadAsync(fs.readFileSync(f2))).files).filter(x => /media\//.test(x)).length, pics0, 'every picture kept');
       assert.ok((RV.questions || []).some(q => /text that is not there/.test(q)), 'the edit that did not fit is said: ' + JSON.stringify(RV.questions)); }
     // OCU's comments of 13 Nov on all the documents: units without a space, an abbreviations list, TM / CMcH/JA / DM, dated 27 November; the
@@ -517,11 +517,12 @@ const step = (name, fn) => { try { const r = fn(); if (r && r.then) return r.the
       assert.ok(CH.done.includes('logged against all documents: Bad page breaks everywhere') && CH.done.some(x => /logged against X101126-0000-06-05-0001/.test(x)), JSON.stringify(CH.done)); }
     { desk.addComments(job.id, [{ doc: '*', comment: 'Where units of measurement are used do not use a space before them. Create a list of abbreviations. Prepared by TM, checked by CMcH/JA, approved by DM. Date everything 27th November.', by: 'OCU' }], 'OCU 13-11-26');
       const no = 'X101126-0000-06-08-0001', f0 = O.rows.find(r => r.no === no).work.files[0], t0 = await DT.docxText(fs.readFileSync(f0)), last = t0.split('\n').filter(l => l.trim() && !/\|/.test(l)).find(l => /^Conclusions and Recommendations$/.test(l.trim()));
-      global.__docEdit = { edits: [{ do: 'rule', rule: 'no-space-before-units' }, { do: 'section', after: 'Conclusions and Recommendations', heading: 'Abbreviations', columns: ['Abbreviation', 'Meaning'], rows: [['kV', 'kilovolt'], ['NGED', 'National Grid Electricity Distribution']] }], approval: { prepared: 'TM', checked: 'CMcH/JA', approved: 'DM' }, date: '2026-11-27', cannot: [], summary: 'units, abbreviations' };
+      { const P0 = await call('jobs:plan', { jobId: job.id, no }); assert.deepStrictEqual(P0.people, { drawn: 'TM', checked: 'CMcH/JA', approved: 'DM' }, 'the Make screen takes the initials from the comments: ' + JSON.stringify(P0.people)); }
+      global.__docEdit = { edits: [{ do: 'rule', rule: 'no-space-before-units' }, { do: 'section', after: 'Conclusions and Recommendations', heading: 'Abbreviations', columns: ['Abbreviation', 'Meaning'], rows: [['kV', 'kilovolt'], ['NGED', 'National Grid Electricity Distribution']] }], date: '2026-11-27', cannot: [], summary: 'units, abbreviations' };   // no approval from Wren: the comments' initials are used
       const RV = await call('jobs:revUp', { jobId: job.id, no }); global.__docEdit = null;
-      assert.strictEqual(RV.rev, 'P02', JSON.stringify(RV)); const t1 = await DT.docxText(fs.readFileSync(RV.files[0]));
+      assert.strictEqual(RV.rev, 'P01', JSON.stringify(RV)); const t1 = await DT.docxText(fs.readFileSync(RV.files[0]));
       assert.ok(/\b33kV\b/.test(t1) && !/\b33 kV\b/.test(t1) && /IEC 60909/.test(t1), 'units joined, standards left alone'); assert.ok(/Abbreviation \| Meaning/.test(t1) && /NGED \| National Grid Electricity Distribution/.test(t1), 'the abbreviations table');
-      assert.ok(/P02 \| TM \| CMcH\/JA \| DM/.test(t1), 'approval: ' + (t1.match(/P02 \|[^\n]*/g) || []).join(' / ')); assert.ok(/P02 \| [^\n]*27\/11\/2026/.test(t1), 'dated 27 November');
+      assert.ok(/P01 \| TM \| CMcH\/JA \| DM/.test(t1), 'approval: ' + (t1.match(/P01 \|[^\n]*/g) || []).join(' / ')); assert.ok(/P01 \| [^\n]*27\/11\/2026/.test(t1) && !/P02 \|/.test(t1), 'P01 dated 27 November, no P02');
       assert.ok(desk.load(job.id).crs.some(c => c.doc === '*' && !/responded/i.test(c.status || '')), 'the all-documents comment is still open for the rest');
       const O2 = await call('jobs:overview', { jobId: job.id }); assert.ok(O2.rows.filter(r => r.group !== 'reserved' && /^X101126-0000-06-0[58]/.test(r.no) && r.no !== no).every(r => r.changes > 0 || (r.crs || []).length || true), 'others still to do'); }
     { const D0 = desk.load(job.id); for (const c of D0.crs.filter(c => c.doc === '*')) desk.saveCrs(job.id, { no: c.no, status: 'Closed' }); }
