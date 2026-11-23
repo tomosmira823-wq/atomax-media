@@ -409,6 +409,8 @@ const withJob = (a) => { const name = (String(a && a.system || '').match(/You ar
 roomsmain.register({ ipcMain, dialog, getWin: () => win, loadSettings, saveSettings, userDir: USER_DIR, version: () => app.getVersion(), getAgents: () => readJson(AGENTS_FILE(), DEFAULT_AGENTS) });
 const updSend = (u) => { roomsmain.setUpdate(u); win?.webContents.send('update:status', u); };
 runs.init({ sendFn: (ch, p) => { try { win && win.webContents.send(ch, p); } catch {} }, userDir: USER_DIR() });
+// the job agents' working loop (Claude Agent SDK): tools, skills, the job folder as their only place to read
+require('./agentrun').init({ loadSettings, usage, runs, userDir: USER_DIR(), library, get agentMs() { return AGENT_MS; } });
 ipcMain.handle('run:stop', (_e, { id, jobId, no } = {}) => id ? runs.stop(id) : runs.stopFor(jobId, no));
 ipcMain.handle('run:live', () => runs.live());
 BIZ = bizmain.register({ ipcMain, dialog, shell, Notification, getWin: () => win, userDir: USER_DIR, claudeFull: (a) => claudeFull(a.docKind ? { ...a, who: 'documents' } : a), checker, getSettings: () => loadSettings() });

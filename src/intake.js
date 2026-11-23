@@ -562,6 +562,77 @@ EARTHING tasks: size every protective / earth conductor the drawing needs (MET t
 
   // ---------- Dex makes a DXF ----------
   const runs = require('./runs');
+  // which agents work as a loop with tools (agentrun.js) rather than one call: Settings > agentLoop { dex: true, ... }; Dex on by default
+  const LOOP_DEFAULT = ['dex'];
+  const agentOn = (id) => { try { const a = (loadSettings() || {}).agentLoop || {}; return a[id] != null ? !!a[id] : LOOP_DEFAULT.includes(id); } catch { return false; } };
+
+  const DEX_LOOP = `
+
+HOW YOU WORK NOW (this replaces any instruction above about replying with the spec as text)
+You are working with tools, like a draughtsman at a CAD station. You never reply with the spec: you pass it to make_drawing, then you LOOK at what came out and fix it.
+1. Read the inputs you were given. Open the skill for this kind of drawing with the Skill tool before you start, and follow it.
+2. Start from the closest real drawing when there is one (the current revision on file, the client's drawing, a similar Atomax drawing): look at it with render_drawing / zoom. For a revision or a small change to a drawing that exists as a DXF, edit that DXF with edit_dxf (find_entities gives you handles) rather than redrawing it. For a new drawing, make_drawing(spec).
+3. Before you hand over, EVERY time: render_drawing the whole sheet; zoom into at least the title block, the revision box and the busiest parts; run_checks. Fix what is wrong (make_drawing again with a corrected spec, or edit_dxf on the result) and look again.
+4. At most 5 rounds of fixing. Then hand over, with a clear list of what is still wrong.
+5. A value only Tom can give (not in the files, not in the standards)? ask_tom, then hand over what you have.
+6. You may write notes only in your work folder. The job's files are never changed: every change is a new file.
+FINAL REPLY: JSON only, nothing else: {"final":"<file name of the DXF to issue, from your work folder>","summary":"one line: what you drew or changed","still_wrong":["anything you could not fix"],"questions":["anything you asked Tom"]}`;
+
+  async function dexAgent(a) {
+    const AR = require('./agentrun'), AT = require('./agenttools'), DC = require('./drawcheck'), DN = require('./docnumber'), desk = require('./jobdesk');
+    const { job, request, kind, answers, revision, drawingNumber, run } = a;
+    const stage = (t, pct) => runs.stage(run, t, pct);
+    const S = await AR.sdk();
+    const workDir = path.join(userDir(), 'agent-work', `${String(drawingNumber || 'dex').replace(/[\\/:*?"<>|]+/g, '_')}-${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}`);
+    const cables = DC.cablesFromWorkbook(a.workbooks); try { const m = desk.masterOf(job.id); if (m && m.status === 'approved') for (const c of m.cables || []) if (!cables.some(x => String(x.no).toUpperCase() === String(c.no).toUpperCase())) cables.push({ no: c.no, row: JSON.stringify(c) }); } catch {}
+    const specs = new Map();   // draft DXF -> the spec it was made from
+    const ctx = { jobDir: job.folder, workDir, cables, readDirs: [path.join(__dirname, 'cad'), ...(BIZ.projects.templateDir ? [BIZ.projects.templateDir()].filter(Boolean) : [])], log: (l) => stage('Dex: ' + l),
+      makeDrawing: async (spec) => { const r = await a.finish(spec, { draftDir: workDir }); const files = (r.sheets || []).map(x => x.path).filter(Boolean); files.forEach(f => specs.set(path.resolve(f), spec)); return { files, note: [r.warnings && r.warnings.length ? 'Engine warnings: ' + r.warnings.join('; ') : '', r.fromSchedule && r.fromSchedule.length ? 'Matched to the schedule: ' + r.fromSchedule.slice(0, 15).join('; ') : '', r.queries && r.queries.length ? 'Moved to the RFI list (not on the drawing): ' + r.queries.join('; ') : ''].filter(Boolean).join('\n') }; } };
+    const tools = AT.toolsFor(ctx, S);
+    // what is on file already: the drawing's current DXF and other DXFs in the job that look relevant
+    const rel = (p) => path.relative(job.folder, p);
+    let onFile = []; try { onFile = (BIZ.projects.relevantFiles(job.id, request + ' ' + (drawingNumber || ''), { exts: ['.dxf'], max: 6 }) || []).filter(p => !/[\\/](Archive|Superseded)[\\/]/i.test(p)); } catch {}
+    // the drawing's own folder first (where Dex files it), then anything the search found
+    try { const od = BIZ.outputDirFor(job.id, kind === 'bcd' ? 'bcd' : kind === 'earthing' ? 'earthing' : 'sld'); if (od && drawingNumber && fs.existsSync(od)) for (const f of fs.readdirSync(od)) if (/\.dxf$/i.test(f) && f.toUpperCase().startsWith(String(drawingNumber).toUpperCase()) && !onFile.includes(path.join(od, f))) onFile.unshift(path.join(od, f)); } catch {}
+    const mine = drawingNumber ? onFile.filter(p => path.basename(p).toUpperCase().startsWith(String(drawingNumber).toUpperCase())) : [];
+    const prompt = [...a.content, { type: 'text', text: `JOB FOLDER (your working directory, read only): ${job.folder}\nYOUR WORK FOLDER (the only place you write; drafts and edits go here): ${workDir}\n${drawingNumber ? `THIS DRAWING: ${drawingNumber}${revision && revision.on ? ' — a NEW REVISION' + (revision.to ? ' (' + revision.to + ')' : '') : ''}. Drawn ${a.drawn || '-'}, checked ${a.checked || '-'}, approved ${a.approved || '-'}.\n` : ''}${mine.length ? `THE CURRENT DRAWING ON FILE: ${mine.map(rel).join(', ')}\n` : ''}${onFile.filter(p => !mine.includes(p)).length ? `OTHER DXF DRAWINGS IN THE JOB: ${onFile.filter(p => !mine.includes(p)).map(rel).join(', ')}\n` : ''}${cables.length ? `run_checks checks against the job's ${cables.length} schedule / master list cables.\n` : ''}Work as described: draw or edit, look, check, fix, then reply with the JSON.` }];
+    stage(revision && revision.on ? 'Dex is working out the changes' : 'Dex is drawing (looking and checking as he goes)', 15);
+    const out = await AR.run({ who: 'dex', name: 'Dex', system: a.system + DEX_LOOP, prompt, jobDir: job.folder, workDir, readDirs: ctx.readDirs, tools, skills: a.skills, run, maxTurns: 90 });
+    let reply = {}; try { const t = String(out.text || ''), i = t.indexOf('{'), j = t.lastIndexOf('}'); reply = JSON.parse(t.slice(i, j + 1)); } catch {}
+    const questions = [...(ctx.questions || []), ...(Array.isArray(reply.questions) ? reply.questions : [])].map(String).filter(Boolean);
+    const stillWrong = (Array.isArray(reply.still_wrong) ? reply.still_wrong : []).map(String).filter(Boolean);
+    const agentInfo = { steps: out.steps.map(x => x.line), turns: out.turns, costUsd: out.costUsd, ms: out.ms, workDir, stillWrong, summary: reply.summary || '', skillsLoaded: out.skills };
+    let final = reply.final ? (path.isAbsolute(reply.final) ? reply.final : path.join(workDir, path.basename(String(reply.final)))) : '';
+    if (!final || !fs.existsSync(final)) final = (ctx.made || []).filter(f => /\.dxf$/i.test(f) && fs.existsSync(f)).pop() || '';
+    if (!final) { if (questions.length) return { questions: questions.slice(0, 6), read: a.content.length, agent: agentInfo }; throw new Error(`Dex finished without making a drawing${out.text ? ': ' + String(out.text).slice(0, 300) : ''}`); }
+    stage('Dex: filing the drawing and its PDF', 92);
+    let res;
+    if (specs.has(path.resolve(final))) res = await a.finish(specs.get(path.resolve(final)));   // made from a spec: made again for real, in the job folder, with its number, revision and PDF
+    else {   // an edited DXF: filed under the drawing's number and revision (the older copies moved to Archive), with its PDF
+      const outKind = kind === 'bcd' ? 'bcd' : kind === 'earthing' ? 'earthing' : 'sld', outDir = BIZ.outputDirFor(job.id, outKind) || path.dirname(final);
+      const prior = drawingNumber ? dxfmaker.previousSpec(outDir, drawingNumber) : null, onRev = String(((path.basename(mine[0] || '').match(/_([A-Z]\d{2})\b/) || [])[1]) || (prior && prior.spec.revision) || 'P01').toUpperCase();
+      const to = String((revision && revision.to) || '').toUpperCase(), rev = revision && revision.on ? (/^[A-Z]\d{2}$/.test(to) ? to : DN.nextRev(onRev, revision.stage || '')) : onRev;
+      const stem = drawingNumber ? `${drawingNumber}_${rev}` : path.basename(final, '.dxf');
+      const archived = dxfmaker.archiveOld(outDir, [drawingNumber || stem], rev);
+      const dest = path.join(outDir, stem + '.dxf'); fs.mkdirSync(outDir, { recursive: true }); fs.copyFileSync(final, dest);
+      let pdf = ''; try { pdf = await pdfOfDxf(dest); } catch (e) { stillWrong.push('PDF not made: ' + (e.message || e)); }
+      const lastSpec = [...specs.values()].pop(); if (lastSpec) try { fs.writeFileSync(dest.replace(/\.dxf$/i, '.spec.json'), JSON.stringify({ ...lastSpec, revision: rev }, null, 2)); } catch {}
+      res = { sheets: [{ path: dest, pdf, label: '' }], pdfs: pdf ? [pdf] : [], path: dest, folder: outDir, revision: rev, drawingNumber: drawingNumber || '', archived: archived.length, warnings: [], summary: reply.summary || '', title: '', notes: [], read: [], inJobFolder: true };
+      BIZ.log({ who: 'Dex', action: 'Drew', jobId: job.id, detail: `${path.basename(dest)} · edited from ${path.basename(final)} · ${reply.summary || ''}` });
+    }
+    res.warnings = [...(res.warnings || []), ...stillWrong.map(x => 'Still wrong: ' + x)];
+    res.agent = agentInfo; if (questions.length) res.agentQuestions = questions;
+    return res;
+  }
+  // a PDF beside a DXF: AutoCAD plots it when this PC has AutoCAD (exactly as Tom would), else the app draws it from the DXF
+  async function pdfOfDxf(dxf) {
+    const PL = require('./plot'); const core = PL.coreConsole();
+    if (core && !core.fake) { const r = await PL.plotOne(dxf, { console: core }); return r.pdf; }
+    const R = require('./dxfread'), d = R.read(dxf), b = d.bounds, W = b.x1 - b.x0, H = b.y1 - b.y0, page = Math.max(W, H) > 1000 ? 'A0' : Math.max(W, H) > 700 ? 'A1' : Math.max(W, H) > 500 ? 'A2' : 'A3';
+    const prims = d.prims.map(p => p.t === 'fill' && p.hex && p.hex !== '#000000' ? { ...p, rgb: [1, 3, 5].map(i => parseInt(p.hex.slice(i, i + 2), 16)) } : p);
+    const pdf = dxf.replace(/\.dxf$/i, '.pdf'); fs.writeFileSync(pdf, await require('./pdfout').toPdfPages([{ prims, bounds: b, page }], { title: path.basename(dxf, '.dxf') })); return pdf;
+  }
+
   ipcMain.handle('dex:make', wrap(async ({ jobId = '', request = '', answers = [], emailId = '', skills, revision = null, drawingNumber = '', drawn = '', checked = '', approved = '', run = '', kind: askedKind = '' }) => {
     if (!String(request).trim()) throw new Error('Say what Dex should draw');
     const stage = (t, pct) => runs.stage(run, t, pct);
@@ -604,10 +675,120 @@ EARTHING tasks: size every protective / earth conductor the drawing needs (MET t
       for (const p of reps) { const t = await DT.docxText(fs.readFileSync(p)); content.push({ type: 'text', text: `JOB REPORT ${path.basename(p)} - a design input: use its figures (conductor sizes, fault levels, settings) and cite it in the notes:\n${t.slice(0, 40000)}` }); notesRead.push(path.basename(p)); } } } catch {}
     content.push({ type: 'text', text: `REQUEST: ${request}${answers.length ? '\n\nANSWERS FROM THE ENGINEER:\n' + answers.map(x => `Q: ${x.q}\nA: ${x.a}`).join('\n') : ''}` });
     // a big site needs a long spec: give room, retry with more if it is cut off, and never pass off a cut-off spec as complete
+    let text = '', cutOff = false, agentNote = '';
+    // everything after Dex's spec: kind, schedule match, numbering, revision, border, layout, DXF + PDF. A draft goes in draftDir with no side effects.
+    async function finish(spec, { draftDir = '' } = {}) {
+      spec = JSON.parse(JSON.stringify(spec));   // worked on as a copy: the agent may send the same spec again
+      if ((kind === 'bcd' && !spec.boards && !spec.busbars) || (Array.isArray(spec.cables) && spec.cables.length && !spec.boards)) spec.kind = 'bcd';   // what Dex drew decides when it is plainly an SLD
+      // the wrong kind of drawing is never saved under the asked-for number (an SLD spec filed as the BCD)
+      if (askedKind && ((askedKind === 'bcd' && spec.kind !== 'bcd') || (askedKind === 'sld' && spec.kind === 'bcd'))) throw new Error(`Dex drew a ${spec.kind === 'bcd' ? 'block cable diagram' : 'single line diagram'} when the ${askedKind === 'bcd' ? 'block cable diagram' : 'single line diagram'} was asked for. Press Make again.`);
+      // National Grid jobs and LVAC block diagrams use the National Grid style (filled energised / de-energised blocks, coloured cable runs, legend)
+      if (spec.kind === 'bcd' && !spec.style && (/national grid|\bNGET?\b|\blvac\b/i.test(request) || (job && /national grid/i.test(job.client || '')))) spec.style = 'ng';
+      if (spec.kind === 'bcd' ? !(spec.cables || []).length : (!spec.boards && !spec.busbars)) {
+        // the reply is kept beside the GIVEN files so the fault can be found, never guessed at
+        let kept = ''; try { const gd = path.join(userDir(), 'runs', String(job ? job.id : 'nojob')); fs.mkdirSync(gd, { recursive: true }); kept = path.join(gd, `dex-reply-${new Date().toISOString().replace(/[:.]/g, '-')}.txt`); fs.writeFileSync(kept, String(text || '')); } catch {}
+        throw new Error(cutOff ? 'Dex\'s drawing was cut off before the end (max_tokens) and could not be read. Press Make again.' : `Dex's reply had no drawing in it that could be read. The reply is kept at ${kept || '(could not save)'} — send it to Claude. Press Make again meanwhile.`);
+      }
+      const desk = require('./jobdesk'), DN = require('./docnumber');
+      // REFERENCE DOCUMENTS: what Dex says he used, plus every file he was actually given (a document he read is always referenced)
+      {
+        const refs = (Array.isArray(spec.references) ? spec.references : []).map(x => String(x).trim()).filter(Boolean);
+        const QS = /X\d{4,6}(?:-[A-Z0-9]{2,4}){2,5}-\d{4}/i, has = (n) => refs.some(r => r.toUpperCase().includes(n.toUpperCase()));
+        for (const f of [...pdfs.map(p => path.basename(p)), ...sheetsRead, ...notesRead]) {
+          const stem = f.replace(/\.[^.]+$/, ''), no = (stem.match(QS) || [])[0];
+          if (no ? has(no) : has(stem)) continue;
+          refs.push(no ? `${no} - ${stem.replace(no, '').replace(/^[\s_-]+|[\s_-]+$/g, '').replace(/[_]+/g, ' ') || 'INPUT'}` : stem.replace(/[_]+/g, ' '));
+        }
+        spec.references = refs.filter(r => (!spec.drawingNumber || !r.toUpperCase().startsWith(String(spec.drawingNumber).toUpperCase())) && !/master (device )?list/i.test(r));   // never itself, never our internal lists
+      }
+      // a BCD made from an approved master list must carry exactly its cables (for the panels drawn): missing ones are added, extra ones flagged
+      let masterCheck = null;
+      if (spec.kind === 'bcd' && job) {
+        const m = desk.masterOf(job.id);
+        if (m && m.status === 'approved') {
+          const panels = new Set((spec.nodes || []).filter(n => /panel|rio|mcc/i.test(n.type || '')).map(n => String(n.tag).toUpperCase()));
+          const touches = (c) => panels.has(String(c.from).toUpperCase()) || panels.has(String(c.to).toUpperCase()) || (spec.cables || []).some(x => [x.from, x.to].map(v => String(v).toUpperCase()).includes(String(c.from).toUpperCase()) && [x.from, x.to].map(v => String(v).toUpperCase()).includes(String(c.to).toUpperCase()));
+          const mine = new Set(spec.cables.map(c => String(c.no).toUpperCase())), inMaster = new Set(m.cables.map(c => String(c.no).toUpperCase()));
+          const devs = new Set(spec.cables.flatMap(c => [c.from, c.to]).map(v => String(v).toUpperCase()));
+          const missing = m.cables.filter(c => !mine.has(String(c.no).toUpperCase()) && (devs.has(String(c.from).toUpperCase()) || devs.has(String(c.to).toUpperCase())));
+          const extra = spec.cables.filter(c => !inMaster.has(String(c.no).toUpperCase()));
+          missing.forEach(c => spec.cables.push({ no: c.no, from: c.from, to: c.to, type: c.type, cores: c.cores, size: c.size }));
+          // reported back to Tom (masterCheck), never written on the client's drawing
+          masterCheck = { added: missing.map(c => c.no), extra: extra.map(c => c.no), touches: !!touches };
+        }
+      }
+      // the notes go to the client: questions, TQs and our own working come off the drawing and go to the job's RFI register
+      // the schedule is the source: cable type (with voltage), cores, size, length and locations copied from its own columns
+      if (revision && revision.on && revision.note) spec.revisionNote = String(revision.note).slice(0, 2000);   // known before the schedule pass: a cable the comments delete is not put back from the schedule
+      stage('matching the drawing to the schedule', 65);
+      const fromSched = dxfmaker.fromSchedule(spec, workbooks);   // with no workbook it still applies the revision's deletions
+      if (fromSched.length && !draftDir) BIZ.log({ who: 'Dex', action: 'Matched the BCD to the schedule', jobId: job ? job.id : '', detail: fromSched.slice(0, 12).join('; ') + (fromSched.length > 12 ? ' …' : '') });
+      dxfmaker.cleanLabels(spec);   // no SEE TQ / RFI pointers in labels: TBC is enough, the question is in the RFI register
+      const cn = dxfmaker.clientNotes(spec), queries = [...new Set([...(Array.isArray(spec.queries) ? spec.queries : []), ...cn.moved].map(q => String(q || '').trim()).filter(Boolean))];
+      spec.notes = cn.notes; delete spec.queries;
+      // the drawing number: from the job's drawing list when one matches, else the next QS 006 number for this kind
+      if (drawingNumber) spec.drawingNumber = drawingNumber;   // made from the Jobs screen for a given deliverable
+      if (job && (!spec.drawingNumber || /tbc/i.test(spec.drawingNumber))) {
+        const want = spec.kind === 'bcd' ? /bcd|block cable/i : spec.kind === 'earthing' ? /earth/i : /single line|\bsld\b/i;
+        const onList = job.drawings.find(d => want.test(d.title) && !/^TBC-/.test(d.no) && /to do|live/i.test(d.status || 'Live'));
+        spec.drawingNumber = onList ? onList.no : (desk.proposeNumber(job, spec.kind === 'bcd' ? 'BCD' : spec.kind === 'earthing' ? 'earthing' : 'SLD', [], job.id, [], true) || 'TBC');
+      }
+      if (job && queries.length && !draftDir) { try { desk.addInputs(job.id, { questions: queries, fromEmail: 'Dex (drawing ' + (spec.drawingNumber || spec.title || '') + ')' }); } catch {} }
+      // the drawing's own place in an Atomax project folder (7.3 Block Diagrams, 7.4 Single Line Diagrams, 6.3 for instrument BCDs ...)
+      const outKind = spec.kind === 'bcd' ? ((job && /^05$/.test(require('./jobdesk').load(job.id).disc || '')) || /instrument|\bRIO\b|loop/i.test(request) ? 'bcd-instrument' : 'bcd') : spec.kind === 'earthing' ? 'earthing' : 'sld';
+      const realOut = (job && BIZ.outputDirFor(job.id, outKind)) || path.join(userDir(), 'dxf-made'), outDir = draftDir || realOut;   // a draft (the agent trying it out) goes in its work folder; the revision history is read from the real folder
+      if (cutOff) spec.notes = [...(spec.notes || []), 'INCOMPLETE: Dex ran out of room before the end of the drawing. Parts after the last board shown are missing. Ask him again.'];
+      const kindName = spec.kind === 'earthing' ? 'EARTHING' : spec.kind === 'bcd' ? 'BCD' : 'SLD';
+      const base = spec.drawingNumber && spec.drawingNumber !== 'TBC' ? spec.drawingNumber + '_' + kindName : (job ? job.number + '_' + kindName : kindName);
+      // optional: a new revision of a drawing Dex made before (changes clouded on BCDs, history carried in the notes)
+      // the drawing as it is now (its last saved spec, in the folder or its Archive)
+      const realNo = spec.drawingNumber && !/^TBC/i.test(spec.drawingNumber) ? spec.drawingNumber : '';
+      let prior = dxfmaker.previousSpec(realOut, realNo || base);
+      let previous = null;
+      if (revision && revision.on) {
+        // a revision: the next one at the same stage (P01 > P02), or the one asked for (e.g. "C01")
+        const to = String(revision.to || '').toUpperCase().replace(/^([A-Z])(\d)$/, '$10$2');
+        spec.revision = /^[A-Z]\d{2}$/.test(to) ? to : DN.nextRev(prior ? prior.spec.revision : 'P01', revision.stage || '');
+        // the same revision made again (a P02 redone): compared with the revision before it, so the clouds and the note show the real changes
+        if (prior && String(prior.spec.revision || '').toUpperCase() === spec.revision) prior = dxfmaker.previousSpec(realOut, realNo || base, spec.revision) || prior;
+        previous = prior;
+        if (revision.note) spec.revisionNote = revision.note;
+        if (revision.desc) spec.revisionDesc = String(revision.desc).toUpperCase().slice(0, 40).replace(/(.{1,20})\s+(?=.)/, '$1\n');   // the revision table's description, over two short lines
+      } else {
+        // make again: the same revision the drawing has now (P01 for a first make), its revision history kept
+        spec.revision = prior ? prior.spec.revision : 'P01';
+        if (prior && prior.spec.revHistory) spec.revHistory = prior.spec.revHistory;
+      }
+      spec.revision = String(spec.revision).toUpperCase().replace(/^([A-Z])(\d)$/, '$10$2');   // two digits: P01
+      const today = (() => { const d = new Date(); return [d.getDate(), d.getMonth() + 1, d.getFullYear()].map((v, i) => String(v).padStart(i < 2 ? 2 : 4, '0')).join('.'); })();
+      spec.people = { drawn, checked, approved, date: today };
+      const bd = job ? desk.borderFor(job) : { key: 'atomax', name: 'Atomax A1' }, template = bd.template || '';
+      if (bd.warning) spec.notes = [...(spec.notes || [])];
+      // saved as NUMBER_REV (older versions moved to Archive); a drawing with no real number yet keeps the old draft naming
+      stage('laying out the drawing', 75);
+      const res = dxfmaker.make(spec, outDir, realNo ? realNo + '_' + spec.revision : base, { exact: !!realNo, archivePrefix: [realNo, job ? job.number + '_' + kindName : '', kindName], template, border: bd.key, previous, fill: job ? { drawn, checked, approved, client: job.client || spec.client || '', project: `${job.number} ${job.name || ''}`.trim(), site: (desk.load(job.id).ng || {}).site || job.name || '', ngInvestment: (desk.load(job.id).ng || {}).investment || '' } : { drawn, checked, approved, client: spec.client || '' } });
+      // every DXF gets its monochrome PDF beside it (issues go out as DXF and PDF)
+      stage('writing the DXF and PDF', 90);
+      let madePdfs = []; try { madePdfs = await require('./pdfout').writePdfs(res); } catch (e) { (res.files || []).forEach(f => delete f.prims); }
+      if (!draftDir) BIZ.log({ who: 'Dex', action: 'Drew', jobId: job ? job.id : '', detail: `${path.basename(res.path)} · ${spec.summary || spec.title || 'SLD'}${used.length ? ' · skills: ' + used.join(', ') : ' · no skills'}` });
+      // what Dex was given, kept beside the app's data (not in the job folder) so Tom can see exactly what went in when something looks wrong
+      let givenFile = '';
+      if (!draftDir) try { const gd = path.join(userDir(), 'runs', String(job ? job.id : 'nojob')); fs.mkdirSync(gd, { recursive: true }); givenFile = path.join(gd, `${(spec.drawingNumber || base).replace(/[\\/:*?"<>|]+/g, '_')}_${spec.revision}_${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}.txt`);
+        const textParts = content.map(c => c.type === 'text' ? c.text : `[${c.type}: ${c.source && c.source.media_type || ''}]`).join('\n\n');
+        fs.writeFileSync(givenFile, `WHAT DEX WAS GIVEN\n${new Date().toISOString()}\nDrawing: ${spec.drawingNumber || base} ${spec.revision}\n\n=== SKILLS ===\n${used.join('\n') || '(none)'}\n\n=== FILES READ ===\n${[...pdfs.map(p => path.basename(p)), ...sheetsRead, ...notesRead].join('\n') || '(none)'}\n\n=== SYSTEM PROMPT ===\n${system}\n\n=== USER MESSAGE ===\n${textParts}\n\n=== DEX'S REPLY (summary) ===\n${spec.summary || ''}\n\n=== SCHEDULE MATCHES ===\n${fromSched.join('\n') || '(none)'}\n\n=== QUERIES ===\n${queries.join('\n') || '(none)'}\n\n=== LAYOUT WARNINGS ===\n${(spec._warnings || []).join('\n') || '(none)'}\n`, 'utf8'); } catch {}
+      return { givenFile, request, fromSchedule: fromSched, queries, warnings: spec._warnings || [], archived: (res.archived || []).length, border: bd.name, borderWarning: bd.warning || '', pdfs: madePdfs, masterCheck, sheets: (res.files || []).map(f => ({ path: f.path, pdf: f.pdf || '', label: f.label })), diff: res.diff, revision: spec.revision, previousFound: !!previous, titleBlock: template ? path.basename(template) : '', drawingNumber: spec.drawingNumber, skills: used, incomplete: cutOff, path: res.path, folder: outDir, svg: res.svg, summary: spec.summary || '', title: spec.title || '', notes: spec.notes || [], read: [...pdfs.map(p => path.basename(p)), ...sheetsRead, ...notesRead], inJobFolder: !!(job && job.folder) };
+    }
+    // Dex as a working agent (on unless switched off in Settings): reads, draws, looks at the result, checks it and fixes it before handing over
+    if (agentOn('dex') && job && job.folder && fs.existsSync(job.folder)) try { return await dexAgent({ job, request, kind, askedKind, answers, revision, drawingNumber, drawn, checked, approved, run, content, system: dxfmaker.SYSTEM + (job ? '\n\n' + BIZ.contextFor(job.id, 'Dex') : '') + library.promptBlock('dex'), pdfs, sheetsRead, notesRead, workbooks, finish, skills });
+    } catch (e) {   // the agent could not start on this PC (the Claude Code program missing or blocked): Dex draws the old way, in one go, and says so
+      if (runs.aborted(run) || e.question || !/spawn|ENOENT|EACCES|executable|Claude Code (process|native binary)|exited with code|not set up|requires either Git for Windows|PowerShell/i.test(String(e && e.message || e))) throw e;
+      BIZ.log({ who: 'Dex', action: 'Could not work as an agent (drew in one go instead)', jobId: job.id, detail: String(e.message || e).slice(0, 300) });
+      agentNote = `Dex could not work as an agent on this PC, so he drew it in one go without looking at it: ${String(e.message || e).slice(0, 300)}`;
+    }
     stage(revision && revision.on ? 'Dex is working out the changes' : 'Dex is drawing', 20);
     let r = await claudeFull({ system, who: 'dex', skills: false, maxTokens: 24000, messages: [{ role: 'user', content }], run });
     if (r.stop === 'max_tokens') r = await claudeFull({ run, system: system + '\nKeep labels short (four lines at most) and give a feeder label only when it adds something the end item label does not say.', who: 'dex', skills: false, maxTokens: 48000, messages: [{ role: 'user', content }] });
-    let text = r.text, cutOff = r.stop === 'max_tokens';
+    text = r.text; cutOff = r.stop === 'max_tokens';
     // a reply that still cannot be read (a stray quote or bracket the repair cannot place): kept for a look, and Dex is asked once to send it again as strict JSON
     let spec;
     try { spec = dxfmaker.parseReply(text); }
@@ -618,104 +799,7 @@ EARTHING tasks: size every protective / earth conductor the drawing needs (MET t
       try { spec = dxfmaker.parseReply(text); } catch (err2) { throw new Error(`Dex's reply could not be read twice (${String(err2.message || err2).slice(0, 100)}). Press Make again.`); }
     }
     if (spec.questions && spec.questions.length && !answers.length) return { questions: spec.questions.slice(0, 4).map(String), read: [...pdfs.map(p => path.basename(p)), ...sheetsRead, ...notesRead], skills: used };
-    if ((kind === 'bcd' && !spec.boards && !spec.busbars) || (Array.isArray(spec.cables) && spec.cables.length && !spec.boards)) spec.kind = 'bcd';   // what Dex drew decides when it is plainly an SLD
-    // the wrong kind of drawing is never saved under the asked-for number (an SLD spec filed as the BCD)
-    if (askedKind && ((askedKind === 'bcd' && spec.kind !== 'bcd') || (askedKind === 'sld' && spec.kind === 'bcd'))) throw new Error(`Dex drew a ${spec.kind === 'bcd' ? 'block cable diagram' : 'single line diagram'} when the ${askedKind === 'bcd' ? 'block cable diagram' : 'single line diagram'} was asked for. Press Make again.`);
-    // National Grid jobs and LVAC block diagrams use the National Grid style (filled energised / de-energised blocks, coloured cable runs, legend)
-    if (spec.kind === 'bcd' && !spec.style && (/national grid|\bNGET?\b|\blvac\b/i.test(request) || (job && /national grid/i.test(job.client || '')))) spec.style = 'ng';
-    if (spec.kind === 'bcd' ? !(spec.cables || []).length : (!spec.boards && !spec.busbars)) {
-      // the reply is kept beside the GIVEN files so the fault can be found, never guessed at
-      let kept = ''; try { const gd = path.join(userDir(), 'runs', String(job ? job.id : 'nojob')); fs.mkdirSync(gd, { recursive: true }); kept = path.join(gd, `dex-reply-${new Date().toISOString().replace(/[:.]/g, '-')}.txt`); fs.writeFileSync(kept, String(text || '')); } catch {}
-      throw new Error(cutOff ? 'Dex\'s drawing was cut off before the end (max_tokens) and could not be read. Press Make again.' : `Dex's reply had no drawing in it that could be read. The reply is kept at ${kept || '(could not save)'} — send it to Claude. Press Make again meanwhile.`);
-    }
-    const desk = require('./jobdesk'), DN = require('./docnumber');
-    // REFERENCE DOCUMENTS: what Dex says he used, plus every file he was actually given (a document he read is always referenced)
-    {
-      const refs = (Array.isArray(spec.references) ? spec.references : []).map(x => String(x).trim()).filter(Boolean);
-      const QS = /X\d{4,6}(?:-[A-Z0-9]{2,4}){2,5}-\d{4}/i, has = (n) => refs.some(r => r.toUpperCase().includes(n.toUpperCase()));
-      for (const f of [...pdfs.map(p => path.basename(p)), ...sheetsRead, ...notesRead]) {
-        const stem = f.replace(/\.[^.]+$/, ''), no = (stem.match(QS) || [])[0];
-        if (no ? has(no) : has(stem)) continue;
-        refs.push(no ? `${no} - ${stem.replace(no, '').replace(/^[\s_-]+|[\s_-]+$/g, '').replace(/[_]+/g, ' ') || 'INPUT'}` : stem.replace(/[_]+/g, ' '));
-      }
-      spec.references = refs.filter(r => (!spec.drawingNumber || !r.toUpperCase().startsWith(String(spec.drawingNumber).toUpperCase())) && !/master (device )?list/i.test(r));   // never itself, never our internal lists
-    }
-    // a BCD made from an approved master list must carry exactly its cables (for the panels drawn): missing ones are added, extra ones flagged
-    let masterCheck = null;
-    if (spec.kind === 'bcd' && job) {
-      const m = desk.masterOf(job.id);
-      if (m && m.status === 'approved') {
-        const panels = new Set((spec.nodes || []).filter(n => /panel|rio|mcc/i.test(n.type || '')).map(n => String(n.tag).toUpperCase()));
-        const touches = (c) => panels.has(String(c.from).toUpperCase()) || panels.has(String(c.to).toUpperCase()) || (spec.cables || []).some(x => [x.from, x.to].map(v => String(v).toUpperCase()).includes(String(c.from).toUpperCase()) && [x.from, x.to].map(v => String(v).toUpperCase()).includes(String(c.to).toUpperCase()));
-        const mine = new Set(spec.cables.map(c => String(c.no).toUpperCase())), inMaster = new Set(m.cables.map(c => String(c.no).toUpperCase()));
-        const devs = new Set(spec.cables.flatMap(c => [c.from, c.to]).map(v => String(v).toUpperCase()));
-        const missing = m.cables.filter(c => !mine.has(String(c.no).toUpperCase()) && (devs.has(String(c.from).toUpperCase()) || devs.has(String(c.to).toUpperCase())));
-        const extra = spec.cables.filter(c => !inMaster.has(String(c.no).toUpperCase()));
-        missing.forEach(c => spec.cables.push({ no: c.no, from: c.from, to: c.to, type: c.type, cores: c.cores, size: c.size }));
-        // reported back to Tom (masterCheck), never written on the client's drawing
-        masterCheck = { added: missing.map(c => c.no), extra: extra.map(c => c.no), touches: !!touches };
-      }
-    }
-    // the notes go to the client: questions, TQs and our own working come off the drawing and go to the job's RFI register
-    // the schedule is the source: cable type (with voltage), cores, size, length and locations copied from its own columns
-    if (revision && revision.on && revision.note) spec.revisionNote = String(revision.note).slice(0, 2000);   // known before the schedule pass: a cable the comments delete is not put back from the schedule
-    stage('matching the drawing to the schedule', 65);
-    const fromSched = dxfmaker.fromSchedule(spec, workbooks);   // with no workbook it still applies the revision's deletions
-    if (fromSched.length) BIZ.log({ who: 'Dex', action: 'Matched the BCD to the schedule', jobId: job ? job.id : '', detail: fromSched.slice(0, 12).join('; ') + (fromSched.length > 12 ? ' …' : '') });
-    dxfmaker.cleanLabels(spec);   // no SEE TQ / RFI pointers in labels: TBC is enough, the question is in the RFI register
-    const cn = dxfmaker.clientNotes(spec), queries = [...new Set([...(Array.isArray(spec.queries) ? spec.queries : []), ...cn.moved].map(q => String(q || '').trim()).filter(Boolean))];
-    spec.notes = cn.notes; delete spec.queries;
-    // the drawing number: from the job's drawing list when one matches, else the next QS 006 number for this kind
-    if (drawingNumber) spec.drawingNumber = drawingNumber;   // made from the Jobs screen for a given deliverable
-    if (job && (!spec.drawingNumber || /tbc/i.test(spec.drawingNumber))) {
-      const want = spec.kind === 'bcd' ? /bcd|block cable/i : spec.kind === 'earthing' ? /earth/i : /single line|\bsld\b/i;
-      const onList = job.drawings.find(d => want.test(d.title) && !/^TBC-/.test(d.no) && /to do|live/i.test(d.status || 'Live'));
-      spec.drawingNumber = onList ? onList.no : (desk.proposeNumber(job, spec.kind === 'bcd' ? 'BCD' : spec.kind === 'earthing' ? 'earthing' : 'SLD', [], job.id, [], true) || 'TBC');
-    }
-    if (job && queries.length) { try { desk.addInputs(job.id, { questions: queries, fromEmail: 'Dex (drawing ' + (spec.drawingNumber || spec.title || '') + ')' }); } catch {} }
-    // the drawing's own place in an Atomax project folder (7.3 Block Diagrams, 7.4 Single Line Diagrams, 6.3 for instrument BCDs ...)
-    const outKind = spec.kind === 'bcd' ? ((job && /^05$/.test(require('./jobdesk').load(job.id).disc || '')) || /instrument|\bRIO\b|loop/i.test(request) ? 'bcd-instrument' : 'bcd') : spec.kind === 'earthing' ? 'earthing' : 'sld';
-    const outDir = (job && BIZ.outputDirFor(job.id, outKind)) || path.join(userDir(), 'dxf-made');
-    if (cutOff) spec.notes = [...(spec.notes || []), 'INCOMPLETE: Dex ran out of room before the end of the drawing. Parts after the last board shown are missing. Ask him again.'];
-    const kindName = spec.kind === 'earthing' ? 'EARTHING' : spec.kind === 'bcd' ? 'BCD' : 'SLD';
-    const base = spec.drawingNumber && spec.drawingNumber !== 'TBC' ? spec.drawingNumber + '_' + kindName : (job ? job.number + '_' + kindName : kindName);
-    // optional: a new revision of a drawing Dex made before (changes clouded on BCDs, history carried in the notes)
-    // the drawing as it is now (its last saved spec, in the folder or its Archive)
-    const realNo = spec.drawingNumber && !/^TBC/i.test(spec.drawingNumber) ? spec.drawingNumber : '';
-    let prior = dxfmaker.previousSpec(outDir, realNo || base);
-    let previous = null;
-    if (revision && revision.on) {
-      // a revision: the next one at the same stage (P01 > P02), or the one asked for (e.g. "C01")
-      const to = String(revision.to || '').toUpperCase().replace(/^([A-Z])(\d)$/, '$10$2');
-      spec.revision = /^[A-Z]\d{2}$/.test(to) ? to : DN.nextRev(prior ? prior.spec.revision : 'P01', revision.stage || '');
-      // the same revision made again (a P02 redone): compared with the revision before it, so the clouds and the note show the real changes
-      if (prior && String(prior.spec.revision || '').toUpperCase() === spec.revision) prior = dxfmaker.previousSpec(outDir, realNo || base, spec.revision) || prior;
-      previous = prior;
-      if (revision.note) spec.revisionNote = revision.note;
-      if (revision.desc) spec.revisionDesc = String(revision.desc).toUpperCase().slice(0, 40).replace(/(.{1,20})\s+(?=.)/, '$1\n');   // the revision table's description, over two short lines
-    } else {
-      // make again: the same revision the drawing has now (P01 for a first make), its revision history kept
-      spec.revision = prior ? prior.spec.revision : 'P01';
-      if (prior && prior.spec.revHistory) spec.revHistory = prior.spec.revHistory;
-    }
-    spec.revision = String(spec.revision).toUpperCase().replace(/^([A-Z])(\d)$/, '$10$2');   // two digits: P01
-    const today = (() => { const d = new Date(); return [d.getDate(), d.getMonth() + 1, d.getFullYear()].map((v, i) => String(v).padStart(i < 2 ? 2 : 4, '0')).join('.'); })();
-    spec.people = { drawn, checked, approved, date: today };
-    const bd = job ? desk.borderFor(job) : { key: 'atomax', name: 'Atomax A1' }, template = bd.template || '';
-    if (bd.warning) spec.notes = [...(spec.notes || [])];
-    // saved as NUMBER_REV (older versions moved to Archive); a drawing with no real number yet keeps the old draft naming
-    stage('laying out the drawing', 75);
-    const res = dxfmaker.make(spec, outDir, realNo ? realNo + '_' + spec.revision : base, { exact: !!realNo, archivePrefix: [realNo, job ? job.number + '_' + kindName : '', kindName], template, border: bd.key, previous, fill: job ? { drawn, checked, approved, client: job.client || spec.client || '', project: `${job.number} ${job.name || ''}`.trim(), site: (desk.load(job.id).ng || {}).site || job.name || '', ngInvestment: (desk.load(job.id).ng || {}).investment || '' } : { drawn, checked, approved, client: spec.client || '' } });
-    // every DXF gets its monochrome PDF beside it (issues go out as DXF and PDF)
-    stage('writing the DXF and PDF', 90);
-    let madePdfs = []; try { madePdfs = await require('./pdfout').writePdfs(res); } catch (e) { (res.files || []).forEach(f => delete f.prims); }
-    BIZ.log({ who: 'Dex', action: 'Drew', jobId: job ? job.id : '', detail: `${path.basename(res.path)} · ${spec.summary || spec.title || 'SLD'}${used.length ? ' · skills: ' + used.join(', ') : ' · no skills'}` });
-    // what Dex was given, kept beside the app's data (not in the job folder) so Tom can see exactly what went in when something looks wrong
-    let givenFile = '';
-    try { const gd = path.join(userDir(), 'runs', String(job ? job.id : 'nojob')); fs.mkdirSync(gd, { recursive: true }); givenFile = path.join(gd, `${(spec.drawingNumber || base).replace(/[\\/:*?"<>|]+/g, '_')}_${spec.revision}_${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}.txt`);
-      const textParts = content.map(c => c.type === 'text' ? c.text : `[${c.type}: ${c.source && c.source.media_type || ''}]`).join('\n\n');
-      fs.writeFileSync(givenFile, `WHAT DEX WAS GIVEN\n${new Date().toISOString()}\nDrawing: ${spec.drawingNumber || base} ${spec.revision}\n\n=== SKILLS ===\n${used.join('\n') || '(none)'}\n\n=== FILES READ ===\n${[...pdfs.map(p => path.basename(p)), ...sheetsRead, ...notesRead].join('\n') || '(none)'}\n\n=== SYSTEM PROMPT ===\n${system}\n\n=== USER MESSAGE ===\n${textParts}\n\n=== DEX'S REPLY (summary) ===\n${spec.summary || ''}\n\n=== SCHEDULE MATCHES ===\n${fromSched.join('\n') || '(none)'}\n\n=== QUERIES ===\n${queries.join('\n') || '(none)'}\n\n=== LAYOUT WARNINGS ===\n${(spec._warnings || []).join('\n') || '(none)'}\n`, 'utf8'); } catch {}
-    return { givenFile, request, fromSchedule: fromSched, queries, warnings: spec._warnings || [], archived: (res.archived || []).length, border: bd.name, borderWarning: bd.warning || '', pdfs: madePdfs, masterCheck, sheets: (res.files || []).map(f => ({ path: f.path, pdf: f.pdf || '', label: f.label })), diff: res.diff, revision: spec.revision, previousFound: !!previous, titleBlock: template ? path.basename(template) : '', drawingNumber: spec.drawingNumber, skills: used, incomplete: cutOff, path: res.path, folder: outDir, svg: res.svg, summary: spec.summary || '', title: spec.title || '', notes: spec.notes || [], read: [...pdfs.map(p => path.basename(p)), ...sheetsRead, ...notesRead], inJobFolder: !!(job && job.folder) };
+    const made = await finish(spec); if (agentNote) made.warnings = [...(made.warnings || []), agentNote]; return made;
   }));
 }
 

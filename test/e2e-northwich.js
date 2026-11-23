@@ -17,7 +17,7 @@ const call = (ch, args) => { const h = HANDLERS[ch]; if (!h) throw new Error('no
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'amo-e2e-')), USER = path.join(TMP, 'user'), PROJECTS = path.join(TMP, 'Projects'), TPL = path.join(TMP, 'Template Project Directory');
 fs.mkdirSync(USER, { recursive: true }); fs.mkdirSync(PROJECTS, { recursive: true });
 { const t = JSON.parse(fs.readFileSync(path.join(FX, 'template', 'tree.json'), 'utf8')); for (const d of t.dirs) fs.mkdirSync(path.join(TPL, d), { recursive: true }); for (const f of t.files) { fs.mkdirSync(path.dirname(path.join(TPL, f)), { recursive: true }); fs.writeFileSync(path.join(TPL, f), 'x'); } }
-const settings = { projectRoots: [PROJECTS], jobsFolder: PROJECTS, templateDir: TPL };
+const settings = { projectRoots: [PROJECTS], jobsFolder: PROJECTS, templateDir: TPL, anthropicKey: 'sk-test', agentLoop: { dex: !!process.env.DEX_AGENT } };   // DEX_AGENT=1: Dex works as an agent with tools (agentrun.js) against a stand-in API
 const loadSettings = () => settings, saveSettings = (s) => Object.assign(settings, s);
 
 // --- the modules, wired as main.js wires them
@@ -61,6 +61,30 @@ const texts = (prims) => dxfmaker.flatPrims(prims).filter(p => p.t === 'text' ||
 const step = (name, fn) => { try { const r = fn(); if (r && r.then) return r.then(v => { console.log('ok  ' + name + (v ? ': ' + v : '')); }).catch(e => { console.log('FAIL ' + name + ': ' + (e.stack || e)); process.exitCode = 1; }); console.log('ok  ' + name + (r ? ': ' + r : '')); } catch (e) { console.log('FAIL ' + name + ': ' + (e.stack || e)); process.exitCode = 1; } };
 
 (async () => {
+  if (process.env.DEX_AGENT) {   // the stand-in API plays Dex the agent: make_drawing with his real spec, look, zoom, check, hand over
+    const AR = require(path.join(ROOT, 'agentrun.js')); AR.init({ loadSettings, usage: require(path.join(ROOT, 'usage.js')), runs, userDir: USER, library, agentMs: {} }); require(path.join(ROOT, 'usage.js')).init(USER);
+    const lastResult = (body) => { const trs = (body.messages || []).flatMap(m => Array.isArray(m.content) ? m.content : []).filter(c => c.type === 'tool_result'); return trs.length ? JSON.stringify(trs[trs.length - 1].content) : ''; };
+    const madeOf = (body) => { for (const m of body.messages || []) for (const c of Array.isArray(m.content) ? m.content : []) if (c.type === 'tool_result') { const t = JSON.stringify(c.content), mm = t.match(/Made ([^ ]+\.dxf)/); if (mm) return mm[1]; } return ''; };
+    global.__agentTurns = [];
+    const m = await require('./mock-messages').start((body) => {
+      if (global.__dexMode === 'edit') {   // the edit route: the drawing on file is edited, not redrawn
+        const first = JSON.stringify(body.messages[0]), n = (body.messages || []).filter(x => x.role === 'assistant').length, cur = (first.match(/THE CURRENT DRAWING ON FILE: ([^,\\]+?\.dxf)/) || [])[1] || '', saved = (JSON.stringify(body.messages).match(/Saved ([^ ]+\.dxf)/) || [])[1] || '';
+        global.__editSeen = global.__editSeen || cur;
+        if (n === 0) return [{ type: 'tool_use', name: 'mcp__atomax__edit_dxf', input: { file: cur, ops: [{ op: 'add_text', x: 100, y: 100, text: 'EDITED BY DEX' }] } }];
+        if (n === 1) return [{ type: 'tool_use', name: 'mcp__atomax__render_drawing', input: { file: saved } }];
+        return [{ type: 'text', text: JSON.stringify({ final: saved, summary: 'added a note', still_wrong: ['nothing'] }) }];
+      }
+      const first = JSON.stringify(body.messages[0]), bcd = /block cable/i.test((first.match(/REQUEST: ([^"]{0,200})/) || [])[1] || ''), n = (body.messages || []).filter(x => x.role === 'assistant').length, made = madeOf(body);
+      global.__agentTurns.push(n);
+      if (n === 0) return [{ type: 'text', text: 'Drawing it.' }, { type: 'tool_use', name: 'mcp__atomax__make_drawing', input: { spec: JSON.parse(require('../src/dxfmaker').repairJson ? (bcd ? dexBcd : dexSld) : (bcd ? dexBcd : dexSld)) } }];
+      if (n === 1) return [{ type: 'tool_use', name: 'mcp__atomax__render_drawing', input: { file: made } }];
+      if (n === 2) return [{ type: 'tool_use', name: 'mcp__atomax__zoom', input: { file: made, region: 'title block' } }];
+      if (n === 3) return [{ type: 'tool_use', name: 'mcp__atomax__run_checks', input: { file: made } }];
+      global.__lastChecks = global.__lastChecks || lastResult(body);
+      return [{ type: 'text', text: JSON.stringify({ final: made, summary: 'drawn and checked', still_wrong: [] }) }];
+    });
+    process.env.AMO_AGENT_BASE_URL = m.url; global.__mock = m;
+  }
   // 1. the job, as Eli creates it: a folder from the template, the client's inputs filed, two deliverables
   const folder = projects.createJobFolder(PROJECTS, 'X071126', 'Northwich Waterworks Pumping Station');
   await step('job folder from the template', () => { assert.ok(fs.existsSync(path.join(folder, '7. Electrical', '7.3 Block Diagrams')), '7.3 exists'); assert.ok(fs.existsSync(path.join(folder, '9. Document Control', '9.1 Document Register', 'X071126-0000-01-01-0001.xlsm')), 'register renamed to the job number'); return path.basename(folder); });
@@ -126,6 +150,17 @@ const step = (name, fn) => { try { const r = fn(); if (r && r.then) return r.the
 
   // 6. the PDF: a real A0 page with the cloud drawn as arcs (not a straight-sided polygon)
   await step('PDF is an A0 page holding the drawing', async () => { const { PDFDocument } = require('pdf-lib'); const pdf = fs.readFileSync(path.join(dir74, 'X071126-01-70-0001_P01.pdf')); const doc = await PDFDocument.load(pdf); const { width, height } = doc.getPage(0).getSize(); assert.ok(Math.abs(width - 3370.39) < 1 && Math.abs(height - 2383.94) < 1, `A0 page, got ${width}x${height}`); return `${doc.getPageCount()} page, ${(pdf.length / 1024).toFixed(0)} KB`; });
+  if (process.env.DEX_AGENT) await step('Dex the agent edits the drawing on file (not redrawn): filed under its number with a PDF, the old copy archived, the original never written', async () => {
+    const before = fs.readFileSync(path.join(dir74, 'X071126-01-70-0001_P01.dxf'));
+    global.__dexMode = 'edit'; const r = await call('jobs:make', { jobId: job.id, no: sldNo, people: { drawn: 'DM', checked: 'TM', approved: 'TM' } }); global.__dexMode = '';
+    assert.ok(global.__editSeen && /70-0001_P01\.dxf/.test(global.__editSeen), 'told the current drawing: ' + global.__editSeen);
+    const now = fs.readFileSync(path.join(dir74, 'X071126-01-70-0001_P01.dxf'), 'utf8'); assert.ok(/EDITED BY DEX/.test(now), 'the edit is in the filed drawing');
+    assert.ok(fs.existsSync(path.join(dir74, 'X071126-01-70-0001_P01.pdf')), 'PDF beside it');
+    const arch = fs.readdirSync(path.join(dir74, 'Archive')); assert.ok(arch.some(f => f.endsWith('.dxf') && fs.readFileSync(path.join(dir74, 'Archive', f)).equals(before)), 'the drawing before the edit is in Archive, unchanged');
+    assert.ok(r.given && r.given.agent && r.given.agent.steps.length >= 2, 'steps recorded: ' + JSON.stringify(r.given && r.given.agent));
+    assert.ok((r.given.warnings || []).some(w => /Still wrong: nothing/.test(w)));
+    return r.given.agent.steps.join(' / ');
+  });
   // 6b. the Jobs list: any folder inside a job belongs to that job (Explorer navigation shows the job on the right); a discipline folder is not a job
   await step('a folder inside the job resolves to the job; the job folder itself too; a stray folder to nothing', async () => {
     const a = await call('proj:jobFor', { path: path.join(folder, '7. Electrical', '7.3 Block Diagrams') }); assert.ok(a && a.id === job.id, JSON.stringify(a));
@@ -563,5 +598,6 @@ const step = (name, fn) => { try { const r = fn(); if (r && r.then) return r.the
     const order = ['X130726-0000-06-72-0008 P02.pdf', 'X130726-0000-06-72-0009 P02.pdf', 'Q24026-EL-02_Multicore_Block_Diagram_V3.0.pdf'].map(n => seen.indexOf('Attached PDF: ' + n)); assert.ok(order[0] > 0 && order[0] < order[2] && order[1] < order[2], 'our drawings read before the client ones: ' + order.join(','));
     assert.ok(/\[document:application\/pdf\]/.test(seen) && /\[image:image\/png\]/.test(seen), 'PDF and image blocks went to Claude');
   });
+  if (global.__mock) { global.__mock.srv.close(); console.log('agent turns served:', global.__agentTurns.length, '| checks seen by the agent:', String(global.__lastChecks || '').slice(0, 300)); }
   console.log(process.exitCode ? 'E2E FAILED' : 'e2e northwich ok'); fs.rmSync(TMP, { recursive: true, force: true }); process.exit(process.exitCode || 0);
 })().catch(e => { console.error('E2E ERROR', e); process.exit(1); });

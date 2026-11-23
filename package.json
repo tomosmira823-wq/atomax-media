@@ -1,7 +1,7 @@
 {
   "name": "atomax-media-office",
   "productName": "Atomax Media Office",
-  "version": "1.36.2",
+  "version": "1.37.0",
   "description": "3D AI media office that writes Atomax social posts with per-platform agents (Claude, OpenAI, Higgsfield)",
   "main": "src/main.js",
   "author": "Tom Mira",
@@ -23,10 +23,13 @@
     "test:pipeline": "node test/syntax-check.js && node test/pipeline-test.js && node test/dxffix-test.js && node test/e2e-northwich.js"
   },
   "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.3.330",
     "@pdf-lib/fontkit": "^1.1.1",
+    "@resvg/resvg-js": "^2.6.2",
     "docx": "^9.5.0",
     "electron-updater": "^6.8.9",
-    "pdf-lib": "^1.17.1"
+    "pdf-lib": "^1.17.1",
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "electron": "^33.0.0",
@@ -63,6 +66,10 @@
       "owner": "tomosmira823-wq",
       "repo": "atomax-media",
       "releaseType": "release"
-    }
+    },
+    "asarUnpack": [
+      "node_modules/@anthropic-ai/claude-agent-sdk-*/**",
+      "node_modules/@resvg/**"
+    ]
   }
 }
